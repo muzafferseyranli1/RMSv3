@@ -1,63 +1,81 @@
-# SuitableRMS v3 - TODO
+# Wallet Lookup Program Context Fix — Plan
 
-## Active Tasks
+## Problem Summary
+`resolveLoyaltyWalletBalance()` when called WITHOUT `programId`:
+- Uses `program_id IS NULL` filter (line 58-59 in loyaltyWalletReadiness.js)
+- This misses wallets that ARE associated with a program
+- CallCenter.jsx calls this helper with only `customerId` → wrong 0 balance possible
 
-### Faz 5.1 — Wallet Lookup Program Context Fix
+## Fix Plan
 
-**Status:** IN PROGRESS  
-**Priority:** HIGH
+### 1. loyaltyWalletReadiness.js — Fix resolveLoyaltyWalletBalance()
 
-#### Files to Modify:
-- [ ] `src/lib/loyaltyWalletReadiness.js` — resolveLoyaltyWalletBalance fallback logic fix
-- [ ] `src/components/pages/CallCenter.jsx` — pass programId when available
-- [ ] `src/lib/posLoyalty.js` — verify prepareRuntimeWalletContext compatibility
+Current behavior (problematic):
+```javascript
+query = normalizedProgramId
+  ? query.eq('program_id', normalizedProgramId)
+  : query.is('program_id', null)  // WRONG: missesprogram-associated wallets
+```
 
-#### Tasks:
-1. [IN PROGRESS] Fix resolveLoyaltyWalletBalance() behavior:
-   - programId provided → use that program wallet
-   - programId NOT provided:
-     - Single wallet found → use it
-     - Multiple wallets found → return ambiguous_program_context
-     - No wallet found → return wallet_missing (0 balance)
-2. [ ] Add explicit status outcomes in response:
-   - ready
-   - wallet_missing  
-   - missing_customer
-   - lookup_failed
-   - ambiguous_program_context (NEW)
-3. [ ] Update CallCenter.jsx to pass programId from customer context when available
-4. [ ] Run npm.cmd build to verify no regressions
+New behavior:
+- If programId provided → use that specific wallet
+- If programId NOT provided:
+  - First check: Any wallet for this customer?
+  - If only ONE wallet found → use it (deterministic fallback)
+  - If MULTIPLE wallets found → return `ambiguous_program_context` status
+  - If NO wallet found → return `wallet_missing` (current behavior)
 
-#### Verification:
-- [ ] Build passes without errors
-- [ ] Program-connected wallets are NOT shown as 0 balance when programId missing
-- [ ] CallCenter passes best available program context
+New statuses to return:
+- `ready` — wallet found, balance known
+- `wallet_missing` — no wallet exists
+- `missing_customer` — no customer ID
+- `lookup_failed` — DB error
+- `ambiguous_program_context` — multiple wallets, no programId specified
 
-#### Kırmızı Çizgiler (RESPEECTED):
-- [NO] Railway Postgres dışına çıkma
-- [NO] Supabase/AWS ekleme  
-- [NO] Mock persistence ekleme
-- [NO] Auth/JWT/OAuth ekleme
-- [NO] Mevcut değişiklikleri ezme
-- [NO] src/lib/loyaltyRuntimeStatus.js dosyasına dokunma
-- [NO] points_redeem_multiplier statüsünü değiştirme
+### 2. CallCenter.jsx — Pass programId context
 
----
+When calling `resolveLoyaltyWalletBalance()`:
+- Get `programId` from selected customer or selectedBranch
+- Pass it to the helper when available
+- Handle `ambiguous_program_context` gracefully
 
-### Completed (Recent)
+### 3. posLoyalty.js — prepareRuntimeWalletContext() check
 
-- [x] Loyalty wallet readiness Phase 5 readiness (Entry 021)
-- [x] Loyalty burn-safe guard (Entry 019)  
-- [x] Loyalty executive gap closure (Entry 016, 017)
+- Verify compatibility with new helper behavior
+- Ensure async wrapper works correctly
 
----
+## Files to Edit
 
-### Next After This
+| File | Change |
+|------|--------|
+| `src/lib/loyaltyWalletReadiness.js` | Fix query logic + new status values |
+| `src/components/pages/CallCenter.jsx` | Pass programId when calling helper |
+| `src/lib/posLoyalty.js` | Verify prepareRuntimeWalletContext compatibility |
 
-- [ ] Faz 6: Async wallet evaluation channel migration
-- [ ] Burn executor implementation (points_redeem_multiplier completion)
+## Red Lines (NOT to cross)
 
----
+- ❌ Railway Postgres dışına çıkma
+- ❌ Supabase, AWS, mock persistence, fake wallet ekleme  
+- ❌ Auth/JWT/OAuth/login sistemi uydurma
+- ❌ Mevcut değişiklikleri ezme veya revert etme
+- ❌ `src/lib/loyaltyRuntimeStatus.js` dosyasına dokunma
+- ❌ `points_redeem_multiplier` statüsünü değiştirme
+- ❌ Gerçek burn executor yazma
 
-Generated: 2026-05-20  
-Last Updated: 2026-05-20
+## Acceptance Criteria
+
+- `resolveLoyaltyWalletBalance()` programId olmadan yanlışlıkla sadece `program_id IS NULL` ile sınırlı kalmamalı
+- Program wallet'ı olan müşteri için yanlış `wallet_missing`/0 bakiye sonucu üretilmemeli
+- Call Center çağrısı mümkün olan en iyi bağlamı geçirmeli
+- `loyaltyRuntimeStatus.js` değişmemeli
+- `points_redeem_multiplier` statüsü değişmemeli
+- `npm.cmd run build` başarılı olmalı
+- OperationSync.md ve LOYALTYMEMORY.md güncellenmiş olmalı (kırmızı çizgi olarak belirtilmiş ama implementation task değil)
+
+## Next Steps After Approval
+
+1. Edit `loyaltyWalletReadiness.js`
+2. Edit `CallCenter.jsx` 
+3. Check `posLoyalty.js` compatibility
+4. Run build verification
+5. Update OperationSync.md + LOYALTYMEMORY.md

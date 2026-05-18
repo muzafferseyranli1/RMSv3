@@ -1,60 +1,149 @@
-# Wallet Lookup Program Context Fix - Implementation Plan
+# Wallet Lookup Program Context Fix - Plan
 
-## Task Overview
-**Phase 5.1** - Fix async wallet readiness helper to properly handle cases where programId is missing.
+## Proj
 
-### Current Problem
-- `resolveLoyaltyWalletBalance()` when `programId` is not provided, queries only with `program_id IS NULL`
-- This misses many real program-linked wallets, showing 0 balance even when valid balance exists
-- `CallCenter.jsx` calls helper with only `customerId`, causing false zero balances
+## Problem Summary
 
-### Files to Modify
-1. `src/lib/loyaltyWalletReadiness.js` - Core fix
-2. `src/components/pages/CallCenter.jsx` - Pass program context
-3. `src/lib/posLoyalty.js` - Verify integration
-4. `OperationSync.md` - Update with changes
-5. `LOYALTYMEMORY.md` - Document changes
+`resolveLoyaltyWalletBalance()` currently narrows the query to `program_id IS NULL` when programId is not provided. This causes program-linked loyalty wallets to be missed, resulting in false 0 balances.
 
-## Implementation Steps
+### Affected Files:
+- `src/lib/loyaltyWalletReadiness.js` - Main helper with the bug
+- `src/components/pages/CallCenter.jsx` - Caller that doesn't pass programId
+- `src/lib/posLoyalty.js` - prepareRuntimeWalletContext() uses the helper
 
-### Step 1: Fix resolveLoyaltyWalletBalance
-**Current behavior (problematic):**
+## Current Behavior Problem
+
 ```javascript
+// Current (BUGGY):
 query = normalizedProgramId
   ? query.eq('program_id', normalizedProgramId)
-  : query.is('program_id', null)
+  : query.is('program_id', null)  // Only finds NULL program wallets!
 ```
 
-**New behavior:**
-- If programId is provided → query with that program_id
-- If programId is NOT provided:
-  1. First try: program_id IS NULL (for backward compatibility)
-  2. If NO result, try: fetch ALL wallets for this customer
-  3. 
-- If multiple wallets found → return `ambiguous_program_context`
-- If any wallet found → use it
-- If NO wallet found anywhere → return `wallet_missing`
+When programId is not passed:
+- Query searches only `program_id IS NULL` wallets
+- Program-linked wallets (which are common) are completely missed
+- This can show 0 balance even when customer has points
 
-### Step 2: Update Status Returns
-Add new status: `ambiguous_program_context`
+## Fix Requirements
 
-### Step 3: Update Call Center
-Pass `loyaltyProgramId` from customer context when available.
+### 1. Fix resolveLoyaltyWalletBalance() Behavior
 
-### Step 4: Verify prepareRuntimeWalletContext
-Ensure proper integration with updated helper.
+**When programId IS provided:**
+- Query that specific program wallet
 
-### Step 5: Build Test
-Run `npm.cmd run build` to verify no breaking changes.
+**When programId is NOT provided:**
+- Add fallback rules:
+  - **Single wallet exists** → use that wallet
+  - **Multiple wallets exist** → deterministic selection OR return `ambiguous_program_context`
+  - **No wallet** → return `wallet_missing`
 
-### Step 6: Documentation
-- Update OperationSync.md with changes
-- Update LOYALTYMEMORY.md for this fix
-- Document acceptance criteria
+### 2. Add Explicit Statuses
 
-## Acceptance Criteria
-- [ ] Helper no longer returns false 0 balances for program-linked wallets
-- [ ] When programId is missing and multiple wallets exist, status is `ambiguous_program_context`
-- [ ] CallCenter passes best available program context
-- [ ] Build passes without errors
-- [ ] Documentation updated
+Add these statuses to the response:
+- `ready` - Wallet found and balance known
+- `wallet_missing` - No wallet record found  
+- `missing_customer` - Customer context not provided
+- `lookup_failed` - DB error
+- `ambiguous_program_context` - Multiple wallets, no programId specified
+
+### 3. Update CallCenter.jsx
+
+Pass appropriate programId context when available:
+- Check if selectedCustomer has programId/loyaltyProgramId
+- Pass it to resolveLoyaltyWalletBalance()
+
+### 4. Verify prepareRuntimeWalletContext() Compatibility
+
+Ensure the new helper behavior works with:
+- `prepareRuntimeWalletContext()` in posLoyalty.js
+- Any other callers
+
+### 5. Verification Items
+
+- [ ] `src/lib/loyaltyRuntimeStatus.js` MUST NOT be modified
+- [ ] `points_redeem_multiplier` status MUST remain unchanged
+- [ ] `npm.cmd run build` must pass
+- [ ] OperationSync.md updated
+- [ ] LOYALTYMEMORY.md updated
+
+## Execution Steps
+
+### Step 1: Fix loyaltyWalletReadiness.js
+- Modify resolveLoyaltyWalletBalance() query logic
+- Add fallback: when no programId, fetch ALL wallets for customer
+- Add deterministic selection logic
+- Add new status values
+
+### Step 2: Update CallCenter.jsx  
+- Add programId context extraction from customer
+- Pass programId to helper call
+
+### Step 3: Verify Other Callers
+- Check posLoyalty.js prepareRuntimeWalletContext()
+- Verify no breaking changes
+
+### Step 4: Build and Test
+- Run `npm.cmd run build`
+- Verify no errors
+
+### Step 5: Documentation
+- Update OperationSync.md with entry
+- Update LOYALTYMEMORY.md with entry
+
+## Red Lines (MUST NOT DO)
+
+- [ ] Do NOT exit Railway Postgres database
+- [ ] Do NOT add Supabase, AWS, mock persistence, fake wallet
+- [ ] Do NOT add Auth/JWT/OAuth/login system
+- [ ] Do NOT overwrite user's existing changes
+- [ ] Do NOT modify `src/lib/loyaltyRuntimeStatus.js`
+- [ ] Do NOT change `points_redeem_multiplier` status
+
+## Deliverables
+
+- Fixed `resolveLoyaltyWalletBalance()` with safe fallback
+- Updated CallCenter.jsx with program context
+- Passi
+
+## Execution Steps
+
+### Step 1: Fix loyaltyWalletReadiness.js
+- Modify resolveLoyaltyWalletBalance() query logic
+- Add fallback: when no programId, fetch ALL wallets for customer
+- Add deterministic selection logic
+- Add new status values
+
+### Step 2: Update CallCenter.jsx  
+- Add programId context extraction from customer
+- Pass programId to helper call
+
+### Step 3: Verify Other Callers
+- Check posLoyalty.js prepareRuntimeWalletContext()
+- Verify no breaking changes
+
+### Step 4: Build and Test
+- Run `npm.cmd run build`
+- Verify no errors
+
+### Step 5: Documentation
+- Update OperationSync.md with entry
+- Update LOYALTYMEMORY.md with entry
+
+## Red Lines (MUST NOT DO)
+
+- [ ] Do NOT exit Railway Postgres database
+- [ ] Do NOT add Supabase, AWS, mock persistence, fake wallet
+- [ ] Do NOT add Auth/JWT/OAuth/login system
+- [ ] Do NOT overwrite user's existing changes
+- [ ] Do NOT modify `src/lib/loyaltyRuntimeStatus.js`
+- [ ] Do NOT change `points_redeem_multiplier` status
+
+## Deliverables
+
+- Fixed `resolveLoyaltyWalletBalance()` with safe fallback
+- Updated CallCenter.jsx with program context
+- Passing build
+- Updated documentation
+
+## Status: WAITING FOR USER APPROVAL
