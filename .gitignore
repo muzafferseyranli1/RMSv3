@@ -1,0 +1,52 @@
+node_modules
+dist
+.env
+.DS_Store
+*.local
+vite.out.log
+vite.err.log
+edge-debug-profile/
+tmp_xlsx/
+AWS_ACCESS_AND_DEPLOY_LOCAL_2026-03-29.md
+AGENT_PLATFORM_ACCESS_HANDOFF_LOCAL_2026-03-29.md
+
+# Auto-generated entries
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Sensitive files (auto-detected)
+.env
+.env.example
+dist
+node_modules
+temp-dist-saleitems-alias-fix
+temp-dist-verify-kiosk-cleanup
+

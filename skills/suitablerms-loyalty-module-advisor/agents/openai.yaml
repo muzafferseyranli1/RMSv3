@@ -1,0 +1,7 @@
+interface:
+  display_name: "SuitableRMS Loyalty Module Advisor"
+  short_description: "Phase and audit loyalty module work"
+  default_prompt: "Use $suitablerms-loyalty-module-advisor to analyze the SuitableRMS loyalty module, audit readiness, and plan or implement phased improvements."
+
+policy:
+  allow_implicit_invocation: true

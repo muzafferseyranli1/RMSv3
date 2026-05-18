@@ -1,0 +1,1141 @@
+# LOYALTYMEMORY
+
+Yururluk tarihi: `2026-05-13`  
+Status: `active`  
+Amac: Bu dosya SuitableRMS sadakat modulu icin ozel, kume halinde ilerleyen hafizadir. `OperationSync.md` genel operasyonel akisi tutarken, bu dosya sadakat alanindaki urun kararlari, readiness auditleri, capraz modul etkileri, onceliklendirme ve kalici teknik borcu izler.
+
+## 1. Zorunlu Kurallar
+
+1. Sadakatla ilgili her agent ise baslamadan once su dosyalari okur:
+   - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+   - `OperationSync.md`
+   - `LOYALTYMEMORY.md`
+   - `DESIGN_HANDBOOK_V3_TR.md`
+2. `LOYALTYMEMORY.md` sadakat alanina ozeldir; genel altyapi, unrelated sayfa veya baska moduller icin ana hafiza dosyasi gibi kullanilmaz.
+3. Buradaki kayitlar urun ve sistem etkisini acik yazmalidir:
+   - hangi loyalty capability ele alindi,
+   - hangi yuzeyler etkilendi,
+   - ne hazir,
+   - ne eksik,
+   - hangi faza alindi.
+4. Her onayli loyalty önerisi icin mumkunse ayrica bir `readiness audit` kaydi acilir.
+5. Eski kayitlar silinmez; yeni kanit geldikce eski kayda referansla duzeltme yapilir.
+6. `OperationSync.md` de guncellenmeden loyalty gorevi tamamlanmis sayilmaz.
+7. Yeni loyalty gorevinde once en son `LOYALTYMEMORY.md` entry'lerinden devam edip edemeyecegini kontrol et; yeterli handoff varsa tum loyalty yuzeylerini bastan tarama.
+8. Sadece hafiza yetersizse, scope degismisse veya route/runtime drift supheli ise daha genis taramaya don.
+9. Loyalty kapsamÄ± buyudukce tek kaynak checklist olarak `LOYALTY_MASTER_PLAN.md` de guncel tutulur; tamamlanan maddeler orada isaretlenir.
+
+## 2. Kayit Formati
+
+Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
+
+- `Timestamp`
+- `Agent`
+- `Focus`
+- `Trigger`
+- `Files Read`
+- `Files Changed`
+- `Current Capability`
+- `Gap`
+- `Approved Phase`
+- `Affected Surfaces`
+- `Readiness`
+- `Decision`
+- `Risks`
+- `Next Loyalty Step`
+
+## Entry 001
+
+- `Timestamp`: `2026-05-13`
+- `Agent`: `Codex`
+- `Focus`: `Sadakat modulu uzman skill'i ve loyalty hafiza tabani olusturma`
+- `Trigger`: `Kullanici, Hemen Backlog'a Girsin ve Bekleyebilir maddelerini de kapsayan proje-ici bir loyalty uzman skill'i talep etti.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `AGENT_HANDOFF_WIZARD.md`
+  - `DESIGN_HANDBOOK_V3_TR.md` (referans varligi teyit edildi)
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `skills/suitablerms-loyalty-module-advisor/agents/openai.yaml`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `SuitableRMS` loyalty tarafinda guclu campaign/rule modeling ve backoffice editor yapisina sahip.
+- `Gap`:
+  - `Loyalty` calismalarinda tekrar tekrar ayni baglam toplaniyor; fazli urun önerisi, readiness audit ve capraz modul kontrolu icin kalici uzman protokolu yoktu.
+- `Approved Phase`: `Skill foundation`
+- `Affected Surfaces`:
+  - `Backoffice loyalty`
+  - `Wizard/create flow`
+  - `POS / Kiosk / Garson / Mobile readiness audit sureci`
+- `Readiness`:
+  - `Skill process`: `Ready`
+  - `Loyalty product maturity`: `Partial`
+- `Decision`:
+  - `Project icinde reusable bir loyalty expert skill olusturuldu ve sadakat odakli ayri hafiza dosyasi baslatildi.`
+- `Risks`:
+  - `Current codebase route truth ve wizard parity zamanla degisebilir; bu skill her kullanimda canli kodu tekrar dogrulamak zorunda.`
+- `Next Loyalty Step`:
+  - `Bu skill kullanilarak bir sonraki loyalty iyilestirmesi icin phased recommendation veya readiness audit baslat.`
+
+## Entry 002
+
+- `Timestamp`: `2026-05-13T12:39:54.5801372+03:00`
+- `Agent`: `Codex`
+- `Focus`: `suitablerms-loyalty-module-advisor skill kickoff ve canli kod gercegi teyidi`
+- `Trigger`: `Kullanici loyalty gorevine bu skill ile baslamami istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Loyalty engine` tarafinda campaign, rule, tier, coupon series ve customer category modeli genis kapsama sahip.
+  - `Backoffice` tarafinda ana editor ve wizard, `saveLoyaltyWorkspace` uzerinden ayni persistence omurgasina baglanmis durumda.
+- `Gap`:
+  - `Route truth` halen `'/sadakat/kampanya/yeni' -> LoyaltyManagement`; wizard ayrik `'/sadakat/kampanya-sihirbazi-onizleme'` rotasinda. Bu, create-flow parity riskinin surdugunu gosteriyor.
+  - `Skill backlog lens` icindeki lifecycle, hazir segment, omnichannel execution ve fraud kontrol basliklari urun onceligi olarak acik; fakat bunlarin capraz modul readiness'i bu kickoff'ta henuz audit edilmedi.
+- `Approved Phase`: `Kickoff baseline`
+- `Affected Surfaces`:
+  - `Backoffice loyalty`
+  - `Wizard/create flow`
+  - `Route wiring`
+  - `Gelecek POS / Garson / Kiosk / Mobile audits`
+- `Readiness`:
+  - `Skill protocol`: `Ready`
+  - `Backoffice loyalty`: `Ready`
+  - `Wizard parity`: `Partial`
+  - `Cross-surface execution confidence`: `Partial`
+- `Decision`:
+  - `Loyalty gorevleri bu noktadan sonra bu skill protokolune gore yurutecegim; belge gercegi yerine canli kod ve route gercegi esas alinacak.`
+- `Risks`:
+  - `Design ve governance belgelerinde encoding bozulmasi var; dosya adlari ve kararlar dogru ama metin okunurken dikkat gerekiyor.`
+  - `Wizard ile ana editor arasinda davranis farki olusursa kampanya create akisi hakkinda erken soz verilmemeli.`
+- `Next Loyalty Step`:
+  - `Bir sonraki somut loyalty isteginde Gap Analysis, Recommendation, Readiness Audit veya Implementation modlarindan uygun olanina gec.`
+
+## Entry 003
+
+- `Timestamp`: `2026-05-13T12:43:44.6727356+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Sadakat modulu gap analysis - eksik ve zayif alanlarin siniflandirilmasi`
+- `Trigger`: `Kullanici, modulde eksik gordugum noktalari siralamami istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/kioskSettings.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/KioskLoyaltyLink.jsx`
+  - `src/components/pages/PosLoyaltyLink.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/Musteriler.jsx`
+  - `src/App.jsx`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Backoffice loyalty` kampanya, kural, tier, kupon serisi ve musteri kategorileri icin guclu.
+  - `POS`, `Garson/Masa` ve `Kiosk` tarafinda runtime campaign evaluation ve musteri baglama akislarina dair canli yuzeyler mevcut.
+  - `Schema` tarafinda wallet, transaction, redemption ve coupon tablolari tanimli.
+- `Gap`:
+  - `Hazir segmentler`, `lifecycle playbook`, `hazir kampanya sablonlari` ve `marketing-ready preset` katmani zayif.
+  - `Puan / wallet / redemption` alani veritabaninda ve musteri detayinda gorunuyor ama runtime execution / posting zinciri belirgin sekilde tam degil.
+  - `Mobil musteri uygulamasi` ve genel musteri self-service loyalty deneyimi neredeyse yok; `MobileAppShells.jsx` halen bos shell seviyesinde.
+  - `Create flow parity` tam degil; `/sadakat/kampanya/yeni` hala `LoyaltyManagement`, wizard ayrik rotada.
+- `Approved Phase`: `Gap analysis baseline`
+- `Affected Surfaces`:
+  - `Backoffice loyalty`
+  - `Wizard/create flow`
+  - `POS`
+  - `Garson / Masa`
+  - `Kiosk`
+  - `Mobil musteri yuzeyi`
+  - `Musteri / wallet gorunurlugu`
+- `Readiness`:
+  - `Backoffice campaign modeling`: `Ready`
+  - `POS / Garson / Kiosk order-time discounts`: `Partial to Ready`
+  - `Wallet / points / entitlement execution`: `Partial`
+  - `Mobile customer loyalty experience`: `Missing`
+- `Decision`:
+  - `Eksik listesi artik POS yoklugu uzerinden degil; urunlestirme, lifecycle, wallet-execution ve mobile musteri eksigi uzerinden okunmali.`
+- `Risks`:
+  - `Sadece backoffice modellerine bakip runtime'in daha zayif kalan wallet/redemption kisimlari gozden kacirilabilir.`
+  - `Mobil shelllerin varligi, gercek loyalty self-service deneyimi varmis gibi yaniltabilir.`
+- `Next Loyalty Step`:
+  - `Ilk mantikli faz: hazir segmentler + lifecycle kampanya sablonlari + create-flow netlestirmesi.`
+
+## Entry 004
+
+- `Timestamp`: `2026-05-13T13:02:02.2979582+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Mobil App Musteri ekraninin loyalty customer app simulasyonuna donusturulmesi`
+- `Trigger`: `Kullanici, mevcut bos musteri telefon shell'inin gercek urun mantigina dayanan bir loyalty musteri deneyimine cevrilmesini istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/mobile-webapp/SKILL.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyCampaignWizardPreview.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/Musteriler.jsx`
+  - `src/App.jsx`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `src/lib/mobileCustomerApp.js`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Musteriler.jsx` icinde wallet, transaction, entitlement ve frequency progress okumasi zaten mevcutti.`
+  - `POS`, `Garson` ve `Kiosk` tarafinda musteri baglama, kanal bazli campaign evaluation ve QR/link akislarinin parcalari zaten canliydi.`
+  - `Mobil App Musteri` route'u ise yalnizca bos telefon shell seviyesindeydi.`
+- `Gap`:
+  - `Musteri sadakatinin customer-facing ana sayfa, kart, kupon, kampanya, hareket, tier ve profil deneyimi yoktu.`
+  - `Cross-channel sadakat varligi vardi ama musteri uygulamasi diliyle "uygulamada gor, kasada kullan" baglamina cevrilmemisti.`
+- `Approved Phase`: `Phase 1 - customer-facing loyalty shell`
+- `Affected Surfaces`:
+  - `Mobil App Musteri`
+  - `Musteriler / loyalty wallet read model`
+  - `POS / Garson / Kiosk cross-channel messaging`
+- `Readiness`:
+  - `Live wallet / transaction / entitlement reads`: `Ready`
+  - `Customer profile fields`: `Ready`
+  - `Customer auth / true mobile identity`: `Missing by governance choice`
+  - `Direct mobile QR runtime parity`: `Partial`
+- `Decision`:
+  - `Yeni mobil ekran auth icat etmeden shell disinda profil secicisi, telefon icinde ise tam consumer-facing loyalty hiyerarsisi ile kuruldu.`
+  - `Veri omurgasi yeni src/lib/mobileCustomerApp.js helper'ina tasindi; UI src/components/mobile/CustomerLoyaltyMobileApp.jsx icinde alt tab bar ve hesap alt gorunumleriyle kuruldu.`
+  - `Gercek veri onceligi korundu: wallet, transaction, coupon, entitlement ve progress tablolari canli okunuyor; QR alani taranabilir backend vaat etmeden membership code/visual card olarak sunuluyor.`
+- `Risks`:
+  - `Repo genel build'i mevcut LoyaltyCampaignWizard.jsx parse hatasi yuzunden kirik; mobil ekranin tam build'i bu unrelated blocker temizlenmeden raporlanamaz.`
+  - `Gercek mobil auth olmadigi icin secili musteri shell disindaki simulasyon dropdown'u ile belirleniyor.`
+  - `Kampanya uygunlugu customer app tarafinda gosteriliyor ama secili kampanyayi mobile runtime uzerinden dogrudan POS link session'ina yazan bir akis henuz yok.`
+- `Next Loyalty Step`:
+  - `Ikinci fazda secili kampanya / QR baglantisini customer-link session katmani ile daha dogrudan birlestir; gerekiyorsa mobile surface ile POS/Kiosk link token parity'sini ele al.`
+
+## Entry 005
+
+- `Timestamp`: `2026-05-13T13:28:04.9725669+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Standalone mobil musteri route'u, cihaz bazli login/logout ve POS/Kiosk QR link parity`
+- `Trigger`: `Kullanici, customer loyalty mobil uygulamasinin telefon icinde login/logout tasimasini, tek basina tam ekran acilabilmesini ve kiosk/POS QR akisi ile musteri kimligini tanitmasini istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/mobile-webapp/SKILL.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/PosLoyaltyLink.jsx`
+  - `src/components/pages/KioskLoyaltyLink.jsx`
+  - `src/components/pos/PosLoyaltyLinkModal.jsx`
+  - `src/components/pos/PosCustomerLinkModal.jsx`
+  - `src/lib/mobileCustomerApp.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/kioskSettings.js`
+  - `src/lib/publicDisplayRoutes.js`
+  - `src/context/WorkspaceContext.jsx`
+  - `src/components/auth/AuthGate.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/CustomerMobileAppPage.jsx`
+  - `src/lib/mobileCustomerIdentity.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/kioskSettings.js`
+  - `src/lib/publicDisplayRoutes.js`
+  - `src/App.jsx`
+  - `src/components/pos/PosLoyaltyLinkModal.jsx`
+  - `src/components/pos/PosCustomerLinkModal.jsx`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Mobil customer app artik iki modda calisiyor: admin icindeki embedded simulasyon ve public standalone tam ekran route.`
+  - `Standalone route'ta cihazdaki aktif loyalty musterisi localStorage ile hatirlaniyor; yeni auth sistemi yok ama musteri login/logout deneyimi var.`
+  - `POS ve kiosk QR URL'leri artik ayni customer app experience'ine aciliyor; link token varsa mevcut settings-session modeli uzerinden musteri tanitimi yapiliyor.`
+- `Gap Closed`:
+  - `Bos ya da gecici customer-link page mantigi yerine urunlestirilmis tek mobil loyalty giris deneyimi geldi.`
+  - `Musteri artÄ±k uygulamaya giris yapip daha sonra QR okutunca ayni kimlik ile kiosk/POS tarafinda taninabiliyor.`
+- `Approved Phase`: `Phase 1.5 - mobile identity + channel link handshake`
+- `Affected Surfaces`:
+  - `Mobil App Musteri`
+  - `Public mobile route`
+  - `POS loyalty link`
+  - `Kiosk loyalty link`
+  - `QR customer recognition messaging`
+- `Readiness`:
+  - `Customer-facing loyalty UI`: `Ready`
+  - `Standalone mobile route`: `Ready`
+  - `Device-level remembered customer login`: `Ready`
+  - `POS/Kiosk QR identity handoff`: `Ready`
+  - `Real end-user auth`: `Intentionally Missing`
+- `Decision`:
+  - `Governance geregi auth uydurulmadan, cihazdaki aktif loyalty musterisini localStorage bazli remembered identity olarak modellemek secildi.`
+  - `Yeni public route /musteri-app ailesi uzerinden acildi; eski /pos-loyalty-link ve /kiosk-link linkleri de ayni experience'e alias olarak baglandi.`
+  - `Customer app icinde QR ile acilan token varsa oturum yukleniyor, musteri seciliyse session otomatik linkleniyor; degilse login ekranindan devam ediliyor.`
+- `Risks`:
+  - `Bu login modeli gercek account security/auth katmani degil; ayni cihazda fiziksel erisim olan kisi remembered musteri secimini degistirebilir.`
+  - `Secili kampanyayi mobile baglama sirasinda musteriye acik campaign-selection UX henuz ikinci faza birakildi.`
+  - `Repo genel build hala unrelated eski sorunlar nedeniyle temiz degil; loyalty wizard parse hatasi ve pdf worker import uyumsuzlugu ayri backlog olarak duruyor.`
+- `Next Loyalty Step`:
+  - `Mobile customer app'e campaign/session review step'i ekle; baglanmadan once musteri hangi kampanya/kuponla devam edecegini secsin.`
+
+## Entry 006
+
+- `Timestamp`: `2026-05-13T13:30:09.6396664+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Loyalty hafizasini memory-first continuation protokoluyle guclendirme`
+- `Trigger`: `Kullanici, /mobil-app/musteri tarafi tamam oldugu icin sonraki loyalty agent'larin her seferinde bastan taramamasini; LOYALTYMEMORY yeterliyse oradan devam etmesini istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `LOYALTYMEMORY` artik loyalty kickoff, gap analysis ve mobil musteri uygulamasi implementasyon fazlarini acikca tasiyor.`
+- `Gap`:
+  - `Skill metni, hafiza yeterliyken bile genis yeniden taramaya kaymaya acik kalabiliyordu.`
+- `Approved Phase`: `Process hardening`
+- `Affected Surfaces`:
+  - `Loyalty workflow discipline`
+  - `Future mobile / loyalty continuation tasks`
+- `Readiness`:
+  - `LOYALTYMEMORY continuation value`: `Ready`
+  - `Memory-first task startup discipline`: `Ready`
+- `Decision`:
+  - `Skill'e Memory-First Startup Protocol eklendi: son LOYALTYMEMORY kaydi yeterliyse agent sadece ilgili dosyalari inceleyip oradan devam edecek; ancak drift/scope belirsizligi varsa genis taramaya donecek.`
+- `Risks`:
+  - `Hafizaya asiri guvenilirse route/runtime drift gozden kacabilir; bu nedenle protokol drift suphelerinde yeniden teyidi acikca koruyor.`
+- `Next Loyalty Step`:
+  - `Sonraki loyalty gorevinde once Entry 005 ve Entry 006'ya bak; /mobil-app/musteri ile ilgili devam isi varsa ancak ilgili mobil/customer-link dosyalarini ac.`
+
+## Entry 007
+
+- `Timestamp`: `2026-05-13T13:41:59.7629454+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Mobil musteri simulasyonunda session review + kampanya/kupon secimi ve simule QR acilis rahatlatmasi`
+- `Trigger`: `Kullanici, /mobil-app/musteri sonrasinda nereden devam edecegimizi onayladi; ardindan kiosk/POS kamera okumayacagini, QR'nin mobil simulasyonu acacagini ve customer phone'un da simule oldugunu belirtti.`
+- `Files Read`:
+  - `LOYALTYMEMORY.md`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pos/PosLoyaltyLinkModal.jsx`
+  - `src/components/pos/PosCustomerLinkModal.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/kioskSettings.js`
+  - `src/lib/mobileCustomerApp.js`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pos/PosLoyaltyLinkModal.jsx`
+  - `src/components/pos/PosCustomerLinkModal.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/kioskSettings.js`
+- `Current Capability`:
+  - `Mobil musteri app` zaten standalone route ve remembered customer ile calisiyordu.
+  - `POS/Kiosk` tarafi QR uretip mobile route'a link verebiliyordu.
+- `Gap`:
+  - `Baglanmadan once session review ve kampanya/kupon secimi yoktu.`
+  - `Simulasyon ortaminda fiziksel telefon veya fiziksel QR okutma zorunlulugu UX'i gereksiz yere zorlastiriyordu.`
+- `Approved Phase`: `Phase 2 - session review + simulation-friendly handoff`
+- `Affected Surfaces`:
+  - `Mobil App Musteri`
+  - `POS loyalty link modal`
+  - `POS customer link modal`
+  - `Kiosk loyalty modal`
+  - `Link session persistence`
+- `Readiness`:
+  - `Session review UI`: `Ready`
+  - `Campaign selection to session`: `Ready`
+  - `Coupon selection to session`: `Ready`
+  - `Simulation-friendly direct open`: `Ready`
+- `Decision`:
+  - `Mobil musteri uygulamasina baglanmadan once oturum ozeti, kampanya secimi ve kupon secimi eklendi.`
+  - `POS ve kiosk link session modelleri secili kupon kodu/etiketi saklayacak sekilde genisletildi.`
+  - `Auto-link davranisi kaldirildi; artik kullanici review ekraninda neyle devam edecegini gorup elle tanitiyor.`
+  - `Simulasyon rahatligi icin POS ve kiosk yuzeylerine "Mobil simulasyonu ac" linkleri eklendi; boylece fiziksel cihaz gerekmiyor.`
+- `Risks`:
+  - `Secili kupon bilgisi session'a yaziliyor ama POS/Kiosk tarafinda bunu otomatik indirim motoruna tam yediren ikinci faz davranisi ayrica gerekebilir.`
+  - `Tam proje build teyidi hala unrelated repo kiriklari yuzunden sinirli.`
+- `Next Loyalty Step`:
+  - `Bir sonraki fazda POS/Kiosk tarafinda session'a yazilan selectedCouponCode ve selectedCampaignId bilgisini kullanarak daha acik "hazir avantaj" sunumu veya otomatik preselection eklenebilir.`
+
+## Entry 008
+
+- `Timestamp`: `2026-05-13T13:45:08.2786568+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Sadakat modulu icin master plan/checklist olusturma`
+- `Trigger`: `Kullanici, loyalty/kampanya modulu son hale giderken yaptikca uzeri cizilen bir ana plan olup olmadigini sordu.`
+- `Files Read`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Loyalty hafizasi entry bazli ilerlemeyi tutuyor ama tek sayfalik faz/checklist plani ayri degildi.`
+- `Gap`:
+  - `Ne bitti / ne sirada / ne daha sonra sorulari icin isaretlenebilir tek bir master liste yoktu.`
+- `Approved Phase`: `Planning discipline`
+- `Affected Surfaces`:
+  - `Tum loyalty roadmap takibi`
+- `Readiness`:
+  - `Master plan document`: `Ready`
+- `Decision`:
+  - `Repo root'ta LOYALTY_MASTER_PLAN.md olusturuldu. Bundan sonra loyalty master plani bu dosyada [x] / [~] / [ ] mantigiyla takip edilecek.`
+- `Risks`:
+  - `Plan dosyasi guncel tutulmazsa hafiza ile plan birbirinden kopabilir; bu nedenle anlamli loyalty teslimlerinde iki dosya birlikte guncellenmeli.`
+- `Next Loyalty Step`:
+  - `Bir sonraki implementasyonda once LOYALTY_MASTER_PLAN.md icindeki simdiki oncelik maddesine gore ilerle ve tamamlanan maddeleri isaretle.`
+
+## Entry 009
+
+- `Timestamp`: `2026-05-13T14:55:00+03:00`
+- `Agent`: `Codex`
+- `Focus`: `POS / Garson / Kiosk runtime'inda hazir avantaj gorunurlugu`
+- `Trigger`: `Kullanici, master plan icindeki aktif loyalty maddesinin artik dogrudan uygulanmasini istedi.`
+- `Files Read`:
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/lib/posLoyalty.js`
+- `Files Changed`:
+  - `src/lib/loyaltyPreparedAdvantage.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Mobil simulasyonda secilen campaign / coupon bilgisi session'a yaziliyordu.`
+  - `Runtime motoru secili campaign'i hesaplamaya katabiliyordu, fakat POS tarafinda secimin gorunurlugu zayifti; kioskta ise sadece kismi gorunurluk vardi.`
+- `Gap`:
+  - `Musteri mobilde ne sectigini runtime yuzeyinde net geri alamiyordu.`
+  - `Secilen avantaj ile siparise gercekten uygulanan avantaj arasindaki ayrim UI'da yeterince belirgin degildi.`
+- `Approved Phase`: `Phase 2 - prepared advantage visibility`
+- `Affected Surfaces`:
+  - `POS siparis oncesi musteri bandi`
+  - `POS odeme modali`
+  - `Garson siparis oncesi musteri bandi`
+  - `Garson odeme modali`
+  - `Kiosk Big loyalty badge + sepet ozeti`
+  - `Kiosk Tablet loyalty badge + sepet ozeti`
+- `Readiness`:
+  - `POS prepared advantage summary`: `Ready`
+  - `Garson parity`: `Ready`
+  - `Kiosk prepared advantage card`: `Ready`
+  - `Shared resolution helper`: `Ready`
+- `Decision`:
+  - `Yeni backend veya yeni persistence eklenmedi; mevcut session alanlari kullanildi.`
+  - `Shared helper ile selectedCampaignName -> catalog fallback ve selectedCouponLabel -> code fallback davranisi standartlastirildi.`
+  - `POS ve Garson tarafinda hem siparis oncesi musteri bandina hem odeme modali sadakat kartina Hazir kampanya / Hazir kupon ozeti eklendi.`
+  - `Kiosk Big ve Kiosk Tablet tarafinda bagli musteri badge'ine kupon ozeti eklendi; sepet ozetine ayri bir Mobilde secildi karti kondu.`
+  - `Kiosk kartinda secilen avantaj ile order-eligible durum ayrildi: uygunsa uygulanabilir, degilse henuz uygun degil metni gosteriliyor.`
+- `Verification`:
+  - `npm.cmd run build:web -- --outDir temp-dist-advantage` basariyla tamamlandi.
+  - `Build sonunda repo'da zaten bilinen LoyaltyCampaignWizard.jsx icindeki JSX "->" uyari/notlari yeniden goruldu; bu teslimle ilgili yeni bir build kirigi yok.`
+- `Risks`:
+  - `Kuponun order-time gercek uygulama davranisi hala mevcut checkout/runtime mantigina bagli; bu faz yalnizca gorunurlugu guclendirir.`
+  - `Wallet / points / redemption posting zinciri hala sonraki aktif loyalty maddesi olarak duruyor.`
+- `Next Loyalty Step`:
+  - `Siparis kapanisinda wallet / points / redemption posting zincirini daha acik ve tutarli hale getirmek.`
+
+## Entry 010
+
+- `Timestamp`: `2026-05-13T14:17:27.7864936+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Mobil musteri uygulamasindan POS'a tanit akisini scope-filter runtime hatasiyla duzeltmek`
+- `Trigger`: `Kullanici, "Mobil kendini kasaya tanit" akisinda scopedQuery.or is not a function hatasi aldigini ve kasanin da bilgiyi alamadigini bildirdi.`
+- `Files Read`:
+  - `src/lib/loyalty.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/kioskSettings.js`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Mobil -> POS/Kiosk link session akisi aktifti, ancak branch-scope category assignment okumasi sirasinda loyalty scope filter patlayabiliyordu.`
+- `Gap`:
+  - `applyScopeFilter icindeki scopedQuery.or cagrisi bazi query nesnelerinde mevcut degildi; bu da musteri kategori okumasi tarafinda exception atip mobil tanit akisini kesiyordu.`
+- `Approved Phase`: `Runtime link flow stability`
+- `Affected Surfaces`:
+  - `Mobil App Musteri -> POS tanit`
+  - `Mobil App Musteri -> Kiosk tanit`
+  - `Branch-scope loyalty category assignment sorgulari`
+- `Decision`:
+  - `applyScopeFilter icine guard eklendi.`
+  - `scope_type=branch` ve hem branchId hem branchName varken, query builder .or destekliyorsa mevcut or mantigi calisiyor; desteklemiyorsa guvenli fallback olarak branchId eq filtresi kullaniliyor.`
+  - `Bu sayede mobil tanit akisi .or method exception'ina dusmeden devam edebiliyor.`
+- `Verification`:
+  - `npm.cmd run build:web -- --outDir temp-dist-link-fix` basariyla tamamlandi.`
+  - `Build sonunda repo'da zaten bilinen LoyaltyCampaignWizard.jsx icindeki JSX "->" uyari/notlari yeniden goruldu; bu fix yeni bir build kirigi uretmedi.`
+- `Risks`:
+  - `Fallback path, branchId varsa onu tercih ediyor; branchId olmayan ama yalniz branchName ile calisan eski edge case'ler yine branchName filtresine dusuyor.`
+- `Next Loyalty Step`:
+  - `Kullanici tarafinda mobil tanit akisi yeniden denenip session linked customer bilgisinin POS/Kiosk yuzeyinde beklenen sekilde gorundugu dogrulansin.`
+
+## Entry 011
+
+- `Timestamp`: `2026-05-13T20:46:13.5618401+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Siparis kapanisinda loyalty wallet / points / redemption posting zinciri`
+- `Trigger`: `Kullanici, onayli Loyalty Wallet / Points / Redemption Posting Plan'i implement etmemi istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `LOYALTYMEMORY.md`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `OperationSync.md`
+  - `schema-railway-master.sql`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+- `Files Changed`:
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `POS/Garson/Kiosk satis kapanislari sales, sale_lines ve sale_payments yazdikten sonra ortak loyalty value ledger servisini cagiriyor.`
+  - `Bagli musteri yoksa servis no-op donuyor; bagli musteri varsa wallet olusturma/okuma, puan transaction, campaign redemption, selected coupon consume ve frequency progress akislarini mevcut Railway tablolarina yaziyor.`
+- `Gap Closed`:
+  - `Loyalty daha once satis header/line attribution ve UI gorunurlugu seviyesindeydi; siparis kapanisindan loyalty value tablolarina ortak idempotent posting eksikti.`
+- `Approved Phase`: `Phase 2 - wallet / points / redemption posting`
+- `Affected Surfaces`:
+  - `POS payment completion`
+  - `Garson payment completion`
+  - `Kiosk Big order completion`
+  - `Kiosk Tablet order completion`
+  - `Musteriler / mobile customer app read models`
+- `Decision`:
+  - `Yeni tablo veya migration eklenmedi; mevcut loyalty_wallets, loyalty_transactions, loyalty_campaign_redemptions, loyalty_reward_entitlements, loyalty_frequency_progress ve loyalty_coupons tablolari kullanildi.`
+  - `Idempotency anahtari customer_id + saleId/source_ref_id olarak kuruldu; ayni saleId icin daha once transaction varsa tekrar posting yapilmiyor.`
+  - `Desteklenen value aksiyonlari bonus_points, points_percent_of_order, points_earn_multiplier, issue_coupon ve frequency program progress ile sinirli tutuldu; desteklenmeyen aksiyonlarda sahte bakiye uretilmiyor.`
+  - `Kiosk session consume ledger posting sonrasina alindi; boylece selectedCampaignId/selectedCouponCode bilgisi yazimdan once kaybolmuyor.`
+- `Verification`:
+  - `node/esbuild hedefli syntax kontrolu: src/lib/loyaltyValueLedger.js, POS.jsx, Garson.jsx, KioskBig.jsx, KioskTablet.jsx temiz.`
+  - `npm.cmd run build:web -- --outDir temp-dist-loyalty-ledger basariyla tamamlandi.`
+  - `Build log'unda repo'da zaten bilinen LoyaltyCampaignWizard.jsx JSX "->" uyarilari yeniden goruldu; build yine basarili cikti.`
+- `Risks`:
+  - `Canli POS/Garson/Kiosk satis smoke ve DB readback bu turda UI uzerinden kosulmadi; ilk gercek satis kapanisinda loyalty_wallets / loyalty_transactions / loyalty_campaign_redemptions readback yapilmali.`
+  - `Gelismis condition/live lookup/manual approval aksiyonlari hala sonraki runtime netligi maddesi olarak duruyor.`
+  - `points_earn_multiplier icin mevcut plan kapsaminda 1 TL = 1 baz puan varsayimi kullanildi; ileride program earn_model ayrintilari gelirse hesaplayici genisletilmeli.`
+- `Next Loyalty Step`:
+  - `Bir sonraki sadakat fazinda manual approval, advanced condition ve live lookup gerektiren akislarda runtime netligi artirilsin; ayrica ilk canli satis smoke sonrasi wallet/transaction/redemption readback sonucu OperationSync'e kaydedilsin.`
+
+## Entry 012
+
+- `Timestamp`: `2026-05-16`
+- `Agent`: `Codex`
+- `Focus`: `Call Center loyalty runtime parity + manual trigger + loyalty ledger posting`
+- `Trigger`: `Kullanici, Loyalty Runtime Phase 3 planini Call Center dahil olacak sekilde implement etmemi istedi.`
+- `Files Read`:
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `LOYALTYMEMORY.md`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `OperationSync.md`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+- `Files Changed`:
+  - `src/components/pages/CallCenter.jsx`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `Call Center` artik branch-scoped runtime loyalty katalogunu yukleyip `call_center` kanali icin kampanyalari gercek evaluator ile siniflandiriyor.
+  - `Manual approval` gereken kampanyalar operatorden manuel tetikleme bekliyor; lokal cozulmeyen kurallar `requires_live_lookup` mantigiyla warning durumunda gosteriliyor.
+  - `Call Center` siparis yazimi artik `attachLoyaltyToSaleHeader`, `attachLoyaltyToSaleLines`, `createSaleLoyaltySnapshot` ve `postSaleLoyaltyValueLedger` zincirine bagli.
+- `Gap Closed`:
+  - `Call Center` once loyalty kampanyalarini sadece liste seviyesinde gosteriyordu; siparis oncesi runtime evaluation, manual trigger secimi, sale snapshot persistence ve order-close loyalty posting eksikti.
+- `Approved Phase`: `Phase 3 - call center omnichannel runtime parity`
+- `Affected Surfaces`:
+  - `Call Center campaign tab`
+  - `Call Center payment summary / order summary`
+  - `Shared runtime loyalty evaluator`
+  - `Shared sale loyalty persistence`
+  - `Shared loyalty value ledger`
+- `Readiness`:
+  - `Call Center runtime loyalty visibility`: `Ready`
+  - `Call Center manual trigger handling`: `Ready`
+  - `Call Center sale loyalty snapshot persistence`: `Ready`
+  - `Call Center ledger posting`: `Ready`
+  - `Full live lookup backend-side resolution`: `Partial`
+- `Decision`:
+  - `Yeni auth, yeni servis veya yeni schema eklenmedi; mevcut Railway loyalty tablolari ve mevcut helper zinciri kullanildi.`
+  - `Runtime kanal normalizasyonuna call_center eklendi; backoffice kampanya kanal secenekleri de bunu taniyor.`
+  - `Musteri kategori baglami icin global + branch customer category assignment secimleri birlestirilip runtime customerContext'e verildi.`
+  - `Lokalde cozulmeyen gelismis kurallar silent ignore edilmedi; kartlarda acik warning / live lookup gereksinimi olarak birakildi.`
+- `Risks`:
+  - `Call Center kampanya kartinda halen ek bir aciklama satiri duplicate gorunebilir; build kirigi yaratmiyor ama UI polish turunda sadelelestirilebilir.`
+  - `Bu fazda Call Center icin kupon secim / serbest kupon kodu UX'i eklenmedi; ana parity campaign selection ve ledger posting ile sinirli tutuldu.`
+  - `Canli DB readback smoke henuz kosulmadi; loyalty_wallets / loyalty_transactions / loyalty_campaign_redemptions zinciri bagli musteriyle dogrulanmali.`
+- `Next Loyalty Step`:
+  - `Call Center veya POS/Garson/Kiosk uzerinden bagli musteriyle bir satis kapatip sales.loyalty_campaign_id, loyalty_transactions.source_ref_id ve loyalty_campaign_redemptions.source_ref_id readback sonucunu OperationSync'e kaydet.`
+
+## Entry 013
+
+- `Timestamp`: `2026-05-18T13:31:20.0769135+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Loyalty skill readiness refresh ve memory-first continuation hazirligi`
+- `Trigger`: `Kullanici, NEWagent.md yonergeleri yerine getirildikten sonra skills/suitablerms-loyalty-module-advisor skill'inin okunup hazir olundugunun bildirilmesini istedi.`
+- `Files Read`:
+  - `NEWagent.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyCampaignWizardPreview.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `Loyalty skill workflow`, `backlog lens`, `audit template` ve `core loyalty surfaces` yeniden okunup aktif baglama alindi.`
+  - `Canli route truth` tarafinda `/sadakat` ve `/sadakat/kampanya/yeni` ana editoru, `/sadakat/kampanya-sihirbazi-onizleme` wizard girisini aciyor.`
+- `Gap`:
+  - `Wizard ile ana editor arasindaki create-flow parity konusu hala acik bir drift noktasi; sonraki loyalty gorevlerinde promise verilmeden once route ve davranis birlikte teyit edilmeli.`
+- `Approved Phase`: `Readiness refresh`
+- `Affected Surfaces`:
+  - `Backoffice loyalty`
+  - `Wizard/create flow`
+  - `Loyalty task startup protocol`
+- `Readiness`:
+  - `Skill protocol`: `Ready`
+  - `Memory-first continuation`: `Ready`
+  - `Route truth awareness`: `Ready`
+  - `Create-flow parity certainty`: `Partial`
+- `Decision`:
+  - `Sonraki loyalty gorevlerinde once LOYALTYMEMORY Entry 012 ve bu kayit uzerinden devam edilecek; scope ayniysa yalniz ilgili loyalty dosyalari acilacak.`
+  - `Backlog onceligi olarak hazir segmentler, lifecycle kampanyalari, odul modeli tutarliligi, tier guclendirme ve omnichannel parity lensi korunacak.`
+- `Risks`:
+  - `Belge encoding bozulmasi maddi kurallari degistirmiyor ama hizli okumada hata riski tasiyor.`
+  - `LoyaltyCampaignWizard ve LoyaltyManagement davranis farklari zamanla yeniden drift edebilir.`
+- `Next Loyalty Step`:
+  - `Yeni loyalty gorevi geldiginde once hafiza yeterli mi kontrol et; yeterliyse ilgili runtime/UI dosyalarini hedefli acip oradan devam et.`
+
+## Entry 015
+
+- `Timestamp`: `2026-05-20`
+- `Agent`: `Codex`
+- `Focus`: `Loyalty executor gap analysis - points_redeem_multiplier ve diger action boşlukları`
+- `Trigger`: `Kullanıcı, loyalty editor/wizard'da tanımlanabilen ama runtime/ledger tarafında çalışmayan action boşluklarını sınıflandırmamı ve points_redeem_multiplier için teknik karar vermemi istedi.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/checkoutLoyalty.js`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `Model (loyalty.js ACTION_TYPE_OPTIONS)`: 22 action type tanımlanabiliyor
+  - `Runtime (posLoyalty.js LOCAL_RULE_ACTION_TYPES)`: Sadece 4 action çalı��ıyor → `discount_percent`, `total_order_discount_percent`, `order_discount_amount`, `free_products`
+  - `Ledger (loyaltyValueLedger.js POINTS_ACTIONS)`: Sadece 3 puan action → `bonus_points`, `points_percent_of_order`, `points_earn_multiplier`
+- `Gap`:
+  - `points_redeem_multiplier`: Modelde VAR, Runtime ve Ledger'da YOK
+  - `Kazanma (earn) tarafı işleniyor; harcama (burn/redeem) tarafı işlenmiyor`
+  - `Model-only kalan diğer action'lar`: `send_sms`, `send_webhook`, `combo_bundle`, `product_pricing`, `write_customer_note`, `remove_customer_tag`, `add_customer_tag`
+- `Approved Phase`: `Gap analysis baseline`
+- `Affected Surfaces`:
+  - `Backoffice loyalty editor`
+  - `Wizard/create flow`
+  - `Runtime evaluator`
+  - `Value ledger posting`
+- `Readiness`:
+  - `Runtime discount actions`: `Ready`
+  - `Runtime free_products`: `Ready`
+  - `Points earn actions`: `Ready`
+  - `Points redeem actions`: `Missing`
+- `Decision`:
+  - `points_redeem_multiplier ŞİMDİLİK DESTEKLENMİYOR`
+  - `Neden`: Puan harcama (burn) altyapısı eksik - runtime multiplier hesabı, wallet'dan düşme, redemption ledger kaydı, yeterli bakiye kontrolü gerekiyor
+  - `Faz 2+ alana ertelenmeli`: Tek action eklemek değil, "puan harcama zinciri"nin tamamının kurulması gerekiyor
+  - `Diğer model-only action'lar da (send_sms, webhook vb.) "SERVER_REQUIRED" veya "MODEL_ONLY" olarak işaretlenmeli`
+- `Risks`:
+  - `UI'da tanımlanabilen ama runtime'da çalışmayan action'lar arttıkça kullanıcı güveni azalır`
+  - `points_redeem_multiplier erken ekleme "UI'da var ama çalışmıyor" durumu yaratır`
+- `Next Loyalty Step`:
+  - `points_redeem_multiplier için Faz 2 planlaması yapılabilir`
+  - `Diğer executor boşlukları için runtime status authority matrix'i netleştirilmeli`
+
+## Entry 016
+
+- `Timestamp`: `2026-05-20`
+- `Agent`: `Codex`
+- `Focus`: `Loyalty Executor Gap Closure - İlk Karar ve Belgeleme`
+- `Trigger`: `Kullanıcı, executor boşluk analizini onaylayıp karar vebelgeleme yapılmasını istedi.`
+- `Files Read`:
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/checkoutLoyalty.js`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `Earn zinciri (bonus_points, points_percent_of_order, points_earn_multiplier)`: Çalışıyor
+  - `Burn zinciri (points_redeem_multiplier)`: Modelde var ama runtime/ledger'da yok
+- `Gap Closed`:
+  - `points_redeem_multiplier için teknik karar alındı ve belgelendi - Şimdilik desteklenmiyor`
+  - `Runtime LOCAL_RULE_ACTION_TYPES ve Ledger POINTS_ACTIONS sınırı netleştirildi`
+- `Approved Phase`: `Gap closure documentation`
+- `Affected Surfaces`:
+  - `Runtime evaluator action seti`
+  - `Value ledger action seti`
+- `Decision`:
+  - `points_redeem_multiplier DESTEKLENMİYOR - Neden: Burn zinciri eksik`
+  - `Gereken altyapı`:
+    1. `Wallet bakiye kontrolü (yeterli puan var mı?)`
+    2. `Points düşme (burn) transaction`
+    3. `Redemption ledger kaydı`
+    4. `Runtime multiplier hesabı: (harcanan_puan * multiplier) indirim olarak uygula`
+  - `Bu bir "tek action ekleme" değil, "puan harcama zinciri"nin tamamının kurulması gereken mimari değişiklik`
+  - `Bu Faz 2+ alana ertelenmeli`
+- `Verification`:
+  - `npm.cmd run build:web basarili` (mevcut calisan akislar degismez)
+  - `ACTION_TYPE_OPTIONS > LOCAL_RULE_ACTION_TYPES > POINTS_ACTIONS zinciri dokumante edildi`
+- `Risks`:
+  - `UI'da var backend'de yok riski devam ediyor`
+  - `Erken implementasyon "calisiyor gibi gorunup calismayan" UI yaratir`
+- `Next Loyalty Step`:
+  - `Burn zinciri altyapisi Faz 2'de planlanabilir`
+  - `Mevcut calisan earn akislari korunmali`
+
+- `Timestamp`: `2026-05-18T13:39:19.5581752+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Wizard gelisimi oncesi loyalty condition/action uygulanabilirlik ve cift tarafli akis auditi`
+- `Trigger`: `Kullanici, kampanya sihirbazini gelistirmeye devam etmeden once kampanya/sadakat modulunde tanimli tum uygulamalarin ilgili yuzeylerde gercekten uygulanabilir olup olmadigini ve bilgi akisinin iki yone dogru kurgulanip kurgulanmadigini kontrol etmemi istedi.`
+- `Files Read`:
+  - `LOYALTYMEMORY.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/Musteriler.jsx`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `Wizard` ve `LoyaltyManagement` condition/action modelini ayni normalize/save omurgasiyla uretip kaydediyor; bu nedenle tanimlama akisinda parity yuksek.`
+  - `Selected campaign/coupon bilgisi mobil -> POS/Garson/Kiosk/Call Center yonunde tasiniyor; one-way hazir avantaj akisi calisiyor.`
+- `Gap`:
+  - `Tanimlanabilen her loyalty action runtime veya ledger tarafinda gercekten uygulanmiyor. En somut uyumsuzluk: UI'da ledger-ready gorunen points_redeem_multiplier, loyaltyValueLedger tarafinda hic islenmiyor.`
+  - `Satis-sonrasi ters yone okunabilirlik ozet seviyesinde; applied rule/additional actions/additional conditions tam olarak sales snapshot'a yansimadigi icin kampanyanin ayrintili uygulanis izi geri okunamiyor.`
+- `Approved Phase`: `Readiness audit before further wizard expansion`
+- `Affected Surfaces`:
+  - `Wizard/create flow`
+  - `Backoffice loyalty editor`
+  - `POS`
+  - `Garson`
+  - `Kiosk`
+  - `Call Center`
+  - `Mobile customer / QR order`
+  - `Wallet / transaction / redemption readback`
+- `Readiness`:
+  - `UI parity between wizard and main editor`: `Ready`
+  - `Persistence of campaign/rule definitions`: `Ready`
+  - `Runtime execution for all exposed action/condition types`: `Partial`
+  - `Bidirectional audit trace after sale completion`: `Partial`
+- `Decision`:
+  - `Wizard'a yeni action/condition eklemeden once runtime status authority'si tek kaynaga alinmali.`
+  - `points_redeem_multiplier ya gercek executor/ledger destegi kazanacak ya da UI'da destekliymis gibi etiketlenmeyecek.`
+  - `Tam cift tarafli izlenebilirlik hedefleniyorsa checkout loyalty snapshot modeli applied action seti bazinda genisletilmeli.`
+- `Risks`:
+  - `Wizard'in kapsami buyudukce UI'da tanimlanabilen ama runtime'da uygulanmayan loyalty kombinasyonlari artabilir.`
+  - `Sadece loyalty_campaign_id/action_type ozetini saklamak, sonradan �hangi ek eylemler ve hangi kosul blogu gercekten calisti� sorusuna eksik cevap verir.`
+- `Next Loyalty Step`:
+  - `Runtime status matrisi ortaklastirilsin, points_redeem_multiplier karari netlestirilsin, sonra wizard gelisimi buna gore surdurulsun.`
+
+## Entry 017
+
+- `Timestamp`: `2026-05-18T18:30:00+03:00`
+- `Agent`: `Antigravity (Claude Sonnet 4.6)`
+- `Focus`: `Loyalty Runtime Authority Cleanup + Snapshot Fallback Completion`
+- `Trigger`: `Kullanici, onceki fazdan kalan iki net eksigi giderdi: (1) loyaltyRuntimeStatus.js gercek tek authority, (2) buildFallbackOffer() snapshot alanlarini doldurmali.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+- `Files Changed`:
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+- `Current Capability`:
+  - `loyaltyRuntimeStatus.js artik tek truth kaynagi: CONDITION_KEY_STATUS ve ACTION_TYPE_STATUS map'leri.`
+  - `Set'ler (LOCAL_READY_CONDITIONS, VALUE_LEDGER_ACTIONS vb.) map'lerden otomatik turetiliyor.`
+  - `getConditionRuntimeStatus() ve getActionRuntimeStatus() dogrudan map'ten besleniyor.`
+  - `buildFallbackOffer() artik selectedCouponCode, appliedActionsSummary ve decisionContext tasıyor.`
+- `Gap Closed`:
+  - `Map/set cift truth sistemi kaldirildi.`
+  - `customer_has_tag/customer_lacks_tag: Onceden LOCAL_READY_CONDITIONS set'inde local gorunuyordu (map'te server). Artik set map'ten turetildiginden bu celiski yok.`
+  - `points_redeem_multiplier: presentation/ledger:false, hicbir local/ledger set'ine girmiyor.`
+  - `checkoutLoyalty.js tarafindaki loyalty_selected_coupon_code, loyalty_applied_actions_json, loyalty_decision_context_json fallback senaryoda da doluyor.`
+- `Approved Phase`: `Runtime authority cleanup + snapshot fallback completion`
+- `Affected Surfaces`:
+  - `loyaltyRuntimeStatus.js — tum loyalty UI badge, Wizard ve LoyaltyManagement`
+  - `posLoyalty.js — buildFallbackOffer() yolu`
+  - `checkoutLoyalty.js — persistence snapshot (dolayli)`
+- `Readiness`:
+  - `Runtime status single-source authority`: `Ready`
+  - `Condition/action map-set parity`: `Ready`
+  - `Fallback offer audit fields`: `Ready`
+  - `points_redeem_multiplier executor`: `Intentionally Missing (Faz 2+)`
+- `Decision`:
+  - `loyaltyRuntimeStatus.js yeniden yazildi. Mevcut import'lar (RUNTIME_STATUS_META, getConditionRuntimeStatus, getActionRuntimeStatus, LOCAL_READY_CONDITIONS, SERVER_REQUIRED_CONDITIONS, MODEL_ONLY_CONDITIONS, LOCAL_READY_ACTIONS, VALUE_LEDGER_ACTIONS, MODEL_ONLY_ACTIONS, PRESENTATION_ONLY_ACTIONS) korundu; backward compatibility bozulmadi.`
+  - `posLoyalty.js buildFallbackOffer(): audit alanlari eklendi.`
+  - `Build basarili: exit code 0, 22.84s.`
+- `Risks`:
+  - `posLoyalty.js icindeki LOCAL_RULE_CONDITION_KEYS (runtime evaluator dar seti) ile loyaltyRuntimeStatus.js LOCAL_READY_CONDITIONS (UI badge genis seti) farklidir — bu kasitli ve dogru. Ileriki agent bu farki es anlam sanmamali.`
+  - `buildFallbackOffer() yalnizca discount_percent kampanya tipini destekliyor; diger kampanya tiplerinde fallback hala null donuyor (mevcut kod limiti).`
+- `Next Loyalty Step`:
+  - `Wizard gelisimi oncesi bu cleanup tamamlandi. Bir sonraki loyalty gorevinde yalniz map'e yeni entry eklemek yeterli; set'ler otomatik guncelleniyor.`
+
+## Entry 018
+
+- `Timestamp`: `2026-05-18T18:40:00+03:00`
+- `Agent`: `Antigravity (Claude Sonnet 4.6)`
+- `Focus`: `Loyalty Runtime Status Encoding Cleanup — Doğrulama`
+- `Trigger`: `Kullanici, loyaltyRuntimeStatus.js icindeki Turkce metin mojibake bozukluklarinin temizlenmesini istedi.`
+- `Files Read`:
+  - `src/lib/loyaltyRuntimeStatus.js`
+- `Files Changed`:
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `loyaltyRuntimeStatus.js: Tamamen temiz UTF-8 Turkce karakterler.`
+  - `Mojibake taramasi (Ä|Ã|Å): Sifir eslesme.`
+  - `RUNTIME_STATUS_META, CONDITION_KEY_STATUS, ACTION_TYPE_STATUS — tum label/detail/warning metinleri duzgun.`
+  - `points_redeem_multiplier: presentation/ledger:false, warning metni dogru Turkce.`
+- `Gap Closed`:
+  - `Encoding sorunu onceki oturumda mevcut versiyonun yeniden yazimi sirasinda cozuldu.`
+  - `Bu gorevde yalnizca dogrulama yapildi — ek kod degisikligi gerekmedi.`
+- `Approved Phase`: `Encoding dogrulama`
+- `Affected Surfaces`:
+  - `loyaltyRuntimeStatus.js — Wizard ve LoyaltyManagement badge/detail metinleri`
+- `Readiness`:
+  - `Encoding temizligi`: `Ready`
+  - `Mojibake`: `Yok`
+  - `points_redeem_multiplier statüsü`: `Degismedi (presentation/ledger:false)`
+- `Decision`:
+  - `Dosyada baska degisiklik yapilmadi. Build basarili (exit code: 0, 30.15s).`
+- `Risks`:
+  - `Yok.`
+- `Next Loyalty Step`:
+  - `Loyalty runtime surface hazir. Wizard gelisimi yapilabilir. Yeni action/condition eklenecekse yalniz CONDITION_KEY_STATUS/ACTION_TYPE_STATUS map'ine entry eklenmesi yeterli.`
+
+## Entry 019
+
+- `Timestamp`: `2026-05-18T18:51:00+03:00`
+- `Agent`: `Antigravity (Claude Sonnet 4.6)`
+- `Focus`: `Faz 4 — Loyalty Puan Harcama Redemption Zinciri Analizi`
+- `Trigger`: `Kullanici, points_redeem_multiplier burn zincirini ya tamamlamami ya da net eksikleri ayirmami istedi.`
+- `Files Read`:
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `schema-railway-master.sql`
+  - `src/components/pages/POS.jsx`
+- `Files Changed`:
+  - `src/lib/loyaltyValueLedger.js`
+- `Capability Delta`:
+  - `postTransaction() artik burn-safe: pointsDelta < 0 ve mevcut bakiyeyi asarsa throw eder. Negatif wallet bakiyesi artik olusanamaz.`
+  - `points_redeem_multiplier hala desteklenmiyor. Runtime status degismedi.`
+- `Schema Durum Ozeti`:
+  - `loyalty_transactions: burn tipi schema CHECK'te mevcut.`
+  - `loyalty_wallets: current_points_balance, lifetime_burned_points kolonu mevcut.`
+  - `loyalty_programs/campaigns: redemption_rate veya points_per_currency kolonu YOK.`
+- `Burn Zinciri Eksik Parcalar`:
+  - `[EKSIK-1] Redemption rate schema: loyalty_programs.redemption_rate (numeric) veya loyalty_campaigns.redemption_rate kolonu yok.`
+  - `[EKSIK-2] POS async bakiye kontrolu: evaluateRuntimeOrderCampaigns() cache-sync calisiyor; musteri cumhur bakiyesine order evaluation aninda erisim mimarisi eksik.`
+  - `[EKSIK-3] posLoyalty.js burn offer: buildOfferFromRule() icinde points_redeem_multiplier case yok.`
+  - `[EKSIK-4] loyaltyValueLedger.js burn executor: postSaleLoyaltyValueLedger() icinde burn action detection + postTransaction(burn) yok.`
+  - `[EKSIK-5] Multiplier semantigi: neyi carpiyor? TL/puan orani mi, oran carpan mi? Tasarim karari net degil.`
+- `Approved Phase`: `Faz 4 analiz + burn-safe guard`
+- `Affected Surfaces`:
+  - `loyaltyValueLedger.js — postTransaction() tum kanal ortak yolu`
+- `Readiness`:
+  - `Burn schema`: `Parcali hazir (transaction_type, wallet kolonlari var; redemption_rate yok)`
+  - `Burn guard (negatif bakiye)`: `Ready — postTransaction() throw eder`
+  - `Burn executor`: `Intentionally Missing`
+  - `POS async eval`: `Intentionally Missing`
+  - `points_redeem_multiplier`: `Intentionally Missing (presentation/ledger:false)`
+- `Decision`:
+  - `Yarım executor birakma yasağı gereği burn zinciri tamamlanmadi. Bunun yerine negatif bakiye koruması eklendi — tum earn ve gelecekteki burn islemlerini korur.`
+- `Risks`:
+  - `redemption_rate kolonu olmadan kampanya editöründe görüntülenebilen points_redeem_multiplier action'ı hic bir zaman gercek puan düsümü yapmaz.`
+  - `Bu risk onceden de mevcuttu (presentation/ledger:false). Yeni bir risk eklenmedi.`
+- `Next Loyalty Step`:
+  - `Faz 5: (1) loyalty_programs tablosuna redemption_rate kolonu ekle (schema migration + schema-railway-master.sql guncelle), (2) POS async bakiye kontrolu ekle, (3) posLoyalty burn offer logigi, (4) loyaltyValueLedger burn executor.`
+
+## Entry 021
+
+- `Timestamp`: `2026-05-18T19:09:10.0839593+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Faz 5 Hazirlik - Redemption Schema ve Async Wallet Readiness`
+- `Trigger`: `Kullanici, points_redeem_multiplier icin gercek burn executor'a gecmeden once redemption schema ve async wallet readiness altyapisinin hazirlanmasini istedi.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `schema-railway-master.sql`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+- `Files Changed`:
+  - `schema-railway-master.sql`
+  - `migrations/008_loyalty_redemption_rate.sql`
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/CallCenter.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `Redemption schema karari somut: loyalty_programs.redemption_rate. Birim: 1 puan = redemption_rate TL. Default 0, yani redemption configure edilmedi ve burn executor kapali.`
+  - `Async helper hazir: resolveLoyaltyWalletBalance() musteri/program/wallet_type bazinda loyalty_wallets okur; musteri yoksa unsupported, wallet yoksa 0 balance, DB hatasinda lookup_failed doner.`
+  - `Program rate helper hazir: resolveLoyaltyProgramRedemptionModel() loyalty_programs.redemption_rate okur ve rate 0 ise rate_not_configured doner.`
+  - `posLoyalty.js icinde evaluateRuntimeOrderCampaignsAsync() extension point'i var; mevcut senkron evaluateRuntimeOrderCampaigns() davranisi degismedi.`
+  - `Call Center'daki mevcut sadakat_points odeme secimi burn executor tamamlanana kadar guard ile kapali tutuldu.`
+- `Gap`:
+  - `migrations/008_loyalty_redemption_rate.sql canli Railway Postgres'e henuz uygulanmadi.`
+  - `POS/Garson/Kiosk/CallCenter/Mobile call site'lari henuz async wrapper'a gecmedi; bu faz yalniz readiness.`
+  - `points_redeem_multiplier offer builder, burn transaction, redemption ledger executor ve payment allocation henuz intentionally missing.`
+- `Approved Phase`: `Faz 5 readiness`
+- `Affected Surfaces`:
+  - `loyalty_programs schema`
+  - `Runtime evaluator extension point`
+  - `Wallet balance read helper`
+  - `Call Center wallet read / fake redemption guard`
+  - `POS, Garson, Kiosk Big, Kiosk Tablet, Call Center, Mobile QR parity documentation`
+- `Readiness`:
+  - `Redemption schema decision`: `Ready`
+  - `Migration file`: `Ready / not applied`
+  - `Async wallet lookup helper`: `Ready`
+  - `Runtime async extension point`: `Partial`
+  - `Burn executor`: `Intentionally Missing`
+  - `points_redeem_multiplier status`: `Intentionally Missing / presentation, ledger:false`
+  - `Channel context parity`: `Partial but documented`
+- `Decision`:
+  - `loyalty_programs.redemption_rate secildi; kampanya seviyesinde reward_value veya action config kullanilmadi cunku program capinda tek para donusum orani daha az celiskili ve tum kanallar icin ortak.`
+  - `redemption_rate tipi NUMERIC(14,6), NOT NULL, DEFAULT 0, CHECK >= 0. 0 degeri backward compatible ve executor kapali sinyali.`
+  - `Wallet helper yeni src/lib/loyaltyWalletReadiness.js dosyasinda tutuldu; posLoyalty icine dogrudan burn executor yazilmadi.`
+  - `Call Center'da var olan sadakat_points yolu gercek burn yapmadigi icin aktif kullanima kapatildi; bakiye okuma ise ayni helper'a baglandi.`
+- `Risks`:
+  - `Canli migration uygulanmadan resolveLoyaltyProgramRedemptionModel() redemption_rate kolonunu okuyamaz; helper bunu lookup_failed olarak kapali doner.`
+  - `Call Center sadakat_points UI paneli tamamen kaldirilmadi; gorunur ama kullanilamaz. Executor fazinda UX yeniden ele alinmali.`
+  - `Async wrapper'a gecis sonraki fazda her kanal icin ayrica yapilmali; useMemo senkron evaluation zinciri bugun korunuyor.`
+- `Next Loyalty Step`:
+  - `Executor fazi: migration'i Railway Postgres'e uygula, sonra POS/Garson/Kiosk/CallCenter/Mobile evaluation call site'larini async wallet context ile besle; points_redeem_multiplier offer hesabi, burn transaction ve loyalty_campaign_redemptions kaydini tek tutarli zincir olarak ekle.`
+
+
+## Entry 020
+
+- `Timestamp`: `2026-05-18T19:01:55.4301886+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Loyalty Runtime Status UTF-8 Cleanup`
+- `Trigger`: `Kullanici, src/lib/loyaltyRuntimeStatus.js icindeki mojibake metinlerin temizlenmesini ve Wizard/LoyaltyManagement runtime badge/detail/warning metinlerinin duzgun Turkce gorunmesini istedi.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+- `Files Changed`:
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `loyaltyRuntimeStatus.js artik temiz UTF-8 Turkce metinlerle calisiyor. RUNTIME_STATUS_META, CONDITION_KEY_STATUS, ACTION_TYPE_STATUS ve helper mesajlari mojibake tasimiyor.`
+  - `Wizard ve LoyaltyManagement ayni import/helper API'lerini kullanmaya devam ediyor; runtime badge/detail metinleri bu temizlenmis kaynaktan geliyor.`
+- `Gap Closed`:
+  - `Bu modul, Aninda calisir, Gosterim, Musteri etiketi ve Puan harcama carpani gibi mojibake gorunen runtime metinleri duzeltildi.`
+  - `Ä|Ã|Å pattern taramasi src/lib/loyaltyRuntimeStatus.js icin sifir eslesme verdi.`
+- `Approved Phase`: `Runtime status encoding cleanup`
+- `Affected Surfaces`:
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` (dolayli runtime badge/detail metinleri)
+  - `src/components/pages/LoyaltyManagement.jsx` (dolayli runtime badge/detail metinleri)
+- `Readiness`:
+  - `Encoding temizligi`: `Ready`
+  - `Runtime truth map yapisi`: `Ready / degismedi`
+  - `points_redeem_multiplier statusu`: `Intentionally Missing / presentation, ledger:false`
+  - `Build dogrulamasi`: `Ready - npm.cmd run build:web -- --outDir temp-dist-runtime-status --emptyOutDir basarili`
+- `Decision`:
+  - `Sadece metin encoding temizligi yapildi; Railway Postgres disina cikilmadi, mock/fake backend/auth eklenmedi.`
+  - `points_redeem_multiplier aynen desteklenmiyor statusunde birakildi: category presentation, ledger false, warning metni korunmus mantikla duzgun Turkce.`
+  - `Set export'lari yine CONDITION_KEY_STATUS/ACTION_TYPE_STATUS map'lerinden otomatik turetiliyor; ikinci truth sistemi eklenmedi.`
+- `Risks`:
+  - `Varsayilan npm.cmd run build, dist/assets temizleme adiminda EPERM verdi. Ayri outDir build'i basarili oldugu icin kod/import riski gorulmedi; bu yalniz mevcut dist/Dropbox kilidi olarak kaydedildi.`
+  - `temp-dist-runtime-status dogrulama output'u workspace icinde olustu.`
+- `Next Loyalty Step`:
+  - `Yeni runtime action/condition eklenirse once loyaltyRuntimeStatus.js map'lerine eklenmeli; points_redeem_multiplier burn zinciri tamamlanmadan presentation/ledger:false statusu degistirilmemeli.`
+
+
+
+## Entry 021
+
+- `Timestamp`: `2026-05-18T19:10:37.1566417+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Faz 5 Hazirlik - Redemption schema ve async wallet readiness`
+- `Trigger`: `Kullanici, gercek burn/redemption executor'a gecmeden once veri modeli ve async runtime altyapisinin hazirlanmasini istedi.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `schema-railway-master.sql`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+- `Files Changed`:
+  - `schema-railway-master.sql`
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `loyalty_programs.redemption_rate` master schema icinde var ve artik acik semantik tasiyor: `1 puan = redemption_rate TL`.
+  - `redemption_rate = 0`, puan harcama executor kapali/rate tanimsiz anlamindadir.
+  - `src/lib/loyalty.js` program load/save modeli `redemptionRate` alanini round-trip eder; save sirasinda mevcut DB rate'i kaybolmaz.
+  - `src/lib/loyaltyWalletReadiness.js` wallet lookup icin structured status dondurur: musteri yok, wallet yok, read error ve program redemption modeli durumlari ayri ayri okunabilir.
+  - `src/lib/posLoyalty.js` icinde `prepareRuntimeWalletContext()` artik wallet + program redemption readiness'i birlikte dondurur; `evaluateRuntimeOrderCampaignsAsync()` non-breaking extension point olarak durur.
+- `Gap`:
+  - Burn executor hala yok; `points_redeem_multiplier` runtime/ledger tarafinda calismiyor ve calisiyor gibi isaretlenmedi.
+  - 6 kanal su an senkron `evaluateRuntimeOrderCampaigns()` kullaniyor; async wallet readiness extension point hazir ama kanallara baglanmadi.
+  - Program context yoksa helper `missing_program_context` dondurur; executor fazinda kampanya/program baglaminin her kanalda orderContext'e tasinmasi gerekir.
+- `Approved Phase`: `Faz 5 Hazirlik`
+- `Affected Surfaces`:
+  - `Railway Postgres schema`
+  - `Loyalty program model`
+  - `Runtime evaluator extension point`
+  - `POS`
+  - `Garson`
+  - `Kiosk Big`
+  - `Kiosk Tablet`
+  - `Call Center`
+  - `Mobile / QR`
+- `Readiness`:
+  - `Redemption schema decision`: `Ready`
+  - `Backward-compatible schema update`: `Ready`
+  - `Program model round-trip`: `Ready`
+  - `Async wallet lookup helper`: `Ready`
+  - `Burn executor`: `Intentionally Missing`
+  - `points_redeem_multiplier`: `Intentionally Missing / presentation, ledger:false`
+  - `6 kanal async wallet parity`: `Partial`
+- `Decision`:
+  - `Schema karari: redemption_rate numeric(14,6), 1 puan = redemption_rate TL. Ornek: redemption_rate=0.10 ise 10 puan = 1 TL.`
+  - `Mevcut DB icin idempotent schema hazirligi master schema icine eklendi; ayri fake persistence veya mock wallet eklenmedi.`
+  - `Async helper executor degil; sadece readiness ve future burn icin program/wallet state okur.`
+  - `src/lib/loyaltyRuntimeStatus.js degistirilmedi; points_redeem_multiplier desteklenmiyor kaldi.`
+- `Risks`:
+  - `Call Center mevcut UI'da puan ile odeme butonu burn executor kapali toast'u veriyor; bu guard dogru ama eski yardimci metin puan/TL yaklasimi konusunda fazla iddiali. UI polish sonraki faza birakildi.`
+  - `Kanal gecisi yapilmadan async helper sadece library seviyesinde hazir kalir; gercek executor fazinda POS/Garson/Kiosk/Mobile/Call Center ayni programId ve customerContext kontratini kullanmali.`
+  - `redemption_rate production DB'ye uygulanmadikca canli ortamda kolon eksik kalabilir; master schema hazirligi migration olarak calistirilmelidir.`
+- `Next Loyalty Step`:
+  - `Faz 6: 6 kanal icin evaluateRuntimeOrderCampaignsAsync() veya ortak async wrapper gecisini planla; sonra points_redeem_multiplier burn offer, wallet balance guard, loyalty_transactions burn kaydi ve loyalty_campaign_redemptions kaydini tek executor olarak tamamla.`

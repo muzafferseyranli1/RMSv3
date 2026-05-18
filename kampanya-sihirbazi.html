@@ -1,0 +1,1869 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kampanya Sihirbazı — SuitableRMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/dist/tabler-icons.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sidebar: #111111;
+    --amber: #f5a623;
+    --amber-dark: #d4891a;
+    --amber-bg: #fff8ec;
+    --amber-border: #f5c97a;
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --surface-2: #f8f8f8;
+    --border: #e5e5e5;
+    --border-mid: #d0d0d0;
+    --text: #111111;
+    --text-muted: #666666;
+    --text-hint: #999999;
+    --success: #15803d;
+    --success-bg: #f0fdf4;
+    --success-border: #bbf7d0;
+    --danger: #dc2626;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.1);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .wizard {
+    width: 100%;
+    max-width: 960px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 620px;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  .wiz-header {
+    padding: 20px 28px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .wiz-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  .wiz-logo {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .02em;
+  }
+
+  .wiz-logo span { color: var(--amber); }
+
+  .step-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding-bottom: 0;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid transparent;
+    cursor: default;
+    transition: border-color .2s;
+  }
+
+  .step-item.active { border-bottom-color: var(--amber); }
+  .step-item.done { border-bottom-color: var(--success); }
+
+  .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-mid);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all .2s;
+  }
+
+  .step-item.active .step-num {
+    background: var(--amber);
+    border-color: var(--amber);
+    color: #000;
+  }
+
+  .step-item.done .step-num {
+    background: var(--success);
+    border-color: var(--success);
+    color: #fff;
+  }
+
+  .step-label {
+    font-size: 12px;
+    color: var(--text-hint);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .step-item.active .step-label { color: var(--text); }
+  .step-item.done .step-label { color: var(--success); }
+
+  .step-sep {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    margin: 0 10px;
+    margin-bottom: 14px;
+  }
+
+  /* ── Body ── */
+  .wiz-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    min-height: 0;
+  }
+
+  .wiz-main {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+  }
+
+  .step-heading { margin-bottom: 6px; }
+  .step-heading h2 { font-size: 18px; font-weight: 600; color: var(--text); }
+  .step-heading p { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+
+  .step-body { flex: 1; margin-top: 20px; }
+
+  /* ── Goal cards ── */
+  .goal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .goal-card {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .1s;
+    background: var(--surface);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+  }
+
+  .goal-card:hover {
+    border-color: var(--amber-border);
+    background: var(--amber-bg);
+    transform: translateY(-1px);
+  }
+
+  .goal-card.sel {
+    border-color: var(--amber);
+    background: var(--amber-bg);
+    box-shadow: 0 0 0 3px rgba(245,166,35,.12);
+  }
+
+  .goal-card.sel::after {
+    content: '\ea5e';
+    font-family: 'tabler-icons';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 14px;
+    color: var(--amber);
+  }
+
+  .gc-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+
+  .goal-card.sel .gc-icon,
+  .goal-card:hover .gc-icon {
+    background: rgba(245,166,35,.15);
+    color: var(--amber-dark);
+  }
+
+  .gc-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .gc-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+
+  /* stamp card */
+  .goal-card.stamp {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    background: linear-gradient(135deg, #fffbf0 0%, var(--surface) 100%);
+    border-style: dashed;
+  }
+
+  .goal-card.stamp .gc-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .goal-card.stamp .gc-label { font-size: 13px; }
+  .goal-card.stamp .gc-desc { font-size: 11px; }
+
+  .stamp-dots {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .stamp-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-mid);
+    background: var(--surface-2);
+    transition: all .15s;
+  }
+
+  .goal-card.stamp.sel .stamp-dot,
+  .goal-card.stamp:hover .stamp-dot { border-color: var(--amber); }
+  .goal-card.stamp.sel .stamp-dot:nth-child(-n+5),
+  .goal-card.stamp:hover .stamp-dot:nth-child(-n+3) { background: var(--amber); }
+
+  /* ── Step 2 fields ── */
+  .field-section { margin-bottom: 22px; }
+
+  .field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .field-label i { font-size: 15px; color: var(--text-muted); }
+  .field-sublabel {
+    font-size: 11px;
+    color: var(--text-hint);
+    font-weight: 400;
+    margin-left: 2px;
+  }
+
+  /* Audience: 2-column card grid */
+  .aud-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .aud-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 11px 13px;
+    cursor: pointer;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all .15s;
+    text-align: left;
+  }
+
+  .aud-card:hover { border-color: var(--amber-border); background: var(--amber-bg); }
+
+  .aud-card.sel {
+    border-color: var(--amber);
+    background: var(--amber-bg);
+  }
+
+  .aud-card .ac-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all .15s;
+  }
+
+  .aud-card.sel .ac-icon { background: rgba(245,166,35,.15); color: var(--amber-dark); }
+  .aud-card:hover .ac-icon { background: rgba(245,166,35,.1); color: var(--amber-dark); }
+
+  .ac-text { display: flex; flex-direction: column; gap: 1px; }
+  .ac-label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .ac-desc  { font-size: 10px; color: var(--text-hint); line-height: 1.4; }
+
+  /* Channel: inline chips, smaller */
+  .ch-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .ch-btn {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .ch-btn i { font-size: 13px; }
+  .ch-btn:hover { border-color: var(--amber-border); color: var(--text); }
+  .ch-btn.sel { background: var(--sidebar); border-color: var(--sidebar); color: #fff; }
+  .ch-btn.sel i { color: var(--amber); }
+
+  /* Window: 3 options as radio rows */
+  .win-group { display: flex; flex-direction: column; gap: 6px; }
+
+  .win-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 13px;
+    cursor: pointer;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all .15s;
+  }
+
+  .win-row:hover { border-color: var(--amber-border); }
+  .win-row.sel { border-color: var(--amber); background: var(--amber-bg); }
+
+  .win-radio {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border-mid);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .15s;
+  }
+
+  .win-row.sel .win-radio { border-color: var(--amber); }
+  .win-row.sel .win-radio::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    display: block;
+  }
+
+  .win-text { display: flex; flex-direction: column; gap: 1px; }
+  .win-label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .win-desc  { font-size: 10px; color: var(--text-hint); }
+
+  .date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+
+  /* keep seg-btn for step 3 checkout */
+  .seg-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg-btn {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--border-mid);
+    background: var(--surface);
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all .15s;
+  }
+  .seg-btn:hover { border-color: var(--amber-border); color: var(--text); }
+  .seg-btn.sel { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 600; }
+
+  .wiz-input {
+    width: 100%;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .15s;
+  }
+
+  .wiz-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,166,35,.1); }
+
+  /* ── Step 3 ── */
+  .block-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .block-head-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .block-head-label i { font-size: 14px; color: var(--amber); }
+
+  .logic-toggle {
+    display: flex;
+    border: 1px solid var(--border-mid);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .logic-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 11px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all .15s;
+    letter-spacing: .02em;
+  }
+
+  .logic-btn.sel { background: var(--amber); color: #000; }
+
+  .block-body { padding: 12px 14px; }
+
+  .cond-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+
+  .cond-inner { display: flex; flex-direction: column; gap: 5px; }
+
+  .wiz-select {
+    width: 100%;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color .15s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+  }
+
+  .wiz-select:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,166,35,.1); }
+
+  .cond-val {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    background: var(--surface-2);
+    color: var(--text);
+    width: 100%;
+    transition: border-color .15s;
+  }
+
+  .cond-val:focus { outline: none; border-color: var(--amber); background: var(--surface); }
+
+  .cond-hint {
+    font-size: 10px;
+    color: var(--text-hint);
+    line-height: 1.4;
+    padding-left: 2px;
+  }
+
+  .between-logic {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-hint);
+    padding: 2px 0 6px;
+    letter-spacing: .03em;
+  }
+
+  .inline-logic {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 4px 0 4px 2px;
+  }
+
+  .inline-logic-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border: 1px solid var(--border-mid);
+    background: var(--surface-2);
+    cursor: pointer;
+    color: var(--text-hint);
+    font-family: 'Inter', sans-serif;
+    letter-spacing: .03em;
+    transition: all .15s;
+    line-height: 1;
+  }
+
+  .inline-logic-btn:first-child {
+    border-radius: 999px 0 0 999px;
+    border-right: none;
+  }
+
+  .inline-logic-btn:last-child {
+    border-radius: 0 999px 999px 0;
+  }
+
+  .inline-logic-btn.sel {
+    background: var(--amber);
+    border-color: var(--amber);
+    color: #000;
+  }
+
+  .inline-logic-btn:hover:not(.sel) {
+    border-color: var(--amber-border);
+    color: var(--text);
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-hint);
+    flex-shrink: 0;
+    transition: all .15s;
+    margin-top: 1px;
+  }
+
+  .icon-btn:hover { border-color: var(--danger); color: var(--danger); background: #fef2f2; }
+
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .add-btn {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border-mid);
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all .15s;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .add-btn:hover { border-color: var(--amber); color: var(--amber-dark); background: var(--amber-bg); }
+
+  .checkout-row { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+  /* ── Step 4 ── */
+  .name-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .nb-row {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nb-row + .nb-row {
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  .nb-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nb-required { color: var(--danger); font-weight: 700; }
+  .nb-optional { font-weight: 400; color: var(--text-hint); font-size: 10px; }
+
+  .name-textarea {
+    width: 100%;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    background: var(--surface);
+    color: var(--text);
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.6;
+    transition: border-color .15s;
+  }
+
+  .name-textarea:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,166,35,.1); }
+
+  .name-input {
+    width: 100%;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 15px;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .15s;
+  }
+
+  .name-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,166,35,.1); }
+
+  .review-grid { display: flex; flex-direction: column; gap: 10px; }
+
+  .review-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .rb-head {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: 7px 12px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .rb-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+
+  .rb-item {
+    font-size: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    line-height: 1.4;
+  }
+
+  .rb-item i { color: var(--amber); font-size: 13px; margin-top: 1px; flex-shrink: 0; }
+
+  /* ── Summary panel ── */
+  .wiz-summary {
+    padding: 20px 18px;
+    background: var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+
+  .sum-empty {
+    font-size: 12px;
+    color: var(--text-hint);
+    line-height: 1.6;
+    padding-top: 4px;
+  }
+
+  .sum-section { display: flex; flex-direction: column; gap: 6px; }
+
+  .sum-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-hint);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .sum-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+  }
+
+  .chip i { font-size: 11px; }
+  .chip.amber { background: var(--amber-bg); border-color: var(--amber-border); color: #7a4a00; }
+  .chip.green { background: var(--success-bg); border-color: var(--success-border); color: #14532d; }
+
+  .sum-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sum-name i { color: var(--amber); }
+
+  .sum-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  /* ── Footer ── */
+  .wiz-footer {
+    grid-column: 1 / -1;
+    padding: 14px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface);
+  }
+
+  .btn-back {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-mid);
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s;
+  }
+
+  .btn-back:hover { background: var(--surface-2); color: var(--text); }
+  .btn-back.hidden { visibility: hidden; }
+
+  .btn-next {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 22px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--amber);
+    cursor: pointer;
+    color: #000;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s;
+  }
+
+  .btn-next:hover { background: var(--amber-dark); }
+  .btn-next:disabled { opacity: .35; cursor: not-allowed; }
+
+  .btn-save {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 22px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--success);
+    cursor: pointer;
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s;
+  }
+
+  .btn-save:hover { background: #166534; }
+
+  .step-counter {
+    font-size: 12px;
+    color: var(--text-hint);
+    font-weight: 500;
+  }
+
+  .step-counter span { color: var(--text-muted); font-weight: 600; }
+
+  optgroup { font-weight: 600; font-size: 11px; }
+  option { font-size: 12px; font-weight: 400; }
+
+  .sum-narrative {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 10px 12px;
+  }
+
+  .narrative-text {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.8;
+  }
+
+  .nt-legend {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .nt-ch { color: #1d6fb8; font-style: normal; }
+  .nt-au { color: #c2690a; font-style: normal; }
+  .nt-co { color: #1a7a3f; font-style: normal; }
+  .nt-ac { color: #92520a; font-style: normal; font-weight: 600; }
+  .nt-ka { color: #6b3fa0; font-style: normal; }
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    margin-top: 6px;
+    transition: all .15s;
+    user-select: none;
+  }
+
+  .advanced-toggle:hover { border-color: var(--border-mid); color: var(--text); }
+
+  .advanced-panel {
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    padding: 14px;
+    background: var(--surface);
+    margin-top: -4px;
+  }
+
+  .stack-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    background: var(--surface);
+    transition: all .15s;
+  }
+
+  .stack-option:hover { border-color: var(--amber-border); background: var(--amber-bg); }
+  .stack-option.sel { border-color: var(--amber); background: var(--amber-bg); }
+
+  .recommended-badge {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--amber-dark);
+    background: var(--amber-bg);
+    border: 1px solid var(--amber-border);
+    border-radius: 999px;
+    padding: 1px 6px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wizard">
+  <!-- Header -->
+  <div class="wiz-header">
+    <div class="wiz-title-row">
+      <div class="wiz-logo">Suitable<span>RMS</span> · Kampanya Sihirbazı</div>
+      <div class="step-counter">Adım <span id="stepCounterCur">1</span> / 4</div>
+    </div>
+    <div class="step-bar" id="stepBar"></div>
+  </div>
+
+  <!-- Body -->
+  <div class="wiz-body">
+    <div class="wiz-main">
+      <div class="step-heading">
+        <h2 id="stepTitle"></h2>
+        <p id="stepHint"></p>
+      </div>
+      <div class="step-body" id="stepBody"></div>
+    </div>
+    <div class="wiz-summary" id="summaryPanel"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="wiz-footer">
+    <button class="btn-back" id="btnBack" onclick="goBack()">
+      <i class="ti ti-arrow-left"></i> Geri
+    </button>
+    <button class="btn-next" id="btnNext" onclick="goNext()">
+      İleri <i class="ti ti-arrow-right"></i>
+    </button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────
+const GOALS = [
+  {
+    v: 'new_customer', icon: 'ti-user-plus', label: 'Yeni müşteri kazan',
+    desc: 'İlk ziyaret teşviki, referans ödülü veya kayıt kampanyası',
+    recConds: ['days_since_first','lacks_tag','referral','always'],
+    recActs:  ['issue_coupon','bonus_points','add_tag','sms','free_delivery'],
+  },
+  {
+    v: 'basket', icon: 'ti-shopping-cart-up', label: 'Satış ortalamasını artır',
+    desc: 'Sepet büyütme, kombo teklifi veya eşik indirimi',
+    recConds: ['order_total','order_item_qty','missing_products','always'],
+    recActs:  ['pct_discount','amt_discount','free_product','combo','suggest','warning_msg','free_delivery'],
+  },
+  {
+    v: 'frequency', icon: 'ti-repeat', label: 'Ziyaret sıklığını artır',
+    desc: 'Tekrar gelme ödülü, kayıp müşteri geri kazanma, dönem teşviki',
+    recConds: ['last_visit_days','period_orders','period_spend','has_tag'],
+    recActs:  ['bonus_points','issue_coupon','add_tag','sms','free_delivery'],
+  },
+  {
+    v: 'loyalty', icon: 'ti-star', label: 'Sadakat üyesine değer kat',
+    desc: 'Puan, kupon, doğum günü hediyesi veya VIP segment yönetimi',
+    recConds: ['birthday','has_tag','period_spend','coupon_present','gift_card'],
+    recActs:  ['bonus_points','earn_mult','issue_coupon','add_tag','remove_tag','write_note'],
+  },
+  {
+    v: 'event', icon: 'ti-clock-hour-4', label: 'Özel zaman / etkinlik',
+    desc: 'Happy hour, belirli gün/saat penceresi veya takvim planı',
+    recConds: ['happy_hour','calendar','sales_volume'],
+    recActs:  ['pct_discount','amt_discount','earn_mult','warning_msg','suggest'],
+  },
+  {
+    v: 'stamp', icon: 'ti-rosette', label: 'Damga kartı',
+    desc: 'X alışverişte ödül — müşterinin birikimiyle kazanacağı hedef kampanya',
+    recConds: ['period_orders','period_product_qty','period_spend'],
+    recActs:  ['free_product','issue_coupon','bonus_points'],
+    isStamp: true,
+  },
+];
+
+const CHANNELS = [
+  {v:'all',l:'Tümü'}, {v:'pos',l:'POS'}, {v:'garson',l:'Garson'},
+  {v:'kiosk',l:'Kiosk'}, {v:'online',l:'Online / Paket'},
+];
+
+const AUDIENCE = [
+  {v:'all',l:'Tüm müşteriler'}, {v:'members',l:'Sadakat üyeleri'},
+  {v:'category',l:'Seçili kategori'}, {v:'cashier',l:'Kasiyer seçsin'},
+];
+
+const WINDOW = [
+  {v:'always',l:'Sürekli açık'}, {v:'date',l:'Tarih aralığı'}, {v:'hour',l:'Saat penceresi'},
+];
+
+const COND_GROUPS = {
+  'Sepet': [
+    {v:'order_total',      l:'Sepet tutarı eşiği',       ph:'Örn. 500 TL',       hint:'Sipariş toplamı bu tutarı geçince koşul sağlanır'},
+    {v:'order_item_qty',   l:'Sepette ürün adedi',        ph:'Örn. burger ≥ 2',   hint:'Belirli ürün veya kategori sepette yeterli adetteyse'},
+    {v:'missing_products', l:'Sepette eksik ürün',        ph:'Örn. içecek yoksa', hint:'Sepette seçili ürün veya grup yoksa çalışır'},
+  ],
+  'Müşteri geçmişi': [
+    {v:'period_spend',       l:'Dönem harcaması',          ph:'Örn. bu ay 3000 TL',    hint:'Müşterinin seçili dönem içindeki toplam harcaması'},
+    {v:'period_orders',      l:'Ziyaret sayısı',           ph:'Örn. bu ay 3 ziyaret',  hint:'Müşterinin dönem içindeki sipariş sayısı'},
+    {v:'period_product_qty', l:'Dönem ürün adedi',         ph:'Örn. bu ay 5 kahve',    hint:'Müşterinin dönemde aldığı ürün veya kategori miktarı'},
+    {v:'days_since_first',   l:'İlk aktiviteden beri gün', ph:'Örn. ilk 30 gün içinde',hint:'Müşterinin ilk kayıt veya siparişinden beri geçen süre'},
+    {v:'last_visit_days',    l:'Son ziyaretten beri gün',  ph:'Örn. 45 gündür gelmedi',hint:'Müşterinin son siparişinden beri geçen süre'},
+    {v:'sales_volume',       l:'Genel satış hacmi',        ph:'Örn. bugün 100 burger', hint:'Şube veya genel satış hacmi ürün/kategori bazında eşiğe ulaşınca'},
+  ],
+  'Müşteri profili': [
+    {v:'birthday', l:'Doğum günü',              ph:'Örn. önce/sonra 7 gün',       hint:'Müşterinin doğum günü penceresine göre çalışır'},
+    {v:'has_tag',  l:'Müşteride kategori var',  ph:'Örn. VIP',                    hint:'Bağlı müşteri seçili kategoriye uyuyorsa'},
+    {v:'lacks_tag',l:'Müşteride kategori yok',  ph:'Örn. yeni müşteri değil',     hint:'Bağlı müşteri seçili kategoride değilse'},
+    {v:'referral', l:'Referans kaynağı',         ph:'Örn. Instagram / davet kodu', hint:'Müşteri belirli referans veya davet kaynağından geldiyse'},
+  ],
+  'Zaman': [
+    {v:'calendar',   l:'Takvim planı', ph:'Örn. her pazartesi',   hint:'Gün/hafta/ay/yıl takvimine göre kampanya zamanını kontrol eder'},
+    {v:'happy_hour', l:'Happy hour',   ph:'Örn. 18:00–20:00',     hint:'Belirli gün ve saat aralığında çalışır'},
+  ],
+  'Kupon': [
+    {v:'coupon_present', l:'Kupon varlığı',       ph:'Örn. MAYIS10',   hint:'Müşteride veya sepette belirli kupon varsa'},
+    {v:'gift_card',      l:'Hediye kart serisi',  ph:'Örn. GIFT2026',  hint:'Müşteri veya kart belirli seriyle eşleşirse'},
+  ],
+  'Kasa & Kampanya': [
+    {v:'manual_approval',     l:'Manuel onay',                ph:'Örn. müdür onayı',        hint:'Personel kampanyayı elle seçip onaylarsa'},
+    {v:'campaign_triggered',  l:'Başka kampanya tetiklendi',  ph:'Örn. önce VIP indirimi',  hint:'Başka bir kampanya çalıştıktan sonra zincir kural olarak'},
+    {v:'always',              l:'Ek koşul yok',               ph:'',                        hint:'Hedef ve kanal uygunsa kampanya doğrudan çalışır'},
+  ],
+};
+
+const ACT_GROUPS = {
+  'İndirim': [
+    {v:'pct_discount', l:'Yüzde indirim',         ph:'Örn. 15',  hint:'Sepet toplamından yüzde indirim uygular'},
+    {v:'amt_discount', l:'Tutar indirimi',         ph:'Örn. 75',  hint:'Sepet toplamından sabit tutar düşer'},
+    {v:'line_discount',l:'Satır yüzde indirimi',   ph:'Örn. 20',  hint:'Ürün veya satır bazında yüzdesel indirim'},
+  ],
+  'Hediye & Kombo': [
+    {v:'free_product',  l:'Hediye ürün',         ph:'Örn. 1 çay',            hint:'Uygun sepete ücretsiz ürün teklifi ekler'},
+    {v:'combo',         l:'Kombo paket',          ph:'Örn. burger + içecek',  hint:'Birden fazla ürünü paket fiyatıyla sunar'},
+    {v:'product_price', l:'Ürün fiyatlandırma',  ph:'Örn. burger 199 TL',    hint:'Seçili ürüne özel fiyat uygular'},
+  ],
+  'Teslimat': [
+    {v:'free_delivery', l:'Ücretsiz teslimat', ph:'', hint:'Paket/online siparişlere ücretsiz teslimat tanımlar'},
+  ],
+  'Puan': [
+    {v:'bonus_points', l:'Bonus puan',                 ph:'Örn. 250',          hint:'Müşterinin puan defterine değer yazar'},
+    {v:'points_pct',   l:'Siparişten puan kazandır',   ph:'Örn. tutarın %5\'i',hint:'Sipariş tutarına göre puan kazandırır'},
+    {v:'earn_mult',    l:'Puan kazanma katsayısı',     ph:'Örn. 2x',           hint:'Kazanılacak puanı belirli katsayıyla çarpar'},
+    {v:'redeem_mult',  l:'Puan harcama katsayısı',     ph:'Örn. 1.5x',         hint:'Puan harcama değerini artırır'},
+  ],
+  'Kupon & Mesaj': [
+    {v:'issue_coupon', l:'Kupon ver',          ph:'Örn. DOGUMGUNU',            hint:'Müşteriye kullanılabilir kupon oluşturur'},
+    {v:'sms',          l:'SMS gönder',         ph:'Örn. kuponunuz hazır',       hint:'Müşteriye kampanya mesajı yollar'},
+    {v:'warning_msg',  l:'Sadece uyarı göster',ph:'Örn. ikinci ürünü öner',    hint:'Kasiyere veya müşteriye yönlendiren mesaj gösterir'},
+    {v:'suggest',      l:'Ürün öner',          ph:'Örn. patates öner',          hint:'Sepete eklenebilecek ürün önerisi gösterir'},
+  ],
+  'Müşteri segmenti': [
+    {v:'add_tag',    l:'Kategoriye ekle',    ph:'Örn. VIP aday',                  hint:'Müşteriyi seçili kategoriye ekler'},
+    {v:'remove_tag', l:'Kategoriden çıkar',  ph:'Örn. yeni müşteri',              hint:'Müşteriyi seçili kategoriden çıkarır'},
+    {v:'write_note', l:'Müşteri notu yaz',   ph:'Örn. geri kazanma kampanyası',   hint:'Müşteri veya sipariş üzerine not kaydı oluşturur'},
+  ],
+};
+
+const CHECKOUT = [
+  {v:'auto',    l:'Otomatik uygula',   desc:'Koşul sağlanınca kampanya anında işlenir'},
+  {v:'ask',     l:'Kasiyere sor',      desc:'Kasa personeli onaylayınca uygulanır'},
+  {v:'suggest', l:'Öneri olarak göster', desc:'Görünür, kullanıcı/personel seçince uygulanır'},
+];
+
+const DELIVERY_LIMIT = [
+  {v:'first',    l:'Sadece ilk seferinde'},
+  {v:'count',    l:'X sefere kadar'},
+  {v:'date',     l:'Şu tarihe kadar'},
+  {v:'always',   l:'Hep geçerli'},
+];
+
+const STEPS = [
+  {title:'Ne yapmak istiyorsun?',      hint:'Kampanyanın amacını seç. Seçimine göre koşul ve eylem önerileri otomatik öne çıkacak.'},
+  {title:'Kime, ne zaman, nerede?',    hint:'Bu kampanya kimlere uygulanacak, hangi kanalda ve hangi zaman aralığında çalışacak?'},
+  {title:'Koşul ve eylem',             hint:'Kampanyayı tetikleyecek koşulları ve koşul sağlandığında yapılacak eylemleri tanımla. Birden fazla ekleyebilirsin.'},
+  {title:'Özet ve onay',               hint:'Kampanyanı gözden geçir, bir isim ver ve kaydet.'},
+];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let state = {
+  step: 0,
+  goal: '',
+  name: '',
+  description: '',
+  audience: 'all',
+  channels: ['all'],
+  windowMode: 'always',
+  startAt: '', endAt: '',
+  hourStart: '', hourEnd: '',
+  conditions: [{id:1, type:'order_total', value:'', logicAfter:'and'}],
+  actions: [{id:1, type:'pct_discount', value:'', deliveryLimit:'first', deliveryCount:'', deliveryDate:''}],
+  checkout: 'auto',
+  stackMode: 'exclusive',
+  exclusionGroup: '',
+  priority: 10,
+  advancedOpen: false,
+};
+let nextId = 100;
+function uid(){ return nextId++; }
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+function flatConds(){ let r=[]; Object.values(COND_GROUPS).forEach(g=>g.forEach(c=>r.push(c))); return r; }
+function flatActs(){  let r=[]; Object.values(ACT_GROUPS).forEach(g=>g.forEach(c=>r.push(c))); return r; }
+function condMeta(v){ return flatConds().find(x=>x.v===v)||{l:v,ph:'',hint:''}; }
+function actMeta(v){  return flatActs().find(x=>x.v===v)||{l:v,ph:'',hint:''}; }
+function goalMeta(v){ return GOALS.find(x=>x.v===v)||null; }
+
+function recConds(){ return goalMeta(state.goal)?.recConds||[]; }
+function recActs(){  return goalMeta(state.goal)?.recActs||[];  }
+
+function buildGroupedSelect(cls, groups, selected, onchange, recList){
+  // Split each group into recommended + rest
+  let recItems = [];
+  let allOpts = '';
+
+  Object.entries(groups).forEach(([grp, opts])=>{
+    const inGroup = opts.filter(o=> recList && recList.includes(o.v));
+    inGroup.forEach(o=> { if(!recItems.find(x=>x.v===o.v)) recItems.push(o); });
+  });
+
+  let html = `<select class="${cls}" onchange="${onchange}">`;
+  if(recItems.length > 0){
+    html += `<optgroup label="★ Önerilen">`;
+    recItems.forEach(o=>{ html += `<option value="${o.v}"${o.v===selected?' selected':''}>${o.l}</option>`; });
+    html += `</optgroup>`;
+  }
+  Object.entries(groups).forEach(([grp, opts])=>{
+    const rest = recList ? opts.filter(o=>!recList.includes(o.v)) : opts;
+    if(rest.length === 0) return;
+    html += `<optgroup label="${grp}">`;
+    rest.forEach(o=>{ html += `<option value="${o.v}"${o.v===selected?' selected':''}>${o.l}</option>`; });
+    html += `</optgroup>`;
+  });
+  html += `</select>`;
+  return html;
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+function render(){
+  renderStepBar();
+  renderContent();
+  renderSummary();
+  renderFooter();
+}
+
+function renderStepBar(){
+  const bar = document.getElementById('stepBar');
+  document.getElementById('stepCounterCur').textContent = state.step+1;
+  let html = '';
+  STEPS.forEach((s,i)=>{
+    const cls = i===state.step?'active':i<state.step?'done':'';
+    const icon = i<state.step ? '<i class="ti ti-check" style="font-size:12px"></i>' : (i+1);
+    html += `<div class="step-item ${cls}">
+      <div class="step-num">${icon}</div>
+      <div class="step-label">${s.title.split('?')[0].split(',')[0]}</div>
+    </div>`;
+    if(i<STEPS.length-1) html += `<div class="step-sep"></div>`;
+  });
+  bar.innerHTML = html;
+}
+
+function renderContent(){
+  const s = STEPS[state.step];
+  document.getElementById('stepTitle').textContent = s.title;
+  document.getElementById('stepHint').textContent  = s.hint;
+  const body = document.getElementById('stepBody');
+
+  if(state.step===0) body.innerHTML = renderStep0();
+  if(state.step===1) body.innerHTML = renderStep1();
+  if(state.step===2) body.innerHTML = renderStep2();
+  if(state.step===3) body.innerHTML = renderStep3();
+}
+
+function renderStep0(){
+  let html = `<div class="goal-grid">`;
+  GOALS.forEach(g=>{
+    html += `<div class="goal-card${state.goal===g.v?' sel':''}${g.isStamp?' stamp':''}" onclick="selGoal('${g.v}')">
+      <div class="gc-icon"><i class="ti ${g.icon}" aria-hidden="true"></i></div>
+      <div class="gc-label">${g.label}</div>
+      <div class="gc-desc">${g.desc}</div>
+      ${g.isStamp ? `<div class="stamp-dots" style="margin-top:auto;padding-top:4px">${Array(8).fill('<div class="stamp-dot"></div>').join('')}</div>` : ''}
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderStep1(){
+  let html = '';
+
+  // Audience — 2col card grid
+  const audDefs = [
+    {v:'all',      icon:'ti-users',        label:'Tüm müşteriler',    desc:'Müşteri ayrımı yapmadan geçerli'},
+    {v:'members',  icon:'ti-rosette',      label:'Sadakat üyeleri',   desc:'Kayıtlı ve bağlı müşteriler'},
+    {v:'category', icon:'ti-tag',          label:'Seçili kategori',   desc:'VIP, yeni müşteri gibi belirli segment'},
+    {v:'cashier',  icon:'ti-hand-finger',  label:'Kasiyer seçsin',    desc:'Personel uygun müşteriyi seçer'},
+  ];
+  html += `<div class="field-section">
+    <div class="field-label"><i class="ti ti-users" aria-hidden="true"></i> Kime uygulanacak?</div>
+    <div class="aud-grid">`;
+  audDefs.forEach(a=>{
+    html += `<div class="aud-card${state.audience===a.v?' sel':''}" onclick="selAudience('${a.v}')">
+      <div class="ac-icon"><i class="ti ${a.icon}" aria-hidden="true"></i></div>
+      <div class="ac-text">
+        <div class="ac-label">${a.label}</div>
+        <div class="ac-desc">${a.desc}</div>
+      </div>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // Channel — icon chips
+  const chDefs = [
+    {v:'all',    icon:'ti-layout-grid', label:'Tümü'},
+    {v:'pos',    icon:'ti-device-desktop', label:'POS'},
+    {v:'garson', icon:'ti-notebook', label:'Garson'},
+    {v:'kiosk',  icon:'ti-device-tablet', label:'Kiosk'},
+    {v:'online', icon:'ti-package', label:'Online / Paket'},
+  ];
+  html += `<div class="field-section">
+    <div class="field-label"><i class="ti ti-device-desktop" aria-hidden="true"></i> Hangi kanalda? <span class="field-sublabel">Birden fazla seçilebilir</span></div>
+    <div class="ch-group">`;
+  chDefs.forEach(ch=>{
+    const sel = state.channels.includes(ch.v);
+    html += `<button class="ch-btn${sel?' sel':''}" onclick="toggleChannel('${ch.v}')">
+      <i class="ti ${ch.icon}" aria-hidden="true"></i>${ch.label}
+    </button>`;
+  });
+  html += `</div></div>`;
+
+  // Window — radio rows
+  const winDefs = [
+    {v:'always', label:'Sürekli açık',    desc:'Başlangıç/bitiş tarihi veya saat aralığı olmadan çalışır'},
+    {v:'date',   label:'Tarih aralığı',   desc:'Belirli başlangıç ve bitiş tarihleri arasında yayında kalır'},
+    {v:'hour',   label:'Saat penceresi',  desc:'Belirli gün/saat aralığında devreye girer — happy hour için idealdir'},
+  ];
+  html += `<div class="field-section">
+    <div class="field-label"><i class="ti ti-clock" aria-hidden="true"></i> Ne zaman geçerli?</div>
+    <div class="win-group">`;
+  winDefs.forEach(w=>{
+    html += `<div class="win-row${state.windowMode===w.v?' sel':''}" onclick="selWindow('${w.v}')">
+      <div class="win-radio"></div>
+      <div class="win-text">
+        <div class="win-label">${w.label}</div>
+        <div class="win-desc">${w.desc}</div>
+      </div>
+    </div>`;
+    if(state.windowMode==='date' && w.v==='date'){
+      html += `<div class="date-row" style="margin-left:28px">
+        <input class="wiz-input" type="date" value="${state.startAt}" onchange="state.startAt=this.value;renderSummary()" placeholder="Başlangıç">
+        <input class="wiz-input" type="date" value="${state.endAt}" onchange="state.endAt=this.value;renderSummary()" placeholder="Bitiş">
+      </div>`;
+    }
+    if(state.windowMode==='hour' && w.v==='hour'){
+      html += `<div class="date-row" style="margin-left:28px">
+        <input class="wiz-input" type="time" value="${state.hourStart}" onchange="state.hourStart=this.value;renderSummary()" placeholder="Başlangıç">
+        <input class="wiz-input" type="time" value="${state.hourEnd}" onchange="state.hourEnd=this.value;renderSummary()" placeholder="Bitiş">
+      </div>`;
+    }
+  });
+  html += `</div></div>`;
+
+  return html;
+}
+
+function renderStep2(){
+  const rc = recConds();
+  const ra = recActs();
+  let html = '';
+
+  // Conditions block
+  html += `<div class="block-card">
+    <div class="block-head">
+      <div class="block-head-label"><i class="ti ti-filter"></i> Koşullar</div>
+    </div><div class="block-body">`;
+
+  state.conditions.forEach((cond,i)=>{
+    const meta = condMeta(cond.type);
+    html += `<div class="cond-item">
+      <div class="cond-inner">
+        ${buildGroupedSelect('wiz-select', COND_GROUPS, cond.type, `updateCond(${cond.id},'type',this.value)`, rc)}
+        ${meta.ph ? `<input class="cond-val" value="${cond.value}" placeholder="${meta.ph}" oninput="updateCond(${cond.id},'value',this.value)">` : ''}
+        ${meta.hint ? `<div class="cond-hint">${meta.hint}</div>` : ''}
+      </div>
+      ${state.conditions.length>1 ? `<button class="icon-btn" onclick="removeCond(${cond.id})" title="Kaldır"><i class="ti ti-x" style="font-size:13px"></i></button>` : ''}
+    </div>`;
+    if(i < state.conditions.length - 1){
+      const logic = cond.logicAfter || 'and';
+      html += `<div class="inline-logic">
+        <button class="inline-logic-btn${logic==='and'?' sel':''}" onclick="setCondLogic(${cond.id},'and')">ve</button>
+        <button class="inline-logic-btn${logic==='or'?' sel':''}" onclick="setCondLogic(${cond.id},'or')">veya</button>
+      </div>`;
+    }
+  });
+
+  html += `<div class="add-row">
+    <button class="add-btn" onclick="addCond()"><i class="ti ti-plus" style="font-size:13px"></i> Koşul ekle</button>
+  </div></div></div>`;
+
+  // Actions block
+  html += `<div class="block-card">
+    <div class="block-head">
+      <div class="block-head-label"><i class="ti ti-bolt"></i> Eylemler</div>
+    </div>
+    <div class="block-body">`;
+
+  state.actions.forEach((act,i)=>{
+    const meta = actMeta(act.type);
+    const isDelivery = act.type === 'free_delivery';
+    html += `<div class="cond-item" style="margin-bottom:${isDelivery?'12px':'8px'}">
+      <div class="cond-inner">
+        ${buildGroupedSelect('wiz-select', ACT_GROUPS, act.type, `updateAct(${act.id},'type',this.value)`, ra)}
+        ${meta.ph ? `<input class="cond-val" value="${act.value}" placeholder="${meta.ph}" oninput="updateAct(${act.id},'value',this.value)">` : ''}
+        ${isDelivery ? renderDeliveryLimit(act) : ''}
+        ${meta.hint ? `<div class="cond-hint">${meta.hint}</div>` : ''}
+      </div>
+      ${state.actions.length>1 ? `<button class="icon-btn" onclick="removeAct(${act.id})" title="Kaldır"><i class="ti ti-x" style="font-size:13px"></i></button>` : ''}
+    </div>`;
+  });
+
+  // Checkout
+  html += `<div class="checkout-row">
+    <div class="field-label" style="margin-bottom:8px">Kasada nasıl işlensin?</div>
+    <div class="seg-group">`;
+  CHECKOUT.forEach(ch=>{
+    html += `<button class="seg-btn${state.checkout===ch.v?' sel':''}" onclick="state.checkout='${ch.v}';render()" title="${ch.desc}">${ch.l}</button>`;
+  });
+  html += `</div></div>`;
+
+  html += `<div class="add-row">
+    <button class="add-btn" onclick="addAct()"><i class="ti ti-plus" style="font-size:13px"></i> Eylem ekle</button>
+  </div></div></div>`;
+
+  return html;
+}
+
+function renderDeliveryLimit(act){
+  const lim = act.deliveryLimit || 'first';
+  let html = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">`;
+  DELIVERY_LIMIT.forEach(dl=>{
+    html += `<button class="seg-btn${lim===dl.v?' sel':''}" style="font-size:11px;padding:4px 10px" onclick="updateAct(${act.id},'deliveryLimit','${dl.v}')">${dl.l}</button>`;
+  });
+  html += `</div>`;
+  if(lim==='count'){
+    html += `<input class="cond-val" style="margin-top:4px" value="${act.deliveryCount}" placeholder="Örn. 5" oninput="updateAct(${act.id},'deliveryCount',this.value)">`;
+  }
+  if(lim==='date'){
+    html += `<input class="cond-val" style="margin-top:4px" type="date" value="${act.deliveryDate}" onchange="updateAct(${act.id},'deliveryDate',this.value)">`;
+  }
+  return html;
+}
+
+function renderStep3(){
+  const gm = goalMeta(state.goal);
+  const audL = AUDIENCE.find(a=>a.v===state.audience)?.l||'—';
+  const chL  = state.channels.map(v=>CHANNELS.find(c=>c.v===v)?.l||v).join(', ');
+  const winL = WINDOW.find(w=>w.v===state.windowMode)?.l||'—';
+  const coL  = CHECKOUT.find(c=>c.v===state.checkout)?.l||'—';
+
+  let html = `<div class="name-block">
+    <div class="nb-row">
+      <label class="nb-label">Kampanya adı <span class="nb-required">*</span></label>
+      <input class="name-input" id="nameInput" value="${state.name}" placeholder="Örn. Bahar Kampanyası, Hafta Sonu İndirimi…" oninput="state.name=this.value;renderSummary()">
+    </div>
+    <div class="nb-row">
+      <label class="nb-label">Açıklama <span class="nb-optional">isteğe bağlı</span></label>
+      <textarea class="name-textarea" id="descInput" placeholder="Bu kampanya hakkında kısa bir not ekle — örn. hangi amaçla kurulduğu, kimler için tasarlandığı…" oninput="state.description=this.value">${state.description||''}</textarea>
+    </div>
+  </div>`;
+
+  html += `<div class="review-grid">`;
+
+  // Goal
+  html += `<div class="review-block"><div class="rb-head">Hedef</div><div class="rb-body">
+    <div class="rb-item"><i class="ti ${gm?.icon||'ti-target'}"></i>${gm?.label||'—'}</div>
+  </div></div>`;
+
+  // Audience & channel & time
+  html += `<div class="review-block"><div class="rb-head">Kitle, Kanal ve Zaman</div><div class="rb-body">
+    <div class="rb-item"><i class="ti ti-users"></i>${audL}</div>
+    <div class="rb-item"><i class="ti ti-device-desktop"></i>${chL}</div>
+    <div class="rb-item"><i class="ti ti-clock"></i>${winL}${state.windowMode==='date'&&state.startAt?' · '+state.startAt+' → '+state.endAt:''}${state.windowMode==='hour'&&state.hourStart?' · '+state.hourStart+' – '+state.hourEnd:''}</div>
+  </div></div>`;
+
+  // Conditions
+  html += `<div class="review-block"><div class="rb-head">Koşullar</div><div class="rb-body">`;
+  state.conditions.forEach((c,i)=>{
+    if(i>0){
+      const prev = state.conditions[i-1];
+      const lbl = (prev.logicAfter||'and')==='and'?'ve':'veya';
+      html += `<div style="font-size:10px;font-weight:600;color:var(--text-hint);padding:1px 0 1px 20px;letter-spacing:.03em">${lbl}</div>`;
+    }
+    html += `<div class="rb-item"><i class="ti ti-filter"></i>${condMeta(c.type).l}${c.value?' · <em>'+c.value+'</em>':''}</div>`;
+  });
+  html += `</div></div>`;
+
+  // Actions
+  html += `<div class="review-block"><div class="rb-head">Eylemler</div><div class="rb-body">`;
+  state.actions.forEach(a=>{
+    const dl = a.type==='free_delivery' ? ' · '+( DELIVERY_LIMIT.find(d=>d.v===a.deliveryLimit)?.l||'') : '';
+    html += `<div class="rb-item"><i class="ti ti-bolt"></i>${actMeta(a.type).l}${a.value?' · <em>'+a.value+'</em>':''}${dl}</div>`;
+  });
+  html += `</div></div>`;
+
+  // Checkout
+  html += `<div class="review-block"><div class="rb-head">Kasa davranışı</div><div class="rb-body">
+    <div class="rb-item"><i class="ti ti-cash-register"></i>${coL}</div>
+  </div></div>`;
+
+  // Advanced: stacking
+  const sm = state.stackMode||'exclusive';
+  html += `<div class="advanced-toggle" onclick="toggleAdvanced()">
+    <i class="ti ti-adjustments-horizontal" style="font-size:14px;color:var(--text-muted)"></i>
+    <span>Gelişmiş ayarlar</span>
+    <i class="ti ti-chevron-${state.advancedOpen?'up':'down'}" style="font-size:13px;margin-left:auto;color:var(--text-hint)"></i>
+  </div>`;
+
+  if(state.advancedOpen){
+    html += `<div class="advanced-panel">
+      <div class="field-label" style="margin-bottom:10px">Diğer kampanyalarla çakışma kuralı</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">`;
+
+    const modes = [
+      {v:'stackable', icon:'ti-layers-union', label:'Birleşebilir', desc:'Diğer aktif kampanyalarla aynı anda uygulanabilir'},
+      {v:'group',     icon:'ti-sitemap',      label:'Gruba özel',   desc:'Aynı gruptaki kampanyalarla çakışır; yüksek öncelikli kazanır'},
+      {v:'exclusive', icon:'ti-shield',       label:'Münhasır',     desc:'Herhangi başka bir münhasır kampanya varsa çakışır; öncelik belirler'},
+    ];
+
+    modes.forEach(m=>{
+      const sel = sm === m.v;
+      html += `<div class="stack-option${sel?' sel':''}" onclick="state.stackMode='${m.v}';if('${m.v}'!='group')state.exclusionGroup='';renderStep3Content()">
+        <i class="ti ${m.icon}" style="font-size:15px;color:${sel?'var(--amber-dark)':'var(--text-muted)'}"></i>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:${sel?'var(--text)':'var(--text-muted)'}">${m.label}</div>
+          <div style="font-size:11px;color:var(--text-hint);margin-top:2px">${m.desc}</div>
+        </div>
+      </div>`;
+    });
+
+    html += `</div>`;
+
+    if(sm === 'group'){
+      html += `<div class="field-row" style="margin-bottom:10px">
+        <div class="field-label" style="margin-bottom:6px">Grup adı</div>
+        <input class="wiz-input" value="${state.exclusionGroup||''}" placeholder="Örn. indirim_grubu" oninput="state.exclusionGroup=this.value">
+        <div class="cond-hint" style="margin-top:4px">Aynı grup adını paylaşan kampanyalar birlikte çalışmaz; öncelik numarası düşük olan kazanır.</div>
+      </div>`;
+    }
+
+    html += `<div class="field-row">
+      <div class="field-label" style="margin-bottom:6px">Öncelik numarası</div>
+      <input class="wiz-input" type="number" min="1" max="999" value="${state.priority||10}" style="width:100px" oninput="state.priority=parseInt(this.value)||10">
+      <div class="cond-hint" style="margin-top:4px">Küçük sayı = daha yüksek öncelik. Çakışma durumunda öncelik numarası düşük olan kampanya kazanır.</div>
+    </div>`;
+
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderSummary(){
+  const p = document.getElementById('summaryPanel');
+  if(!state.goal){ p.innerHTML=`<div class="sum-empty">Henüz bir şey seçmedin.<br><br>Adımları tamamladıkça kampanyan burada şekillenecek.</div>`; return; }
+  const gm = goalMeta(state.goal);
+  let html = '';
+  if(state.name){
+    html += `<div class="sum-name"><i class="ti ti-rosette"></i>${state.name}</div>`;
+  }
+  html += `<div class="sum-section"><div class="sum-label">Hedef</div><div class="sum-chips">
+    <span class="chip amber"><i class="ti ${gm.icon}"></i>${gm.label}</span>
+  </div></div>`;
+
+  if(state.step>=1){
+    const audL = AUDIENCE.find(a=>a.v===state.audience)?.l;
+    const chL  = state.channels.map(v=>CHANNELS.find(c=>c.v===v)?.l||v).join(', ');
+    const winL = WINDOW.find(w=>w.v===state.windowMode)?.l;
+    html += `<div class="sum-divider"></div>`;
+    html += `<div class="sum-section"><div class="sum-label">Kitle & Kanal</div><div class="sum-chips">
+      <span class="chip amber">${audL}</span>
+      <span class="chip amber">${chL}</span>
+      <span class="chip">${winL}</span>
+    </div></div>`;
+  }
+
+  if(state.step>=2){
+    html += `<div class="sum-divider"></div>`;
+    html += `<div class="sum-section"><div class="sum-label">Koşullar</div><div class="sum-chips">`;
+    state.conditions.forEach((c,i)=>{
+      if(i>0){
+        const prev = state.conditions[i-1];
+        html += `<span style="font-size:10px;color:var(--text-hint);padding:2px 4px;font-weight:600">${(prev.logicAfter||'and')==='and'?'ve':'veya'}</span>`;
+      }
+      html += `<span class="chip green"><i class="ti ti-filter"></i>${condMeta(c.type).l}${c.value?' · '+c.value:''}</span>`;
+    });
+    html += `</div></div>`;
+    html += `<div class="sum-section"><div class="sum-label">Eylemler</div><div class="sum-chips">`;
+    state.actions.forEach(a=>{
+      html += `<span class="chip green"><i class="ti ti-bolt"></i>${actMeta(a.type).l}${a.value?' · '+a.value:''}</span>`;
+    });
+    html += `</div></div>`;
+    const coL = CHECKOUT.find(c=>c.v===state.checkout)?.l;
+    html += `<div class="sum-section"><div class="sum-label">Kasa</div><div class="sum-chips"><span class="chip">${coL}</span></div></div>`;
+
+    const narrative = buildNarrative();
+    if(narrative){
+      html += `<div class="sum-divider"></div>
+      <div class="sum-narrative">
+        <div class="sum-label" style="margin-bottom:8px">Kampanya özeti</div>
+        <p class="narrative-text">${narrative}</p>
+        <div class="nt-legend">
+          <span class="nt-ch">kanal</span>
+          <span class="nt-au">kitle</span>
+          <span class="nt-co">koşul</span>
+          <span class="nt-ac">eylem</span>
+          <span class="nt-ka">kasa</span>
+        </div>
+      </div>`;
+    }
+  }
+
+  p.innerHTML = html;
+}
+
+function buildNarrative(){
+  if(!state.goal) return '';
+
+  // Renk yardımcıları
+  const ch  = t => `<span class="nt-ch">${t}</span>`;   // kanal/zaman — mavi
+  const au  = t => `<span class="nt-au">${t}</span>`;   // kitle — turuncu
+  const co  = t => `<span class="nt-co">${t}</span>`;   // koşul — yeşil
+  const ac  = t => `<span class="nt-ac">${t}</span>`;   // eylem — amber
+  const ka  = t => `<span class="nt-ka">${t}</span>`;   // kasa — mor
+
+  // Kanal
+  const chLabels = state.channels.includes('all') ? null : state.channels.map(v=>CHANNELS.find(c=>c.v===v)?.l||v);
+  const chText = chLabels ? ch(chLabels.join(', ') + ' kanalında') : '';
+
+  // Zaman
+  let timeText = '';
+  if(state.windowMode==='date' && state.startAt && state.endAt){
+    timeText = ch(`${fmtDate(state.startAt)} – ${fmtDate(state.endAt)} tarihleri arasında`);
+  } else if(state.windowMode==='date' && state.startAt){
+    timeText = ch(`${fmtDate(state.startAt)} tarihinden itibaren`);
+  } else if(state.windowMode==='hour' && state.hourStart && state.hourEnd){
+    timeText = ch(`${state.hourStart} – ${state.hourEnd} saatleri arasında`);
+  }
+
+  // Açılış
+  let opening = '';
+  const timeParts = [chText, timeText].filter(Boolean);
+  if(timeParts.length){
+    opening = `Bu kampanya ${timeParts.join(', ')} geçerli.`;
+  }
+
+  // Kitle
+  const audMap = {all:'tüm müşteriler', members:'sadakat üyeleri', category:'seçili kategorideki müşteriler', cashier:'kasiyerin seçtiği müşteriler'};
+  const audRaw = audMap[state.audience] || 'müşteriler';
+  const audSpan = au(audRaw);
+  const audCap  = au(audRaw.charAt(0).toUpperCase() + audRaw.slice(1));
+
+  // Koşullar
+  const condSentences = state.conditions.map((c,i)=>{
+    const s = condSentence(c);
+    if(!s) return '';
+    const colored = co(s);
+    if(i>0){
+      const prev = state.conditions[i-1];
+      const conj = (prev.logicAfter||'and')==='and' ? 've ' : 'ya da ';
+      return conj + colored;
+    }
+    return colored;
+  }).filter(Boolean);
+
+  let condText = '';
+  if(condSentences.length === 1 && state.conditions[0].type === 'always'){
+    condText = `Ek bir koşul aranmadan ${audSpan} için otomatik devreye girer.`;
+  } else if(condSentences.length){
+    condText = `${audCap} için: ${condSentences.join(' ')} — koşullar sağlandığında kampanya aktif olur.`;
+  }
+
+  // Eylemler
+  const actSentences = state.actions.map(a=>actSentence(a)).filter(Boolean);
+  let actText = '';
+  if(actSentences.length === 1){
+    actText = `Uygulanan fayda: ${ac(actSentences[0])}.`;
+  } else if(actSentences.length > 1){
+    const colored = actSentences.map(s=>ac(s));
+    const last = colored.pop();
+    actText = `Uygulanan faydalar: ${colored.join(', ')} ve ${last}.`;
+  }
+
+  // Kasa
+  const coMap = {
+    auto:    ka('Koşullar sağlanınca otomatik uygulanır.'),
+    ask:     ka('Kasiyerin onayıyla devreye girer.'),
+    suggest: ka('Öneri olarak gösterilir, kasiyerin seçimiyle uygulanır.'),
+  };
+  const coText = coMap[state.checkout] || '';
+
+  return [opening, condText, actText, coText].filter(Boolean).join(' ');
+}
+
+function fmtDate(d){
+  if(!d) return '';
+  try{
+    return new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'long',year:'numeric'}).format(new Date(d));
+  }catch{ return d; }
+}
+
+function cap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
+
+function condSentence(c){
+  const v = c.value;
+  switch(c.type){
+    case 'always':              return '';
+    case 'order_total':         return v ? `sepet tutarı ${v} TL'yi geçtiğinde` : 'belirli bir sepet tutarı eşiğinde';
+    case 'order_item_qty':      return v ? `sepette ${v} adet ürün bulunduğunda` : 'sepette belirli ürün adedi sağlandığında';
+    case 'missing_products':    return v ? `sepette ${v} yokken` : 'sepette belirli bir ürün eksikken';
+    case 'period_spend':        return v ? `müşteri belirtilen dönemde ${v} harcadığında` : 'dönem harcaması eşiği aşıldığında';
+    case 'period_orders':       return v ? `müşteri ${v} ziyaret tamamladığında` : 'belirli ziyaret sayısına ulaşıldığında';
+    case 'period_product_qty':  return v ? `müşteri dönemde ${v} adet ürün aldığında` : 'dönem ürün adedi eşiğine ulaşıldığında';
+    case 'days_since_first':    return v ? `müşteri ilk aktivitesinden ${v} gün geçmişse` : 'müşterinin ilk aktivitesinden belirli süre geçmişse';
+    case 'last_visit_days':     return v ? `müşteri ${v} gündür gelmemişse` : 'müşteri belirli süredir gelmemişse';
+    case 'birthday':            return v ? `müşterinin doğum günü penceresinde (${v})` : 'müşterinin doğum günü yakınında';
+    case 'has_tag':             return v ? `müşteri "${v}" kategorisindeyse` : 'müşteri belirli bir kategorideyse';
+    case 'lacks_tag':           return v ? `müşteri "${v}" kategorisinde değilse` : 'müşteri belirli bir kategoride değilse';
+    case 'referral':            return v ? `müşteri "${v}" referansıyla geldiyse` : 'müşteri referans kaynağıyla geldiyse';
+    case 'calendar':            return v ? `takvim planına göre (${v})` : 'belirli takvim planında';
+    case 'happy_hour':          return v ? `${v} saat aralığında` : 'happy hour saatlerinde';
+    case 'sales_volume':        return v ? `${v} satış hacmine ulaşıldığında` : 'belirli satış hacmi aşıldığında';
+    case 'coupon_present':      return v ? `"${v}" kuponu kullanıldığında` : 'geçerli kupon ibraz edildiğinde';
+    case 'gift_card':           return v ? `"${v}" serili hediye kartıyla` : 'belirli hediye kartı serisiyle';
+    case 'manual_approval':     return 'personel kampanyayı manuel olarak seçtiğinde';
+    case 'campaign_triggered':  return v ? `"${v}" kampanyası tetiklendiğinde` : 'başka bir kampanya devreye girdiğinde';
+    default:                    return condMeta(c.type).l.toLowerCase();
+  }
+}
+
+function actSentence(a){
+  const v = a.value;
+  switch(a.type){
+    case 'pct_discount':    return v ? `sepetten %${v} indirim` : 'sepet yüzde indirimi';
+    case 'amt_discount':    return v ? `sepetten ${v} TL indirim` : 'sepet tutarı indirimi';
+    case 'line_discount':   return v ? `ürün bazında %${v} indirim` : 'satır indirimi';
+    case 'free_product':    return v ? `${v} bedava` : 'hediye ürün';
+    case 'combo':           return v ? `${v} kombo paket` : 'kombo paket';
+    case 'product_price':   return v ? `özel fiyat: ${v}` : 'özel ürün fiyatı';
+    case 'free_delivery':
+      const dlMap = {first:'ilk siparişte ücretsiz teslimat', count:`${a.deliveryCount||'X'} siparişe kadar ücretsiz teslimat`, date:`${a.deliveryDate||'belirli tarihe'} kadar ücretsiz teslimat`, always:'ücretsiz teslimat'};
+      return dlMap[a.deliveryLimit||'first'];
+    case 'bonus_points':        return v ? `${v} bonus puan` : 'bonus puan';
+    case 'points_pct':          return v ? `sipariş tutarının ${v} kadar puan` : 'sipariş bazında puan';
+    case 'earn_mult':           return v ? `${v} puan kazanma katsayısı` : 'puan katsayısı artırımı';
+    case 'redeem_mult':         return v ? `${v} puan harcama katsayısı` : 'puan harcama katsayısı artırımı';
+    case 'issue_coupon':        return v ? `"${v}" kuponu` : 'kupon tanımlama';
+    case 'sms':                 return 'SMS bildirimi';
+    case 'warning_msg':         return v ? `uyarı mesajı: "${v}"` : 'kasiyere uyarı mesajı';
+    case 'suggest':             return v ? `ürün önerisi: ${v}` : 'ürün önerisi';
+    case 'add_tag':             return v ? `müşteriyi "${v}" kategorisine ekle` : 'müşteri kategoriye ekleme';
+    case 'remove_tag':          return v ? `müşteriyi "${v}" kategorisinden çıkar` : 'müşteri kategoriden çıkarma';
+    case 'write_note':          return 'müşteri hesabına not';
+    default:                    return actMeta(a.type).l.toLowerCase();
+  }
+}
+
+function renderFooter(){
+  const back = document.getElementById('btnBack');
+  const next = document.getElementById('btnNext');
+  const footer = document.querySelector('.wiz-footer');
+
+  back.className = 'btn-back' + (state.step===0?' hidden':'');
+
+  if(state.step<3){
+    next.outerHTML = `<button class="btn-next" id="btnNext" onclick="goNext()" ${state.step===0&&!state.goal?'disabled':''}>İleri <i class="ti ti-arrow-right"></i></button>`;
+  } else {
+    document.getElementById('btnNext').outerHTML = `<button class="btn-save" id="btnNext" onclick="doSave()"><i class="ti ti-check"></i> Kampanyayı kaydet</button>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+// ACTIONS
+// ─────────────────────────────────────────────
+function selGoal(v){
+  state.goal = v;
+  // Reset conditions/actions to recommended defaults when goal changes
+  const gm = goalMeta(v);
+  if(gm){
+    const fc = gm.recConds[0];
+    const fa = gm.recActs[0];
+    if(fc) state.conditions = [{id:uid(), type:fc, value:'', logicAfter:'and'}];
+    if(fa) state.actions    = [{id:uid(), type:fa, value:'', deliveryLimit:'first', deliveryCount:'', deliveryDate:''}];
+  }
+  render();
+}
+
+function selAudience(v){ state.audience=v; render(); }
+function selWindow(v){ state.windowMode=v; render(); }
+
+function toggleChannel(v){
+  if(v==='all'){ state.channels=['all']; }
+  else{
+    state.channels = state.channels.filter(x=>x!=='all');
+    if(state.channels.includes(v)) state.channels=state.channels.filter(x=>x!==v);
+    else state.channels.push(v);
+    if(state.channels.length===0) state.channels=['all'];
+  }
+  render();
+}
+
+function updateCond(id, key, val){
+  const c = state.conditions.find(x=>x.id===id);
+  if(c){ c[key]=val; if(key==='type') c.value=''; renderSummary(); if(key==='type') render(); }
+}
+
+function updateAct(id, key, val){
+  const a = state.actions.find(x=>x.id===id);
+  if(a){ a[key]=val; if(key==='type') a.value=''; renderSummary(); if(key==='type') render(); }
+}
+
+function addCond(){
+  const rc = recConds();
+  const type = rc[0]||'order_total';
+  // set logicAfter on the previous last condition if not set
+  if(state.conditions.length > 0){
+    const last = state.conditions[state.conditions.length-1];
+    if(!last.logicAfter) last.logicAfter = 'and';
+  }
+  state.conditions.push({id:uid(), type, value:'', logicAfter:'and'});
+  render();
+}
+
+function setCondLogic(id, logic){
+  const c = state.conditions.find(x=>x.id===id);
+  if(c){ c.logicAfter = logic; renderSummary(); render(); }
+}
+
+function removeCond(id){ state.conditions=state.conditions.filter(x=>x.id!==id); render(); }
+
+function addAct(){
+  const ra = recActs();
+  const type = ra[0]||'pct_discount';
+  state.actions.push({id:uid(), type, value:'', deliveryLimit:'first', deliveryCount:'', deliveryDate:''});
+  render();
+}
+
+function removeAct(id){ state.actions=state.actions.filter(x=>x.id!==id); render(); }
+
+function toggleAdvanced(){
+  state.advancedOpen = !state.advancedOpen;
+  const body = document.getElementById('stepBody');
+  body.innerHTML = renderStep3();
+}
+
+function renderStep3Content(){
+  const body = document.getElementById('stepBody');
+  body.innerHTML = renderStep3();
+}
+
+function goNext(){
+  if(state.step<3){ state.step++; render(); window.scrollTo(0,0); }
+}
+
+function goBack(){
+  if(state.step>0){ state.step--; render(); window.scrollTo(0,0); }
+}
+
+function doSave(){
+  const name = state.name || 'İsimsiz Kampanya';
+  alert(`"${name}" kampanyası kaydedildi.\n\nBu noktada gerçek uygulamada API çağrısı yapılacak.`);
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

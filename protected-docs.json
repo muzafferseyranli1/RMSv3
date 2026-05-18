@@ -1,0 +1,9 @@
+{
+  "protectedDocs": [
+    "SUITABLERMS_PROJECT_GOVERNANCE.md",
+    "DESIGN_HANDBOOK_V3_TR.md",
+    "DEPLOY_MANAGER_TR.md",
+    "schema-railway-master.sql",
+    "OperationSync.md"
+  ]
+}

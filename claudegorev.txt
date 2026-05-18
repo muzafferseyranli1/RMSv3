@@ -1,0 +1,262 @@
+GÖREV: src/components/pages/LoyaltyCampaignWizardPreview.jsx TAMAMEN YENİDEN YAZ
+
+TEMEL STRATEJİ:
+Sihirbaz mevcut LoyaltyManagement.jsx içindeki tüm fonksiyon ve
+bileşenleri KOPYALAYARAK kullanır. Hiçbir şeyi yeniden icat etme.
+LoyaltyManagement nasıl çalışıyorsa sihirbaz da aynı şekilde çalışır —
+sadece UI adım adım sunulur.
+
+ÖNCE OKU (tamamını):
+1. C:\RMSggl\Dropbox\RMSv3\kampanya-sihirbazi.html  ← görsel referans
+2. src/components/pages/LoyaltyManagement.jsx       ← tüm mantık buradan alınacak
+3. src/lib/loyalty.js                               ← export listesi
+4. src/components/ui/SearchableSelect.jsx           ← props arayüzü
+
+─────────────────────────────────────────────────────
+BÖLÜM 1 — LoyaltyManagement.jsx'TEN KOPYALANACAKLAR
+─────────────────────────────────────────────────────
+
+Aşağıdaki fonksiyonları LoyaltyManagement.jsx'ten birebir kopyala,
+sihirbaz dosyasının en üstüne yapıştır (export olmadan):
+
+YARDIMCI FONKSİYONLAR (hepsini kopyala):
+- createId
+- buildLoyaltyWorkspaceCacheKey
+- wait
+- readWorkspaceSessionSnapshot
+- writeWorkspaceSessionSnapshot
+- loadLoyaltyWorkspaceWithRetry
+- getCampaignMergeMode
+- channelActive, getOptionLabel, getCampaignApplicationModeHint
+- getConditionMeta, formatSummaryDate, getChannelLabel
+- formatCompactList, getCatalogFilterTypeMeta, formatMaskLabel
+- formatProductMaskSummary, formatApplyToSummary
+- formatQuantityCountingMode, formatWeekdaySummary
+- formatHappyHourSummary, formatCalendarScheduleSummary
+- formatAmount, formatPlainNumber, formatNumberInputValue
+- formatPeriodWindow, formatCurrentOrderInclusion, formatMessageSnippet
+- renderTemplateText, wrapPreviewLine, formatTemplatePreview
+- createRuleSummaryContext, getMappedLabels, parseMaybeArray
+- sanitizeBranchSelections, formatComparisonNatural, formatBirthdayWindow
+- formatSalesChannelSelections, formatComparisonNatural
+- buildConditionSummary, buildActionSummary, buildRuleSummary
+- buildRuleConditionText, buildAudienceSummary
+- buildConditionScenarioText
+- getEditorRuleConditions, getStandaloneConditionConfig
+- getStandaloneActionConfig, getEditorRuleActions
+- getEditorRuleConditionSummaries, getEditorRuleActionSummaries
+- getConditionRuntimeStatus, getActionRuntimeStatus
+- createEditorRuleDraft, hydrateEditorRuleFromDraft
+- hydrateCampaignForEditor, materializeRuleForRuntime
+- serializeCampaignForPersistence
+- safeMapWithDiagnostics
+- createCampaignDraft (loyalty.js programId lazım, aşağıda açıklanıyor)
+
+UI BİLEŞENLERİ (hepsini kopyala):
+- FieldStack, HelperNote, MiniBadge, EditorModal
+- ChannelMultiSelect
+- SearchableMultiSelect
+- ProductSingleSelect
+- CatalogMaskSelect
+- RuleRow
+- RuntimeStatusBadge, RuntimeStatusNote
+- STACKING_RULE_OPTIONS, STACKING_RULE_DETAILS sabitleri
+- CATALOG_FILTER_TYPE_META sabiti (LoyaltyManagement içinde tanımlı)
+- WEEKDAY_OPTIONS, MONTH_OPTIONS sabitleri (LoyaltyManagement içinde tanımlı)
+- TEMPLATE_MODEL_FIELDS sabiti
+
+KOPYALADIĞIN FONKSİYONLAR İÇİNDE KULLANILAN
+tüm update/patch fonksiyonları da lazım — bunlar LoyaltyManagement'ta
+component içinde tanımlı. Sihirbazda da aynı şekilde component içinde
+tanımlanacak (aşağıda açıklanıyor).
+
+─────────────────────────────────────────────────────
+BÖLÜM 2 — loyalty.js'TEN IMPORT EDİLECEKLER
+─────────────────────────────────────────────────────
+
+import {
+  ACTION_TYPE_OPTIONS,
+  CAMPAIGN_AUDIENCE_OPTIONS,
+  CAMPAIGN_APPLICATION_MODE_OPTIONS,
+  CAMPAIGN_CHANNEL_OPTIONS,
+  CAMPAIGN_TRIGGER_OPTIONS,
+  CAMPAIGN_TYPE_OPTIONS,
+  COMPARISON_OPTIONS,
+  CONDITION_LIBRARY,
+  COUPON_CHARSET_OPTIONS,
+  DEFAULT_LOYALTY_PROGRAM,
+  PERIOD_OPTIONS,
+  formatDateTimeInput,
+  getDefaultActionConfig,
+  getDefaultConditionConfig,
+  getLoyaltyScopeInfo,
+  getSalesChannelConditionValues,
+  loadLoyaltyCustomerCategoryAudience,
+  loadLoyaltyWorkspace,
+  loadLoyaltyCustomerCategories,
+  normalizeCampaign,
+  normalizeCampaignChannelTarget,
+  normalizeCustomerCategory,
+  normalizeCouponSeries,
+  normalizeProgram,
+  normalizeRule,
+  normalizeTier,
+  saveLoyaltyWorkspace,
+} from '@/lib/loyalty'
+
+─────────────────────────────────────────────────────
+BÖLÜM 3 — ANA BİLEŞEN: LoyaltyCampaignWizardPreview
+─────────────────────────────────────────────────────
+
+STATE — LoyaltyManagement'taki tüm state'leri aynen kopyala:
+  loading, saving, program, tiers, campaigns, customerCategories,
+  couponSeries, salesChannels, saleItems, saleCategories, saleTemplates,
+  branchTemplates, schemaReady, databaseUnavailable,
+  ruleEditorState, scopeInfo, customerInsights
+
+  Sihirbaza özgü ek state:
+  const [step, setStep] = useState(0)  // 0-3
+  const [wizardGoal, setWizardGoal] = useState('')
+  const [wizardCampaign, setWizardCampaign] = useState(null)
+
+VERI YÜKLEME — LoyaltyManagement'taki useEffect load() fonksiyonunu
+  birebir kopyala. Tek fark: setSelectedCampaignId yok, onun yerine
+  wizardCampaign'i mount'ta normalizeCampaign({}) ile başlat.
+
+  DB SORGULARI (LoyaltyManagement'taki Promise.all ile aynı):
+  - sales_channels → setSalesChannels
+  - sale_items → setSaleItems
+  - sale_categories → setSaleCategories
+  - sale_templates → setSaleTemplates
+  - branch_templates → setBranchTemplates
+
+UPDATE FONKSİYONLARI — LoyaltyManagement'taki şu fonksiyonları
+  wizardCampaign üzerinde çalışacak şekilde kopyala:
+  - updateCampaign(field, value) → setWizardCampaign(c => ({...c, [field]: value}))
+  - addRule(scope) → LoyaltyManagement'taki addRule mantığı
+  - removeRule(scope, ruleId)
+  - updateRule(scope, ruleId, field, value)
+  - addConditionToRule(scope, ruleId)
+  - addActionToRule(scope, ruleId)
+  - removeConditionFromRule(scope, ruleId, conditionId)
+  - removeActionFromRule(scope, ruleId, actionId)
+  - updateConditionItem(scope, ruleId, conditionId, field, value)
+  - updateActionItem(scope, ruleId, actionId, field, value)
+  - patchConditionItemConfig(scope, ruleId, conditionId, patch)
+  - patchActionItemConfig(scope, ruleId, actionId, patch)
+  - toggleConditionJoiner(scope, ruleId)
+  Bunların hepsini LoyaltyManagement.jsx'te bul, wizardCampaign için uyarla.
+
+KAYDETME:
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const workspacePayload = { scope: workspace.scope, branchId: workspace.branchId, branchName: workspace.branchName }
+      const result = await loadLoyaltyWorkspaceWithRetry(workspacePayload)
+      const safeProgram = normalizeProgram(result.program || DEFAULT_LOYALTY_PROGRAM)
+      const existingCampaigns = (result.campaigns || []).map(c => serializeCampaignForPersistence(c, safeProgram.id))
+      const newCampaign = serializeCampaignForPersistence(
+        { ...wizardCampaign, programId: safeProgram.id },
+        safeProgram.id
+      )
+      await saveLoyaltyWorkspace(workspacePayload, {
+        program: safeProgram,
+        tiers: result.tiers || [],
+        campaigns: [...existingCampaigns, newCampaign],
+        couponSeries: result.couponSeries || [],
+      })
+      toast('Kampanya kaydedildi', 'success')
+      navigate('/sadakat')
+    } catch (err) {
+      toast(err?.message || 'Kayıt sırasında hata oluştu', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+─────────────────────────────────────────────────────
+BÖLÜM 4 — ADIM UI'LARI
+─────────────────────────────────────────────────────
+
+GENEL LAYOUT (kampanya-sihirbazi.html referansından):
+  Header (mevcut <Header> bileşeni)
+  Step bar (4 adım)
+  İki sütun: sol (flex:1 içerik) + sağ (300px özet panel)
+  Footer: Geri / İleri / Kaydet butonları
+
+ADIM 0 — "Ne yapmak istiyorsun?"
+  kampanya-sihirbazi.html'deki 6 kart (GOALS dizisi) — birebir al
+  Kart seçilince:
+    setWizardGoal(goal.v)
+    setWizardCampaign(prev => ({
+      ...prev,
+      name: goal.label,
+      audienceType: 'all',
+      channelTargets: [],
+      applicableRules: [normalizeRule({
+        id: createId('rule'),
+        conditionKey: goal.recConds[0] || 'always',
+        actionType: goal.recActs[0] || 'bonus_points',
+      }, 0, 'applicable')],
+    }))
+
+ADIM 1 — "Kime, ne zaman, nerede?"
+  kampanya-sihirbazi.html'deki adım 2 UI — birebir al:
+  a) Kitle kartları → wizardCampaign.audienceType güncelle
+  b) Kanal chip'leri → wizardCampaign.channelTargets güncelle
+  c) Zaman radio + tarih/saat input'ları → wizardCampaign.startsAt / endsAt güncelle
+
+ADIM 2 — "Koşul ve eylem"
+  Sol: wizardCampaign.applicableRules üzerinde RuleRow bileşenini render et
+    (LoyaltyManagement'taki campaign editor'daki applicableRules bölümü gibi)
+  Sağ: Özet panel
+  
+  RuleRow'a gerekli tüm handler'ları geçir — addConditionToRule, 
+  addActionToRule, removeConditionFromRule, removeActionFromRule,
+  updateConditionItem, updateActionItem, patchConditionItemConfig,
+  patchActionItemConfig, toggleConditionJoiner
+
+  ruleEditorState ile açılan EditorModal — LoyaltyManagement'taki
+  ruleEditorState render bloğunu ({ruleEditorState && ...}) birebir kopyala.
+  
+  summaryContext:
+  const summaryContext = useMemo(() => createRuleSummaryContext({
+    customerCategories, couponSeries,
+    campaigns: [], saleItems, salesChannels,
+  }), [customerCategories, couponSeries, saleItems, salesChannels])
+
+ADIM 3 — "Özet ve onay"
+  - İsim input → wizardCampaign.name
+  - Açıklama textarea → wizardCampaign.description  
+  - Gelişmiş ayarlar accordion:
+    stackMode (stackable / group / exclusive) → wizardCampaign.stackable + wizardCampaign.exclusionGroup
+    öncelik → wizardCampaign.priority
+  - Review blokları: hedef, kitle, kanal, zaman, koşullar özeti, eylemler özeti
+  - Renkli anlatı metni (kampanya-sihirbazi.html buildNarrative mantığı)
+
+─────────────────────────────────────────────────────
+BÖLÜM 5 — STİL
+─────────────────────────────────────────────────────
+
+- Tüm stiller inline style — Tailwind kullanma
+- Amber: #f5a623, sidebar: #111111
+- Tabler Icons: import { IconUserPlus, ... } from '@tabler/icons-react'
+  kampanya-sihirbazi.html'deki GOALS tanımındaki icon string'lerini
+  Tabler React import'larına çevir
+- kampanya-sihirbazi.html'deki CSS sınıflarını inline style'a çevir
+- Font Awesome class'ları (fa-solid fa-xxx) mevcut uygulamada kullanılıyor,
+  bunlara dokunma — kopyalanan bileşenlerde aynen bırak
+
+─────────────────────────────────────────────────────
+BÖLÜM 6 — KISITLAR
+─────────────────────────────────────────────────────
+
+- Başka hiçbir dosyaya dokunma
+- LoyaltyManagement.jsx'e dokunma
+- App.jsx'e dokunma
+- loyalty.js'e dokunma
+- Türkçe karakterleri bozma
+- Tüm update/patch fonksiyonları wizardCampaign state'i üzerinde çalışacak,
+  campaigns dizisi üzerinde değil
+
+OperationSync.md'ye Entry 044 ekle.
