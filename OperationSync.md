@@ -4042,3 +4042,42 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Open Risks`:
   - `Su an bu readback UI agirlikli olarak Musteriler icindeki siparis sadakat gecmisinde kullaniliyor; siparis detayinin diger yuzeylerine ayni bilesen daha sonra yayilabilir.`
 - `Next Step`: `Canli Railway smoke ile points_redeem_multiplier status promotion kararini teyit et veya redemption readback'i siparis detay ekranlarina yay.`
+- `Date`: `2026-05-19`
+- `Area`: `Loyalty redemption live smoke harness`
+- `Files`: `scripts/bootstrap-loyalty-redemption-smoke.mjs`, `scripts/verify-loyalty-redemption-smoke.mjs`, `package.json`
+- `Commands Run`:
+  - `npm.cmd run build` -> basarili, exit code 0, 276 modules, 24.01s
+  - `node --check scripts/bootstrap-loyalty-redemption-smoke.mjs` -> basarili
+  - `node --check scripts/verify-loyalty-redemption-smoke.mjs` -> basarili
+- `Findings`:
+  - `Repo .env icinde yalnizca VITE_API_URL var; DATABASE_URL yok. Bu nedenle canli Railway smoke bu ortamda otomatik kosturulemedi.`
+  - `Call Center runtime zinciri smoke icin en kontrollu yuzey olmaya devam ediyor; campaign fixture'i call_center kanalina sabitlendi.`
+- `Decisions`:
+  - `Deterministik fixture bootstrap script'i eklendi: loyalty program + campaign + rule + smoke musteri + points wallet.`
+  - `Ayrica saleId bazli verify script'i eklendi; burn transaction, redemption linki, wallet bakiyesi ve frequency_step mislink kontrol ediliyor.`
+  - `package.json icine bootstrap/verify komutlari eklendi.`
+  - `src/lib/loyaltyRuntimeStatus.js dosyasina dokunulmadi. points_redeem_multiplier statusu canli smoke gecmeden degistirilmedi.`
+- `Open Risks`:
+  - `Smoke fixture script'i cagirildiginda mevcut smoke wallet bakiyesi hedef degere cekilir; bu fixture adanmis smoke musteri icin kabul edildi.`
+  - `Canli smoke ve status promotion hala manuel veya DATABASE_URL saglanan ortamda sonraki adimdir.`
+- `Next Step`: `DATABASE_URL ile once npm run bootstrap:loyalty-redemption-smoke, sonra Call Center uzerinden gercek satis, sonra npm run verify:loyalty-redemption-smoke -- --sale-id <SALE_ID> kos.`
+- `Date`: `2026-05-19`
+- `Area`: `API fetch outage hardening`
+- `Files`: `src/lib/db.js`, `src/lib/taskService.js`, `src/components/pages/tasks/TaskDrawer.jsx`, `package.json`
+- `Commands Run`:
+  - `curl.exe -i https://rms-api-production-219d.up.railway.app/health` -> baglanti kurulamadi
+  - `npm.cmd run build` -> basarili, exit code 0, 276 modules, 25.20s
+  - `node --check server/index.js` -> basarili
+- `Findings`:
+  - `Hem canli hem lokal frontend ayni remote API host'una (`https://rms-api-production-219d.up.railway.app`) bagliydi.`
+  - `Host 2026-05-19 itibariyla baglanti kabul etmiyor; bu nedenle browser tarafinda ortak semptom 'Failed to fetch' oldu.`
+  - `Lokal gelistirmede server/ klasoru ayri API sunucusunu barindiriyor ve server/node_modules mevcut.`
+- `Decisions`:
+  - `src/lib/db.js icine aday API URL sirali fallback mantigi eklendi.`
+  - `Browser localhost'ta calisiyorsa frontend artik otomatik olarak once http://127.0.0.1:3001 ve http://localhost:3001 adreslerini dener, sonra remote API'ye duser.`
+  - `Task upload ve attachment linkleri ayni API resolver uzerinden calisacak sekilde taskService ve TaskDrawer guncellendi.`
+  - `Root package.json icine api:dev komutu eklendi: node server/index.js.`
+- `Open Risks`:
+  - `Canli ortam remote API servisi geri gelmeden duzelmez; frontend fallback bunu tek basina cozemiyor.`
+  - `Lokal backend icin DATABASE_URL/DATABASE_SSL ortam degiskenleri yine gereklidir.`
+- `Next Step`: `Canli icin Railway API servisini yeniden deploy/restore et. Lokal icin DATABASE_URL ile npm run api:dev calistir, sonra npm run dev ile frontend'i ac.`

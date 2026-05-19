@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, uploadApiFile } from '@/lib/db'
 import {
   PERSONNEL_SETTINGS_KEYS,
   extractBranchNodes,
@@ -177,15 +177,7 @@ function buildRecurrencePayload(form) {
 export async function uploadTaskFile(file) {
   const formData = new FormData()
   formData.append('file', file)
-  const response = await fetch(`${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/api/upload`, {
-    method: 'POST',
-    body: formData,
-  })
-  const result = await response.json().catch(() => ({ data: null, error: { message: `HTTP ${response.status}` } }))
-  if (!response.ok || result?.error) {
-    throw new Error(result?.error?.message || `HTTP ${response.status}`)
-  }
-  return result.data
+  return uploadApiFile(formData)
 }
 
 export async function fetchTaskOptions(actor) {

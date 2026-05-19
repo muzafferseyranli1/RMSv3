@@ -1357,3 +1357,17 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Verification`: `npm.cmd run build -> exit code 0, 276 modules, 33.06s`
 - `Status`: `points_redeem_multiplier runtime statusuna dokunulmadi; bu sadece readback UI iyilestirmesidir.`
 - `Next`: `Canli smoke + status promotion` veya `siparis detay yuzeylerine ayni LoyaltyReadback bilesenini yayma`.
+- `Entry 026`
+- `Date`: `2026-05-19`
+- `Phase`: `Live smoke harness hazirligi`
+- `Affected Surface`:
+  - `scripts/bootstrap-loyalty-redemption-smoke.mjs`
+  - `scripts/verify-loyalty-redemption-smoke.mjs`
+  - `package.json`
+- `Result`:
+  - `Call Center icin points_redeem_multiplier smoke fixture bootstrap script'i eklendi.`
+  - `saleId bazli DB verify script'i eklendi; burn, redemption, wallet ve frequency_step mislink assert ediyor.`
+  - `Yeni npm komutlari: bootstrap:loyalty-redemption-smoke, bootstrap:loyalty-redemption-smoke:verify, verify:loyalty-redemption-smoke.`
+- `Verification`: `npm.cmd run build -> exit code 0, 276 modules, 24.01s; her iki script node --check ile syntax temiz.`
+- `Status`: `points_redeem_multiplier runtime statusuna dokunulmadi. Canli Railway smoke henuz kosturulmedi cunku bu ortamda DATABASE_URL tanimli degil.`
+- `Next`: `DATABASE_URL bulunan ortamda fixture bootstrap + Call Center satis + verify script zincirini kos ve ancak sonra status promotion kararini ver.`

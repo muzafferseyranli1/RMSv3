@@ -1,21 +1,111 @@
 const DEFAULT_API_URL = 'https://rms-api-production-219d.up.railway.app'
-const API_URL = (import.meta.env.VITE_API_URL || DEFAULT_API_URL).replace(/\/$/, '')
+const LOCAL_API_URLS = ['http://127.0.0.1:3001', 'http://localhost:3001']
+const API_URL_CACHE_KEY = 'suitable_rms_api_base_url_v1'
+
+let resolvedApiBaseUrl = ''
+
+function normalizeApiBaseUrl(value) {
+  return String(value || '').trim().replace(/\/$/, '')
+}
+
+function isLocalBrowserHost() {
+  if (typeof window === 'undefined') return false
+  const host = String(window.location?.hostname || '').trim().toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+}
+
+function readCachedApiBaseUrl() {
+  if (typeof window === 'undefined') return ''
+  try {
+    return normalizeApiBaseUrl(window.localStorage.getItem(API_URL_CACHE_KEY))
+  } catch {
+    return ''
+  }
+}
+
+function writeCachedApiBaseUrl(value) {
+  if (typeof window === 'undefined') return
+  try {
+    const normalized = normalizeApiBaseUrl(value)
+    if (normalized) window.localStorage.setItem(API_URL_CACHE_KEY, normalized)
+  } catch {
+    // Best-effort cache only.
+  }
+}
+
+function collectApiBaseUrls() {
+  const explicitApiUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_URL)
+  const cachedApiUrl = normalizeApiBaseUrl(resolvedApiBaseUrl || readCachedApiBaseUrl())
+  const fallbackUrls = []
+
+  if (isLocalBrowserHost()) {
+    fallbackUrls.push(...LOCAL_API_URLS)
+  }
+
+  fallbackUrls.push(explicitApiUrl || DEFAULT_API_URL)
+  if (explicitApiUrl && explicitApiUrl !== DEFAULT_API_URL) {
+    fallbackUrls.push(DEFAULT_API_URL)
+  }
+
+  return [...new Set([cachedApiUrl, ...fallbackUrls].filter(Boolean))]
+}
+
+async function requestApi(path, init = {}) {
+  const candidates = collectApiBaseUrls()
+  let lastError = null
+
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, init)
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        lastError = new Error(text || `HTTP ${response.status} @ ${baseUrl}`)
+        continue
+      }
+      resolvedApiBaseUrl = baseUrl
+      writeCachedApiBaseUrl(baseUrl)
+      return { response, baseUrl }
+    } catch (error) {
+      lastError = new Error(`${baseUrl}: ${error?.message || 'Failed to fetch'}`)
+    }
+  }
+
+  throw lastError || new Error(`API erisilemedi. Denenen adresler: ${candidates.join(', ')}`)
+}
 
 async function queryApi(body) {
   try {
-    const res = await fetch(`${API_URL}/api/query`, {
+    const { response } = await requestApi('/api/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      return { data: null, error: { message: text || `HTTP ${res.status}` } }
-    }
-    return await res.json()
+    return await response.json()
   } catch (err) {
     return { data: null, error: { message: err.message } }
   }
+}
+
+export function getApiBaseUrl() {
+  return collectApiBaseUrls()[0] || normalizeApiBaseUrl(import.meta.env.VITE_API_URL || DEFAULT_API_URL)
+}
+
+export function buildApiUrl(path = '') {
+  const normalizedPath = String(path || '')
+  if (!normalizedPath) return getApiBaseUrl()
+  return `${getApiBaseUrl()}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
+}
+
+export async function uploadApiFile(formData) {
+  const { response } = await requestApi('/api/upload', {
+    method: 'POST',
+    body: formData,
+  })
+  const result = await response.json().catch(() => ({ data: null, error: { message: `HTTP ${response.status}` } }))
+  if (result?.error) {
+    throw new Error(result.error.message || `HTTP ${response.status}`)
+  }
+  return result.data
 }
 
 class QueryBuilder {

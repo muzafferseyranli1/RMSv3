@@ -2,6 +2,8 @@ import Modal from '@/components/ui/Modal'
 import TaskChatPanel from '@/components/pages/tasks/TaskChatPanel'
 import TaskHistory from '@/components/pages/tasks/TaskHistory'
 
+import { buildApiUrl } from '@/lib/db'
+
 export default function TaskDrawer({
   open,
   task,
@@ -135,7 +137,7 @@ export default function TaskDrawer({
               {(task.attachments || []).length === 0 ? (
                 <div style={{ fontSize: '.82rem', color: '#94a3b8' }}>Ek yok.</div>
               ) : (task.attachments || []).map(item => (
-                <a key={item.id} href={`${import.meta.env.VITE_API_URL}${item.file_url}`} target="_blank" rel="noreferrer" style={{ fontSize: '.82rem', color: '#2563eb' }}>
+                <a key={item.id} href={buildApiUrl(item.file_url)} target="_blank" rel="noreferrer" style={{ fontSize: '.82rem', color: '#2563eb' }}>
                   <i className="fa-solid fa-paperclip" style={{ marginRight: 6 }} />
                   {item.file_name}
                 </a>

@@ -6,6 +6,7 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite",
+    "api:dev": "node server/index.js",
     "build": "npm run build:web",
     "build:web": "vite build",
     "build:desktop:web": "vite build --config vite.desktop.config.js",
@@ -44,6 +45,9 @@
     "bootstrap:sale-showcase-60": "node scripts/bootstrap-sale-showcase-60.mjs",
     "bootstrap:sale-showcase-60:audit": "node scripts/bootstrap-sale-showcase-60.mjs --audit-only",
     "bootstrap:sale-showcase-60:verify": "node scripts/bootstrap-sale-showcase-60.mjs --verify-only",
+    "bootstrap:loyalty-redemption-smoke": "node scripts/bootstrap-loyalty-redemption-smoke.mjs",
+    "bootstrap:loyalty-redemption-smoke:verify": "node scripts/bootstrap-loyalty-redemption-smoke.mjs --verify-only",
+    "verify:loyalty-redemption-smoke": "node scripts/verify-loyalty-redemption-smoke.mjs",
     "enrich:sale-showcase-pricing": "node scripts/enrich-sale-showcase-pricing.mjs",
     "enrich:sale-showcase-pricing:audit": "node scripts/enrich-sale-showcase-pricing.mjs --audit-only",
     "enrich:sale-showcase-pricing:verify": "node scripts/enrich-sale-showcase-pricing.mjs --verify-only",
