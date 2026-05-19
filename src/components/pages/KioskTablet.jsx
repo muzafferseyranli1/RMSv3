@@ -29,6 +29,7 @@ import {
 } from '@/lib/comboMenuCategory'
 import { displayText, repairTurkishText } from '@/lib/turkishText'
 import {
+  evaluateRuntimeOrderCampaignsAsync,
   evaluateRuntimeOrderCampaigns,
   loadCachedRuntimeLoyaltyCampaignCatalog,
 } from '@/lib/posLoyalty'
@@ -2472,29 +2473,77 @@ export default function KioskTablet() {
     [loyaltyCustomer, loyaltyCampaignCatalog],
   )
   const selectedLoyaltyCampaignId = String(loyaltyCustomer?.selectedCampaignId || '').trim()
-  const loyaltyEvaluation = useMemo(() => {
+  const [loyaltyEvaluation, setLoyaltyEvaluation] = useState({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
+  const [selectedCampaignCompatibilityEvaluation, setSelectedCampaignCompatibilityEvaluation] = useState({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
+  const selectedLoyaltyProgramId = useMemo(() => {
+    const selectedCampaign = loyaltyEvaluation.visibleCampaigns.find(item => String(item.id || '') === selectedLoyaltyCampaignId)
+      || selectedCampaignCompatibilityEvaluation.visibleCampaigns.find(item => String(item.id || '') === selectedLoyaltyCampaignId)
+    if (selectedCampaign?.programId) return String(selectedCampaign.programId).trim()
+
+    const candidateProgramIds = [
+      ...new Set(
+        (loyaltyCampaignCatalog || [])
+          .map(campaign => String(campaign.programId || campaign.program_id || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    return candidateProgramIds.length === 1 ? candidateProgramIds[0] : ''
+  }, [loyaltyCampaignCatalog, loyaltyEvaluation.visibleCampaigns, selectedCampaignCompatibilityEvaluation.visibleCampaigns, selectedLoyaltyCampaignId])
+  useEffect(() => {
+    let ignore = false
     if (!loyaltyCustomer || !loyaltyCampaignCatalog.length || cartSubtotal <= 0) {
-      return { visibleCampaigns: [], applicableOffers: [] }
+      setLoyaltyEvaluation({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
+      setSelectedCampaignCompatibilityEvaluation({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
+      return
     }
-    return evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
+
+    const syncMain = evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
       runtimeChannel: 'kiosk',
       orderTotal: cartSubtotal,
       customerContext: loyaltyCustomerContext,
       selectedCampaignId: selectedLoyaltyCampaignId,
     })
-  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId])
-  const selectedCampaignCompatibilityEvaluation = useMemo(() => {
-    if (!loyaltyCustomer || !loyaltyCampaignCatalog.length || cartSubtotal <= 0 || !selectedLoyaltyCampaignId) {
-      return { visibleCampaigns: [], applicableOffers: [] }
-    }
-    // Older kiosk link flows exposed POS-channel campaign choices; keep those sessions working.
-    return evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
-      runtimeChannel: 'pos',
-      orderTotal: cartSubtotal,
-      customerContext: loyaltyCustomerContext,
-      selectedCampaignId: selectedLoyaltyCampaignId,
-    })
-  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId])
+    const syncCompat = selectedLoyaltyCampaignId
+      ? evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
+        runtimeChannel: 'pos',
+        orderTotal: cartSubtotal,
+        customerContext: loyaltyCustomerContext,
+        selectedCampaignId: selectedLoyaltyCampaignId,
+      })
+      : { visibleCampaigns: [], applicableOffers: [], walletReadiness: null }
+
+    ;(async () => {
+      try {
+        const [mainEval, compatEval] = await Promise.all([
+          evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
+            runtimeChannel: 'kiosk',
+            orderTotal: cartSubtotal,
+            customerContext: loyaltyCustomerContext,
+            selectedCampaignId: selectedLoyaltyCampaignId,
+            programId: selectedLoyaltyProgramId,
+          }),
+          selectedLoyaltyCampaignId
+            ? evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
+              runtimeChannel: 'pos',
+              orderTotal: cartSubtotal,
+              customerContext: loyaltyCustomerContext,
+              selectedCampaignId: selectedLoyaltyCampaignId,
+              programId: selectedLoyaltyProgramId,
+            })
+            : Promise.resolve({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null }),
+        ])
+        if (ignore) return
+        setLoyaltyEvaluation(mainEval)
+        setSelectedCampaignCompatibilityEvaluation(compatEval)
+      } catch {
+        if (ignore) return
+        setLoyaltyEvaluation({ ...syncMain, walletReadiness: null })
+        setSelectedCampaignCompatibilityEvaluation({ ...syncCompat, walletReadiness: null })
+      }
+    })()
+
+    return () => { ignore = true }
+  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId, selectedLoyaltyProgramId])
   const selectedLoyaltyOffer = useMemo(() => {
     const selectedId = selectedLoyaltyCampaignId
     if (!selectedId) return null

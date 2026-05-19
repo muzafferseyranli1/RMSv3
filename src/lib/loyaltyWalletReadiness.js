@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+const WALLET_SELECT = 'id,customer_id,program_id,wallet_type,current_points_balance,lifetime_earned_points,lifetime_burned_points,lifetime_expired_points,last_transaction_at'
 
 function normalizeText(value) {
   return String(value || '').trim()
@@ -25,8 +26,31 @@ function resolveCustomerId(customer = {}, explicitCustomerId = '') {
     explicitCustomerId
     || customer.customerId
     || customer.id
-    || customer.customer_id
+    || customer.customer_id,
   )
+}
+
+function buildWalletReadyResult(wallet, {
+  customerId,
+  programId = null,
+  walletType = 'points',
+  reason = 'Wallet bakiyesi canli DB kaydindan okundu.',
+} = {}) {
+  return {
+    supported: true,
+    ok: true,
+    status: 'ready',
+    reason,
+    customerId,
+    programId: wallet?.program_id || programId || null,
+    walletType: wallet?.wallet_type || walletType,
+    walletId: wallet?.id || null,
+    wallet,
+    pointsBalance: roundPoints(wallet?.current_points_balance),
+    balanceKnown: true,
+    source: 'loyalty_wallets',
+    errorMessage: '',
+  }
 }
 
 export function buildUnsupportedWalletReadiness(reason, extra = {}) {
@@ -66,93 +90,74 @@ export async function resolveLoyaltyWalletBalance({
   }
 
   try {
-    // Adım 1: programId varsa direkt o program wallet'ini bul
     if (normalizedProgramId) {
-      const programQuery = db
+      const { data, error } = await db
         .from('loyalty_wallets')
-        .select('id,customer_id,program_id,wallet_type,current_points_balance,lifetime_earned_points,lifetime_burned_points,lifetime_expired_points,last_transaction_at')
+        .select(WALLET_SELECT)
         .eq('customer_id', normalizedCustomerId)
         .eq('wallet_type', normalizedWalletType)
         .eq('program_id', normalizedProgramId)
         .limit(1)
 
-      const { data: programData, error: programError } = await programQuery
-      if (programError) throw programError
+      if (error) throw error
 
-      const programWallet = Array.isArray(programData) ? programData[0] || null : programData || null
+      const programWallet = Array.isArray(data) ? data[0] || null : data || null
       if (programWallet?.id) {
-        return {
-          supported: true,
-          ok: true,
-          status: 'ready',
-          reason: 'Program wallet bakiyesi canli DB kaydindan okundu.',
+        return buildWalletReadyResult(programWallet, {
           customerId: normalizedCustomerId,
-          programId: programWallet.program_id || normalizedProgramId,
-          walletType: programWallet.wallet_type || normalizedWalletType,
-          walletId: programWallet.id,
-          wallet: programWallet,
-          pointsBalance: roundPoints(programWallet.current_points_balance),
-          balanceKnown: true,
-          source: 'loyalty_wallets',
-          errorMessage: '',
-        }
+          programId: normalizedProgramId,
+          walletType: normalizedWalletType,
+          reason: 'Program wallet bakiyesi canli DB kaydindan okundu.',
+        })
       }
-    }
 
-    // Adım 2: programId yoksa veya yukarıda bulunamadıysa, önce program_id IS NULL wallet'ı dene
-    const nullProgramQuery = db
-      .from('loyalty_wallets')
-      .select('id,customer_id,program_id,wallet_type,current_points_balance,lifetime_earned_points,lifetime_burned_points,lifetime_expired_points,last_transaction_at')
-      .eq('customer_id', normalizedCustomerId)
-      .eq('wallet_type', normalizedWalletType)
-      .is('program_id', null)
-      .limit(1)
-
-    const { data: nullProgramData, error: nullProgramError } = await nullProgramQuery
-    if (nullProgramError) throw nullProgramError
-
-    const nullProgramWallet = Array.isArray(nullProgramData) ? nullProgramData[0] || null : nullProgramData || null
-
-    // Eğer null program wallet varsa kullan
-    if (nullProgramWallet?.id) {
       return {
         supported: true,
         ok: true,
-        status: 'ready',
-        reason: 'Wallet bakiyesi canli DB kaydindan okundu (program_id NULL).',
+        status: 'wallet_missing',
+        reason: 'Program wallet kaydi bulunamadi; mevcut bakiye 0 kabul edilir.',
         customerId: normalizedCustomerId,
-        programId: null,
-        walletType: nullProgramWallet.wallet_type || normalizedWalletType,
-        walletId: nullProgramWallet.id,
-        wallet: nullProgramWallet,
-        pointsBalance: roundPoints(nullProgramWallet.current_points_balance),
+        programId: normalizedProgramId,
+        walletType: normalizedWalletType,
+        walletId: null,
+        wallet: null,
+        pointsBalance: roundPoints(missingWalletBalance),
         balanceKnown: true,
         source: 'loyalty_wallets',
         errorMessage: '',
       }
     }
 
-    // Adım 3: Fallback - hiçbiri bulunamadıysa, müşterinin TÜM wallet'larını al ve tek wallet varsa kullan
-    const allWalletsQuery = db
+    const { data, error } = await db
       .from('loyalty_wallets')
-      .select('id,customer_id,program_id,wallet_type,current_points_balance,lifetime_earned_points,lifetime_burned_points,lifetime_expired_points,last_transaction_at')
+      .select(WALLET_SELECT)
       .eq('customer_id', normalizedCustomerId)
       .eq('wallet_type', normalizedWalletType)
       .order('last_transaction_at', { ascending: false })
 
-    const { data: allWalletsData, error: allWalletsError } = await allWalletsQuery
-    if (allWalletsError) throw allWalletsError
+    if (error) throw error
 
-    const allWallets = Array.isArray(allWalletsData) ? allWalletsData : []
-    const activeWallets = (allWallets || []).filter(w => w && w.id)
+    const activeWallets = (Array.isArray(data) ? data : [])
+      .filter(wallet => wallet?.id)
 
-    // Birden fazla wallet varsa ve programId verilmediyse ambiguous durumu döndür
+    if (activeWallets.length === 1) {
+      return buildWalletReadyResult(activeWallets[0], {
+        customerId: normalizedCustomerId,
+        walletType: normalizedWalletType,
+        reason: 'Tek wallet bakiyesi canli DB kaydindan okundu.',
+      })
+    }
+
     if (activeWallets.length > 1) {
+      const candidateProgramIds = [
+        ...new Set(activeWallets.map(wallet => wallet.program_id || null)),
+      ]
+
       return {
         supported: true,
-        ok: true,
+        ok: false,
         status: 'ambiguous_program_context',
-        reason: 'Birden fazla wallet var; hangi program wallet\'inin kullanilacagi belirsiz.',
+        reason: 'Birden fazla wallet var; program baglami olmadan bakiye secilemez.',
         customerId: normalizedCustomerId,
         programId: null,
         walletType: normalizedWalletType,
@@ -162,42 +167,23 @@ export async function resolveLoyaltyWalletBalance({
         balanceKnown: false,
         source: 'loyalty_wallets',
         errorMessage: '',
-        availableWallets: activeWallets.map(w => ({
-          walletId: w.id,
-          programId: w.program_id,
-          balance: w.current_points_balance,
+        candidateWalletCount: activeWallets.length,
+        candidateProgramIds,
+        availableWallets: activeWallets.map(wallet => ({
+          walletId: wallet.id,
+          programId: wallet.program_id || null,
+          pointsBalance: roundPoints(wallet.current_points_balance),
         })),
       }
     }
 
-    // Tek wallet varsa onu kullan
-    if (activeWallets.length === 1) {
-      const singleWallet = activeWallets[0]
-      return {
-        supported: true,
-        ok: true,
-        status: 'ready',
-        reason: 'Tek wallet bakiyesi canli DB kaydindan okundu (fallback).',
-        customerId: normalizedCustomerId,
-        programId: singleWallet.program_id || null,
-        walletType: singleWallet.wallet_type || normalizedWalletType,
-        walletId: singleWallet.id,
-        wallet: singleWallet,
-        pointsBalance: roundPoints(singleWallet.current_points_balance),
-        balanceKnown: true,
-        source: 'loyalty_wallets',
-        errorMessage: '',
-      }
-    }
-
-    // Hiç wallet yoksa
     return {
       supported: true,
       ok: true,
       status: 'wallet_missing',
       reason: 'Wallet kaydi bulunamadi; mevcut bakiye 0 kabul edilir.',
       customerId: normalizedCustomerId,
-      programId: normalizedProgramId || null,
+      programId: null,
       walletType: normalizedWalletType,
       walletId: null,
       wallet: null,

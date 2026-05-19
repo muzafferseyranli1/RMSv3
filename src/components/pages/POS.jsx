@@ -50,6 +50,7 @@ import {
 import { isBranchScopedScope } from '@/lib/workspace'
 import {
   RUNTIME_LOYALTY_CACHE_TTL_MS,
+  evaluateRuntimeOrderCampaignsAsync,
   evaluateRuntimeOrderCampaigns,
   getRuntimeChannelLabel,
   loadCachedRuntimeLoyaltyCampaignCatalog,
@@ -3876,27 +3877,80 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
   const runtimeLoyaltyChannelLabel = getRuntimeChannelLabel(runtimeLoyaltyChannel)
   const activeSaleTableRef = isMasaMode ? currentTableLabel : normalizeMasaNo(masaNo)
   const loyaltyTriggerContextKey = `${selectedBranchContext?.branchId || ''}|${runtimeLoyaltyChannel}|${activeSaleTableRef || ''}`
-  const loyaltyCampaignPreview = useMemo(
-    () => evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
-      runtimeChannel: runtimeLoyaltyChannel,
-      orderTotal: cartTotal,
-      customerContext: preOrderLinkedCustomer
-        ? {
-            customerId: preOrderLinkedCustomer.customerId,
-            customerName: preOrderLinkedCustomer.customerName,
-            customerCategoryIds: preOrderLinkedCustomer.customerCategoryIds || [],
-          }
-        : {},
-      selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
-      manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
-    }),
-    [loyaltyCampaignCatalog, runtimeLoyaltyChannel, cartTotal, preOrderLinkedCustomer, manualTriggeredCampaignIds]
-  )
+  const [loyaltyCampaignPreview, setLoyaltyCampaignPreview] = useState({
+    visibleCampaigns: [],
+    applicableOffers: [],
+    walletReadiness: null,
+  })
+  const selectedLoyaltyProgramId = useMemo(() => {
+    const selectedCampaignId = String(preOrderLinkedCustomer?.selectedCampaignId || '').trim()
+    const selectedCampaign = loyaltyCampaignPreview.visibleCampaigns.find(campaign => (
+      String(campaign.id || '') === selectedCampaignId
+    ))
+    if (selectedCampaign?.programId) return String(selectedCampaign.programId).trim()
+
+    const candidateProgramIds = [
+      ...new Set(
+        (loyaltyCampaignCatalog || [])
+          .map(campaign => String(campaign.programId || campaign.program_id || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    return candidateProgramIds.length === 1 ? candidateProgramIds[0] : ''
+  }, [loyaltyCampaignCatalog, loyaltyCampaignPreview.visibleCampaigns, preOrderLinkedCustomer?.selectedCampaignId])
   const preOrderPreparedAdvantage = useMemo(
     () => resolvePreparedLoyaltyAdvantage(preOrderLinkedCustomer, loyaltyCampaignCatalog),
     [preOrderLinkedCustomer, loyaltyCampaignCatalog],
   )
   const visibleLoyaltyCampaigns = loyaltyCampaignPreview.visibleCampaigns
+
+  useEffect(() => {
+    let ignore = false
+    const customerContext = preOrderLinkedCustomer
+      ? {
+          customerId: preOrderLinkedCustomer.customerId,
+          customerName: preOrderLinkedCustomer.customerName,
+          customerCategoryIds: preOrderLinkedCustomer.customerCategoryIds || [],
+        }
+      : {}
+    const syncFallback = evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
+      runtimeChannel: runtimeLoyaltyChannel,
+      orderTotal: cartTotal,
+      customerContext,
+      selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
+      manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+    })
+
+    ;(async () => {
+      try {
+        const evaluated = await evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
+          runtimeChannel: runtimeLoyaltyChannel,
+          orderTotal: cartTotal,
+          customerContext,
+          selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
+          manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+          programId: selectedLoyaltyProgramId,
+        })
+        if (ignore) return
+        setLoyaltyCampaignPreview(evaluated)
+      } catch {
+        if (ignore) return
+        setLoyaltyCampaignPreview({
+          ...syncFallback,
+          walletReadiness: null,
+        })
+      }
+    })()
+
+    return () => { ignore = true }
+  }, [
+    loyaltyCampaignCatalog,
+    runtimeLoyaltyChannel,
+    cartTotal,
+    preOrderLinkedCustomer,
+    manualTriggeredCampaignIds,
+    selectedLoyaltyProgramId,
+  ])
 
   useEffect(() => {
     setManualTriggeredCampaignIds([])

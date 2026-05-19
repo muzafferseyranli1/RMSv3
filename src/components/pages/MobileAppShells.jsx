@@ -14,7 +14,7 @@ import { createTableServiceRequest, loadActiveTableServiceRequests, summarizeTab
 import { clearMobileQrSession, readMobileQrSession, updateMobileQrAdvantage, writeMobileQrSession } from '@/lib/mobileQrSession'
 import { asUuidOrNull, getNextKioskDisplayNo } from '@/lib/kioskSettings'
 import { loadCustomerLoyaltyCategoryIds } from '@/lib/posCustomerLink'
-import { evaluateRuntimeOrderCampaigns, loadCachedRuntimeLoyaltyCampaignCatalog } from '@/lib/posLoyalty'
+import { evaluateRuntimeOrderCampaigns, evaluateRuntimeOrderCampaignsAsync, loadCachedRuntimeLoyaltyCampaignCatalog } from '@/lib/posLoyalty'
 import { resolvePreparedLoyaltyAdvantage } from '@/lib/loyaltyPreparedAdvantage'
 import {
   attachLoyaltyToSaleHeader,
@@ -389,15 +389,50 @@ function MobileOrderSurface({
       customerCategoryIds: linkedCustomer?.customerCategoryIds || [],
     }
   }, [customerId, customerName, linkedCustomer])
-  const loyaltyEvaluation = useMemo(
-    () => evaluateRuntimeOrderCampaigns(loyaltyCampaigns, {
+  const [loyaltyEvaluation, setLoyaltyEvaluation] = useState({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
+  const selectedLoyaltyProgramId = useMemo(() => {
+    const selectedCampaign = loyaltyEvaluation.visibleCampaigns.find(campaign => (
+      String(campaign.id || '') === String(selectedCampaignId || '')
+    ))
+    if (selectedCampaign?.programId) return String(selectedCampaign.programId).trim()
+
+    const candidateProgramIds = [
+      ...new Set(
+        (loyaltyCampaigns || [])
+          .map(campaign => String(campaign.programId || campaign.program_id || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    return candidateProgramIds.length === 1 ? candidateProgramIds[0] : ''
+  }, [loyaltyCampaigns, loyaltyEvaluation.visibleCampaigns, selectedCampaignId])
+  useEffect(() => {
+    let ignore = false
+    const syncFallback = evaluateRuntimeOrderCampaigns(loyaltyCampaigns, {
       runtimeChannel: mode === 'qr' ? 'mobile' : 'masa',
       orderTotal: cartTotal,
       customerContext,
       selectedCampaignId,
-    }),
-    [cartTotal, customerContext, loyaltyCampaigns, mode, selectedCampaignId],
-  )
+    })
+
+    ;(async () => {
+      try {
+        const evaluated = await evaluateRuntimeOrderCampaignsAsync(loyaltyCampaigns, {
+          runtimeChannel: mode === 'qr' ? 'mobile' : 'masa',
+          orderTotal: cartTotal,
+          customerContext,
+          selectedCampaignId,
+          programId: selectedLoyaltyProgramId,
+        })
+        if (ignore) return
+        setLoyaltyEvaluation(evaluated)
+      } catch {
+        if (ignore) return
+        setLoyaltyEvaluation({ ...syncFallback, walletReadiness: null })
+      }
+    })()
+
+    return () => { ignore = true }
+  }, [cartTotal, customerContext, loyaltyCampaigns, mode, selectedCampaignId, selectedLoyaltyProgramId])
   const selectedLoyaltyOffer = useMemo(
     () => loyaltyEvaluation.applicableOffers.find(offer => String(offer.campaignId || '') === String(selectedCampaignId || ''))
       || loyaltyEvaluation.applicableOffers.find(offer => offer.applicationMode === 'auto')

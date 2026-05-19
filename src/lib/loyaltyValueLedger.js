@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
-const POINTS_ACTIONS = new Set(['bonus_points', 'points_percent_of_order', 'points_earn_multiplier'])
+const POINTS_ACTIONS = new Set(['bonus_points', 'points_percent_of_order', 'points_earn_multiplier', 'points_redeem_multiplier'])
 const FREQUENCY_PROGRAM_FAMILIES = new Set(['frequency', 'mixed'])
 
 function roundPoints(value) {
@@ -92,6 +92,10 @@ function buildActionEntries(rule = null, loyaltyCampaign = {}) {
     points: loyaltyCampaign.points,
     percent: loyaltyCampaign.discountType === 'percent' ? loyaltyCampaign.discountValue : loyaltyCampaign.percent,
     multiplier: loyaltyCampaign.multiplier,
+    usedPoints: loyaltyCampaign.usedPoints || loyaltyCampaign.redemptionContext?.usedPoints,
+    redemptionRate: loyaltyCampaign.redemptionRate || loyaltyCampaign.redemptionContext?.redemptionRate,
+    discountAmount: loyaltyCampaign.discountAmount || loyaltyCampaign.redemptionContext?.discountAmount,
+    redemptionContext: loyaltyCampaign.redemptionContext || null,
   }, 'snapshot')
 
   return entries
@@ -106,21 +110,74 @@ function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}) {
       return roundPoints(saleAmount * Number(config.percent || campaign.reward_value || campaign.rewardValue || 0) / 100)
     case 'points_earn_multiplier':
       return roundPoints(saleAmount * Number(config.multiplier || 1))
+    case 'points_redeem_multiplier': {
+      const explicitUsedPoints = roundPoints(config.usedPoints || config.redemptionContext?.usedPoints || 0)
+      if (explicitUsedPoints > 0) return -explicitUsedPoints
+
+      const discountAmount = Number(config.discountAmount || config.redemptionContext?.discountAmount || 0)
+      const redemptionRate = Number(config.redemptionRate || config.redemptionContext?.redemptionRate || 0)
+      const multiplier = Number(config.multiplier || config.redemptionContext?.multiplier || 1)
+      const pointValue = redemptionRate * multiplier
+      if (discountAmount > 0 && pointValue > 0) return -roundPoints(discountAmount / pointValue)
+      return 0
+    }
     default:
       return 0
   }
 }
 
-async function readExistingLedger(customerId, saleId) {
+/**
+ * Reads existing burn transaction for a sale (for idempotent backfill targeting).
+ * Returns the first transaction where transaction_type = 'burn'.
+ * Returns null if no burn transaction exists yet.
+ */
+async function readExistingSaleBurnTransaction(customerId, saleId) {
   const { data, error } = await db
     .from('loyalty_transactions')
-    .select('id,source_ref_id')
+    .select('id,source_ref_id,wallet_id,campaign_id,transaction_type,points_delta')
     .eq('customer_id', customerId)
     .eq('source_ref_id', saleId)
+    .eq('transaction_type', 'burn')
     .limit(1)
 
   if (error) throw error
   return Array.isArray(data) && data.length > 0 ? data[0] : null
+}
+
+/**
+ * Reads the most relevant points transaction for a sale (for idempotent backfill targeting).
+ *
+ * Selection priority:
+ *   1. transaction_type = 'burn'  (redemption backfill must target this)
+ *   2. transaction_type in ('earn', 'campaign_bonus')  (standard earn path)
+ *
+ * Intentionally EXCLUDED:
+ *   - 'frequency_step'  — auxiliary wallet transaction, never the redemption anchor
+ *   - Any other wallet-type transaction unrelated to the primary points action
+ *
+ * Returns null if no qualifying transaction exists for this sale.
+ */
+async function readExistingSalePointsTransaction(customerId, saleId) {
+  // First, prefer burn transaction (redemption backfill must link here)
+  const burnTx = await readExistingSaleBurnTransaction(customerId, saleId)
+  if (burnTx) return burnTx
+
+  // Fallback: earn or campaign_bonus (standard points earn path)
+  const EARN_TYPES = ['earn', 'campaign_bonus']
+  for (const txType of EARN_TYPES) {
+    const { data, error } = await db
+      .from('loyalty_transactions')
+      .select('id,source_ref_id,wallet_id,campaign_id,transaction_type,points_delta')
+      .eq('customer_id', customerId)
+      .eq('source_ref_id', saleId)
+      .eq('transaction_type', txType)
+      .limit(1)
+
+    if (error) throw error
+    if (Array.isArray(data) && data.length > 0) return data[0]
+  }
+
+  return null
 }
 
 async function loadCampaignContext(campaignId, sourceRuleId) {
@@ -504,11 +561,6 @@ export async function postSaleLoyaltyValueLedger({
     return { skipped: true, reason: 'missing_sale_or_customer' }
   }
 
-  const existingLedger = await readExistingLedger(customerId, normalizedSaleId)
-  if (existingLedger?.id) {
-    return { skipped: true, reason: 'already_posted', transactionId: existingLedger.id }
-  }
-
   const campaignId = getCampaignId(loyaltyCampaign || {}, customer || {}, saleHeader)
   const sourceRuleId = normalizeText(loyaltyCampaign?.sourceRuleId || saleHeader.loyalty_source_rule_id)
   const { campaign, rule, program } = await loadCampaignContext(campaignId, sourceRuleId)
@@ -516,9 +568,57 @@ export async function postSaleLoyaltyValueLedger({
   const customerName = getCustomerName(customer || {}, saleHeader)
   const saleAmount = getSaleAmount(saleHeader)
   const actionEntries = buildActionEntries(rule, loyaltyCampaign || {})
-  const pointsAction = actionEntries.find(action => POINTS_ACTIONS.has(action.actionType)) || null
-  const pointsDelta = pointsAction ? resolvePointsDelta(pointsAction, saleAmount, campaign || {}) : 0
+  const resolvedPointActions = actionEntries
+    .filter(action => POINTS_ACTIONS.has(action.actionType))
+    .map(action => ({
+      action,
+      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}),
+    }))
+  const resolvedPointAction = resolvedPointActions.find(entry => entry.pointsDelta !== 0) || resolvedPointActions[0] || null
+  const pointsAction = resolvedPointAction?.action || null
+  const pointsDelta = resolvedPointAction?.pointsDelta || 0
   const couponCode = getSelectedCouponCode(selectedCouponCode, customer || {})
+  const redeemedValue = roundPoints(
+    loyaltyCampaign?.discountAmount
+    || saleHeader.loyalty_discount_allocated_amount
+    || saleHeader.discount_amount
+    || 0
+  )
+
+  // Idempotency check: look for an existing points transaction for this sale.
+  // readExistingSalePointsTransaction() targets burn first, then earn/campaign_bonus.
+  // frequency_step transactions are intentionally excluded to prevent mislink.
+  const existingPointsTx = await readExistingSalePointsTransaction(customerId, normalizedSaleId)
+  if (existingPointsTx?.id) {
+    // Use the exact wallet_id and transaction_id from the burn/earn transaction
+    // so the redemption record links to the correct anchor, not a random first row.
+    const redemption = await postCampaignRedemption({
+      campaignId,
+      customerId,
+      walletId: existingPointsTx.wallet_id || null,
+      transactionId: existingPointsTx.id,
+      saleId: normalizedSaleId,
+      saleHeader,
+      sourceChannel,
+      redeemedValue,
+      metadata: {
+        customerName,
+        offerLabel: loyaltyCampaign?.offerLabel || saleHeader.loyalty_offer_label || '',
+        selectedCouponCode: couponCode || null,
+        redemptionContext: loyaltyCampaign?.redemptionContext || loyaltyCampaign?.decisionContext?.redemptionContext || null,
+        idempotentReadback: true,
+        anchorTransactionType: existingPointsTx.transaction_type,
+      },
+    })
+    return {
+      skipped: true,
+      reason: 'already_posted',
+      transactionId: existingPointsTx.id,
+      transactionType: existingPointsTx.transaction_type,
+      redemptionId: redemption?.id || null,
+    }
+  }
+
   const wallet = await ensureWallet({
     customerId,
     programId,
@@ -537,7 +637,7 @@ export async function postSaleLoyaltyValueLedger({
     pointsDelta,
   }
 
-  if (pointsDelta > 0) {
+  if (pointsDelta !== 0) {
     const transactionResult = await postTransaction({
       wallet,
       customerId,
@@ -546,7 +646,9 @@ export async function postSaleLoyaltyValueLedger({
       saleId: normalizedSaleId,
       saleHeader,
       sourceChannel,
-      transactionType: pointsAction.actionType === 'bonus_points' ? 'campaign_bonus' : 'earn',
+      transactionType: pointsDelta < 0
+        ? 'burn'
+        : (pointsAction.actionType === 'bonus_points' ? 'campaign_bonus' : 'earn'),
       pointsDelta,
       note: loyaltyCampaign?.offerLabel || campaign?.campaign_type || 'Satis sadakat puani',
       metadata: {
@@ -554,17 +656,12 @@ export async function postSaleLoyaltyValueLedger({
         actionSource: pointsAction.source,
         customerName,
         saleLineCount: Array.isArray(saleLines) ? saleLines.length : 0,
+        redemptionContext: loyaltyCampaign?.redemptionContext || loyaltyCampaign?.decisionContext?.redemptionContext || null,
       },
     })
     posted.transactionId = transactionResult.transaction?.id || null
   }
 
-  const redeemedValue = roundPoints(
-    loyaltyCampaign?.discountAmount
-    || saleHeader.loyalty_discount_allocated_amount
-    || saleHeader.discount_amount
-    || 0
-  )
   posted.redemptionId = (await postCampaignRedemption({
     campaignId,
     customerId,
@@ -578,6 +675,7 @@ export async function postSaleLoyaltyValueLedger({
       customerName,
       offerLabel: loyaltyCampaign?.offerLabel || saleHeader.loyalty_offer_label || '',
       selectedCouponCode: couponCode || null,
+      redemptionContext: loyaltyCampaign?.redemptionContext || loyaltyCampaign?.decisionContext?.redemptionContext || null,
     },
   }))?.id || null
 

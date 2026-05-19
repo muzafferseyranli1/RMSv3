@@ -10,6 +10,7 @@ import {
   loadLoyaltyCustomerCategoryAssignments,
   saveLoyaltyCustomerCategoryAssignments,
 } from '@/lib/loyalty'
+import LoyaltyReadback from '@/components/shared/LoyaltyReadback'
 
 function fmtDateTime(d) {
   if (!d) return '-'
@@ -916,8 +917,10 @@ function LoyaltyWalletModal({ musteri, onClose }) {
   const [entitlements, setEntitlements] = useState([])
   const [progressRows, setProgressRows] = useState([])
   const [programMap, setProgramMap] = useState({})
-  const [campaignMap, setCampaignMap] = useState({})
+const [campaignMap, setCampaignMap] = useState({})
   const [tierMap, setTierMap] = useState({})
+  const [recentSales, setRecentSales] = useState([])
+  const [loadingRecentSales, setLoadingRecentSales] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -1033,10 +1036,29 @@ function LoyaltyWalletModal({ musteri, onClose }) {
         setTransactions(nextTransactions)
         setEntitlements(nextEntitlements)
         setProgressRows(nextProgress)
-        setProgramMap(Object.fromEntries((programLookup.data || []).map(row => [row.id, row.name])))
+setProgramMap(Object.fromEntries((programLookup.data || []).map(row => [row.id, row.name])))
         setCampaignMap(Object.fromEntries((campaignLookup.data || []).map(row => [row.id, row.name])))
         setTierMap(Object.fromEntries((tierLookup.data || []).map(row => [row.id, row.name])))
         setErrorText(nonSchemaErrors.join(' | '))
+
+        // Recent sales loyalty readback'lerini yükle
+        if (!active) return
+        setLoadingRecentSales(true)
+        try {
+          const { data: salesData } = await db
+            .from('satislar')
+            .select('id, created_at, loyalty_snapshot')
+            .eq('musteri_id', musteri.id)
+            .not('loyalty_snapshot', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(10)
+          if (active) setRecentSales(salesData || [])
+        } catch (err) {
+          console.warn('Recent sales loyalty readback yuklenemedi:', err?.message)
+          if (active) setRecentSales([])
+        } finally {
+          if (active) setLoadingRecentSales(false)
+        }
       } catch (error) {
         if (!active) return
         setSchemaReady(false)
@@ -1295,7 +1317,49 @@ function LoyaltyWalletModal({ musteri, onClose }) {
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12, fontSize: '.78rem', color: '#475569' }}>
                             <div><strong>Tamamlanan Cevrim:</strong> {item.completed_cycles || 0}</div>
                             <div><strong>Son Esik:</strong> {fmtDateTime(item.last_qualified_at)}</div>
-                            <div><strong>Program:</strong> {programMap[item.program_id] || item.program_id || '-'}</div>
+<div><strong>Program:</strong> {programMap[item.program_id] || item.program_id || '-'}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SIPARIS LOYALTY READBACK GECMISI */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Siparis Sadakat Gecmisi</div>
+                <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: 4 }}>Son siparislerde uygulanan sadakat bilgileri ve puan kullanimi</div>
+              </div>
+              <div style={{ padding: 16 }}>
+                {loadingRecentSales ? (
+                  <div style={{ color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>
+                    <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} />
+                    Yukleniyor...
+                  </div>
+                ) : recentSales.length === 0 ? (
+                  <div style={{ color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>
+                    Bu musteride siparis sadakat gecmisi bulunamadi.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {recentSales.map(sale => {
+                      let snapshot = sale.loyalty_snapshot
+                      if (typeof snapshot === 'string') {
+                        try { snapshot = JSON.parse(snapshot) } catch { snapshot = null }
+                      }
+                      if (!snapshot) return null
+                      return (
+                        <div key={sale.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 0, overflow: 'hidden', background: '#fff' }}>
+                          <div style={{ background: '#f8fafc', padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#475569' }}>
+                              #{String(sale.id).slice(-6)} — {fmtDateTime(sale.created_at)}
+                            </span>
+                          </div>
+                          <div style={{ padding: 12 }}>
+                            <LoyaltyReadback loyaltySnapshot={snapshot} />
                           </div>
                         </div>
                       )

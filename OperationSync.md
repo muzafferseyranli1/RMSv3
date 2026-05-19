@@ -3860,3 +3860,185 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - Program context yoksa helper `programContextStatus: missing_program_context` dondurur ve `readyForAsyncRedemption` false kalir; executor fazinda kampanya/program secimi zorunlu hale getirilmelidir.
 - `Next Step`: `Faz 6 executor oncesi once 6 kanal icin evaluateRuntimeOrderCampaignsAsync() gecis plani yap; kampanya programId'si orderContext'e tasinsin. Sonra points_redeem_multiplier icin offer hesabini, wallet balance guard'i, burn transaction'i ve redemption record'unu tek atomik executor olarak tamamla.`
 - `Handoff Contract`: `Sonraki agent bu fazdan devam ederse ilk olarak schema-railway-master.sql icindeki loyalty_programs.redemption_rate comment/ALTER blogunu, src/lib/loyaltyWalletReadiness.js ve src/lib/posLoyalty.js prepareRuntimeWalletContext() fonksiyonunu okusun. Semantik 1 puan = redemption_rate TL olarak sabittir. points_redeem_multiplier desteklenmiyor kalmali; executor tamamlanmadan src/lib/loyaltyRuntimeStatus.js statusu degistirilmemeli.`
+
+## Entry 075
+
+- `Timestamp`: `2026-05-18T23:24:29.2719675+03:00`
+- `Agent`: `Codex`
+- `Task`: `Faz 5.1 Wallet Lookup Program Context Fix`
+- `Intent`: `resolveLoyaltyWalletBalance() fonksiyonunun programId verilmediginde program bagli wallet'lari yanlislikla kacirmasini ve birden fazla wallet durumunda sessiz yanlis secim yapmasini engellemek.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/lib/loyalty.js`
+  - `schema-railway-master.sql` wallet/program index baglami icin dar tarama
+- `Files Changed`:
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/CallCenter.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Commands Run`:
+  - `Get-Content -Raw ...` zorunlu governance/memory/design/skill ve hedef dosyalari icin
+  - `rg -n "resolveLoyaltyWalletBalance|pointsBalance|selectedLoyaltyCampaignId|programId|prepareRuntimeWalletContext|loyalty_wallets|points_redeem_multiplier" ...`
+  - `git status --short` -> mevcut workspace'te task disi silinmis dosyalar gorundu; revert edilmedi.
+  - `npm.cmd run build` -> basarili, Vite 275 module transformed, built in 37.52s.
+- `Findings`:
+  - `Eski helper programId verilmediginde once program_id IS NULL wallet'i tercih edebiliyor, sonra fallback tarama yapabiliyordu; bu program bagli gercek wallet bakiyesini yanlis veya gecikmeli baglama dusuruyordu.`
+  - `CallCenter.jsx wallet bakiyesini yalniz customerId ile okuyordu; oysa runtime kampanya kartlari programId tasiyor.`
+  - `prepareRuntimeWalletContext() wallet_missing durumunu ok/balanceKnown oldugu icin redemption-ready sayabilecek bir bayrak kosuluna sahipti.`
+- `Decisions`:
+  - `resolveLoyaltyWalletBalance() karar agaci deterministik hale getirildi: programId varsa yalniz o program wallet'i aranir; yoksa customer + walletType icin tum wallet adaylari okunur.`
+  - `ProgramId yokken tek wallet varsa ready doner; birden fazla wallet varsa ambiguous_program_context doner ve candidateWalletCount, candidateProgramIds, availableWallets metadata'si tasir; hic wallet yoksa wallet_missing doner.`
+  - `CallCenter.jsx secili kampanyadan, uygulanan kampanyadan veya tek programli kampanya katalogundan en iyi programId baglamini cikarip helper'a gecirir. Ambiguous durumda ekranda 0 puan yerine program secimi gerekli mesaji gosterilir.`
+  - `prepareRuntimeWalletContext() readyForAsyncRedemption bayragi artik walletReadiness.status === 'ready' kosulunu da ister; wallet_missing async redemption icin hazir sayilmaz.`
+  - `src/lib/loyaltyRuntimeStatus.js dosyasina dokunulmadi; points_redeem_multiplier statüsü degistirilmedi; burn executor yazilmadi.`
+- `Open Risks`:
+  - `Call Center tek programli katalog heuristigi en iyi mevcut baglamdir; cok programli ve kampanya secilmemis durumda helper bilincli olarak ambiguous doner.`
+  - `Async wallet lookup halen executor degil. Faz 6'da kanal call site'lari programId baglamini daha dogrudan orderContext'e tasimali.`
+  - `Workspace'te task disi silinmis dosyalar git status'ta gorundu: ..resim5.jpg, TODO.md, src (2).zip, src.zip. Bu gorevde dokunulmadi.`
+- `Next Step`: `Faz 6 oncesi POS/Garson/Kiosk/Mobile/CallCenter icin programId context kontrati netlestirilmeli; ardindan points_redeem_multiplier offer, balance guard, burn transaction ve redemption record tek atomik zincir olarak tasarlanmali.`
+- `Handoff Contract`: `Sonraki agent once src/lib/loyaltyWalletReadiness.js karar agacini ve src/lib/posLoyalty.js prepareRuntimeWalletContext() bayrak kosulunu okusun. CallCenter programId heuristigi src/components/pages/CallCenter.jsx icinde selectedLoyaltyProgramId useMemo'sunda. ambiguous_program_context bilincli durdurma durumudur; sessiz fallback'e cevrilmemeli.`
+
+- `Task`: `Call Center async loyalty runtime bridge`
+- `Intent`: `Faz 6 oncesi Call Center'i evaluateRuntimeOrderCampaignsAsync wrapper'ina baglayip wallet/program readiness'i kampanya evaluation akisiyla ayni state'te toplamak`
+- `Files`: `src/components/pages/CallCenter.jsx`
+- `Changes`:
+  - `CallCenter` loyalty evaluation artik `evaluateRuntimeOrderCampaignsAsync()` uzerinden degerleniyor; hata durumunda mevcut `evaluateRuntimeOrderCampaigns()` sonucu fallback olarak korunuyor.
+  - Ayrik wallet lookup effect'i kaldirildi; `walletReadiness`, `walletLoading` ve `pointsBalance` artik async runtime sonucundan besleniyor.
+  - `selectedLoyaltyProgramId` runtime wrapper'a gecilerek Call Center loyalty program baglami tek akista kullaniliyor.
+- `Validation`: `npm.cmd run build` basarili (275 modules transformed, Vite build tamamlandi). 
+- `Risk`: `Diger kanallar halen sync runtime evaluator kullaniyor; Faz 6'nin sonraki diliminde POS/Garson/Kiosk/Mobile ayni async kontrata alinmali.`
+- `Next Step`: `Async runtime call-site kontratini POS/Garson/Kiosk/Mobile yuzeylerine yay ve ancak sonra points_redeem_multiplier burn offer + ledger executor ekle.`
+
+- `Task`: `Async runtime call-site rollout`
+- `Intent`: `Faz 6 oncesi evaluateRuntimeOrderCampaignsAsync wrapper'ini POS, Garson, Kiosk Big, Kiosk Tablet ve Mobile/QR call-site'larina yaymak`
+- `Files`:
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+- `Changes`:
+  - `POS` ve `Garson` loyalty campaign preview state'i async wrapper ile besleniyor; sync evaluator fallback olarak korunuyor.
+  - `Kiosk Big` ve `Kiosk Tablet` ana loyalty evaluation + POS-compat evaluation yollarini async wrapper'a tasidi; secili kampanya icin programId cikarimi eklendi.
+  - `MobileAppShells` siparis loyalty evaluation'i async wrapper'a baglandi; mevcut offer secimi davranisi korunuyor.
+  - `CallCenter` ile birlikte ana kanallar artik `evaluateRuntimeOrderCampaignsAsync()` kullanan call-site'lara sahip.
+- `Validation`: `npm.cmd run build` basarili (275 modules transformed, Vite build tamamlandi).
+- `Open Risk`: `points_redeem_multiplier` offer hesabi ve burn ledger executor henuz intentionally missing. Async wrapper yayildi ama gercek redemption akisi halen yazilmadi.
+- `Next Step`: `posLoyalty.js` icinde points_redeem_multiplier icin gercek async offer hesap mantigini, ardindan `loyaltyValueLedger.js` icinde burn transaction + redemption record zincirini ekle.`
+
+## Entry 076
+
+- `Timestamp`: `2026-05-18T23:41:40.1684472+03:00`
+- `Agent`: `Codex`
+- `Task`: `Faz 7 points_redeem_multiplier Runtime Offer + Burn Ledger Executor`
+- `Intent`: `Async runtime call-site rollout sonrasinda points_redeem_multiplier icin ilk gercek order-time offer hesabini, wallet balance guard'i, burn transaction'i, redemption kaydini ve snapshot/readback context tasimasini ortak loyalty runtime/ledger yoluna eklemek.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `schema-railway-master.sql` dar schema teyidi icin
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Commands Run`:
+  - `Get-Content -Raw -LiteralPath ...` zorunlu governance/memory/design/skill ve hedef dosyalari icin
+  - `rg -n "buildOfferFromRule|evaluateRuntimeOrderCampaignsAsync|POINTS_ACTIONS|postSaleLoyaltyValueLedger|loyalty_campaign_redemptions|loyalty_transactions|points_redeem_multiplier|redemptionContext|runtimeWalletContext" ...`
+  - `Get-Content ... | Select-Object -Skip ... -First ...` hedef fonksiyon bloklari icin
+  - `npm.cmd run build` -> basarili, Vite 275 modules transformed, built in 19.40s
+- `Findings`:
+  - `POS/Garson/Kiosk Big/Kiosk Tablet/Call Center/Mobile call-site'lari zaten evaluateRuntimeOrderCampaignsAsync() wrapper'ina gecmis durumda; bu fazda kanal bazli ayri mantik yazmaya gerek kalmadi.`
+  - `posLoyalty.js sync evaluator points_redeem_multiplier icin eligible uretmiyordu; async evaluator walletReadiness donduruyor ama bu context offer builder'a aktarilmiyordu.`
+  - `loyaltyValueLedger.js POINTS_ACTIONS sadece earn/bonus aksiyonlarini taniyordu; points_redeem_multiplier snapshot'i burn'a cevirmiyordu.`
+  - `loyalty_campaign_redemptions tablosu transaction_id ve wallet_id baglantisini, loyalty_transactions ise transaction_type='burn' ve wallet lifetime_burned_points/current_points_balance alanlarini destekliyor.`
+- `Decisions`:
+  - `Redemption hesap modeli sabitlendi: discountTl = usedPoints * redemption_rate * multiplier. redemption_rate program modelinden gelir; multiplier kampanya action config veya rewardValue'dan okunur.`
+  - `Offer yalniz wallet readiness status='ready', readyForAsyncRedemption=true, walletId mevcut, redemptionRate>0, multiplier>0 ve balance>0 ise uretilir. ambiguous_program_context, wallet_missing, lookup_failed, missing_customer veya rate_not_configured durumlari eligible uretmez.`
+  - `Indirim siparis toplamiyla cap edilir; siparis tutarini asacak puan kullanimi iki ondalik puan hassasiyetinde truncate edilir.`
+  - `Offer snapshot/readback icine usedPoints, redemptionRate, multiplier, computedDiscount/discountAmount, walletId, wallet status ve pointsBalance iceren redemptionContext eklendi; appliedActionsSummary ve decisionContext ayni context'i tasir.`
+  - `Ledger executor points_redeem_multiplier icin negatif pointsDelta yazar, transaction_type='burn' kullanir, mevcut negative balance guard'i korur, current_points_balance ve lifetime_burned_points patch'ini postTransaction() uzerinden isletir.`
+  - `Idempotency guclendirildi: ayni sale/customer icin mevcut loyalty_transactions varsa tekrar transaction yazilmaz; eksik redemption readback mevcut transaction_id ile tamamlanabilir.`
+  - `src/lib/loyaltyRuntimeStatus.js dosyasina dokunulmadi; canli Railway uzerinde gercek satis smoke'u kosulmadigi icin points_redeem_multiplier statusu yukseltmedi.`
+- `Open Risks`:
+  - `Frontend db query wrapper ile transaction-safe DB transaction blogu yok; burn transaction yazilip redemption insert hata alirsa retry idempotent readback ile tamamlar, ancak tek SQL transaction garantisi yok.`
+  - `Canli Railway DB'de loyalty_programs.redemption_rate migration'i uygulanmamis bir ortamda helper rate lookup_failed/rate_not_configured dondurur ve offer uretmez.`
+  - `Gercek wallet bakiyesi olan canli musteriyle manuel end-to-end satis smoke'u bu turnde kosulmadi; dogrulama yerel build ve kod kontrati seviyesinde.`
+- `Next Step`: `Railway Postgres'te redemption_rate kolonunun canli oldugunu teyit et; test musterisi/program wallet'i ile POS veya Call Center uzerinden points_redeem_multiplier kampanyasi uygulayip loyalty_transactions burn ve loyalty_campaign_redemptions transaction_id baglantisini canli DB'de dogrula. Bu smoke basarili olmadan src/lib/loyaltyRuntimeStatus.js statusu yukseltme.`
+- `Handoff Contract`: `Sonraki agent once src/lib/posLoyalty.js points_redeem_multiplier case'ini, src/lib/loyaltyValueLedger.js resolvedPointActions/postTransaction/postCampaignRedemption bloklarini ve src/lib/checkoutLoyalty.js createSaleLoyaltySnapshot redemptionContext alanini okusun. Status dosyasi bilincli olarak degistirilmedi. Canli smoke icin wallet readiness ready, redemption_rate > 0 ve yeterli current_points_balance olan gercek Railway kaydi gereklidir.`
+
+## Entry — Ara Faz: Idempotent Burn Transaction Targeting Fix
+
+- `Timestamp`: `2026-05-18T23:53:00+03:00`
+- `Agent`: `Antigravity (Claude Sonnet 4.6 Thinking)`
+- `Task`: `Ara Faz — Idempotent Burn Transaction Targeting Fix`
+- `Intent`: `Ayni satista birden fazla loyalty transaction olusabildiginden, idempotent redemption backfill'in yanlis (frequency_step gibi alakasiz) transaction'a baglanma riskini gidermek.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/posLoyalty.js`
+- `Files Changed`:
+  - `src/lib/loyaltyValueLedger.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Commands Run`:
+  - `npm.cmd run build` → basarili, exit code 0, 275 modules, 4m 51s
+- `Findings`:
+  - `readExistingLedger() customer_id + source_ref_id eslestiginde tablodaki ilk satiri aliyordu; bu satir frequency_step veya baska alakasiz bir transaction olabiliyordu.`
+  - `Ayni satista frequency_step, earn ve burn transaction'lari birlikte olusabilir. Idempotent retry'da redemption, frequency_step transaction'inin wallet_id'sine baglanabiliyordu.`
+  - `Bu durum postCampaignRedemption() icindeki walletId ve transactionId alanlarini kirletiyor ve loyalty_campaign_redemptions.transaction_id baglantisini yanlis kuruyor.`
+- `Decisions`:
+  - `readExistingLedger() kaldirildi. Yerine iki typed helper eklendi:`
+    - `readExistingSaleBurnTransaction(): sadece transaction_type='burn' arar.`
+    - `readExistingSalePointsTransaction(): once burn'i ara, yoksa 'earn'/'campaign_bonus' ara, frequency_step hic aralanmaz.`
+  - `postSaleLoyaltyValueLedger() idempotency blogu yeni readExistingSalePointsTransaction() cagrisini kullaniyor; return degerine anchorTransactionType eklendi.`
+  - `Yeni backfill yolu existingPointsTx.wallet_id ve existingPointsTx.id'yi postCampaignRedemption() icin kullanir; bu sayede burn yolu dogrudan burn transaction'a, earn yolu earn/campaign_bonus transaction'a baglanir.`
+  - `src/lib/loyaltyRuntimeStatus.js dosyasina dokunulmadi. points_redeem_multiplier statusu degistirilmedi.`
+- `Open Risks`:
+  - `Eger bir satista hem earn hem burn olusmussa (teorik edge case), readExistingSalePointsTransaction() burn'i tercih eder; bu kasitli ve dogru davranistir. Ancak earn + burn ayri wallet'lardaysa wallet_id carpismasi teorik olarak mumkundur; mevcut kullanim modelinde her musteri/program icin tek wallet oldugu icin pratikte sorun beklenmez.`
+  - `frequency_step transaction'i hic secilmeyecek sekilde kesinlesmis; ancak baska yeni transaction_type'lar eklenirse EARN_TYPES listesinin guncellenmesi gerekir.`
+- `Next Step`: `Canli Railway ortaminda birden fazla loyalty transaction olan bir satista retry/backfill testi yapin; loyalty_campaign_redemptions.transaction_id'nin dogru burn/earn transaction'a baglandigini ve frequency_step transaction_id'sinin hic kullanilmadigini teyit edin.`
+- `Handoff Contract`: `Sonraki agent idempotency veya backfill davranisini degistirecekse once src/lib/loyaltyValueLedger.js icerisindeki readExistingSaleBurnTransaction(), readExistingSalePointsTransaction() ve postSaleLoyaltyValueLedger() backfill blogu uzerinden baslasın. frequency_step ile ilgili bir sey yapilmayacaksa EARN_TYPES listesine dokunma.`
+- `Date`: `2026-05-19`
+- `Area`: `Loyalty readback UI surfacing`
+- `Files`: `src/components/shared/LoyaltyReadback.jsx`
+- `Commands Run`:
+  - `npm.cmd run build` -> basarili, exit code 0, 276 modules, 33.06s
+- `Findings`:
+  - `Musteriler ekranindaki ortak LoyaltyReadback bileseni snapshot shape'i ile uyumlu degildi; selectedCouponCode string oldugu halde object bekliyordu.`
+  - `appliedActionsSummary object dizisi oldugu halde dogrudan string gibi basiliyordu.`
+  - `Bilesende mojibake ve bozuk ikon/metin kalintilari vardi; redemption context okunabilir ama guvenilir degildi.`
+- `Decisions`:
+  - `LoyaltyReadback sifirdan sadelestirildi; createSaleLoyaltySnapshot() shape'i ile hizalandi.`
+  - `selectedCouponCode string veya object olarak normalize ediliyor; appliedActionsSummary badge'lere okunabilir label olarak donusuyor.`
+  - `decisionContext ve redemptionContext icin kullaniciya okunur ozet satirlari eklendi; usedPoints, redemptionRate, multiplier ve discountAmount gorunur hale geldi.`
+- `Open Risks`:
+  - `Su an bu readback UI agirlikli olarak Musteriler icindeki siparis sadakat gecmisinde kullaniliyor; siparis detayinin diger yuzeylerine ayni bilesen daha sonra yayilabilir.`
+- `Next Step`: `Canli Railway smoke ile points_redeem_multiplier status promotion kararini teyit et veya redemption readback'i siparis detay ekranlarina yay.`

@@ -13,6 +13,7 @@ const RUNTIME_LOYALTY_CACHE_KEY = 'suitable_runtime_loyalty_catalog_v1'
 const LOCAL_RULE_CONDITION_KEYS = new Set(['always', 'order_total', 'sales_channel', 'manual_approval'])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag'])
 const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products'])
+const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
 function normalizeText(value) {
   return String(value || '')
@@ -25,6 +26,14 @@ function normalizeText(value) {
 
 function roundMoney(value) {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+}
+
+function roundPoints(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+}
+
+function truncatePoints(value) {
+  return Math.floor(Math.max(0, Number(value || 0)) * 100) / 100
 }
 
 function parseJsonValue(value, fallback = null) {
@@ -200,6 +209,18 @@ function ruleCanResolveLocally(rule = {}) {
   )
 }
 
+function ruleCanResolveWithAsyncRedemption(rule = {}, orderContext = {}) {
+  if (ruleCanResolveLocally(rule)) return true
+  if (rule.active === false) return true
+  if (!ASYNC_REDEMPTION_ACTION_TYPES.has(rule.actionType)) return false
+
+  const conditions = getRuleConditionEntries(rule)
+  return conditions.every(condition => (
+    LOCAL_RULE_CONDITION_KEYS.has(condition.conditionKey)
+    || CUSTOMER_CONTEXT_RULE_CONDITION_KEYS.has(condition.conditionKey)
+  ))
+}
+
 function normalizeRuntimeCustomerContext(customerContext = {}) {
   return {
     customerId: String(customerContext.customerId || '').trim(),
@@ -221,6 +242,11 @@ export function getRuntimeCampaignResolutionMode(campaign = {}, customerContext 
     return campaign.campaignType === 'discount_percent' && Number(campaign.rewardValue || 0) > 0
       ? 'local'
       : 'live_lookup'
+  }
+
+  const hasAsyncRedemptionContext = Boolean(customerContext.runtimeWalletContext)
+  if (hasAsyncRedemptionContext && applicableRules.every(rule => ruleCanResolveWithAsyncRedemption(rule, customerContext))) {
+    return 'local'
   }
 
   return applicableRules.every(ruleCanResolveLocally) ? 'local' : 'live_lookup'
@@ -251,6 +277,17 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
       actions.push({ type: 'points_percent_of_order', value: config.percent || 0, label: `%${config.percent || 0} puan` })
     } else if (rule.actionType === 'points_earn_multiplier') {
       actions.push({ type: 'points_earn_multiplier', value: config.multiplier || 1, label: `${config.multiplier || 1}x puan` })
+    } else if (rule.actionType === 'points_redeem_multiplier') {
+      const multiplier = Number(config.multiplier || campaign.rewardValue || 1)
+      const context = orderContext.redemptionContext || null
+      actions.push({
+        type: 'points_redeem_multiplier',
+        value: multiplier,
+        usedPoints: context?.usedPoints || 0,
+        redemptionRate: context?.redemptionRate || orderContext.runtimeWalletContext?.redemptionRate || null,
+        discountAmount: context?.discountAmount || context?.computedDiscount || 0,
+        label: `${multiplier}x puan harcama`,
+      })
     }
     return actions.length > 0 ? actions : null
   }
@@ -266,6 +303,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
       runtimeChannel: orderContext.runtimeChannel,
       orderTotal,
       customerId: orderContext.customerId || null,
+      redemptionContext: orderContext.redemptionContext || null,
       resolvedAt: new Date().toISOString(),
     }
 }
@@ -357,6 +395,66 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
         applicationMode,
         applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
         selectedCouponCode: orderContext.selectedCouponCode || null,
+        appliedActionsSummary: getAppliedActionsSummary(),
+        decisionContext: getDecisionContext(),
+      }
+    }
+    case 'points_redeem_multiplier': {
+      const walletContext = orderContext.runtimeWalletContext || null
+      const multiplier = Number(config.multiplier || campaign.rewardValue || 1)
+      const redemptionRate = Number(walletContext?.redemptionRate || walletContext?.programRedemption?.redemptionRate || 0)
+      const pointsBalance = Number(walletContext?.pointsBalance || 0)
+      const walletReady = Boolean(
+        walletContext?.readyForAsyncRedemption
+        && walletContext?.status === 'ready'
+        && walletContext?.balanceKnown
+        && walletContext?.walletId
+      )
+
+      if (!walletReady || orderTotal <= 0 || multiplier <= 0 || redemptionRate <= 0 || pointsBalance <= 0) return null
+
+      const pointValue = redemptionRate * multiplier
+      if (pointValue <= 0) return null
+
+      const maxPointsForOrder = truncatePoints(orderTotal / pointValue)
+      const usedPoints = roundPoints(Math.min(pointsBalance, maxPointsForOrder))
+      const computedDiscount = roundMoney(Math.min(orderTotal, usedPoints * pointValue))
+      if (usedPoints <= 0 || computedDiscount <= 0) return null
+
+      const redemptionContext = {
+        usedPoints,
+        redemptionRate,
+        multiplier,
+        computedDiscount,
+        discountAmount: computedDiscount,
+        walletId: walletContext.walletId,
+        walletStatus: walletContext.status,
+        walletProgramId: walletContext.programId || null,
+        walletType: walletContext.walletType || 'points',
+        pointsBalance: roundPoints(pointsBalance),
+        redemptionUnit: walletContext.redemptionUnit || '1 puan = redemption_rate TL',
+      }
+      orderContext.redemptionContext = redemptionContext
+
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name || 'Kampanya',
+        priority: Number(campaign.priority || 0),
+        discountType: 'amount',
+        discountValue: computedDiscount,
+        discountAmount: computedDiscount,
+        offerLabel: `${usedPoints.toLocaleString('tr-TR')} puan ile ${formatAmount(computedDiscount)} indirim`,
+        conditionLabel: getConditionPreview(rule),
+        runtimeStatus: 'eligible',
+        actionType: rule.actionType,
+        sourceRuleId: rule.id,
+        applicationMode,
+        applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+        selectedCouponCode: orderContext.selectedCouponCode || null,
+        usedPoints,
+        redemptionRate,
+        multiplier,
+        redemptionContext,
         appliedActionsSummary: getAppliedActionsSummary(),
         decisionContext: getDecisionContext(),
       }
@@ -773,6 +871,7 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   customerContext = {},
   selectedCampaignId = '',
   manuallyTriggeredCampaignIds = [],
+  runtimeWalletContext = null,
 } = {}) {
   const normalizedRuntimeChannel = normalizeRuntimeChannelKey(runtimeChannel)
   const normalizedCustomerContext = normalizeRuntimeCustomerContext(customerContext)
@@ -785,6 +884,7 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
       runtimeChannel: normalizedRuntimeChannel,
       orderTotal: roundMoney(orderTotal),
       manualTriggeredCampaignIds: triggeredCampaignIds,
+      runtimeWalletContext,
       ...normalizedCustomerContext,
     }, normalizedSelectedId))
 
@@ -874,6 +974,7 @@ export async function prepareRuntimeWalletContext({
     redemptionUnit: redemptionReadiness.unit,
     readyForAsyncRedemption: Boolean(
       walletReadiness.ok
+      && walletReadiness.status === 'ready'
       && walletReadiness.balanceKnown
       && redemptionReadiness.ok
       && redemptionReadiness.supported
@@ -890,7 +991,10 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
   })
 
   return {
-    ...evaluateRuntimeOrderCampaigns(campaigns, options),
+    ...evaluateRuntimeOrderCampaigns(campaigns, {
+      ...options,
+      runtimeWalletContext: walletReadiness,
+    }),
     walletReadiness,
   }
 }

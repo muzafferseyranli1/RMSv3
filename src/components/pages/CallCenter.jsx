@@ -9,13 +9,13 @@ import {
   createSaleLoyaltySnapshot,
 } from '@/lib/checkoutLoyalty'
 import {
+  evaluateRuntimeOrderCampaignsAsync,
   evaluateRuntimeOrderCampaigns,
   getRuntimeChannelLabel,
   loadCachedRuntimeLoyaltyCampaignCatalog,
 } from '@/lib/posLoyalty'
 import { loadLoyaltyCustomerCategoryAssignments } from '@/lib/loyalty'
 import { postSaleLoyaltyValueLedger } from '@/lib/loyaltyValueLedger'
-import { resolveLoyaltyWalletBalance } from '@/lib/loyaltyWalletReadiness'
 import {
   buildCallCenterOrderNote,
   formatCallCenterDateTime,
@@ -455,6 +455,12 @@ export default function OrderHub() {
 
   const [pointsBalance, setPointsBalance] = useState(0)
   const [walletLoading, setWalletLoading] = useState(false)
+  const [walletReadiness, setWalletReadiness] = useState(null)
+  const [evaluatedRuntimeCampaigns, setEvaluatedRuntimeCampaigns] = useState({
+    visibleCampaigns: [],
+    applicableOffers: [],
+    walletReadiness: null,
+  })
 
   const selectedBranch = branches.find(branch => String(branch.id) === String(selectedBranchId)) || null
 
@@ -635,20 +641,6 @@ export default function OrderHub() {
         door_no: addressForm.doorNo,
       })
 
-  const evaluatedRuntimeCampaigns = useMemo(() => (
-    evaluateRuntimeOrderCampaigns(campaigns, {
-      runtimeChannel: runtimeLoyaltyChannel,
-      orderTotal: total,
-      customerContext: {
-        customerId: selectedCustomer?.id || '',
-        customerName: activeCustomerName,
-        customerCategoryIds,
-      },
-      selectedCampaignId: selectedLoyaltyCampaignId,
-      manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
-    })
-  ), [campaigns, runtimeLoyaltyChannel, total, selectedCustomer?.id, activeCustomerName, customerCategoryIds, selectedLoyaltyCampaignId, manualTriggeredCampaignIds])
-
   const visibleRuntimeCampaigns = evaluatedRuntimeCampaigns.visibleCampaigns || []
   const applicableRuntimeOffers = evaluatedRuntimeCampaigns.applicableOffers || []
 
@@ -660,6 +652,94 @@ export default function OrderHub() {
     }
     return null
   }, [applicableRuntimeOffers, selectedLoyaltyCampaignId])
+
+  const selectedLoyaltyProgramId = useMemo(() => {
+    const selectedCampaign = visibleRuntimeCampaigns.find(campaign => (
+      String(campaign.id || '') === String(selectedLoyaltyCampaignId || '')
+    ))
+    if (selectedCampaign?.programId) return String(selectedCampaign.programId).trim()
+
+    const appliedCampaign = visibleRuntimeCampaigns.find(campaign => (
+      String(campaign.id || '') === String(appliedLoyaltyCampaign?.campaignId || '')
+    ))
+    if (appliedCampaign?.programId) return String(appliedCampaign.programId).trim()
+
+    const candidateProgramIds = [
+      ...new Set(
+        campaigns
+          .map(campaign => String(campaign.programId || campaign.program_id || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    return candidateProgramIds.length === 1 ? candidateProgramIds[0] : ''
+  }, [visibleRuntimeCampaigns, campaigns, selectedLoyaltyCampaignId, appliedLoyaltyCampaign?.campaignId])
+
+  useEffect(() => {
+    let ignore = false
+    const customerContext = {
+      customerId: selectedCustomer?.id || '',
+      customerName: activeCustomerName,
+      customerCategoryIds,
+    }
+    const syncFallback = evaluateRuntimeOrderCampaigns(campaigns, {
+      runtimeChannel: runtimeLoyaltyChannel,
+      orderTotal: total,
+      customerContext,
+      selectedCampaignId: selectedLoyaltyCampaignId,
+      manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+    })
+
+    setWalletLoading(true)
+
+    ;(async () => {
+      try {
+        const evaluated = await evaluateRuntimeOrderCampaignsAsync(campaigns, {
+          runtimeChannel: runtimeLoyaltyChannel,
+          orderTotal: total,
+          customerContext,
+          selectedCampaignId: selectedLoyaltyCampaignId,
+          manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+          programId: selectedLoyaltyProgramId,
+        })
+        if (ignore) return
+        setEvaluatedRuntimeCampaigns(evaluated)
+        setWalletReadiness(evaluated.walletReadiness || null)
+        setPointsBalance(
+          evaluated.walletReadiness?.balanceKnown
+            ? safeNumber(evaluated.walletReadiness.pointsBalance, 0)
+            : 0,
+        )
+      } catch {
+        if (ignore) return
+        setEvaluatedRuntimeCampaigns({
+          ...syncFallback,
+          walletReadiness: null,
+        })
+        setWalletReadiness(null)
+        setPointsBalance(0)
+      } finally {
+        if (!ignore) setWalletLoading(false)
+      }
+    })()
+
+    return () => { ignore = true }
+  }, [
+    campaigns,
+    runtimeLoyaltyChannel,
+    total,
+    selectedCustomer?.id,
+    activeCustomerName,
+    customerCategoryIds,
+    selectedLoyaltyCampaignId,
+    manualTriggeredCampaignIds,
+    selectedLoyaltyProgramId,
+  ])
+
+  const walletBalanceLabel = walletLoading
+    ? '...'
+    : (walletReadiness?.status === 'ambiguous_program_context'
+      ? 'Program secimi gerekli'
+      : `${Math.round(pointsBalance)} puan`)
 
   const loyaltyDiscountAmount = safeNumber(appliedLoyaltyCampaign?.discountAmount)
   const payableTotal = Math.max(0, safeNumber(total) - loyaltyDiscountAmount)
@@ -905,33 +985,6 @@ export default function OrderHub() {
     setManualTriggeredCampaignIds([])
     setSelectedLoyaltyCampaignId('')
   }, [selectedCustomer?.id, selectedBranchId, selectedChannelId, fulfillmentType])
-
-  useEffect(() => {
-    let ignore = false
-    ;(async () => {
-      if (!selectedCustomer?.id) {
-        setPointsBalance(0)
-        setWalletLoading(false)
-        return
-      }
-      setWalletLoading(true)
-      try {
-        const result = await resolveLoyaltyWalletBalance({
-          customerId: selectedCustomer.id,
-          walletType: 'points',
-        })
-        if (ignore) return
-        setPointsBalance(result.balanceKnown ? safeNumber(result.pointsBalance, 0) : 0)
-      } catch (e) {
-        if (ignore) return
-        setPointsBalance(0)
-      } finally {
-        if (!ignore) setWalletLoading(false)
-      }
-    })()
-    return () => { ignore = true }
-  }, [selectedCustomer?.id])
-
 
   useEffect(() => {
     if (!selectedLoyaltyCampaignId) return
@@ -2344,10 +2397,14 @@ export default function OrderHub() {
                   >
                     <i className="fa-solid fa-coins" style={{ color: '#0284c7', marginRight: 8 }} /> Sadakat Puan
                     <div style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 800, marginTop: 6 }}>
-                      {walletLoading ? '...' : `${Math.round(pointsBalance)} puan`}
+                      {walletBalanceLabel}
                     </div>
                     <div style={{ fontSize: '.76rem', color: '#94a3b8', fontWeight: 800, marginTop: 6 }}>
-                      {walletLoading ? '' : `AÃ§Ä±k kalan: â‚º${money(payableTotal)}`}
+                      {walletLoading
+                        ? ''
+                        : (walletReadiness?.status === 'ambiguous_program_context'
+                          ? `${walletReadiness.candidateWalletCount || 0} wallet bulundu`
+                          : `AÃ§Ä±k kalan: â‚º${money(payableTotal)}`)}
                     </div>
                   </button>
 
