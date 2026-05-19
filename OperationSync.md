@@ -4081,3 +4081,219 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `Canli ortam remote API servisi geri gelmeden duzelmez; frontend fallback bunu tek basina cozemiyor.`
   - `Lokal backend icin DATABASE_URL/DATABASE_SSL ortam degiskenleri yine gereklidir.`
 - `Next Step`: `Canli icin Railway API servisini yeniden deploy/restore et. Lokal icin DATABASE_URL ile npm run api:dev calistir, sonra npm run dev ile frontend'i ac.`
+- `Date`: `2026-05-19`
+- `Area`: `Railway API service routing and deployment fix`
+- `Files`: `SUITABLERMS_PROJECT_GOVERNANCE.md`, `.env`, `server/.env`, `server/index.js`
+- `Findings`:
+  - `Canli frontend artik static bundle olarak geliyordu ama veri katmani once 'Failed to fetch', sonra 'HTTP 405' hatasi veriyordu.`
+  - `rms-api domaini erisilebilirdi, ancak service ayarlari repo kokunden autodetect oldugu icin API service bazen yanlis hedefi calistiriyordu.`
+  - `Belirleyici semptom: https://rms-api-production-219d.up.railway.app/dashboard adresinde frontend route aciliyordu; gercek API service burada SPA servis etmemelidir.`
+  - `Lokal tarafta root .env icinde DATABASE_URL tutuluyordu; governance'a gore bu yanlisti.`
+- `Decisions`:
+  - `Root .env sadece VITE_API_URL ve VITE_DISABLE_AUTH icerecek sekilde temizlendi.`
+  - `Server baglanti bilgileri server/.env dosyasina tasindi.`
+  - `server/index.js icine basit server/.env loader eklendi; npm run api:dev artik server/.env ile lokal kalkabiliyor.`
+  - `Governance dosyasina Railway rms-api service zorunlu ayarlari eklendi: Root Directory=server, Start Command=node index.js, Healthcheck Path=/health.`
+  - `Canli incident, Railway'de rms-api service ayarlari duzeltilip yeniden deploy edilerek kapatildi.`
+- `Verification`:
+  - `Lokal: http://127.0.0.1:3001/health -> {"ok":true}`
+  - `Canli: API service duzeltildikten sonra frontend veri istekleri yeniden cevap almaya basladi.`
+- `Open Risks`:
+  - `Railway service ayarlari ileride sifirlanir veya repo kokune donerse ayni semptom tekrarlar: api domaininde frontend route acilir ve /api/query POST'lari 405/yanlis cevap verir.`
+  - `server/.env gizli bilgi icerdigi icin commit edilmez; yeni makinede lokal calisma icin manuel olusturulmasi gerekir.`
+- `Next Step`: `Railway'de rms-api service icin Root Directory, Start Command ve Healthcheck Path ayarlari periyodik deploy kontrol listesine dahil edilsin.`
+- `Date`: `2026-05-19`
+- `Area`: `Railway frontend service deployment hardening`
+- `Files`: `package.json`, `scripts/start-web-preview.mjs`, `SUITABLERMS_PROJECT_GOVERNANCE.md`
+- `Findings`:
+  - `API servisi duzeldikten sonra kalici risk frontend service'in de Railway autodetect ile belirsiz komutlarla calismasiydi.`
+  - `Repo kokunden deploy edilen frontend icin Railway panelinde acik bir Start Command tanimi yoksa ileride farkli builder davranislari gorulebilir.`
+- `Decisions`:
+  - `Deterministik frontend start script'i eklendi: package.json -> npm run start:web -> scripts/start-web-preview.mjs.`
+  - `Script Railway PORT/HOST env'ini okuyup vite preview'u 0.0.0.0 uzerinde dogru portla kaldirir.`
+  - `Governance dosyasina frontend service zorunlu ayarlari eklendi: Root Directory=repo root, Build Command=npm run build, Start Command=npm run start:web, Healthcheck Path=/.`
+- `Verification`:
+  - `node --check scripts/start-web-preview.mjs`
+  - `npm.cmd run build`
+- `Open Risks`:
+  - `Railway panelinde frontend service Start Command manuel olarak farkli bir degere cekilirse governance ile drift olusur.`
+  - `VITE_API_URL build-time degiskendir; API domaini degisirse frontend yeniden build/deploy edilmelidir.`
+- `Next Step`: `Railway frontend service panelinde Start Command'i npm run start:web ve Healthcheck Path'i / olarak sabitle.`
+
+## Entry 077
+
+- `Timestamp`: `2026-05-19T09:42:03.0504172+03:00`
+- `Agent`: `Codex`
+- `Task`: `NEWagent onboarding ve rmsv3-demo-builder skill hazirligi`
+- `Intent`: `Kullanicinin yeni gorev oncesi istedigi zorunlu yonlendirme dosyalarini okuyup demo-builder kurallarini aktif calisma baglamina almak.`
+- `Files Read`:
+  - `NEWagent.md`
+  - `skills/rmsv3-demo-builder/SKILL.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `README.md`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\NEWagent.md`
+  - `Get-ChildItem -Force -LiteralPath C:\RMSggl\Dropbox\RMSv3\skills\rmsv3-demo-builder`
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\skills\rmsv3-demo-builder\SKILL.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md`
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Tail 260`
+  - `Get-ChildItem -Force -LiteralPath C:\RMSggl\Dropbox\RMSv3 -Filter DESIGN_HANDBOOK_V3_TR*`
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\DESIGN_HANDBOOK_V3_TR.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\README.md`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `NEWagent.md gorev oncesi SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md ve DESIGN_HANDBOOK_V3_TR okunmasini istiyor.`
+  - `Governance dosyasi Railway Postgres'i tek veri otoritesi, Railway'i tek uretim ortami, src/lib/db.js ve server/index.js'i kanonik veri yolu olarak sabitliyor.`
+  - `rmsv3-demo-builder skill'i demo uretiminde Railway Postgres disinda local-only/fallback veri kabul etmiyor; quantity, dependency readiness, kontrollu batch yazim ve OperationSync kaydi zorunlu.`
+  - `Design handbook UI gorevlerinde siyah sidebar + amber accent, 4:3 safe davranis, searchable dropdown, soft delete ve Turkce UI kurallarini baglayici kabul ediyor.`
+  - `OperationSync son kayitlari Railway API/frontend deployment hardening ve loyalty redemption smoke/status risklerini guncel handoff olarak isaret ediyor.`
+- `Decisions`:
+  - `Yeni gorevlerde governance, OperationSync ve ilgili skill/handbook kurallari ilk karar kaynagi olacak.`
+  - `Demo veri istenirse once hedef modul/akis ve kesin adet netlestirilecek; dependency readiness kontrol edilmeden Railway Postgres'e yazim baslatilmayacak.`
+  - `Legacy AWS/Supabase artefaktlari aktif mimari veya demo yolu olarak kullanilmayacak.`
+- `Open Risks`:
+  - `OperationSync cok buyuk ve bazi eski bolumleri mojibake tasiyor; gorev bazinda ilgili son handoff ve hedef dosya bloklari tekrar dar okunmali.`
+  - `Canli demo yazimlari icin DB erisimi ve gerekli tablo/RPC/settings hazirligi her gorevde yeniden dogrulanmali.`
+- `Next Step`: `Kullanicidan gelecek yeni gorevde once hedef kapsami belirle, gerekiyorsa ilgili skill'i yeniden oku ve gorev tipi demo ise quantity/dependency preflight ile basla.`
+- `Handoff Contract`: `Sonraki agent bu hazirliktan devam ederse once SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md son kayitlari ve gorev demo kapsamindaysa skills/rmsv3-demo-builder/SKILL.md dosyasini okusun. UI gorevlerinde DESIGN_HANDBOOK_V3_TR.md baglayicidir. Demo yaziminda Railway Postgres DB-first, kontrollu batch ve DEMO_READY/DEMO_BLOCKED_BY_DEPENDENCY gibi verdict zorunludur.`
+
+## Entry 078
+
+- `Timestamp`: `2026-05-19T10:11:44.2575143+03:00`
+- `Agent`: `Codex`
+- `Task`: `Lokasyon alanlarinda Tum Subeler default'u ve satis mali Call Center kanal fiyati hazirligi`
+- `Intent`: `Kullanici istegi dogrultusunda lokasyon girilen master ekranlarda Tum Subeler sablonunun varsayilan secili gelmesini saglamak ve satis mallarinda Call Center kanal fiyatini mevcut kanal fiyatlariyla uyumlu hale getirmek.`
+- `Files Read`:
+  - `src/components/pages/SaleItems.jsx`
+  - `src/components/pages/StockItems.jsx`
+  - `src/components/pages/SemiProducts.jsx`
+  - `src/components/pages/Options.jsx`
+  - `src/components/pages/ComboMenu.jsx`
+  - `src/App.jsx`
+  - `scripts/enrich-sale-showcase-pricing.mjs`
+  - `scripts/bootstrap-enrich-channel-prices.mjs`
+  - `skills/rmsv3-demo-builder/SKILL.md` onceki hazirliktan aktif kural olarak kullanildi
+- `Files Changed`:
+  - `src/lib/locationDefaults.js`
+  - `src/lib/saleItemChannelPricing.js`
+  - `scripts/apply-call-center-channel-prices.mjs`
+  - `src/components/pages/SaleItems.jsx`
+  - `src/components/pages/StockItems.jsx`
+  - `src/components/pages/SemiProducts.jsx`
+  - `src/components/pages/ComboMenu.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `rg -n "Lokasyon|location|branch|branches|Tüm Şubeler|sale_items|sales_channels|Call Center|call_center" src server scripts package.json schema-railway-master.sql`
+  - `git status --short`
+  - `Invoke-RestMethod https://rms-api-production-219d.up.railway.app/health` escalated; basarili, {"ok":true}
+  - `Invoke-RestMethod https://rms-api-production-219d.up.railway.app/api/query` escalated select sales_channels; Call Center aktif kanal olarak goruldu
+  - `Invoke-RestMethod https://rms-api-production-219d.up.railway.app/api/query` escalated select sale_items; mevcut aktif satis mallarinda Call Center channel_prices entry'sinin eksik oldugu goruldu
+  - `node --check .\src\lib\locationDefaults.js`
+  - `node --check .\src\lib\saleItemChannelPricing.js`
+  - `node --check .\scripts\apply-call-center-channel-prices.mjs`
+  - `npm.cmd run build` ilk deneme timeout oldu; ikinci ve son deneme basarili
+  - Browser smoke: `http://127.0.0.1:5173/products`, `stock-items`, `semi-products`, `combo-menu`
+- `Findings`:
+  - `Lokasyon picker kopyalari SaleItems, StockItems, SemiProducts ve ComboMenu ekranlarinda gorunur alan olarak mevcut. Options.jsx icinde tarihsel location state'i var ama UI'da Lokasyon alani render edilmiyor; bu nedenle kapsam disinda birakildi.`
+  - `branch_templates icinde Tum Subeler sablonu mevcut ve tarayici smoke'unda yeni/düzenleme modallarinda secili gosterilebildi.`
+  - `sales_channels tablosunda Call Center kanali aktif ve sort_order=80. Mevcut sale_items channel_prices dizilerinde 7 kanal fiyatli; Call Center entry'si eksik.`
+  - `Acı Mayo Burger duzenleme modalinda frontend helper Call Center'i aktif, KDV Gida ve 290 fiyatla gosterebildi; fiyat Online Yemek/Suitable Yemek referansiyla uyumlu.`
+- `Decisions`:
+  - `Tum Subeler default'u ortak helper'a alindi; isim normalize edilerek "Tüm Şubeler", "Tum Subeler" ve "All branches" varyantlari destekleniyor.`
+  - `Yeni modal acilisinda ve branch template state'i gec gelirse modal acikken bir defaya mahsus Tum Subeler uygulanacak; kullanici temizlerse ayni modal icinde zorla geri doldurulmayacak.`
+  - `SaleItems icin Call Center fiyat helper'i eklendi. Mevcut fiyat varsa korur; yoksa sirayla Online Yemek, Suitable Yemek, QR, Hizli Satis, Masa, Gel Al, Kiosk fiyatlarindan uyumlu fiyat turetir ve 5 TL adimina yuvarlar.`
+  - `Canli DB yazimi icin API-first, 10'lu batch ve batch readback dogrulamali script hazirlandi: scripts/apply-call-center-channel-prices.mjs.`
+- `Open Risks`:
+  - `Canli DB yazimi tamamlanmadi. node scripts/apply-call-center-channel-prices.mjs --audit-only icin escalated izin istegi auto-review usage limit nedeniyle reddedildi; bu nedenle write/verify adimina gecilmedi.`
+  - `Canli sale_items kayitlari henuz DB seviyesinde Call Center entry'si icermiyor olabilir; frontend edit/save yolu eksigi tamamlar, ancak tum kayitlarin toplu DB update'i script calismadan tamamlanmis sayilmaz.`
+  - `Workspace'te bu gorev disi degisiklikler mevcuttu: LOYALTYMEMORY.md, SUITABLERMS_PROJECT_GOVERNANCE.md, package.json, schema-railway-master.sql, src/lib/loyaltyRuntimeStatus.js ve bazi migration/script dosyalari. Bunlara dokunulmadi.`
+- `Next Step`: `Escalated network izni tekrar uygun oldugunda once node .\scripts\apply-call-center-channel-prices.mjs --audit-only, sonra node .\scripts\apply-call-center-channel-prices.mjs, en son node .\scripts\apply-call-center-channel-prices.mjs --verify-only calistir. Batch size 10 ve her batch readback dogrulamali.`
+- `Handoff Contract`: `Sonraki agent bu gorevden devam ederse once src/lib/locationDefaults.js, src/lib/saleItemChannelPricing.js ve scripts/apply-call-center-channel-prices.mjs dosyalarini okusun. UI kismi build ve browser smoke ile dogrulandi. DB-first Call Center toplu fiyat yazimi ise henuz bloklu; script Railway API /api/query uzerinden calisir ve tamamlanmadan "tum satis mallari DB'de guncellendi" denmemeli.`
+
+- `Date`: `2026-05-19`
+- `Area`: `Loyalty live smoke, persistence schema completion and status promotion`
+- `Files`: `schema-railway-master.sql`, `migrations/009_sales_loyalty_persistence.sql`, `scripts/run-loyalty-redemption-smoke.mjs`, `src/lib/loyaltyRuntimeStatus.js`, `LOYALTYMEMORY.md`
+- `Findings`:
+  - `Canli Railway DB'de loyalty_programs.redemption_rate eksikti; once migration 008 canliya uygulandi ve fixture bootstrap bunun ardindan basarili oldu.`
+  - `Ardindan sales ve sale_lines tablolarinda loyalty persistence kolonlarinin eksik oldugu goruldu; scripted smoke sale insert'i loyalty_campaign_id kolonu olmadigi icin fail oldu.`
+  - `Bu drift yalnizca smoke script'i degil, Call Center loyalty satis persistence akisini da risk altina aliyordu.`
+- `Decisions`:
+  - `sales ve sale_lines loyalty persistence kolonlari icin migration 009 yazildi ve canli Railway DB'ye uygulandi.`
+  - `run-loyalty-redemption-smoke scripted smoke sale zinciri ile canli DB'de burn + redemption + idempotent second pass dogrulandi.`
+  - `PASS verify sonrasinda src/lib/loyaltyRuntimeStatus.js icinde points_redeem_multiplier local + ledger:true statusuna yukseltilerek runtime truth smoke kanitiyla hizalandi.`
+- `Verification`:
+  - `bootstrap:loyalty-redemption-smoke -> fixture hazirlandi`
+  - `run:loyalty-redemption-smoke -> saleId=93099c7e-4ec1-4454-ac85-8d12c0a183ad, burnTx=bd01ebb2-cb3f-474b-8843-4c452880cb05, redemption=d3a80427-39c8-4b6c-8b7a-0390e5914aea`
+  - `verify:loyalty-redemption-smoke -- --sale-id 93099c7e-4ec1-4454-ac85-8d12c0a183ad -> PASS`
+  - `npm.cmd run build -> exit code 0, 278 modules`
+- `Open Risks`:
+  - `Canli smoke scripted DB zinciri ile gecti; operator tarafinda ayni akisin Call Center UI uzerinden de bir kez manuel smoke edilmesi yararli olur.`
+  - `Smoke fixture wallet bakiyesi 0.00'a dustu; sonraki smoke oncesi bootstrap script ile balance resetlenmeli.`
+- `Next Step`: `points_redeem_multiplier yeni statusunun wizard/loyalty management UI'inda gorundugunu hizli smoke ile kontrol et; ardindan loyalty redemption readback ozetini siparis detay yuzeylerine yay.`
+
+## Entry 079
+
+- `Timestamp`: `2026-05-19T10:22:53.7611407+03:00`
+- `Agent`: `Codex`
+- `Task`: `Canli satis mallarina Call Center kanal fiyati yazimi`
+- `Intent`: `Kullanicinin Call Center satisinda "kanalda fiyat yok" hatasini bildirmesi uzerine, Entry 078'de hazirlanan DB-first toplu fiyat yazimini canli Railway Postgres verisine uygulamak ve readback ile dogrulamak.`
+- `Files Read`:
+  - `OperationSync.md`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scripts\apply-call-center-channel-prices.mjs --audit-only`
+  - `node .\scripts\apply-call-center-channel-prices.mjs`
+  - `node .\scripts\apply-call-center-channel-prices.mjs --verify-only`
+- `Findings`:
+  - `Audit basinda 74 sale_items kaydinin 74'unde Call Center channel_prices entry'si eksik veya bos gorundu; script hepsini hazir hale getirebilecek plan cikardi.`
+  - `Canli write adiminda 53 sale_items kaydi guncellendi; onceki audit/write arasi 21 kaydin zaten hazir hale geldigi goruldu.`
+  - `Ornek fiyatlar: Aci Mayo Burger 290, Aci Tavuklu Makarna 275, Akdeniz Salata 170, Ayran 35, Baharatli Patates 110.`
+- `Verification`:
+  - `Write sonucu: sale_items=74, rows_to_update=53, batch size 10, tum batch'ler succeeded, call_center_ready=74.`
+  - `Verify sonucu: rows_to_update=0, missing_before=0, inactive_or_empty_before=0, ready_after=74, call_center_ready=74.`
+- `Decisions`:
+  - `Mevcut helper/script korunarak sadece canli DB yazimi yapildi; UI koduna yeni ek degisiklik yapilmadi.`
+  - `Call Center kanali icin price ve active flag'i channel_prices icinde her aktif satis mali icin readback ile teyit edildi.`
+- `Open Risks`:
+  - `Operator tarafinda Call Center UI uzerinden bir satisin sepete eklenmesi manuel smoke olarak tekrar denenebilir; DB seviyesinde fiyat eksigi kalmadi.`
+  - `Workspace'te bu gorev disi loyalty dosyalari ve onceki UI degisiklikleri dirty olabilir; bu entry onlara dokunmadi.`
+- `Next Step`: `Call Center ekraninda ayni urunle yeniden satis dene; hata devam ederse fiyat eksiginden cok frontend cache veya kanal id esleme sorunu olarak CallCenter.jsx kanal secimi ve sale item reload akisi incelensin.`
+- `Handoff Contract`: `Sonraki agent bu hataya tekrar bakarsa once scripts/apply-call-center-channel-prices.mjs --verify-only calistirsin. Verify 74/74 donerse DB fiyati cozulmustur; kalan sorun Call Center UI runtime state/cache/channel id okuma zincirindedir.`
+
+## Entry 080
+
+- `Timestamp`: `2026-05-19T10:29:15.9043617+03:00`
+- `Agent`: `Codex`
+- `Task`: `Call Center modulunde Turkce karakter mojibake temizligi`
+- `Intent`: `Kullanicinin Call Center modulunde Turkce karakterlerin bozuk gorundugunu bildirmesi uzerine, ilgili ekran dosyasindaki mojibake metinleri dogru UTF-8 Turkce karakterlere dondurmek.`
+- `Files Read`:
+  - `src/components/pages/CallCenter.jsx`
+  - `package.json`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `src/components/pages/CallCenter.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `rg -n "Ã|Ä|Å|�|TÃ|ÅŸ|Ä±|ÄŸ|Ã¼|Ã§|Ã¶|Ä°|Åž" src\components\pages\CallCenter.jsx src\components\pages src\lib -g "*.jsx" -g "*.js"`
+  - `rg -n "Ã|Ä|Å|�|ï¿½|â€|â‚|Â" src\components\pages\CallCenter.jsx`
+  - `rg -n "Müşteri|Şube|Şehir|Ödeme|Sipariş|sadakat_points|₺" src\components\pages\CallCenter.jsx`
+  - `npm.cmd run build`
+- `Findings`:
+  - `CallCenter.jsx icinde musteri, siparis, odeme, sube, sehir, urun, sadakat ve TL sembolu gibi UI metinleri mojibake olarak kalmisti.`
+  - `Dosya genelinde Windows-1252 mojibake geri donusumu uygulaninca metinlerin cogu otomatik duzeldi; replacement karaktere dusmus birkac Sube/Sehir ve yorum tirnagi elle tamamlandi.`
+  - `Tarayici plugin smoke denenmek istendi ancak plugin kurulumunda beklenen scripts/browser-client.mjs bulunamadigi icin in-app browser dogrulamasi yapilamadi.`
+- `Verification`:
+  - `CallCenter.jsx icin mojibake imzasi aramasi temiz dondu.`
+  - `Ornek Turkce metin aramasi Müşteri, Şube, Şehir, Ödeme, Sipariş ve ₺ metinlerini dogru UTF-8 olarak gosterdi.`
+  - `npm.cmd run build basarili: Vite 278 module transform etti ve build tamamlandi.`
+- `Open Risks`:
+  - `In-app browser smoke plugin dosya eksigi nedeniyle alinamadi; canli/dev ekranda sayfa yenilenerek gorsel kontrol yapilmasi yararli olur.`
+  - `Bu turda sadece CallCenter.jsx temizlendi; diger modullerde ayrica mojibake gorulurse hedefli tarama yapilmali.`
+- `Next Step`: `Call Center sayfasini yenile ve Turkce metinleri gorsel olarak kontrol et; sorun baska modulde gorulurse ayni rg mojibake imzasi ile hedef dosyayi tara.`
+- `Handoff Contract`: `Sonraki agent Call Center encoding konusuna donerse once src/components/pages/CallCenter.jsx icinde rg "Ã|Ä|Å|�|ï¿½|â€|â‚|Â" calistirsin. Temizse sorun cache/deploy eski bundle kaynakli olabilir; build artifact veya hosting deploy durumu kontrol edilmeli.`

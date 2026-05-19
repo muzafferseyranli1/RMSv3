@@ -13,8 +13,8 @@
  *   model        - Şemada/modelde tanımlı, checkout/runtime executor henüz yok
  *   presentation - Yalnızca UI uyarısı/mesajı; iş verisi etkisi tasarlanmamış
  *
- * NOT: points_redeem_multiplier şimdilik desteklenmiyor.
- * Puan harcama (burn) zinciri eksik; Faz 2+ planı gerektirir.
+ * NOT: points_redeem_multiplier canlı smoke sonrasında aktif executor durumuna alındı.
+ * Runtime offer, burn transaction ve redemption kaydı Railway smoke ile doğrulandı.
  */
 
 // ---------------------------------------------------------------------------
@@ -118,19 +118,10 @@ export const ACTION_TYPE_STATUS = {
   // Kupon hakkı - çalışır
   issue_coupon: { category: 'local', ledger: true, label: 'Kupon hakkı' },
 
-  // ŞİMDİLİK DESTEKLENMİYOR
-  // points_redeem_multiplier: Modelde var, runtime/ledger executor YOK.
-  // Puan harcama (burn) zinciri eksik:
-  //   1. Cüzdan bakiye kontrolü (yeterli puan var mı?)
-  //   2. Puan düşme (burn) transaction
-  //   3. Redemption ledger kaydı
-  //   4. Runtime multiplier hesabı
-  // Bu Faz 2+ alanına ertelenmiştir. Yanlışlıkla ledger-ready gösterilmemeli.
   points_redeem_multiplier: {
-    category: 'presentation',
-    ledger: false,
+    category: 'local',
+    ledger: true,
     label: 'Puan harcama çarpanı',
-    warning: 'Bu özellik henüz uygulanmadı; puan harcama (burn) zinciri eksik',
   },
 
   // Yalnızca bildirim - kalıcılık yok

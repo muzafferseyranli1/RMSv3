@@ -5,6 +5,7 @@ import Header from '@/components/layout/Header'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import AddButton from '@/components/ui/AddButton'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { ensureDefaultLocationSelection, getAllBranchesLocationSelection, withDefaultLocationSelection } from '@/lib/locationDefaults'
 
 // ── Helpers ──────────────────────────────────────────────────
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
@@ -368,6 +369,7 @@ export default function StockItems() {
   const [skuStatus, setSkuStatus] = useState({ type:'idle', msg:'' })
   const [existingSkus, setExistingSkus] = useState(new Set())
   const [recipeLinkedIds, setRecipeLinkedIds] = useState(new Set())
+  const locationDefaultAppliedRef = useRef(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -396,6 +398,26 @@ export default function StockItems() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!modal) {
+      locationDefaultAppliedRef.current = false
+      return
+    }
+    if (locationDefaultAppliedRef.current) return
+
+    const defaultLocation = getAllBranchesLocationSelection(branchTpls)
+    if (!defaultLocation.length) return
+
+    setForm(current => {
+      if (current.location?.length) {
+        locationDefaultAppliedRef.current = true
+        return current
+      }
+      locationDefaultAppliedRef.current = true
+      return { ...current, location: defaultLocation }
+    })
+  }, [modal, branchTpls])
 
   const filtered = items.filter(i => {
     if (!showDeleted && i.deleted_at) return false
@@ -471,13 +493,13 @@ export default function StockItems() {
   }
 
   // ── Modal open/close ──────────────────────────────────────
-  function openAdd() { setForm(EMPTY); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
+  function openAdd() { setForm(withDefaultLocationSelection(EMPTY, branchTpls)); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
   function openEdit(item) {
     const derivedRecipeLinked = recipeLinkedIds.has(item.id)
     setForm({
       sku: item.sku||'', auto_sku: item.auto_sku||false,
       name: item.name||'', short_name: item.short_name||'',
-      location: parseLocationValue(item.location),
+      location: ensureDefaultLocationSelection(parseLocationValue(item.location), branchTpls),
       cat_id: item.cat_l5||item.cat_l4||item.cat_l3||item.cat_l2||item.cat_l1||null,
       acc_cat: item.acc_cat||'', acc_code: item.acc_code||'',
       unit: item.unit||'', packaging_units: item.packaging_units||[],

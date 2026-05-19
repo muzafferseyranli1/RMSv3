@@ -106,6 +106,12 @@ Bu projede kullanıcı kimlik doğrulaması yoktur.
 - Connection pool aktiftir: `max: 10`
 - GET sorguları 30 saniyelik in-memory cache'e alınır.
 - POST/PUT/DELETE cache'i temizler.
+- Railway `rms-api` servisi repo kokunden degil `server` klasorunden deploy edilmelidir.
+- Railway `rms-api` zorunlu ayarlari:
+  - `Root Directory = server`
+  - `Start Command = node index.js`
+  - `Healthcheck Path = /health`
+- `rms-api` domaininde frontend route aciliyorsa servis yanlis hedefi calistiriyor demektir; once Railway service ayarlari duzeltilir.
 
 ---
 
@@ -117,11 +123,26 @@ cd server
 railway up --service rms-api
 ```
 
+Railway dashboard tarafinda da su ayarlar korunur:
+- Service: `rms-api`
+- Root Directory: `server`
+- Start Command: `node index.js`
+- Healthcheck Path: `/health`
+
 ### Frontend Güncelleme
 ```bash
 npm.cmd run build
 railway up --service frontend
 ```
+
+Railway dashboard tarafinda frontend icin su ayarlar korunur:
+- Service: `frontend`
+- Root Directory: repo kokü (`bos` / tanimsiz)
+- Build Command: `npm run build`
+- Start Command: `npm run start:web`
+- Healthcheck Path: `/`
+- Frontend service `VITE_API_URL=https://rms-api-production-219d.up.railway.app` ile build alinmalidir.
+- `frontend` service asla `server` klasorunden kalkmaz; API ve frontend root/command ayarlari birbirine karistirilmaz.
 
 ### Veritabanı Değişikliği
 ```bash
@@ -166,6 +187,10 @@ Server tarafı (`server/.env` veya Railway Variables):
 DATABASE_URL=postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway
 PORT=3001
 ```
+
+Notlar:
+- Root `.env` icine `DATABASE_URL` yazilmaz.
+- Server tarafi baglanti bilgileri yalnizca `server/.env` veya Railway Variables icinde tutulur.
 
 ---
 

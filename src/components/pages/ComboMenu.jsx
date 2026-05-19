@@ -9,6 +9,7 @@ import {
   resolveComboMenuCategory,
   sortSaleCategoriesWithComboFirst,
 } from '@/lib/comboMenuCategory'
+import { ensureDefaultLocationSelection, getAllBranchesLocationSelection, withDefaultLocationSelection } from '@/lib/locationDefaults'
 
 const STEP_TABS = [
   { id: 'definition', label: 'Temel Bilgiler', icon: 'fa-circle-info', caption: 'Tanim, lokasyon ve fiyat stratejisi' },
@@ -901,6 +902,7 @@ export default function ComboMenu() {
   const [groups, setGroups] = useState(buildInitialGroups)
   const [channelConfig, setChannelConfig] = useState(buildInitialChannelConfig)
   const [form, setForm] = useState(createInitialForm)
+  const locationDefaultAppliedRef = useRef(false)
 
   useEffect(() => {
     if (!comboCategory?.id) return
@@ -917,6 +919,26 @@ export default function ComboMenu() {
           }
     ))
   }, [comboCategory])
+
+  useEffect(() => {
+    if (!modal) {
+      locationDefaultAppliedRef.current = false
+      return
+    }
+    if (locationDefaultAppliedRef.current) return
+
+    const defaultLocation = getAllBranchesLocationSelection(branchTemplates)
+    if (!defaultLocation.length) return
+
+    setForm(current => {
+      if (current.location?.length) {
+        locationDefaultAppliedRef.current = true
+        return current
+      }
+      locationDefaultAppliedRef.current = true
+      return { ...current, location: defaultLocation }
+    })
+  }, [modal, branchTemplates])
 
   const channelDefs = useMemo(() => {
     if (!channels.length) return CHANNELS
@@ -1086,6 +1108,7 @@ export default function ComboMenu() {
     const safeCats = categorySnapshot.categories || sortSaleCategoriesWithComboFirst(categoriesResult.data || [])
     const resolvedComboCategory = categorySnapshot.comboCategory || resolveComboMenuCategory(safeCats)
     const rawRecords = Array.isArray(comboResult.data?.value) ? comboResult.data.value : []
+    const normalizedBranchTemplates = (branchTemplatesResult.data || []).map(item => ({ ...item, id: String(item.id) }))
     const normalizedRecords = rawRecords.map((record, index) => ({
       id: String(record.id || uid(`combo-${index}`)),
       sku: record.sku || record.form?.sku || '',
@@ -1099,7 +1122,10 @@ export default function ComboMenu() {
         sku: record.form?.sku || record.sku || '',
         name: record.form?.name || record.name || '',
         shortName: record.form?.shortName || record.shortName || '',
-        location: Array.isArray(record.form?.location || record.location) ? (record.form?.location || record.location) : [],
+        location: ensureDefaultLocationSelection(
+          Array.isArray(record.form?.location || record.location) ? (record.form?.location || record.location) : [],
+          normalizedBranchTemplates,
+        ),
         catId: resolvedComboCategory?.id || record.form?.catId || record.catId || null,
         accCat: resolvedComboCategory?.acc_cat || record.form?.accCat || record.accCat || '',
         accCode: resolvedComboCategory?.acc_code || record.form?.accCode || record.accCode || '',
@@ -1109,7 +1135,7 @@ export default function ComboMenu() {
     }))
 
     setBranches(getAllBranches(companyTree))
-    setBranchTemplates((branchTemplatesResult.data || []).map(item => ({ ...item, id: String(item.id) })))
+    setBranchTemplates(normalizedBranchTemplates)
     setCats(safeCats)
     setComboCategory(resolvedComboCategory || null)
     setSaleItems((saleItemsResult.data || []).map(item => ({ ...item, id: String(item.id) })))
@@ -1550,12 +1576,12 @@ export default function ComboMenu() {
 
   function openAdd() {
     setEditId(null)
-    setForm({
+    setForm(withDefaultLocationSelection({
       ...createInitialForm(),
       catId: comboCategory?.id || null,
       accCat: comboCategory?.acc_cat || '',
       accCode: comboCategory?.acc_code || '',
-    })
+    }, branchTemplates))
     setGroups([])
     setChannelConfig(buildEmptyChannelConfig())
     setSelectedGroupId(null)
@@ -1566,12 +1592,12 @@ export default function ComboMenu() {
 
   function openEdit(record) {
     setEditId(record.id)
-    setForm(cloneValue({
+    setForm(withDefaultLocationSelection(cloneValue({
       ...(record.form || createInitialForm()),
       catId: comboCategory?.id || record.form?.catId || null,
       accCat: comboCategory?.acc_cat || record.form?.accCat || '',
       accCode: comboCategory?.acc_code || record.form?.accCode || '',
-    }))
+    }), branchTemplates))
     setGroups(cloneValue(record.groups || buildSeedGroups()))
     setChannelConfig(cloneValue(record.channelConfig || buildEmptyChannelConfig()))
     setSelectedGroupId(record.groups?.[0]?.id || null)

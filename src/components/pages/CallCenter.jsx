@@ -42,17 +42,17 @@ import {
 } from '@/lib/orderHub'
 
 const STEPS = [
-  { key: 'customer', label: 'MÃ¼ÅŸteri', icon: 'fa-user' },
-  { key: 'fulfillment', label: 'Adres / AlÄ±ÅŸ', icon: 'fa-location-dot' },
-  { key: 'order', label: 'SipariÅŸ', icon: 'fa-cart-shopping' },
-  { key: 'payment', label: 'Ã–deme', icon: 'fa-credit-card' },
+  { key: 'customer', label: 'Müşteri', icon: 'fa-user' },
+  { key: 'fulfillment', label: 'Adres / Alış', icon: 'fa-location-dot' },
+  { key: 'order', label: 'Sipariş', icon: 'fa-cart-shopping' },
+  { key: 'payment', label: 'Ödeme', icon: 'fa-credit-card' },
 ]
 
 const PAYMENT_METHODS = [
   { method: 'nakit', label: 'Nakit', icon: 'fa-money-bill-wave' },
-  { method: 'kart', label: 'Banka KartÄ±', icon: 'fa-credit-card' },
-  { method: 'yemek_ceki', label: 'Yemek Ã‡eki', icon: 'fa-ticket' },
-  { method: 'online', label: 'Online Ã–deme', icon: 'fa-globe' },
+  { method: 'kart', label: 'Banka Kartı', icon: 'fa-credit-card' },
+  { method: 'yemek_ceki', label: 'Yemek Çeki', icon: 'fa-ticket' },
+  { method: 'online', label: 'Online Ödeme', icon: 'fa-globe' },
 ]
 
 const EMPTY_CUSTOMER_FORM = {
@@ -140,12 +140,12 @@ function addressLabel(address) {
 
 
 const BRANCH_SOURCE_LABELS = {
-  saved: 'Bu adrese kayÄ±tlÄ±',
-  history: 'GeÃ§miÅŸ sipariÅŸten Ã¶nerildi',
-  coverage: 'Kapsama alanÄ±ndan Ã¶nerildi',
-  physical_address: 'ï¿½?ube adresinden Ã¶nerildi',
-  manual_temporary: 'Bu sipariÅŸ iÃ§in seÃ§ildi',
-  fallback: 'VarsayÄ±lan ÅŸube',
+  saved: 'Bu adrese kayıtlı',
+  history: 'Geçmiş siparişten önerildi',
+  coverage: 'Kapsama alanından önerildi',
+  physical_address: 'Şube adresinden önerildi',
+  manual_temporary: 'Bu sipariş için seçildi',
+  fallback: 'Varsayılan şube',
 }
 
 function readAddressMetadata(address) {
@@ -264,7 +264,7 @@ function buildLineRows({ saleId, cart, channel, branch, saleDate, discountMap = 
       sale_id: saleId,
       line_no: index + 1,
       product_id: toDbUuid(item.product.id),
-      product_name: item.product.name || item.product.short_name || 'ÃœrÃ¼n',
+      product_name: item.product.name || item.product.short_name || 'Ürün',
       product_sku: item.product.sku || null,
       top_category_id: toDbUuid(getProductCategoryId(item.product)),
       top_category_name: item.categoryName || null,
@@ -288,7 +288,7 @@ function buildLineRows({ saleId, cart, channel, branch, saleDate, discountMap = 
       unit_cost_snapshot: 0,
       line_cost_total: 0,
       sales_channel_id: toDbUuid(channel?.id),
-      sales_channel_name: channel?.name || 'Ã‡aÄŸrÄ± Merkezi',
+      sales_channel_name: channel?.name || 'Çağrı Merkezi',
       branch_id: toDbUuid(branch?.id),
       branch_name: branch?.name || null,
       sale_datetime: saleDate,
@@ -349,7 +349,7 @@ function CallCenterLoyaltyCampaignCard({
         <div>
           <div style={{ fontWeight: 900, color: '#0f172a' }}>{campaign.name}</div>
           <div style={{ color: '#64748b', marginTop: 4, fontSize: '.84rem' }}>
-            {campaign.offer?.offerLabel || campaign.description || `${campaign.reward_type} Â· ${campaign.reward_value || 0}`}
+            {campaign.offer?.offerLabel || campaign.description || `${campaign.reward_type} · ${campaign.reward_value || 0}`}
           </div>
         </div>
         <span style={{ alignSelf: 'flex-start', padding: '6px 10px', borderRadius: 999, background: tone.badgeBackground, color: tone.badgeColor, fontSize: '.72rem', fontWeight: 900 }}>
@@ -480,7 +480,7 @@ export default function OrderHub() {
   const categoryRows = useMemo(() => {
     const byId = new Map(categories.map(category => [String(category.id), category]))
     const used = new Set(products.map(product => String(getProductCategoryId(product) || '')).filter(Boolean))
-    return [{ id: 'all', name: 'TÃ¼mÃ¼' }, ...[...used].map(id => byId.get(id)).filter(Boolean)]
+    return [{ id: 'all', name: 'Tümü' }, ...[...used].map(id => byId.get(id)).filter(Boolean)]
   }, [categories, products])
 
   const filteredProducts = useMemo(() => {
@@ -806,7 +806,7 @@ export default function OrderHub() {
       const nodeMap = new Map((branchesResult.data || []).map(node => [String(node.id), node]))
       const branchAddressMap = new Map((branchAddressesResult.data || []).filter(row => row.active !== false).map(row => [String(row.branch_id), row]))
       const branchRows = (branchesResult.data || [])
-        .filter(node => node.can_sell === true || normalizeText(node.type).includes('ÅŸube') || normalizeText(node.type).includes('sube'))
+        .filter(node => node.can_sell === true || normalizeText(node.type).includes('şube') || normalizeText(node.type).includes('sube'))
         .map(node => ({
           id: node.id,
           name: node.name,
@@ -820,8 +820,8 @@ export default function OrderHub() {
 
       const channelRows = (channelsResult.data || []).filter(channel => channel.active !== false)
       setChannels(channelRows)
-      const callCenterChannel = channelRows.find(channel => normalizeText(channel.name).includes('Ã§aÄŸrÄ±') || normalizeText(channel.name).includes('cagri'))
-      const deliveryChannel = channelRows.find(channel => normalizeText(channel.name).includes('gel') || normalizeText(channel.name).includes('paket') || normalizeText(channel.name).includes('hÄ±zlÄ±'))
+      const callCenterChannel = channelRows.find(channel => normalizeText(channel.name).includes('çağrı') || normalizeText(channel.name).includes('cagri'))
+      const deliveryChannel = channelRows.find(channel => normalizeText(channel.name).includes('gel') || normalizeText(channel.name).includes('paket') || normalizeText(channel.name).includes('hızlı'))
       setSelectedChannelId(current => current || callCenterChannel?.id || deliveryChannel?.id || channelRows[0]?.id || '')
 
       setProducts((productsResult.data || []).filter(product => product.sale_status !== false))
@@ -1186,12 +1186,12 @@ export default function OrderHub() {
       }
       toast(
         persistForAddress
-          ? 'ï¿½?ube bu adres iÃ§in varsayÄ±lan olarak kaydedildi'
-          : 'ï¿½?ube yalnÄ±z bu sipariÅŸ iÃ§in deÄŸiÅŸtirildi',
+          ? 'Şube bu adres için varsayılan olarak kaydedildi'
+          : 'Şube yalnız bu sipariş için değiştirildi',
         'success',
       )
     } catch (error) {
-      toast(error?.message || 'ï¿½?ube tercihi kaydedilemedi', 'error')
+      toast(error?.message || 'Şube tercihi kaydedilemedi', 'error')
     } finally {
       setPendingBranchOverride(null)
     }
@@ -1275,10 +1275,10 @@ export default function OrderHub() {
           source: selectedBranchSource,
         })
         setHasManualBranchSelection(true)
-        toast('Adres kaydedildi. ï¿½?ube seÃ§iminin yalnÄ±z bu sipariÅŸ iÃ§in mi yoksa adres varsayÄ±lanÄ± olarak mÄ± kullanÄ±lacaÄŸÄ±nÄ± seÃ§in.', 'success')
+        toast('Adres kaydedildi. Şube seçiminin yalnız bu sipariş için mi yoksa adres varsayılanı olarak mı kullanılacağını seçin.', 'success')
         return
       }
-      toast(editorMode === 'edit' ? 'Adres gÃ¼ncellendi' : 'Adres kaydedildi', 'success')
+      toast(editorMode === 'edit' ? 'Adres güncellendi' : 'Adres kaydedildi', 'success')
     } catch (error) {
       toast(error?.message || 'Adres kaydedilemedi', 'error')
     }
@@ -1287,7 +1287,7 @@ export default function OrderHub() {
   function addProduct(product) {
     const unitPrice = getProductPrice(product, selectedChannelId)
     if (unitPrice <= 0) {
-      toast('Bu Ã¼rÃ¼n iÃ§in seÃ§ili kanalda fiyat bulunamadÄ±', 'error')
+      toast('Bu ürün için seçili kanalda fiyat bulunamadı', 'error')
       return
     }
     setCart(current => {
@@ -1309,7 +1309,7 @@ export default function OrderHub() {
   async function ensureCustomer() {
     if (selectedCustomer?.id) return selectedCustomer
     const adSoyad = [customerForm.firstName, customerForm.lastName].filter(Boolean).join(' ').trim()
-    if (!adSoyad) throw new Error('MÃ¼ÅŸteri adÄ± soyadÄ± zorunlu')
+    if (!adSoyad) throw new Error('Müşteri adı soyadı zorunlu')
     const phoneDigits = normalizePhone(customerForm.phone)
     const { data, error } = await db.from('musteriler').insert({
       ad_soyad: adSoyad,
@@ -1330,13 +1330,13 @@ export default function OrderHub() {
     if (fulfillmentType !== 'delivery') return null
     if (addressEditorMode === 'none' && selectedExistingAddress?.id) return selectedExistingAddress
     if (addressEditorMode === 'none') {
-      throw new Error('Teslimat iÃ§in kayÄ±tlÄ± bir adres seÃ§in veya yeni adres ekleyin')
+      throw new Error('Teslimat için kayıtlı bir adres seçin veya yeni adres ekleyin')
     }
     if (!addressForm.label.trim()) {
-      throw new Error('Adres baÅŸlÄ±ÄŸÄ± zorunlu')
+      throw new Error('Adres başlığı zorunlu')
     }
     if (!addressForm.cityId || !addressForm.districtId || !addressForm.neighborhoodId || !addressForm.street.trim()) {
-      throw new Error('Teslimat iÃ§in ÅŸehir, ilÃ§e, mahalle ve sokak/cadde zorunlu')
+      throw new Error('Teslimat için şehir, ilçe, mahalle ve sokak/cadde zorunlu')
     }
     const payload = {
       customer_id: customer.id,
@@ -1387,25 +1387,25 @@ export default function OrderHub() {
   }
 
   function validateBeforeOrder() {
-    if (!activeCustomerName) return 'MÃ¼ÅŸteri seÃ§in veya yeni mÃ¼ÅŸteri bilgilerini tamamlayÄ±n'
-    if (!selectedBranchId) return 'SipariÅŸin gideceÄŸi ÅŸubeyi seÃ§in'
-    if (pendingBranchOverride) return 'Devam etmeden Ã¶nce ÅŸube tercihini tamamlayÄ±n'
+    if (!activeCustomerName) return 'Müşteri seçin veya yeni müşteri bilgilerini tamamlayın'
+    if (!selectedBranchId) return 'Siparişin gideceği şubeyi seçin'
+    if (pendingBranchOverride) return 'Devam etmeden önce şube tercihini tamamlayın'
     if (fulfillmentType === 'delivery' && addressEditorMode !== 'none') {
-      return 'Devam etmeden Ã¶nce adresi kaydedin'
+      return 'Devam etmeden önce adresi kaydedin'
     }
     if (fulfillmentType === 'delivery' && !selectedExistingAddress) {
-      return 'Teslimat iÃ§in kayÄ±tlÄ± bir adres seÃ§in veya yeni adres ekleyin'
+      return 'Teslimat için kayıtlı bir adres seçin veya yeni adres ekleyin'
     }
     return ''
   }
 
   async function sendOrder() {
     if (!cart.length) {
-      toast('SipariÅŸe Ã¼rÃ¼n ekleyin', 'error')
+      toast('Siparişe ürün ekleyin', 'error')
       return
     }
     if (!paymentMethod) {
-      toast('Ã–deme tipini seÃ§in', 'error')
+      toast('Ödeme tipini seçin', 'error')
       return
     }
     if (paymentMethod === 'sadakat_points') {
@@ -1435,13 +1435,13 @@ export default function OrderHub() {
         source: 'call_center',
         source_channel_type: 'call_center',
         sales_channel_id: toDbUuid(selectedChannel?.id),
-        sales_channel_name: selectedChannel?.name || 'Ã‡aÄŸrÄ± Merkezi',
+        sales_channel_name: selectedChannel?.name || 'Çağrı Merkezi',
         branch_id: toDbUuid(selectedBranch?.id),
         branch_name: selectedBranch?.name || null,
         customer_id: toDbUuid(customer.id),
         customer_address_id: toDbUuid(address?.id),
         customer_name: customer.ad_soyad || activeCustomerName,
-        cashier_name: 'Ã‡aÄŸrÄ± Merkezi',
+        cashier_name: 'Çağrı Merkezi',
         order_note: orderNote,
         currency_code: 'TRY',
         gross_total_before_discount: total,
@@ -1497,9 +1497,9 @@ export default function OrderHub() {
       if (lineError) throw lineError
 
       const resolvedPayments = (() => {
-        // Not: Bu CallCenter akÄ±ÅŸÄ±nda parÃ§alÄ± Ã¶deme altyapÄ±sÄ± yoktu; bu kÄ±sÄ±m sadece UI seÃ§imine uyum iÃ§in
-        // â€œsadakat_pointsâ€ seÃ§ilince tutarÄ± tek payment'a dÃ¶nÃ¼ÅŸtÃ¼rÃ¼r (gÃ¶sterim/planlama).
-        // Tam parÃ§alÄ± Ã¶deme (2 veya daha fazla sale_payments satÄ±rÄ±) iÃ§in backend/closure akÄ±ÅŸÄ± ayrÄ±ca geniÅŸletilmelidir.
+        // Not: Bu CallCenter akışında parçalı ödeme altyapısı yoktu; bu kısım sadece UI seçimine uyum için
+        // "sadakat_points" seçilince tutarı tek payment'a dönüştürür (gösterim/planlama).
+        // Tam parçalı ödeme (2 veya daha fazla sale_payments satırı) için backend/closure akışı ayrıca genişletilmelidir.
         if (paymentMethod !== 'sadakat_points') {
           const selectedPayment = PAYMENT_METHODS.find(method => method.method === paymentMethod)
           return [{
@@ -1514,8 +1514,8 @@ export default function OrderHub() {
           ? (Number.isFinite(wantedTl) && wantedTl > 0 ? wantedTl : 0)
           : payableTotal
 
-        // â€œPuan yetersizse kalanÄ±nÄ± diÄŸer tiplerle tamamlarâ€ davranÄ±ÅŸÄ± burada yok.
-        // ï¿½?imdilik puan seÃ§imi ile toplam tutarÄ± 1 satÄ±r olarak closure'a aktarÄ±r.
+        // "Puan yetersizse kalanını diğer tiplerle tamamlar" davranışı burada yok.
+        // Şimdilik puan seçimi ile toplam tutarı 1 satır olarak closure'a aktarır.
         return [{
           payment_method: 'sadakat_points',
           payment_method_label: 'Sadakat Puan',
@@ -1569,7 +1569,7 @@ export default function OrderHub() {
       setDrafts([])
       await loadBase()
     } catch (error) {
-      toast(`SipariÅŸ gÃ¶nderilemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
+      toast(`Sipariş gönderilemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -1584,7 +1584,7 @@ export default function OrderHub() {
         id: line.id || `${order.id}-line-${index + 1}`,
         sale_id: order.id,
         line_no: index + 1,
-        product_name: line?.prod?.name || line?.product_name || line?.name || 'ÃœrÃ¼n',
+        product_name: line?.prod?.name || line?.product_name || line?.name || 'Ürün',
         qty: safeNumber(line?.qty, 1),
         unit_gross_before_discount: safeNumber(line?.unitPrice || line?.unit_price),
         line_gross_before_discount: safeNumber(line?.qty, 1) * safeNumber(line?.unitPrice || line?.unit_price),
@@ -1826,7 +1826,7 @@ export default function OrderHub() {
   function saveDraft() {
     const draft = {
       id: uid(),
-      customerName: activeCustomerName || customerSearch || 'MÃ¼ÅŸteri seÃ§ilmedi',
+      customerName: activeCustomerName || customerSearch || 'Müşteri seçilmedi',
       branchName: selectedBranch?.name || '',
       fulfillmentType,
       total,
@@ -1834,7 +1834,7 @@ export default function OrderHub() {
       cartCount: cart.length,
     }
     setDrafts(current => [draft, ...current])
-    toast('Taslak bu oturumda saklandÄ±', 'success')
+    toast('Taslak bu oturumda saklandı', 'success')
   }
 
   function resetComposer() {
@@ -1872,7 +1872,7 @@ export default function OrderHub() {
   if (loading) {
     return (
       <div>
-        <Header title="Siparisler" subtitle="Merkez iÅŸlemleri altÄ±nda telefonla sipariÅŸ alma" />
+        <Header title="Siparisler" subtitle="Merkez işlemleri altında telefonla sipariş alma" />
         <div className="card" style={{ padding: 40, color: '#64748b', textAlign: 'center' }}>
           <i className="fa-solid fa-spinner fa-spin" /> Siparisler yukleniyor...
         </div>
@@ -1945,7 +1945,7 @@ export default function OrderHub() {
                 )
               })}
             </div>
-            <button className="btn-o" onClick={resetComposer}>Ä°ptal</button>
+            <button className="btn-o" onClick={resetComposer}>İptal</button>
           </div>
 
           {step === 'customer' && (
@@ -1953,8 +1953,8 @@ export default function OrderHub() {
               <div style={{ width: 'min(540px, 100%)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                   <i className="fa-solid fa-magnifying-glass" style={{ fontSize: 36, color: '#64748b' }} />
-                  <h2 style={{ fontSize: '1.1rem', margin: '14px 0 4px', color: '#0f172a' }}>MÃ¼ÅŸterinin telefon numarasÄ±nÄ± veya adÄ±nÄ± girin</h2>
-                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '.86rem' }}>KayÄ±tlÄ± mÃ¼ÅŸteri bulunursa seÃ§in; bulunamazsa yeni mÃ¼ÅŸteri oluÅŸturun.</p>
+                  <h2 style={{ fontSize: '1.1rem', margin: '14px 0 4px', color: '#0f172a' }}>Müşterinin telefon numarasını veya adını girin</h2>
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '.86rem' }}>Kayıtlı müşteri bulunursa seçin; bulunamazsa yeni müşteri oluşturun.</p>
                 </div>
                 <input
                   className="f-input"
@@ -1964,27 +1964,27 @@ export default function OrderHub() {
                     if (event.target.value.trim()) setShowNewCustomerForm(false)
                     setCustomerForm(current => ({ ...current, phone: event.target.value.startsWith('+') ? event.target.value : current.phone }))
                   }}
-                  placeholder="+90 5xx xxx xx xx veya mÃ¼ÅŸteri adÄ±"
+                  placeholder="+90 5xx xxx xx xx veya müşteri adı"
                   style={{ height: 48, fontSize: '1rem' }}
                 />
                 {customerSearch.trim().length >= 3 && (
                   <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginTop: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 12px 26px rgba(15,23,42,.08)' }}>
                     {customerSearchPhoneDigits.length >= 10 && customers.length > 1 && (
                       <div style={{ padding: '12px 16px', background: '#fff7ed', color: '#9a3412', fontSize: '.8rem', borderBottom: '1px solid #fed7aa', fontWeight: 700 }}>
-                        Bu numarayla birden fazla mÃ¼ÅŸteri kaydÄ± bulundu. Devam etmek iÃ§in doÄŸru ismi seÃ§in.
+                        Bu numarayla birden fazla müşteri kaydı bulundu. Devam etmek için doğru ismi seçin.
                       </div>
                     )}
                     {customers.length === 0 ? (
                       <div>
-                        <div style={{ padding: 16, color: '#94a3b8', fontStyle: 'italic' }}>HiÃ§bir ÅŸey bulunamadÄ±</div>
+                        <div style={{ padding: 16, color: '#94a3b8', fontStyle: 'italic' }}>Hiçbir şey bulunamadı</div>
                         <button type="button" onClick={prepareNewCustomer} style={{ width: '100%', border: 'none', borderTop: '1px solid #f1f5f9', padding: 16, textAlign: 'left', background: '#f8fafc', color: '#2563eb', fontWeight: 800, cursor: 'pointer' }}>
-                          <i className="fa-solid fa-user-plus" /> Yeni mÃ¼ÅŸteri ekle
+                          <i className="fa-solid fa-user-plus" /> Yeni müşteri ekle
                         </button>
                       </div>
                     ) : customers.map(customer => (
                       <button key={customer.id} type="button" onClick={() => selectCustomer(customer)} style={{ width: '100%', border: 'none', borderBottom: '1px solid #f1f5f9', padding: 14, background: '#fff', textAlign: 'left', cursor: 'pointer' }}>
                         <div style={{ fontWeight: 900, color: '#0f172a' }}>{customer.ad_soyad}</div>
-                        <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: 3 }}>{customer.telefon_ulke || '+90'} {customer.telefon || ''} Â· {customer.total_order_count || customer.siparis_sayisi || 0} sipariÅŸ</div>
+                        <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: 3 }}>{customer.telefon_ulke || '+90'} {customer.telefon || ''} · {customer.total_order_count || customer.siparis_sayisi || 0} sipariş</div>
                       </button>
                     ))}
                   </div>
@@ -2012,7 +2012,7 @@ export default function OrderHub() {
                     </label>
                     <div style={{ textAlign: 'right' }}>
                       <button className="btn-p" onClick={() => setStep('fulfillment')} disabled={!customerDisplayName(null, customerForm)}>
-                        Ä°leri
+                        İleri
                       </button>
                     </div>
                   </div>
@@ -2050,15 +2050,15 @@ export default function OrderHub() {
                               <div style={{ fontWeight: 800, color: '#0f172a', lineHeight: 1.45 }}>{addressLabel(address)}</div>
                               {serviceBranchMeta.branchName && (
                                 <div style={{ marginTop: 8, fontSize: '.76rem', color: '#475569' }}>
-                                  VarsayÄ±lan ÅŸube: <strong>{serviceBranchMeta.branchName}</strong>
+                                  Varsayılan şube: <strong>{serviceBranchMeta.branchName}</strong>
                                 </div>
                               )}
                               <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                 <button className={active ? 'btn-p' : 'btn-o'} type="button" onClick={() => selectExistingAddress(address)}>
-                                  {active ? 'SeÃ§ili Adres' : 'Bu Adresi SeÃ§'}
+                                  {active ? 'Seçili Adres' : 'Bu Adresi Seç'}
                                 </button>
                                 <button className="btn-o" type="button" onClick={() => startEditAddress(address)}>
-                                  DÃ¼zenle
+                                  Düzenle
                                 </button>
                               </div>
                             </div>
@@ -2069,7 +2069,7 @@ export default function OrderHub() {
                     )}
                     {customerAddresses.length === 0 && addressEditorMode === 'none' && (
                       <div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: 14, marginBottom: 14, color: '#64748b', fontSize: '.82rem', lineHeight: 1.5 }}>
-                        KayÄ±tlÄ± adres yok. Yeni adres ekle ile ilk teslimat adresini oluÅŸturabilirsiniz.
+                        Kayıtlı adres yok. Yeni adres ekle ile ilk teslimat adresini oluşturabilirsiniz.
                         <div style={{ marginTop: 12 }}>
                           <button className="btn-o" type="button" onClick={startNewAddress}>Yeni adres ekle</button>
                         </div>
@@ -2079,18 +2079,18 @@ export default function OrderHub() {
                       <div style={{ display: 'grid', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                           <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#0f172a' }}>
-                            {addressEditorMode === 'edit' ? 'Adres dÃ¼zenle' : 'Yeni adres ekle'}
+                            {addressEditorMode === 'edit' ? 'Adres düzenle' : 'Yeni adres ekle'}
                           </div>
                           {customerAddresses.length > 0 && (
                             <button className="btn-o" type="button" onClick={() => {
                               setAddressEditorMode('none')
                               if (selectedExistingAddress?.id) syncAddressForm(selectedExistingAddress)
                             }}>
-                              VazgeÃ§
+                              Vazgeç
                             </button>
                           )}
                         </div>
-                        <input className="f-input" placeholder="Adres baÅŸlÄ±ÄŸÄ± (Ev, Ä°ÅŸ, YazlÄ±k) *" value={addressForm.label} onChange={event => setAddressForm(current => ({ ...current, label: event.target.value }))} />
+                        <input className="f-input" placeholder="Adres başlığı (Ev, İş, Yazlık) *" value={addressForm.label} onChange={event => setAddressForm(current => ({ ...current, label: event.target.value }))} />
                         {!hasLocationReferenceData && (
                           <div style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', borderRadius: 10, padding: '10px 12px', fontSize: '.8rem', lineHeight: 1.45 }}>
                             Adres referans verisi Railway Postgres tarafinda eksik. tr_iller, tr_ilceler ve tr_mahalleler
@@ -2101,14 +2101,14 @@ export default function OrderHub() {
                           const city = cities.find(row => String(row.id) === event.target.value)
                           setAddressForm(current => ({ ...current, cityId: event.target.value, cityName: city?.ad || '', districtId: '', districtName: '', neighborhoodId: '', neighborhoodName: '', street: '' }))
                         }} disabled={!hasLocationReferenceData}>
-                          <option value="">ï¿½?ehir *</option>
+                          <option value="">Şehir *</option>
                           {cities.map(city => <option key={city.id} value={city.id}>{city.ad}</option>)}
                         </select>
                         <select className="f-input" value={addressForm.districtId} onChange={event => {
                           const district = districts.find(row => String(row.id) === event.target.value)
                           setAddressForm(current => ({ ...current, districtId: event.target.value, districtName: district?.ad || '', neighborhoodId: '', neighborhoodName: '', street: '' }))
                         }} disabled={!hasLocationReferenceData || !addressForm.cityId}>
-                          <option value="">Ä°lÃ§e *</option>
+                          <option value="">İlçe *</option>
                           {districts.map(district => <option key={district.id} value={district.id}>{district.ad}</option>)}
                         </select>
                         <select className="f-input" value={addressForm.neighborhoodId} onChange={event => {
@@ -2124,19 +2124,19 @@ export default function OrderHub() {
                           onChange={event => setAddressForm(current => ({ ...current, street: event.target.value }))}
                           disabled={!hasLocationReferenceData || !addressForm.neighborhoodId || !streets.length}
                         >
-                          <option value="">{streets.length ? 'Sokak / Cadde *' : 'Bu mahalle iÃ§in sokak/cadde verisi yok'}</option>
+                          <option value="">{streets.length ? 'Sokak / Cadde *' : 'Bu mahalle için sokak/cadde verisi yok'}</option>
                           {streets.map(street => <option key={street.id} value={street.ad}>{street.ad}</option>)}
                         </select>
-                        <input className="f-input" placeholder="Bina adÄ±" value={addressForm.buildingName} onChange={event => setAddressForm(current => ({ ...current, buildingName: event.target.value }))} />
+                        <input className="f-input" placeholder="Bina adı" value={addressForm.buildingName} onChange={event => setAddressForm(current => ({ ...current, buildingName: event.target.value }))} />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                          <input className="f-input" placeholder="KapÄ± no" value={addressForm.buildingNo} onChange={event => setAddressForm(current => ({ ...current, buildingNo: event.target.value }))} />
+                          <input className="f-input" placeholder="Kapı no" value={addressForm.buildingNo} onChange={event => setAddressForm(current => ({ ...current, buildingNo: event.target.value }))} />
                           <input className="f-input" placeholder="Kat" value={addressForm.floorNo} onChange={event => setAddressForm(current => ({ ...current, floorNo: event.target.value }))} />
                           <input className="f-input" placeholder="Daire" value={addressForm.doorNo} onChange={event => setAddressForm(current => ({ ...current, doorNo: event.target.value }))} />
                         </div>
                         <textarea className="f-input" placeholder="Serbest adres tarifi" rows={4} value={addressForm.directions} onChange={event => setAddressForm(current => ({ ...current, directions: event.target.value }))} />
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                           <button className="btn-p" type="button" onClick={saveAddressEditor}>
-                            {addressEditorMode === 'edit' ? 'Adresi GÃ¼ncelle' : 'Adresi Kaydet'}
+                            {addressEditorMode === 'edit' ? 'Adresi Güncelle' : 'Adresi Kaydet'}
                           </button>
                         </div>
                       </div>
@@ -2147,20 +2147,20 @@ export default function OrderHub() {
                 <div style={{ padding: 16, borderRight: '1px solid #e2e8f0' }}>
                   <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>Ne zaman</h3>
                   <button type="button" className="btn-o" onClick={() => fulfillmentType === 'delivery' ? setDeliveryAt(nowInputValue()) : setPickupAt(nowInputValue())} style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }}>
-                    OlabildiÄŸince Ã§abuk
+                    Olabildiğince çabuk
                   </button>
                   <input className="f-input" type="datetime-local" value={fulfillmentType === 'delivery' ? deliveryAt : pickupAt} onChange={event => fulfillmentType === 'delivery' ? setDeliveryAt(event.target.value) : setPickupAt(event.target.value)} />
                 </div>
 
                 <div style={{ padding: 16 }}>
                   <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>Nereden</h3>
-                  <input className="f-input" placeholder="ï¿½?ube adÄ±, cadde veya sokak ara" value={branchSearch} onChange={event => setBranchSearch(event.target.value)} />
+                  <input className="f-input" placeholder="Şube adı, cadde veya sokak ara" value={branchSearch} onChange={event => setBranchSearch(event.target.value)} />
                   {selectedBranch?.id && (
                     <div style={{ marginTop: 10, marginBottom: 10, border: '1px solid #dbe4ef', borderRadius: 10, padding: 12, background: '#f8fafc' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
                         <div>
                           <div style={{ fontWeight: 900, color: '#0f172a' }}>{selectedBranch.name}</div>
-                          <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 4 }}>{selectedBranchBadge || 'ï¿½?ube seÃ§ildi'}</div>
+                          <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 4 }}>{selectedBranchBadge || 'Şube seçildi'}</div>
                         </div>
                         {selectedBranchBadge && (
                           <span style={{ padding: '6px 10px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', fontSize: '.7rem', fontWeight: 900 }}>
@@ -2173,14 +2173,14 @@ export default function OrderHub() {
                   {pendingBranchOverride && (
                     <div style={{ marginTop: 10, marginBottom: 10, border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 10, padding: 12 }}>
                       <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#92400e', lineHeight: 1.45 }}>
-                        Bu deÄŸiÅŸiklik yalnÄ±z bu sipariÅŸ iÃ§in mi geÃ§erli olsun, yoksa bu adresin varsayÄ±lan ÅŸubesi olarak kaydedilsin mi?
+                        Bu değişiklik yalnız bu sipariş için mi geçerli olsun, yoksa bu adresin varsayılan şubesi olarak kaydedilsin mi?
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                         <button className="btn-o" type="button" onClick={() => confirmBranchOverride(false)}>
-                          Sadece bu sipariÅŸ
+                          Sadece bu sipariş
                         </button>
                         <button className="btn-p" type="button" onClick={() => confirmBranchOverride(true)}>
-                          Bu adres iÃ§in varsayÄ±lan yap
+                          Bu adres için varsayılan yap
                         </button>
                       </div>
                     </div>
@@ -2188,7 +2188,7 @@ export default function OrderHub() {
                   <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
                     {groupedBranches.recommended.length > 0 && (
                       <>
-                        <div style={{ fontSize: '.74rem', fontWeight: 900, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '.04em' }}>Ã–nerilen ï¿½?ubeler</div>
+                        <div style={{ fontSize: '.74rem', fontWeight: 900, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '.04em' }}>Önerilen Şubeler</div>
                         {groupedBranches.recommended.map(branch => {
                           const active = selectedBranchId === branch.id
                           const badge = BRANCH_SOURCE_LABELS[branch.recommendationSource] || ''
@@ -2198,7 +2198,7 @@ export default function OrderHub() {
                                 <div style={{ fontWeight: 900 }}>{branch.name}</div>
                                 {badge && <span style={{ fontSize: '.68rem', fontWeight: 900, opacity: active ? .95 : .8 }}>{badge}</span>}
                               </div>
-                              <div style={{ fontSize: '.76rem', marginTop: 3, opacity: .8 }}>{branch.parentName || 'ï¿½?ube'} Â· 7/24</div>
+                              <div style={{ fontSize: '.76rem', marginTop: 3, opacity: .8 }}>{branch.parentName || 'Şube'} · 7/24</div>
                               {branch.address && <div style={{ fontSize: '.74rem', marginTop: 5, opacity: .78 }}>{branch.address}</div>}
                             </button>
                           )
@@ -2207,13 +2207,13 @@ export default function OrderHub() {
                     )}
                     {groupedBranches.others.length > 0 && (
                       <>
-                        <div style={{ fontSize: '.74rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em', marginTop: groupedBranches.recommended.length > 0 ? 6 : 0 }}>DiÄŸer ï¿½?ubeler</div>
+                        <div style={{ fontSize: '.74rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em', marginTop: groupedBranches.recommended.length > 0 ? 6 : 0 }}>Diğer Şubeler</div>
                         {groupedBranches.others.map(branch => {
                           const active = selectedBranchId === branch.id
                           return (
                             <button key={branch.id} type="button" onClick={() => handleBranchSelection(branch)} style={{ textAlign: 'left', border: `1px solid ${active ? '#0ea5e9' : '#e2e8f0'}`, background: active ? '#0ea5e9' : '#fff', color: active ? '#fff' : '#0f172a', borderRadius: 9, padding: 12, cursor: 'pointer' }}>
                               <div style={{ fontWeight: 900 }}>{branch.name}</div>
-                              <div style={{ fontSize: '.76rem', marginTop: 3, opacity: .8 }}>{branch.parentName || 'ï¿½?ube'} Â· 7/24</div>
+                              <div style={{ fontSize: '.76rem', marginTop: 3, opacity: .8 }}>{branch.parentName || 'Şube'} · 7/24</div>
                               {branch.address && <div style={{ fontSize: '.74rem', marginTop: 5, opacity: .78 }}>{branch.address}</div>}
                             </button>
                           )
@@ -2227,7 +2227,7 @@ export default function OrderHub() {
                       if (message) toast(message, 'error')
                       else setStep('order')
                     }}>
-                      Ä°leri
+                      İleri
                     </button>
                   </div>
                 </div>
@@ -2239,9 +2239,9 @@ export default function OrderHub() {
             <section>
               <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid #e2e8f0', padding: '0 16px' }}>
                 {[
-                  ['menu', 'MenÃ¼'],
+                  ['menu', 'Menü'],
                   ['campaigns', 'Kampanyalar'],
-                  ['history', 'GeÃ§miÅŸ'],
+                  ['history', 'Geçmiş'],
                 ].map(([key, label]) => (
                   <button key={key} type="button" onClick={() => setOrderTab(key)} style={{ border: 'none', background: 'transparent', padding: '14px 2px 12px', marginRight: 22, borderBottom: orderTab === key ? '3px solid #0ea5e9' : '3px solid transparent', color: orderTab === key ? '#0284c7' : '#334155', fontWeight: 800, cursor: 'pointer' }}>
                     {label}
@@ -2254,7 +2254,7 @@ export default function OrderHub() {
                     <select className="f-input" value={selectedCategoryId} onChange={event => setSelectedCategoryId(event.target.value)}>
                       {categoryRows.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
                     </select>
-                    <input className="f-input" placeholder="ÃœrÃ¼n ara" value={productSearch} onChange={event => setProductSearch(event.target.value)} />
+                    <input className="f-input" placeholder="Ürün ara" value={productSearch} onChange={event => setProductSearch(event.target.value)} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px,1fr))', gap: 12 }}>
                     {filteredProducts.map(product => (
@@ -2301,7 +2301,7 @@ export default function OrderHub() {
                               {product.short_name || product.name}
                             </div>
                             <div style={{ textAlign: 'right', fontWeight: 900 }}>
-                              â‚º{money(getProductPrice(product, selectedChannelId))}
+                              ₺{money(getProductPrice(product, selectedChannelId))}
                             </div>
                           </div>
                         </div>
@@ -2318,7 +2318,7 @@ export default function OrderHub() {
                     </div>
                   )}
                   {visibleRuntimeCampaigns.length === 0 ? (
-                    <div style={{ color: '#94a3b8', padding: 24 }}>Sadakat modÃ¼lÃ¼nden gelen uygun kampanya bulunamadÄ±.</div>
+                    <div style={{ color: '#94a3b8', padding: 24 }}>Sadakat modülünden gelen uygun kampanya bulunamadı.</div>
                   ) : visibleRuntimeCampaigns.map(campaign => {
                     const campaignId = String(campaign.id || '').trim()
                     const alreadyTriggered = manualTriggeredCampaignIds.includes(campaignId)
@@ -2340,7 +2340,7 @@ export default function OrderHub() {
                           String(selectedLoyaltyCampaignId || '') === campaignId ? '' : campaignId,
                         )}
                       />
-                      <div style={{ color: '#64748b', marginTop: 4, fontSize: '.84rem' }}>{campaign.description || `${campaign.reward_type} Â· ${campaign.reward_value || 0}`}</div>
+                      <div style={{ color: '#64748b', marginTop: 4, fontSize: '.84rem' }}>{campaign.description || `${campaign.reward_type} · ${campaign.reward_value || 0}`}</div>
                       </>
                     )
                   })}
@@ -2349,15 +2349,15 @@ export default function OrderHub() {
               {orderTab === 'history' && (
                 <div style={{ padding: 16 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
-                    <thead><tr style={{ background: '#f8fafc' }}>{['SipariÅŸ No', 'Tarih', 'ï¿½?ube', 'Detay', 'Toplam'].map(label => <th key={label} style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>{label}</th>)}</tr></thead>
+                    <thead><tr style={{ background: '#f8fafc' }}>{['Sipariş No', 'Tarih', 'Şube', 'Detay', 'Toplam'].map(label => <th key={label} style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>{label}</th>)}</tr></thead>
                     <tbody>
-                      {history.length === 0 ? <tr><td colSpan={5} style={{ padding: 22, color: '#94a3b8' }}>GeÃ§miÅŸ sipariÅŸ bulunamadÄ±.</td></tr> : history.map(row => (
+                      {history.length === 0 ? <tr><td colSpan={5} style={{ padding: 22, color: '#94a3b8' }}>Geçmiş sipariş bulunamadı.</td></tr> : history.map(row => (
                         <tr key={row.id}>
                           <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{row.sale_no || row.id.slice(0, 8)}</td>
                           <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{new Date(row.sale_datetime).toLocaleString('tr-TR')}</td>
                           <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{row.branch_name || '-'}</td>
                           <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{row.order_note || '-'}</td>
-                          <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 900 }}>â‚º{money(row.gross_total_after_discount)}</td>
+                          <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 900 }}>₺{money(row.gross_total_after_discount)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2370,7 +2370,7 @@ export default function OrderHub() {
           {step === 'payment' && (
             <section style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, minHeight: 560 }}>
               <div>
-                <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>Ã–deme Tipleri</h3>
+                <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>Ödeme Tipleri</h3>
                 <div style={{ display: 'grid', gap: 10 }}>
                   {PAYMENT_METHODS.map(method => (
                     <button key={method.method} type="button" onClick={() => setPaymentMethod(method.method)} style={{ border: `1px solid ${paymentMethod === method.method ? '#0ea5e9' : '#e2e8f0'}`, background: paymentMethod === method.method ? '#e0f2fe' : '#fff', borderRadius: 8, padding: 14, textAlign: 'left', fontWeight: 900, color: '#0f172a', cursor: 'pointer' }}>
@@ -2404,13 +2404,13 @@ export default function OrderHub() {
                         ? ''
                         : (walletReadiness?.status === 'ambiguous_program_context'
                           ? `${walletReadiness.candidateWalletCount || 0} wallet bulundu`
-                          : `AÃ§Ä±k kalan: â‚º${money(payableTotal)}`)}
+                          : `Açık kalan: ₺${money(payableTotal)}`)}
                     </div>
                   </button>
 
                   {paymentMethod === 'sadakat_points' && (
                     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: 12, marginTop: 4, background: '#fff' }}>
-                      <div style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 900, marginBottom: 8 }}>Sadakat puanÄ± kullanÄ±mÄ±</div>
+                      <div style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 900, marginBottom: 8 }}>Sadakat puanı kullanımı</div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
                           type="button"
@@ -2443,23 +2443,23 @@ export default function OrderHub() {
                             cursor: 'pointer',
                           }}
                         >
-                          KÄ±smÄ±nÄ± kullan
+                          Kısmını kullan
                         </button>
                       </div>
 
                       {sadakatUseMode === 'partial' && (
                         <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                           <label style={{ display: 'grid', gap: 6 }}>
-                            <span style={{ fontSize: '.78rem', fontWeight: 900, color: '#475569' }}>Puan karÅŸÄ±lÄ±ÄŸÄ± kullanÄ±lacak tutar (â‚º)</span>
+                            <span style={{ fontSize: '.78rem', fontWeight: 900, color: '#475569' }}>Puan karşılığı kullanılacak tutar (₺)</span>
                             <input
                               className="f-input"
                               value={sadakatUseAmountTl}
                               onChange={e => setSadakatUseAmountTl(e.target.value)}
-                              placeholder="Ã–rn: 500"
+                              placeholder="Örn: 500"
                             />
                           </label>
                           <div style={{ fontSize: '.76rem', color: '#94a3b8', fontWeight: 800 }}>
-                            Puan bakiyesi yaklaÅŸÄ±k olarak â‚º{money(pointsBalance)} karÅŸÄ±lÄ±ÄŸÄ± kabul ediliyor.
+                            Puan bakiyesi yaklaşık olarak ₺{money(pointsBalance)} karşılığı kabul ediliyor.
                           </div>
                         </div>
                       )}
@@ -2469,8 +2469,8 @@ export default function OrderHub() {
                 </div>
               </div>
               <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: 16 }}>
-                <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>SipariÅŸ Ã–zeti</h3>
-                <SidebarCard icon="fa-user" title="MÃ¼ÅŸteri" value={activeCustomerName} />
+                <h3 style={{ margin: '0 0 14px', fontSize: '.86rem', color: '#0f172a' }}>Sipariş Özeti</h3>
+                <SidebarCard icon="fa-user" title="Müşteri" value={activeCustomerName} />
                 <SidebarCard icon="fa-location-dot" title={fulfillmentType === 'delivery' ? 'Teslimat' : 'Gel-al'} value={fulfillmentType === 'delivery' ? selectedAddressSummary : selectedBranch?.name} />
                 <div style={{ height: 12 }} />
                 <SidebarCard icon="fa-clock" title="Zaman" value={new Date(promisedAt).toLocaleString('tr-TR')} />
@@ -2480,7 +2480,7 @@ export default function OrderHub() {
                 {appliedLoyaltyCampaign && (
                   <>
                     <div style={{ height: 12 }} />
-                    <SidebarCard icon="fa-gift" title="Sadakat avantajÄ±" value={`${appliedLoyaltyCampaign.campaignName} Â· ${appliedLoyaltyCampaign.offerLabel || appliedLoyaltyCampaign.discountType || 'HazÄ±r avantaj'}`} />
+                    <SidebarCard icon="fa-gift" title="Sadakat avantajı" value={`${appliedLoyaltyCampaign.campaignName} · ${appliedLoyaltyCampaign.offerLabel || appliedLoyaltyCampaign.discountType || 'Hazır avantaj'}`} />
                   </>
                 )}
 
@@ -2489,13 +2489,13 @@ export default function OrderHub() {
                 {loyaltyDiscountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0284c7', fontWeight: 800, marginBottom: 10 }}>
                     <span>Sadakat indirimi</span>
-                    <span>-â‚º{money(loyaltyDiscountAmount)}</span>
+                    <span>-₺{money(loyaltyDiscountAmount)}</span>
                   </div>
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 16, fontWeight: 900, fontSize: '1.15rem' }}>
-                  <span>Ã–denecek</span>
-                  <span>â‚º{money(payableTotal)}</span>
+                  <span>Ödenecek</span>
+                  <span>₺{money(payableTotal)}</span>
                 </div>
 
               </div>
@@ -2507,15 +2507,15 @@ export default function OrderHub() {
         <aside className="card" style={{ overflow: 'hidden', position: 'sticky', top: 24 }}>
           <div style={{ background: '#e8eef7', padding: 16, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 900, color: '#0f172a' }}>
-              <span>{selectedBranch?.name ? `${selectedBranch.name} | ` : ''}Yeni SipariÅŸ</span>
+              <span>{selectedBranch?.name ? `${selectedBranch.name} | ` : ''}Yeni Sipariş</span>
               <span>{promisedAt ? new Date(promisedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
             </div>
             <SidebarCard icon="fa-user" title={activeCustomerName || '-'} value={customerForm.phone || selectedCustomer?.telefon || '-'} />
-            <SidebarCard icon="fa-utensils" title="MÃ¼ÅŸteri sayÄ±sÄ±" value="1" />
+            <SidebarCard icon="fa-utensils" title="Müşteri sayısı" value="1" />
             {appliedLoyaltyCampaign && (
-              <SidebarCard icon="fa-gift" title="SeÃ§ili sadakat" value={appliedLoyaltyCampaign.campaignName || appliedLoyaltyCampaign.offerLabel} />
+              <SidebarCard icon="fa-gift" title="Seçili sadakat" value={appliedLoyaltyCampaign.campaignName || appliedLoyaltyCampaign.offerLabel} />
             )}
-            <SidebarCard icon="fa-location-dot" title="Adres / ï¿½?ube" value={fulfillmentType === 'delivery' ? selectedAddressSummary : selectedBranch?.name} />
+            <SidebarCard icon="fa-location-dot" title="Adres / Şube" value={fulfillmentType === 'delivery' ? selectedAddressSummary : selectedBranch?.name} />
           </div>
 
           <div style={{ minHeight: 430, padding: 16 }}>
@@ -2523,7 +2523,7 @@ export default function OrderHub() {
               <span>Ad</span><span style={{ textAlign: 'right' }}>Miktar</span><span style={{ textAlign: 'right' }}>Fiyat</span>
             </div>
             {cart.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>Sepet boÅŸ</div>
+              <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>Sepet boş</div>
             ) : cart.map(item => (
               <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid #f1f5f9', fontSize: '.82rem' }}>
                 <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.product.short_name || item.product.name}</div>
@@ -2532,14 +2532,14 @@ export default function OrderHub() {
                   <span>{item.qty}</span>
                   <button type="button" onClick={() => updateCartQty(item.id, 1)} style={{ width: 22, height: 22, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: 'pointer' }}>+</button>
                 </div>
-                <div style={{ textAlign: 'right', fontWeight: 900 }}>â‚º{money(item.qty * item.unitPrice)}</div>
+                <div style={{ textAlign: 'right', fontWeight: 900 }}>₺{money(item.qty * item.unitPrice)}</div>
               </div>
             ))}
           </div>
 
           <div style={{ background: '#e8eef7', padding: '13px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: '1.05rem' }}>
             <span>TOPLAM</span>
-            <span>â‚º{money(payableTotal)}</span>
+            <span>₺{money(payableTotal)}</span>
           </div>
           <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 10, alignItems: 'center' }}>
             <button className="btn-o" onClick={saveDraft} title="Taslak olarak kaydet"><i className="fa-solid fa-note-sticky" /></button>
@@ -2548,7 +2548,7 @@ export default function OrderHub() {
             </button>
             {step === 'payment' ? (
               <button className="btn-p" disabled={submitting || !cart.length} onClick={sendOrder}>
-                {submitting ? 'GÃ¶nderiliyor...' : 'GÃ¶nder'}
+                {submitting ? 'Gönderiliyor...' : 'Gönder'}
               </button>
             ) : (
               <button className="btn-p" disabled={step === 'order' && !cart.length} onClick={() => {
@@ -2559,7 +2559,7 @@ export default function OrderHub() {
                   else setStep('order')
                 } else setStep('payment')
               }}>
-                Ä°leri
+                İleri
               </button>
             )}
           </div>
@@ -2717,8 +2717,8 @@ export default function OrderHub() {
           <div className="card" style={{ width: 760, maxWidth: '96vw', maxHeight: '90vh', overflow: 'hidden', display: 'grid', gridTemplateRows: 'auto 1fr auto', padding: 0 }}>
             <div style={{ padding: 18, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '1.1rem' }}>SipariÅŸ DetayÄ±</div>
-                <div style={{ marginTop: 6, color: '#64748b', fontSize: '.84rem' }}>{selectedOrder.sale_no || selectedOrder.table_label || selectedOrder.id.slice(0, 8)} - {selectedOrder.customer_name || 'KayÄ±t'}</div>
+                <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '1.1rem' }}>Sipariş Detayı</div>
+                <div style={{ marginTop: 6, color: '#64748b', fontSize: '.84rem' }}>{selectedOrder.sale_no || selectedOrder.table_label || selectedOrder.id.slice(0, 8)} - {selectedOrder.customer_name || 'Kayıt'}</div>
               </div>
               <button type="button" className="btn-o" onClick={() => setSelectedOrder(null)}>Kapat</button>
             </div>
@@ -2730,7 +2730,7 @@ export default function OrderHub() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
                     <SidebarCard title="Durum" value={selectedOrderStatusMeta?.label || '-'} icon="fa-signal" />
                     <SidebarCard title="Kanal" value={getOrderHubSourceMeta(selectedOrder).label} icon="fa-store" />
-                    <SidebarCard title="AkÄ±ÅŸ" value={getOrderHubFlowLabel(selectedOrder)} icon="fa-location-dot" />
+                    <SidebarCard title="Akış" value={getOrderHubFlowLabel(selectedOrder)} icon="fa-location-dot" />
                     <SidebarCard title="Zaman" value={getOrderHubTimingLabel(selectedOrder)} icon="fa-clock" />
                   </div>
                   {orderEditMode ? (
@@ -2768,12 +2768,12 @@ export default function OrderHub() {
                   )}
                   {!selectedOrderCanEdit && selectedOrder.kind === 'sale' && selectedOrder.status !== 'cancelled' && (
                     <div style={{ border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', borderRadius: 12, padding: 12, fontWeight: 800, fontSize: '.84rem' }}>
-                      Bu sipariÅŸ artÄ±k dÃ¼zenlenebilir durumda deÄŸil.
+                      Bu sipariş artık düzenlenebilir durumda değil.
                     </div>
                   )}
                   {selectedOrder.kind === 'open_ticket' && (
                     <div style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 12, padding: 12, fontWeight: 800, fontSize: '.84rem' }}>
-                      AÃ§Ä±k masa adisyonlarÄ± Garson veya POS masa akÄ±ÅŸÄ±ndan yÃ¶netilir.
+                      Açık masa adisyonları Garson veya POS masa akışından yönetilir.
                     </div>
                   )}
                 </>

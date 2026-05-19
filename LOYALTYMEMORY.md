@@ -1371,3 +1371,30 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Verification`: `npm.cmd run build -> exit code 0, 276 modules, 24.01s; her iki script node --check ile syntax temiz.`
 - `Status`: `points_redeem_multiplier runtime statusuna dokunulmadi. Canli Railway smoke henuz kosturulmedi cunku bu ortamda DATABASE_URL tanimli degil.`
 - `Next`: `DATABASE_URL bulunan ortamda fixture bootstrap + Call Center satis + verify script zincirini kos ve ancak sonra status promotion kararini ver.`
+
+- `Entry 027`
+- `Date`: `2026-05-19`
+- `Phase`: `Live smoke pass + status promotion`
+- `Affected Surface`:
+  - `migrations/009_sales_loyalty_persistence.sql`
+  - `schema-railway-master.sql`
+  - `scripts/run-loyalty-redemption-smoke.mjs`
+  - `scripts/verify-loyalty-redemption-smoke.mjs`
+  - `src/lib/loyaltyRuntimeStatus.js`
+- `Result`:
+  - `Canli Railway DB'de sales ve sale_lines loyalty persistence kolonlarinin eksik oldugu dogrulandi; migration 009 ile sales/sale_lines loyalty alanlari eklendi.`
+  - `redemption_rate migration'i sonrasinda fixture bootstrap tekrar kosturuldu ve smoke fixture hazirligi canli DB'de dogrulandi.`
+  - `run:loyalty-redemption-smoke script'i ile scripted smoke sale olusturuldu: saleId=93099c7e-4ec1-4454-ac85-8d12c0a183ad.`
+  - `Smoke sale burn transaction'i: bd01ebb2-cb3f-474b-8843-4c452880cb05, redemption kaydi: d3a80427-39c8-4b6c-8b7a-0390e5914aea.`
+  - `verify:loyalty-redemption-smoke PASS verdi; burn negative points_delta ile yazildi, wallet current_points_balance 0.00'a dustu, lifetime_burned_points 100.00 oldu, redemption burn transaction'a baglandi ve frequency_step anchor kullanilmadi.`
+  - `points_redeem_multiplier authority statusu presentation/ledger:false'tan local/ledger:true durumuna yukseltilerek smoke kanitiyla hizalandi.`
+  - `run-loyalty-redemption-smoke.mjs icindeki pg client parallel query warning'i sequential fixture lookup'a gecilerek temizlendi.`
+- `Verification`:
+  - `npm.cmd run run:loyalty-redemption-smoke -> smoke sale + idempotent second pass success`
+  - `npm.cmd run verify:loyalty-redemption-smoke -- --sale-id 93099c7e-4ec1-4454-ac85-8d12c0a183ad -> PASS`
+  - `npm.cmd run build -> exit code 0, 278 modules, 1m 41s`
+- `Status`: `points_redeem_multiplier artik runtime authority tarafinda local + ledger:true.`
+- `Remaining Risks`:
+  - `Canli smoke scripted DB zinciri ile kanitlandi; ayni capability'nin birebir Call Center UI adimlarinda operator smoke'u yine de faydali olur.`
+  - `Smoke fixture wallet bakiyesi burn ile 0.00'a dustu; yeni smoke gerekirse bootstrap script ile bakiye tekrar 100'e cekilmeli.`
+- `Next`: `Wizard/LoyaltyManagement tarafinda yeni authority statusunun gorunur oldugunu kisa UI smoke ile dogrula; ardindan redemption readback surfacing'i siparis detay yuzeyleriyle tamamla.`

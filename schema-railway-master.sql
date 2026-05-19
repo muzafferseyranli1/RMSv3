@@ -1291,6 +1291,17 @@ CREATE TABLE IF NOT EXISTS public.sale_lines (
   branch_id UUID,
   branch_name TEXT,
   sale_datetime TIMESTAMPTZ NOT NULL,
+  discount_source TEXT,
+  loyalty_campaign_id TEXT,
+  loyalty_campaign_name TEXT,
+  loyalty_application_mode TEXT,
+  loyalty_action_type TEXT,
+  loyalty_offer_label TEXT,
+  loyalty_source_rule_id TEXT,
+  loyalty_selected_coupon_code TEXT,
+  loyalty_applied_actions_json JSONB,
+  loyalty_decision_context_json JSONB,
+  loyalty_discount_allocated_amount NUMERIC(14,2) DEFAULT 0 NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   kds_completed BOOLEAN DEFAULT false NOT NULL,
   prep_time_minutes INTEGER DEFAULT 0 NOT NULL,
@@ -1389,6 +1400,16 @@ CREATE TABLE IF NOT EXISTS public.sales (
   kiosk_display_no INTEGER,
   pickup_called BOOLEAN DEFAULT false NOT NULL,
   delivery_address_snapshot JSONB,
+  discount_source TEXT,
+  loyalty_campaign_id TEXT,
+  loyalty_campaign_name TEXT,
+  loyalty_application_mode TEXT,
+  loyalty_action_type TEXT,
+  loyalty_offer_label TEXT,
+  loyalty_source_rule_id TEXT,
+  loyalty_selected_coupon_code TEXT,
+  loyalty_applied_actions_json JSONB,
+  loyalty_decision_context_json JSONB,
   CONSTRAINT sales_pkey PRIMARY KEY (id),
   CONSTRAINT sales_discount_type_check CHECK (discount_type IS NULL OR (discount_type = ANY (ARRAY['percent'::text, 'amount'::text]))),
   CONSTRAINT sales_kds_status_check CHECK (kds_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'ready'::text, 'delivered'::text])),
@@ -1397,6 +1418,31 @@ CREATE TABLE IF NOT EXISTS public.sales (
   CONSTRAINT sales_local_id_key UNIQUE (local_id),
   CONSTRAINT sales_customer_address_id_fkey FOREIGN KEY (customer_address_id) REFERENCES public.customer_addresses(id) ON DELETE SET NULL
 );
+
+ALTER TABLE public.sales
+  ADD COLUMN IF NOT EXISTS discount_source TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_campaign_id TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_campaign_name TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_application_mode TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_action_type TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_offer_label TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_source_rule_id TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_selected_coupon_code TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_applied_actions_json JSONB,
+  ADD COLUMN IF NOT EXISTS loyalty_decision_context_json JSONB;
+
+ALTER TABLE public.sale_lines
+  ADD COLUMN IF NOT EXISTS discount_source TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_campaign_id TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_campaign_name TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_application_mode TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_action_type TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_offer_label TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_source_rule_id TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_selected_coupon_code TEXT,
+  ADD COLUMN IF NOT EXISTS loyalty_applied_actions_json JSONB,
+  ADD COLUMN IF NOT EXISTS loyalty_decision_context_json JSONB,
+  ADD COLUMN IF NOT EXISTS loyalty_discount_allocated_amount NUMERIC(14,2) DEFAULT 0 NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.sales_channels (
   id UUID DEFAULT gen_random_uuid() NOT NULL,

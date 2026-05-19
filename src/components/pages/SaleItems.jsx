@@ -13,6 +13,8 @@ import {
   isComboMenuCategory,
   sortSaleCategoriesWithComboFirst,
 } from '@/lib/comboMenuCategory'
+import { ensureDefaultLocationSelection, getAllBranchesLocationSelection, withDefaultLocationSelection } from '@/lib/locationDefaults'
+import { ensureCallCenterChannelPrice } from '@/lib/saleItemChannelPricing'
 
 // ── Helpers ──────────────────────────────────────────────────
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
@@ -393,6 +395,7 @@ export default function SaleItems() {
   const [confirm, setConfirm]   = useState(null)
   const [skuStatus, setSkuStatus] = useState({ type:'idle', msg:'' })
   const [existingSkus, setExistingSkus] = useState(new Set())
+  const locationDefaultAppliedRef = useRef(false)
   const LIST_FIELDS = 'id,sku,name,short_name,deleted_at,active,auto_sku,sale_status,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5'
 
   const load = useCallback(async () => {
@@ -473,6 +476,26 @@ export default function SaleItems() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    if (!modal) {
+      locationDefaultAppliedRef.current = false
+      return
+    }
+    if (locationDefaultAppliedRef.current) return
+
+    const defaultLocation = getAllBranchesLocationSelection(branchTpls)
+    if (!defaultLocation.length) return
+
+    setForm(current => {
+      if (current.location?.length) {
+        locationDefaultAppliedRef.current = true
+        return current
+      }
+      locationDefaultAppliedRef.current = true
+      return { ...current, location: defaultLocation }
+    })
+  }, [modal, branchTpls])
+
   const comboOnlyCategory = useMemo(
     () => cats.find(category => isComboMenuCategory(category) && !category.deleted_at) || null,
     [cats]
@@ -551,7 +574,13 @@ export default function SaleItems() {
   }
 
   // ── Modal open/close ──────────────────────────────────────
-  function openAdd() { setForm(EMPTY); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
+  function openAdd() {
+    setForm(withDefaultLocationSelection({
+      ...EMPTY,
+      channel_prices: ensureCallCenterChannelPrice([], channels, { defaultTaxId: defaultSalesTax }),
+    }, branchTpls))
+    setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true)
+  }
   async function openEdit(item) {
     const { data: fullItem, error } = await db
       .from('sale_items')
@@ -568,13 +597,24 @@ export default function SaleItems() {
     const currentCategory = resolvedCategoryId ? cats.find(category => category.id === resolvedCategoryId) : null
     const comboOnlyAssigned = Boolean(currentCategory && isComboMenuCategory(currentCategory))
 
+    const channelPrices = ensureCallCenterChannelPrice(
+      parseArrayValue(fullItem.channel_prices),
+      channels,
+      {
+        standardPrice: fullItem.standard_price,
+        salePrice: fullItem.sale_price,
+        taxId: fullItem.tax_id,
+        defaultTaxId: defaultSalesTax,
+      },
+    )
+
     setForm({
       sku: fullItem.sku||'', auto_sku: fullItem.auto_sku||false,
       name: fullItem.name||'', short_name: fullItem.short_name||'',
-      location: parseLocationValue(fullItem.location),
+      location: ensureDefaultLocationSelection(parseLocationValue(fullItem.location), branchTpls),
       cat_id: comboOnlyAssigned ? null : resolvedCategoryId,
       acc_cat: fullItem.acc_cat||'', acc_code: fullItem.acc_code||'',
-      channel_prices: parseArrayValue(fullItem.channel_prices),
+      channel_prices: channelPrices,
       portions: parseArrayValue(fullItem.portions),
       option_groups: parseArrayValue(fullItem.option_groups),
       recipe_rows: parseArrayValue(fullItem.recipe_rows),
@@ -655,7 +695,7 @@ export default function SaleItems() {
       acc_cat: form.acc_cat||null, acc_code: form.acc_code||null,
       sale_cat_l1: chain[0]?.id||null, sale_cat_l2: chain[1]?.id||null,
       sale_cat_l3: chain[2]?.id||null, sale_cat_l4: chain[3]?.id||null, sale_cat_l5: chain[4]?.id||null,
-      channel_prices: form.channel_prices,
+      channel_prices: ensureCallCenterChannelPrice(form.channel_prices, channels, { defaultTaxId: defaultSalesTax }),
       portions: form.portions||[],
       option_groups: (form.option_groups||[]).map(group => {
         const def = optionGroupDefs.find(item => item.id === group.group_def_id)

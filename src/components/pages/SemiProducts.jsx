@@ -8,6 +8,7 @@ import AddButton from '@/components/ui/AddButton'
 import StockSearchSelect from '@/components/ui/StockSearchSelect'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import RecipeRowsGrid from '@/components/ui/RecipeRowsGrid'
+import { ensureDefaultLocationSelection, getAllBranchesLocationSelection, withDefaultLocationSelection } from '@/lib/locationDefaults'
 
 // ── Helpers ──────────────────────────────────────────────────
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
@@ -373,6 +374,7 @@ export default function SemiProducts() {
   const [confirm, setConfirm]   = useState(null)
   const [skuStatus, setSkuStatus] = useState({ type:'idle', msg:'' })
   const [existingSkus, setExistingSkus] = useState(new Set())
+  const locationDefaultAppliedRef = useRef(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -413,6 +415,26 @@ export default function SemiProducts() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!modal) {
+      locationDefaultAppliedRef.current = false
+      return
+    }
+    if (locationDefaultAppliedRef.current) return
+
+    const defaultLocation = getAllBranchesLocationSelection(branchTpls)
+    if (!defaultLocation.length) return
+
+    setForm(current => {
+      if (current.location?.length) {
+        locationDefaultAppliedRef.current = true
+        return current
+      }
+      locationDefaultAppliedRef.current = true
+      return { ...current, location: defaultLocation }
+    })
+  }, [modal, branchTpls])
 
   const filtered = items.filter(i => {
     if (!showDeleted && i.deleted_at) return false
@@ -483,12 +505,12 @@ export default function SemiProducts() {
   }
 
   // ── Modal open/close ──────────────────────────────────────
-  function openAdd() { setForm(EMPTY); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
+  function openAdd() { setForm(withDefaultLocationSelection(EMPTY, branchTpls)); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
   function openEdit(item) {
     setForm({
       sku: item.sku||'', auto_sku: item.auto_sku||false,
       name: item.name||'', short_name: item.short_name||'',
-      location: parseLocationValue(item.location),
+      location: ensureDefaultLocationSelection(parseLocationValue(item.location), branchTpls),
       cat_id: item.sale_cat_l5||item.sale_cat_l4||item.sale_cat_l3||item.sale_cat_l2||item.sale_cat_l1||null,
       acc_cat: item.acc_cat||'', acc_code: item.acc_code||'',
       channel_prices: parseArrayValue(item.channel_prices),
