@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -28,6 +28,15 @@ import {
   normalizeRule,
   saveLoyaltyWorkspace,
 } from '@/lib/loyalty'
+import {
+  getEditorRuleActions,
+  getEditorRuleConditions,
+  getStandaloneActionConfig,
+  getStandaloneConditionConfig,
+  hydrateCampaignForEditor,
+  hydrateEditorRuleFromDraft,
+  serializeCampaignForPersistence,
+} from '@/lib/loyaltyCampaignEditorModel'
 import {
   RUNTIME_STATUS_META,
   getConditionRuntimeStatus,
@@ -201,9 +210,115 @@ const GOAL_PRESETS = [
 
 const WIZARD_STEPS = [
   { key: 'goal', title: 'Hedef' },
-  { key: 'rules', title: 'Kurallar' },
-  { key: 'general', title: 'Genel Ayarlar' },
+  { key: 'scope', title: 'Kapsam' },
+  { key: 'trigger', title: 'Tetikleyici' },
+  { key: 'reward', title: 'Kazanim' },
+  { key: 'coupon-points', title: 'Kupon ve Puan' },
+  { key: 'operations', title: 'Operasyon' },
   { key: 'review', title: 'Kaydet' },
+]
+
+const EDITOR_MODE_OPTIONS = [
+  {
+    value: 'simple',
+    label: 'Basit mod',
+    description: 'Hedef, kitle, tetikleyici ve kazanim dilinde ilerler; teknik kural modeli arkada uretilir.',
+  },
+  {
+    value: 'advanced',
+    label: 'Gelismis mod',
+    description: 'Mevcut campaign editor gucundeki condition/action bloklarini ayni kampanya uzerinde acar.',
+  },
+]
+
+const SIMPLE_CONDITION_CHOICES = [
+  {
+    value: 'order_total',
+    title: 'Sepet tutarina gore',
+    description: 'Sepet belirli tutari gecince kampanya calissin.',
+    triggerType: 'cart_total',
+    scope: 'applicable',
+  },
+  {
+    value: 'period_order_count',
+    title: 'Ziyaret sayisina gore',
+    description: 'Musteri belirli sayida ziyaret/siparise ulasinca calissin.',
+    triggerType: 'visit_count',
+    scope: 'applicable',
+  },
+  {
+    value: 'birthday',
+    title: 'Dogum gunu',
+    description: 'Dogum gunu penceresinde otomatik deger versin.',
+    triggerType: 'birthday',
+    scope: 'applicable',
+  },
+  {
+    value: 'happy_hour',
+    title: 'Gun ve saat araligi',
+    description: 'Happy hour veya servis saatlerine bagli calissin.',
+    triggerType: 'order_completed',
+    scope: 'applicable',
+  },
+  {
+    value: 'calendar_schedule',
+    title: 'Takvimli tekrar',
+    description: 'Gunluk, haftalik, aylik veya yillik periyotta calissin.',
+    triggerType: 'manual',
+    scope: 'periodic',
+  },
+  {
+    value: 'manual_approval',
+    title: 'Personel elle baslatsin',
+    description: 'POS kampanyalar sekmesinden manuel tetiklensin.',
+    triggerType: 'manual',
+    scope: 'applicable',
+  },
+]
+
+const SIMPLE_ACTION_CHOICES = [
+  {
+    value: 'total_order_discount_percent',
+    campaignType: 'discount_percent',
+    title: 'Siparise yuzde indirim',
+    description: 'Toplam sipariste yuzde indirim uygula.',
+  },
+  {
+    value: 'order_discount_amount',
+    campaignType: 'discount_amount',
+    title: 'Siparise tutar indirimi',
+    description: 'Sabit tutarda siparis indirimi uygula.',
+  },
+  {
+    value: 'bonus_points',
+    campaignType: 'bonus_points',
+    title: 'Sabit puan kazandir',
+    description: 'Musterinin cuzdanina belirli puan yukle.',
+  },
+  {
+    value: 'points_earn_multiplier',
+    campaignType: 'points_earn_multiplier',
+    title: 'Puan kazanimi carpani',
+    description: 'Kazanim katsayisini kampanya boyunca arttir.',
+  },
+  {
+    value: 'points_redeem_multiplier',
+    campaignType: 'points_redeem_multiplier',
+    title: 'Puan harcama degeri',
+    description: 'Puan kullanirken degeri kampanya icin arttir.',
+  },
+  {
+    value: 'issue_coupon',
+    campaignType: 'coupon_unlock',
+    title: 'Kupon ver',
+    description: 'Canonical loyalty kupon serisinden kupon uret.',
+  },
+  {
+    value: 'free_products',
+    campaignType: 'product_offer',
+    title: 'Hediye urun',
+    description: 'Secili urun/kategori/sablon icin hediye veya urun teklifi ver.',
+  },
 ]
 
 const WEEKDAY_OPTIONS = ['Pzt', 'Sal', 'Car', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -823,166 +938,6 @@ function createComboGroupItem() {
   return { id: createId('combo-item'), type: 'product', name: '', size: '', blockedOptions: '', priceAdjustment: 0, position: 0 }
 }
 
-function getEditorRuleConditions(rule) {
-  const mainConditionHidden = Boolean(rule?.conditionConfig?.__draftEmptyCondition)
-  const main = mainConditionHidden ? [] : [{
-    id: rule.id,
-    conditionKey: rule.conditionKey,
-    conditionConfig: rule.conditionConfig || {},
-  }]
-  const extra = Array.isArray(rule?.conditionConfig?.additionalConditions)
-    ? rule.conditionConfig.additionalConditions.map(item => ({
-      id: item.id,
-      conditionKey: item.conditionKey,
-      conditionConfig: item.config || {},
-    }))
-    : []
-  return [...main, ...extra]
-}
-
-function getStandaloneConditionConfig(config = {}) {
-  const nextConfig = { ...(config || {}) }
-  delete nextConfig.additionalConditions
-  delete nextConfig.additionalConditionsMode
-  delete nextConfig.__draftEmptyCondition
-  return nextConfig
-}
-
-function getStandaloneActionConfig(config = {}) {
-  const nextConfig = { ...(config || {}) }
-  delete nextConfig.additionalActions
-  delete nextConfig.__draftEmptyAction
-  return nextConfig
-}
-
-function getEditorRuleActions(rule) {
-  const mainActionHidden = Boolean(rule?.actionConfig?.__draftEmptyAction)
-  const main = mainActionHidden ? [] : [{
-    id: rule.id,
-    actionType: rule.actionType,
-    actionSummary: rule.actionSummary,
-    actionConfig: rule.actionConfig || {},
-  }]
-  const extra = Array.isArray(rule?.actionConfig?.additionalActions)
-    ? rule.actionConfig.additionalActions.map(item => ({
-      id: item.id,
-      actionType: item.actionType,
-      actionSummary: item.actionSummary,
-      actionConfig: item.actionConfig || {},
-    }))
-    : []
-  return [...main, ...extra]
-}
-
-function createEditorRuleDraft(rule, scope) {
-  return {
-    id: rule.id,
-    scope,
-    active: rule.active !== false,
-    stopProcessing: Boolean(rule.stopProcessing),
-    conditions: getEditorRuleConditions(rule).map(item => ({
-      id: item.id,
-      conditionKey: item.conditionKey,
-      conditionConfig: item.conditionConfig || {},
-    })),
-    actions: getEditorRuleActions(rule).map(item => ({
-      id: item.id,
-      actionType: item.actionType,
-      actionSummary: item.actionSummary || '',
-      actionConfig: item.actionConfig || {},
-    })),
-  }
-}
-
-function hydrateEditorRuleFromDraft(draft, index = 0, scope = 'applicable') {
-  const conditions = Array.isArray(draft?.conditions) ? draft.conditions : []
-  const actions = Array.isArray(draft?.actions) ? draft.actions : []
-  const primaryCondition = conditions[0] || null
-  const primaryAction = actions[0] || null
-
-  return normalizeRule({
-    id: draft?.id || createId('rule'),
-    scope,
-    conditionKey: primaryCondition?.conditionKey || (scope === 'periodic' ? 'calendar_schedule' : 'birthday'),
-    actionType: primaryAction?.actionType || 'bonus_points',
-    actionSummary: primaryAction?.actionSummary || '',
-    active: draft?.active !== false,
-    stopProcessing: Boolean(draft?.stopProcessing),
-    sortOrder: ((index + 1) * 10),
-    conditionConfig: {
-      ...(primaryCondition?.conditionConfig || getDefaultConditionConfig(primaryCondition?.conditionKey || (scope === 'periodic' ? 'calendar_schedule' : 'birthday'))),
-      additionalConditions: conditions.slice(1).map(item => ({
-        id: item.id,
-        conditionKey: item.conditionKey,
-        config: item.conditionConfig || {},
-      })),
-      __draftEmptyCondition: conditions.length === 0,
-    },
-    actionConfig: {
-      ...(primaryAction?.actionConfig || getDefaultActionConfig(primaryAction?.actionType || 'bonus_points')),
-      additionalActions: actions.slice(1).map(item => ({
-        id: item.id,
-        actionType: item.actionType,
-        actionSummary: item.actionSummary || '',
-        actionConfig: item.actionConfig || {},
-      })),
-      __draftEmptyAction: actions.length === 0,
-    },
-  }, index, scope)
-}
-
-function materializeRuleForRuntime(rule, scope) {
-  const draft = createEditorRuleDraft(rule, scope)
-  const conditions = draft.conditions
-  const actions = draft.actions
-
-  if (conditions.length === 0 || actions.length === 0) {
-    return { draft, runtimeRules: [] }
-  }
-
-  const [primaryCondition, ...extraConditions] = conditions
-  const runtimeRules = actions.map((action, index) => normalizeRule({
-    id: index === 0 ? rule.id : createId('rule'),
-    scope,
-    conditionKey: primaryCondition.conditionKey,
-    actionType: action.actionType,
-    actionSummary: action.actionSummary || '',
-    active: action.active !== false,
-    stopProcessing: action.stopProcessing ?? draft.stopProcessing,
-    sortOrder: ((index + 1) * 10),
-    conditionConfig: {
-      ...(primaryCondition.conditionConfig || {}),
-      additionalConditions: extraConditions.map(item => ({
-        id: item.id,
-        conditionKey: item.conditionKey,
-        config: item.conditionConfig || {},
-      })),
-    },
-    actionConfig: action.actionConfig || {},
-  }, index, scope))
-
-  return { draft, runtimeRules }
-}
-
-function serializeCampaignForPersistence(campaign, programId) {
-  const nextMetadata = { ...(campaign.metadata || {}) }
-  const applicableSerialized = (campaign.applicableRules || []).map(rule => materializeRuleForRuntime(rule, 'applicable'))
-  const periodicSerialized = (campaign.periodicRules || []).map(rule => materializeRuleForRuntime(rule, 'periodic'))
-
-  nextMetadata.editorRuleDrafts = {
-    applicable: applicableSerialized.map(item => item.draft),
-    periodic: periodicSerialized.map(item => item.draft),
-  }
-
-  return normalizeCampaign({
-    ...campaign,
-    programId,
-    metadata: nextMetadata,
-    applicableRules: applicableSerialized.flatMap(item => item.runtimeRules),
-    periodicRules: periodicSerialized.flatMap(item => item.runtimeRules),
-  })
-}
-
 function createDraftRule(conditionKey, actionType, scope = 'applicable', index = 0) {
   return hydrateEditorRuleFromDraft({
     id: createId('rule'),
@@ -1211,8 +1166,10 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
 export default function LoyaltyCampaignWizard() {
   const toast = useToast()
   const navigate = useNavigate()
+  const { campaignId } = useParams()
   const workspace = useWorkspace()
   const [currentStep, setCurrentStep] = useState(0)
+  const [wizardMode, setWizardMode] = useState('simple')
   const [selectedGoal, setSelectedGoal] = useState(GOAL_PRESETS[0].value)
   const [ruleScopeTab, setRuleScopeTab] = useState('applicable')
   const [wizardCampaign, setWizardCampaign] = useState(() => createBlankCampaign(DEFAULT_LOYALTY_PROGRAM.id, GOAL_PRESETS[0]))
@@ -1343,10 +1300,23 @@ export default function LoyaltyCampaignWizard() {
           })))
         }
 
-        setWizardCampaign(current => normalizeCampaign({
-          ...current,
-          programId: safeProgram.id,
-        }))
+        const routeCampaign = campaignId && campaignId !== 'yeni'
+          ? safeCampaigns.find(item => String(item.id) === String(campaignId))
+          : null
+
+        setWizardCampaign(current => {
+          if (routeCampaign) {
+            return hydrateCampaignForEditor(normalizeCampaign({
+              ...routeCampaign,
+              programId: safeProgram.id,
+            }))
+          }
+
+          return normalizeCampaign({
+            ...current,
+            programId: safeProgram.id,
+          })
+        })
       } catch (error) {
         if (cancelled) return
         setSchemaReady(false)
@@ -1360,7 +1330,7 @@ export default function LoyaltyCampaignWizard() {
 
     loadData()
     return () => { cancelled = true }
-  }, [toast, workspace.branchId, workspace.branchName, workspace.scope])
+  }, [campaignId, toast, workspace.branchId, workspace.branchName, workspace.scope])
 
   const activeRules = wizardCampaign.applicableRules || []
   const periodicRules = wizardCampaign.periodicRules || []
@@ -1791,22 +1761,94 @@ export default function LoyaltyCampaignWizard() {
     })
   }
 
+  function getSimpleActionConfig(actionType) {
+    const baseConfig = getDefaultActionConfig(actionType)
+    const firstSeriesId = couponSeries.find(series => series?.active !== false)?.id || couponSeries[0]?.id || ''
+
+    switch (actionType) {
+      case 'total_order_discount_percent':
+        return { ...baseConfig, percent: baseConfig.percent || 10 }
+      case 'order_discount_amount':
+        return { ...baseConfig, amount: baseConfig.amount || 50 }
+      case 'bonus_points':
+        return { ...baseConfig, points: baseConfig.points || 100 }
+      case 'points_earn_multiplier':
+      case 'points_redeem_multiplier':
+        return { ...baseConfig, multiplier: baseConfig.multiplier || 2 }
+      case 'issue_coupon':
+        return {
+          ...baseConfig,
+          anySeries: false,
+          seriesIds: Array.isArray(baseConfig.seriesIds) && baseConfig.seriesIds.length > 0
+            ? baseConfig.seriesIds
+            : (firstSeriesId ? [firstSeriesId] : []),
+        }
+      default:
+        return baseConfig
+    }
+  }
+
+  function applySimpleCondition(choice) {
+    const scope = choice.scope || 'applicable'
+    setRuleScopeTab(scope)
+    updateCampaign({ triggerType: choice.triggerType || wizardCampaign.triggerType })
+    replaceRules(scope, rules => {
+      const baseRule = rules[0] || createDraftRule(choice.value, 'bonus_points', scope, 0)
+      const currentConfig = baseRule.conditionConfig || {}
+      return [
+        {
+          ...baseRule,
+          conditionKey: choice.value,
+          conditionConfig: {
+            ...getDefaultConditionConfig(choice.value),
+            additionalConditions: Array.isArray(currentConfig.additionalConditions) ? currentConfig.additionalConditions : [],
+            additionalConditionsMode: currentConfig.additionalConditionsMode || 'and',
+            __draftEmptyCondition: false,
+          },
+        },
+        ...rules.slice(1),
+      ]
+    })
+  }
+
+  function applySimpleAction(choice, scope = ruleScopeTab) {
+    setRuleScopeTab(scope)
+    updateCampaign({ campaignType: choice.campaignType || wizardCampaign.campaignType })
+    replaceRules(scope, rules => {
+      const baseRule = rules[0] || createDraftRule(scope === 'periodic' ? 'calendar_schedule' : 'order_total', choice.value, scope, 0)
+      const currentConfig = baseRule.actionConfig || {}
+      return [
+        {
+          ...baseRule,
+          actionType: choice.value,
+          actionSummary: '',
+          actionConfig: {
+            ...getSimpleActionConfig(choice.value),
+            additionalActions: Array.isArray(currentConfig.additionalActions) ? currentConfig.additionalActions : [],
+            __draftEmptyAction: false,
+          },
+        },
+        ...rules.slice(1),
+      ]
+    })
+  }
+
   function validateBeforeSave() {
     if (!wizardCampaign.name.trim()) {
       toast('Kampanya adi zorunlu', 'error')
-      setCurrentStep(2)
+      setCurrentStep(1)
       return false
     }
     if (wizardCampaign.audienceType === 'tagged_customers' && (wizardCampaign.audienceCategoryIds || []).length === 0) {
       toast('Musteri kategorileri hedefi icin en az bir kategori secin', 'error')
-      setCurrentStep(2)
+      setCurrentStep(1)
       return false
     }
 
     const runtimeCampaign = serializeCampaignForPersistence(wizardCampaign, program.id)
     if ((runtimeCampaign.applicableRules || []).length === 0 && (runtimeCampaign.periodicRules || []).length === 0) {
       toast('Kaydetmeden once en az bir gecerli kosul ve eylem blogu olusturun', 'error')
-      setCurrentStep(1)
+      setCurrentStep(2)
       return false
     }
     return true
@@ -2620,6 +2662,117 @@ export default function LoyaltyCampaignWizard() {
     }
   }
 
+  function renderModeToggle() {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+        {EDITOR_MODE_OPTIONS.map(option => {
+          const active = wizardMode === option.value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setWizardMode(option.value)}
+              style={{
+                border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
+                background: active ? '#fffbeb' : '#fff',
+                color: '#0f172a',
+                borderRadius: 12,
+                padding: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'grid',
+                gap: 6,
+              }}
+            >
+              <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <strong>{option.label}</strong>
+                {active ? <MiniBadge active trueLabel="Aktif" falseLabel="" /> : null}
+              </span>
+              <span style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{option.description}</span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderRuleEditorPanel({ title = 'Gelismis kural editoru', subtitle = '' } = {}) {
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a' }}>{title}</div>
+            {subtitle ? (
+              <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>{subtitle}</div>
+            ) : null}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className={ruleScopeTab === 'applicable' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('applicable')}>
+              Siparis Aninda
+            </button>
+            <button className={ruleScopeTab === 'periodic' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('periodic')}>
+              Zaman Bazli
+            </button>
+            <button className="btn-o" type="button" onClick={() => addRule(ruleScopeTab)}>
+              <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+              Blok Ekle
+            </button>
+          </div>
+        </div>
+
+        <HelperNote title="Parity">
+          Bu panel mevcut campaign editor ile ayni condition/action modelini duzenler. Coklu kosul, VE/VEYA joiner, coklu eylem ve stop processing burada kayipsiz kalir.
+        </HelperNote>
+
+        {visibleRules.length === 0 ? (
+          <div style={{ border: '1px dashed #cbd5e1', borderRadius: 12, padding: 16, color: '#64748b', textAlign: 'center' }}>
+            Bu sekmede henuz blok yok.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {visibleRules.map(rule => (
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                summaryContext={summaryContext}
+                onEditCondition={conditionId => openRuleEditor('conditions', ruleScopeTab, rule.id, conditionId)}
+                onEditAction={actionId => openRuleEditor('actions', ruleScopeTab, rule.id, actionId)}
+                onAddCondition={() => addConditionToRule(ruleScopeTab, rule.id)}
+                onAddAction={() => addActionToRule(ruleScopeTab, rule.id)}
+                onToggleConditionJoiner={mode => updateRuleConditionJoinerMode(ruleScopeTab, rule.id, mode)}
+                onDeleteCondition={conditionId => removeConditionFromRule(ruleScopeTab, rule.id, conditionId)}
+                onDeleteAction={actionId => removeActionFromRule(ruleScopeTab, rule.id, actionId)}
+                onDelete={() => removeRule(ruleScopeTab, rule.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderRuleSummaryList(rules = [], emptyText = 'Bu sekmede kural yok.') {
+    if (rules.length === 0) {
+      return <div style={{ color: '#64748b', fontSize: '.82rem' }}>{emptyText}</div>
+    }
+
+    return rules.map(rule => (
+      <div key={rule.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, background: '#fff' }}>
+        <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.55 }}>
+          {buildConditionSummary(rule, summaryContext)} {'->'} {buildActionSummary(rule, summaryContext)}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          {getEditorRuleConditions(rule).map(condition => (
+            <RuntimeStatusBadge key={`${rule.id}-${condition.id}-condition`} status={getConditionRuntimeStatus(condition.conditionKey)} />
+          ))}
+          {getEditorRuleActions(rule).map(action => (
+            <RuntimeStatusBadge key={`${rule.id}-${action.id}-action`} status={getActionRuntimeStatus(action.actionType)} />
+          ))}
+        </div>
+      </div>
+    ))
+  }
+
   const reviewRuntimeCampaign = useMemo(
     () => serializeCampaignForPersistence(wizardCampaign, program.id),
     [program.id, wizardCampaign],
@@ -2652,7 +2805,7 @@ export default function LoyaltyCampaignWizard() {
               {scopeInfo?.label || 'Sadakat kapsami yukleniyor'}
             </div>
             <div style={{ marginTop: 6, fontSize: '.8rem', color: '#64748b' }}>
-              Wizard bu kapsam icin yeni kampanya create akisi olarak calisir.
+              Wizard bu kapsam icin {campaignId && campaignId !== 'yeni' ? 'kampanya duzenleme' : 'yeni kampanya create'} akisi olarak calisir.
             </div>
           </div>
           <div style={{
@@ -2682,10 +2835,13 @@ export default function LoyaltyCampaignWizard() {
       ) : null}
 
       <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gap: 14 }}>
+          {renderModeToggle()}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {WIZARD_STEPS.map((step, index) => (
             <StepPill key={step.key} index={index} currentStep={currentStep} title={step.title} onClick={setCurrentStep} />
           ))}
+          </div>
         </div>
       </div>
 
@@ -2746,66 +2902,11 @@ export default function LoyaltyCampaignWizard() {
           ) : null}
 
           {currentStep === 1 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Kurallar</div>
-                  <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                    Wizard artik custom mini state kullanmiyor; bu adim dogrudan mevcut campaign rule modelini duzenler.
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className={ruleScopeTab === 'applicable' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('applicable')}>
-                    Siparis Aninda
-                  </button>
-                  <button className={ruleScopeTab === 'periodic' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('periodic')}>
-                    Zaman Bazli
-                  </button>
-                  <button className="btn-o" type="button" onClick={() => addRule(ruleScopeTab)}>
-                    <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-                    Kosul Blogu Ekle
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 12 }}>
-                <HelperNote title="Parite notu">
-                  Bu ekran, kampanya moduluyle ayni mantigi izler: bir blog icindeki tum kosullar ayni joiner moduyla (`VE` veya `VEYA`) calisir; karisik satir bazli zincir kurulmaz.
-                </HelperNote>
-              </div>
-
-              {visibleRules.length === 0 ? (
-                <div style={{ border: '1px dashed #cbd5e1', borderRadius: 14, padding: 18, color: '#64748b', textAlign: 'center' }}>
-                  Bu sekmede henuz blog yok.
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {visibleRules.map(rule => (
-                    <RuleRow
-                      key={rule.id}
-                      rule={rule}
-                      summaryContext={summaryContext}
-                      onEditCondition={conditionId => openRuleEditor('conditions', ruleScopeTab, rule.id, conditionId)}
-                      onEditAction={actionId => openRuleEditor('actions', ruleScopeTab, rule.id, actionId)}
-                      onAddCondition={() => addConditionToRule(ruleScopeTab, rule.id)}
-                      onAddAction={() => addActionToRule(ruleScopeTab, rule.id)}
-                      onToggleConditionJoiner={mode => updateRuleConditionJoinerMode(ruleScopeTab, rule.id, mode)}
-                      onDeleteCondition={conditionId => removeConditionFromRule(ruleScopeTab, rule.id, conditionId)}
-                      onDeleteAction={actionId => removeActionFromRule(ruleScopeTab, rule.id, actionId)}
-                      onDelete={() => removeRule(ruleScopeTab, rule.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {currentStep === 2 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
               <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Genel Ayarlar</div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Kime, nerede ve hangi tarihte uygulansin?</div>
                 <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Ad, kanal, hedef kitle, uygulama modu ve cakisma mantigi bu adimdan yonetilir.
+                  Bu adim kampanya kimligini, hedef kitleyi, kanal hedeflerini ve aktif donemi toplar.
                 </div>
               </div>
 
@@ -2813,8 +2914,8 @@ export default function LoyaltyCampaignWizard() {
                 <FieldStack label="Kampanya adi">
                   <input className="f-input" value={wizardCampaign.name} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Orn. Hafta Ici 2x Puan" />
                 </FieldStack>
-                <FieldStack label="Oncelik" hint="Daha kucuk sayi daha guclu kabul edilir.">
-                  <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
+                <FieldStack label="Kod">
+                  <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu" />
                 </FieldStack>
               </div>
 
@@ -2839,7 +2940,7 @@ export default function LoyaltyCampaignWizard() {
                     </select>
                   </div>
                 </FieldStack>
-                <FieldStack label="Uygulama modu" hint="Model parity geregi sadece kasiyere sor veya otomatik uygula kullanilir.">
+                <FieldStack label="Uygulama modu" hint="Kasiyere sor veya otomatik uygula davranisi save/load modelinde ayni kalir.">
                   <div className="sel-wrap">
                     <select className="f-input" value={wizardCampaign.applicationMode} onChange={event => updateCampaign({ applicationMode: event.target.value })}>
                       {CAMPAIGN_APPLICATION_MODE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -2864,7 +2965,7 @@ export default function LoyaltyCampaignWizard() {
                 </FieldStack>
               ) : null}
 
-              <FieldStack label="Kanal hedefleri" hint="Bos birakilirsa tum kanallarda calisir. Rule seviyesinde sales_channel kosulu varsa o davranis ustun gelir.">
+              <FieldStack label="Kanal hedefleri" hint="Bos birakilirsa tum kanallarda calisir. Rule seviyesindeki satis kanali kosulu bundan daha detayli filtre olabilir.">
                 <SearchableMultiSelect
                   options={campaignChannelOptions}
                   selectedValues={wizardCampaign.channelTargets || []}
@@ -2872,6 +2973,217 @@ export default function LoyaltyCampaignWizard() {
                   placeholder="Kanal secin"
                 />
               </FieldStack>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FieldStack label="Trigger tipi">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={wizardCampaign.triggerType} onChange={event => updateCampaign({ triggerType: event.target.value })}>
+                      {CAMPAIGN_TRIGGER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </FieldStack>
+                <FieldStack label="Kampanya tipi">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={wizardCampaign.campaignType} onChange={event => updateCampaign({ campaignType: event.target.value })}>
+                      {CAMPAIGN_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </FieldStack>
+              </div>
+            </div>
+          ) : null}
+
+          {currentStep === 2 ? (
+            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Ne zaman calissin?</div>
+                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                  Basit mod tetikleyiciyi is diliyle secer; gelismis mod ayni secimi condition bloklari olarak acar.
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                {SIMPLE_CONDITION_CHOICES.map(choice => {
+                  const scopeRules = choice.scope === 'periodic' ? periodicRules : activeRules
+                  const active = scopeRules.some(rule => getEditorRuleConditions(rule).some(condition => condition.conditionKey === choice.value))
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => applySimpleCondition(choice)}
+                      style={{
+                        textAlign: 'left',
+                        border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
+                        background: active ? '#eff6ff' : '#fff',
+                        borderRadius: 12,
+                        padding: 14,
+                        cursor: 'pointer',
+                        display: 'grid',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <strong style={{ color: active ? '#1d4ed8' : '#0f172a' }}>{choice.title}</strong>
+                        <RuntimeStatusBadge status={getConditionRuntimeStatus(choice.value)} />
+                      </div>
+                      <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{choice.description}</div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <HelperNote title="Arka planda uretilen model">
+                Bu secimler `triggerType`, applicable/periodic rule, condition config ve gerekirse takvim/happy hour ayrintilarina map edilir. Gelismis modda hepsi gorunur ve duzenlenebilir.
+              </HelperNote>
+
+              {wizardMode === 'advanced' ? (
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+                  {renderRuleEditorPanel({
+                    title: 'Tetikleyici condition bloklari',
+                    subtitle: 'Birden fazla kosul, VE/VEYA joiner ve zaman bazli periyodik kurallar burada yonetilir.',
+                  })}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Secili tetikleyici ozeti</div>
+                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Henuz tetikleyici secilmedi.')}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {currentStep === 3 ? (
+            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Musteri ne kazansin?</div>
+                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                  Basit mod odul dilini kullanir; gelismis mod ayni sonucu action bloklari olarak acar.
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                {SIMPLE_ACTION_CHOICES.map(choice => {
+                  const active = [...activeRules, ...periodicRules].some(rule => getEditorRuleActions(rule).some(action => action.actionType === choice.value))
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => applySimpleAction(choice)}
+                      style={{
+                        textAlign: 'left',
+                        border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
+                        background: active ? '#fffbeb' : '#fff',
+                        borderRadius: 12,
+                        padding: 14,
+                        cursor: 'pointer',
+                        display: 'grid',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <strong style={{ color: active ? '#92400e' : '#0f172a' }}>{choice.title}</strong>
+                        <RuntimeStatusBadge status={getActionRuntimeStatus(choice.value)} />
+                      </div>
+                      <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{choice.description}</div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {wizardMode === 'advanced' ? (
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+                  {renderRuleEditorPanel({
+                    title: 'Kazanim action bloklari',
+                    subtitle: 'Coklu action, action sirasi, stop processing ve destek durumlari burada kayipsiz duzenlenir.',
+                  })}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Secili kazanim ozeti</div>
+                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Henuz kazanim secilmedi.')}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {currentStep === 4 ? (
+            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Kupon ve puan detaylari</div>
+                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                  Wizard loyalty coupon modelini kullanir; kiosk ayarlarindaki kupon mantigi ayri kanal davranisi olarak kalir.
+                </div>
+              </div>
+
+              <HelperNote title="Canonical loyalty coupon">
+                Kupon secimleri `loyalty_coupon_series`, `loyalty_coupons` ve `loyalty_campaign_redemptions` omurgasina baglanir. Kiosk settings coupon ayni kavram gibi sunulmaz; kanal ayari olarak kalir.
+              </HelperNote>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#fff', display: 'grid', gap: 8 }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Kupon serileri</div>
+                  <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>
+                    Aktif seri sayisi: <strong>{couponSeries.filter(series => series?.active !== false).length}</strong>
+                  </div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {couponSeries.slice(0, 5).map(series => (
+                      <div key={series.id} style={{ fontSize: '.78rem', color: '#334155', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span>{series.name || series.prefix || series.id}</span>
+                        <span style={{ color: series.useAfterCheckout ? '#0f766e' : '#64748b', fontWeight: 800 }}>{series.useAfterCheckout ? 'Checkout sonrasi' : 'Aninda'}</span>
+                      </div>
+                    ))}
+                    {couponSeries.length === 0 ? <div style={{ fontSize: '.78rem', color: '#64748b' }}>Henuz kupon serisi yok.</div> : null}
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#fff', display: 'grid', gap: 8 }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Puan davranislari</div>
+                  <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>
+                    Sabit puan, siparis yuzdesi, kazanma katsayisi ve harcama katsayisi ayni action modelinden yonetilir.
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {['bonus_points', 'points_percent_of_order', 'points_earn_multiplier', 'points_redeem_multiplier'].map(actionType => (
+                      <RuntimeStatusBadge key={actionType} status={getActionRuntimeStatus(actionType)} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {wizardMode === 'advanced' ? (
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+                  {renderRuleEditorPanel({
+                    title: 'Kupon ve puan action ayrintilari',
+                    subtitle: 'Kupon serisi, use-after-checkout etkisi, puan kazanma/harcama ve model-only action durumlari burada gorunur.',
+                  })}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Kupon veya puan action secilmedi.')}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {currentStep === 5 ? (
+            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Cakisma ve operasyon</div>
+                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                  Birlesme, exclusion group, oncelik, manuel tetikleme ve stop processing davranislari burada toparlanir.
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FieldStack label="Oncelik" hint="Daha kucuk sayi daha guclu kabul edilir.">
+                  <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
+                </FieldStack>
+                <FieldStack label="Durum">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 42, color: '#334155', fontWeight: 800 }}>
+                    <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
+                    Kampanya aktif
+                  </label>
+                </FieldStack>
+              </div>
 
               <div style={{ display: 'grid', gap: 10 }}>
                 <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Cakisma ve birlesme kurali</div>
@@ -2887,7 +3199,7 @@ export default function LoyaltyCampaignWizard() {
                           textAlign: 'left',
                           border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
                           background: active ? '#eff6ff' : '#fff',
-                          borderRadius: 14,
+                          borderRadius: 12,
                           padding: 14,
                           cursor: 'pointer',
                           display: 'grid',
@@ -2908,34 +3220,40 @@ export default function LoyaltyCampaignWizard() {
                 </FieldStack>
               ) : null}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <FieldStack label="Kod">
-                  <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu" />
-                </FieldStack>
-                <FieldStack label="Trigger tipi">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.triggerType} onChange={event => updateCampaign({ triggerType: event.target.value })}>
-                      {CAMPAIGN_TRIGGER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </div>
-                </FieldStack>
-                <FieldStack label="Kampanya tipi">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.campaignType} onChange={event => updateCampaign({ campaignType: event.target.value })}>
-                      {CAMPAIGN_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </div>
-                </FieldStack>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Runtime durumu</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Array.from(new Set([
+                    ...activeRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
+                    ...activeRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
+                    ...periodicRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
+                    ...periodicRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
+                  ])).map(token => {
+                    const [kind, value] = token.split(':')
+                    return kind === 'condition'
+                      ? <RuntimeStatusBadge key={token} status={getConditionRuntimeStatus(value)} />
+                      : <RuntimeStatusBadge key={token} status={getActionRuntimeStatus(value)} />
+                  })}
+                </div>
               </div>
+
+              {wizardMode === 'advanced' ? (
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+                  {renderRuleEditorPanel({
+                    title: 'Operasyonel rule kontrolleri',
+                    subtitle: 'Stop processing, aktif/pasif bloklar, manuel approval kosulu ve kanal kosullari burada duzenlenebilir.',
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          {currentStep === 3 ? (
+          {currentStep === 6 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
               <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Ozet ve Kaydet</div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Test, ozet ve kaydet</div>
                 <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Kayit, loyalty workspace persistence akisi uzerinden yapilir ve metadata icinde sadece editor rule draftlari saklanir.
+                  Kayit, loyalty workspace persistence akisi uzerinden yapilir; editorRuleDrafts round-trip korunur.
                 </div>
               </div>
 

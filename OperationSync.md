@@ -4297,3 +4297,138 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `Bu turda sadece CallCenter.jsx temizlendi; diger modullerde ayrica mojibake gorulurse hedefli tarama yapilmali.`
 - `Next Step`: `Call Center sayfasini yenile ve Turkce metinleri gorsel olarak kontrol et; sorun baska modulde gorulurse ayni rg mojibake imzasi ile hedef dosyayi tara.`
 - `Handoff Contract`: `Sonraki agent Call Center encoding konusuna donerse once src/components/pages/CallCenter.jsx icinde rg "Ã|Ä|Å|�|ï¿½|â€|â‚|Â" calistirsin. Temizse sorun cache/deploy eski bundle kaynakli olabilir; build artifact veya hosting deploy durumu kontrol edilmeli.`
+
+## Entry 081
+
+- `Timestamp`: `2026-05-19T12:23:20.2907972+03:00`
+- `Agent`: `Codex`
+- `Task`: `NEWagent dosyasi uzerinden zorunlu proje onboarding okumasini tamamlamak`
+- `Intent`: `Kullanicinin ekli NEWagent.md talimatina gore yeni gorev almadan once kanonik governance, operasyon hafizasi ve tasarim handbook kurallarini aktif baglama almak.`
+- `Files Read`:
+  - `NEWagent.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\NEWagent.md -Encoding UTF8`
+  - `Get-ChildItem -LiteralPath C:\RMSggl\Dropbox\RMSv3 -Force | Where-Object { $_.Name -in @('SUITABLERMS_PROJECT_GOVERNANCE.md','OperationSync.md','DESIGN_HANDBOOK_V3_TR') }`
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md -Encoding UTF8`
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Encoding UTF8`
+  - `rg --files | rg "DESIGN_HANDBOOK|HANDBOOK|V3_TR|DESIGN"`
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\DESIGN_HANDBOOK_V3_TR.md -Encoding UTF8`
+  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Encoding UTF8 -Tail 220`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `NEWagent.md, yeni gorev oncesinde SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md ve DESIGN_HANDBOOK_V3_TR okunmasini ve ardindan hazir olundugunun soylenmesini istiyor.`
+  - `Governance tek uretim ortamini Railway, tek veri kaynagini Railway Postgres, frontend veri sozlesmesini src/lib/db.js ve backend query gecidini server/index.js olarak sabitliyor.`
+  - `Auth yok; personel ekran baglami PIN/sessionStorage ile sinirli ve gercek kimlik dogrulama olarak ele alinmayacak.`
+  - `AWS ve Supabase aktif mimari degil; bu hatlara donus veya bu endpointleri kullanma governance ile yasak.`
+  - `Design handbook UI islerinde siyah sidebar, amber accent, overlay sidebar, 4:3 safe davranis, searchable dropdown, soft delete ve eksiksiz Turkce karakterleri baglayici kabul ediyor.`
+  - `OperationSync son handoff kayitlari Call Center fiyat yaziminin DB seviyesinde dogrulandigini ve CallCenter.jsx mojibake temizliginin build ile dogrulandigini gosteriyor.`
+- `Decisions`:
+  - `Bundan sonraki gorevlerde karar onceligi governance, OperationSync, canli kod/aktif SQL ve ilgili handbook/skill sirasiyla uygulanacak.`
+  - `UI gorevlerinde DESIGN_HANDBOOK_V3_TR.md baglayici olacak; DB/veri/deploy kararlarinda governance kazanacak.`
+  - `Canli veri yazimi istenirse Railway Postgres DB-first kuralina gore ilerlenip OperationSync'e ayrintili kayit eklenecek.`
+- `Open Risks`:
+  - `OperationSync cok buyuk oldugu icin hedef gorev basladiginda ilgili modulle baglantili son handoff ve dosya bloklari yeniden dar okunmali.`
+  - `git status --short komutu kullanici global ignore dosyasina izin hatasi uyarisi verdi; durum kontrolu gerekiyorsa core.excludesfile override ile tekrar denenmeli.`
+- `Next Step`: `Kullanicidan gelecek yeni gorevi al; kapsam UI ise design handbook, veri/deploy ise governance ve OperationSync son handoff kayitlari uzerinden hemen uygulamaya basla.`
+- `Handoff Contract`: `Sonraki agent bu kayittan devam ederse once NEWagent.md talimatini, ardindan SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md son kayitlarini ve UI kapsaminda DESIGN_HANDBOOK_V3_TR.md dosyasini esas alsin. AWS/Supabase legacy olarak kalacak; Railway Postgres ve Railway production disina cikilmeden ilerlenmeli.`
+
+## Entry 082
+
+- `Timestamp`: `2026-05-19T12:27:48.7404615+03:00`
+- `Agent`: `Codex`
+- `Task`: `Loyalty campaign wizard parity-first IA ve implementasyon planini devralmak`
+- `Intent`: `Mevcut LoyaltyManagement kampanya editorunun tum yeteneklerini kapsayacak, basit kullanici icin outcome-first, guc kullanici icin tam rule/action editor gucu tasiyan yeni wizard tasarimini planlamak.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `LOYALTYMEMORY.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+  - `src/lib/kioskSettings.js`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content` zorunlu governance/design/loyalty/skill dosyalari icin
+  - `Get-Content -Tail` OperationSync ve LOYALTYMEMORY son kayitlari icin
+  - `rg -n` App route truth, loyalty editor/wizard/rule/action/coupon/runtime alanlari icin
+  - `Get-Content | Select-Object -Skip/-First` LoyaltyManagement, LoyaltyCampaignWizard ve loyalty.js hedef bloklari icin
+  - `git -c core.excludesfile= status --short`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `Route truth: /sadakat/kampanya/yeni ve /sadakat/kampanya/:campaignId halen LoyaltyManagement aciyor; wizard yalniz /sadakat/kampanya-sihirbazi-onizleme rotasinda.`
+  - `LoyaltyManagement tam editor: campaign identity, schedule, audience, applicationMode, channel targets, stacking/exclusion/priority, applicable/periodic rules, multiple conditions/actions, joiner, stopProcessing, coupon series, runtime status ve saveAll akisini tasiyor.`
+  - `LoyaltyCampaignWizard mevcut save/load omurgasina bagli ama 4 adimli IA ve teknik rule editor dili sebebiyle hedeflenen dummy-user deneyimini saglamiyor.`
+  - `loyalty.js kanonik save/load ve coupon modelini sagliyor; kioskSettings.js icinde ayri kiosk coupon mantigi var ve yeni wizard bunu canonical loyalty coupon ile karistirmadan anlatmali.`
+- `Decisions`:
+  - `Yeni wizard kucuk makyaj degil, iki modlu outcome-first bilgi mimarisi olarak tasarlanacak.`
+  - `Basit mod hedef/kapsam/tetikleyici/kazanim sorularindan rule/action modeline map edecek; Gelismis mod mevcut modaldeki tum condition/action editor yeteneklerini koruyacak.`
+  - `Ilk implementasyon fazi ortak editor helper/component split + yeni wizard shell + edit route load/save parity olacak; eski modal parity gecmeden kaldirilmayacak.`
+- `Open Risks`:
+  - `Mevcut editor ve wizard arasindaki kopya helperlar ayrilmazsa iki farkli kampanya editoru drift riski buyur.`
+  - `Kiosk coupon ile loyalty coupon ayrimi netlestirilmeden wizard kupon deneyimi anlatilirsa operasyonel kavram karmasasi olusur.`
+  - `Bu turda build veya browser smoke kosulmadi; cunku istenen cikti plan/readiness ve kod uygulamasi degildi.`
+- `Next Step`: `Onaylanirsa Phase 1 uygulamasina basla: ortak campaign editor model/helper split, yeni 7 adimli wizard IA shell, Gelismis modda ortak rule editor componentleri ve /sadakat/kampanya/yeni route'unu wizard'a kontrollu baglama.`
+- `Handoff Contract`: `Sonraki agent bu goreve devam ederse once LOYALTYMEMORY.md Entry 028 ve bu Entry 082'yi okusun; sonra src/components/pages/LoyaltyManagement.jsx icindeki serializeCampaignForPersistence/hydrateCampaignForEditor/rule editor bloklari ile src/components/loyalty/LoyaltyCampaignWizard.jsx mevcut kopyalarini karsilastirarak ortak helper split'ten baslasin. Save/load modeli src/lib/loyalty.js disina cikarilmayacak, Railway Postgres disina cikilmayacak.`
+
+## Entry 083
+
+- `Timestamp`: `2026-05-19T12:54:29.9502668+03:00`
+- `Agent`: `Codex`
+- `Task`: `Loyalty campaign wizard parity plan Phase 1 implementasyonu`
+- `Intent`: `Yeni wizard'i route cutover yapmadan preview yuzeyinde 7 adimli outcome-first IA'ya tasimak ve LoyaltyManagement ile wizard arasindaki editorRuleDrafts save/load helper drift riskini azaltmak.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `LOYALTYMEMORY.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+- `Files Changed`:
+  - `src/lib/loyaltyCampaignEditorModel.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Implementation`:
+  - `createEditorRuleDraft, hydrateEditorRuleFromDraft, hydrateCampaignForEditor, materializeRuleForRuntime, serializeCampaignForPersistence ve standalone condition/action config helperlari ortak src/lib/loyaltyCampaignEditorModel.js dosyasina cikarildi.`
+  - `LoyaltyManagement.jsx ve LoyaltyCampaignWizard.jsx ayni helper importlarina baglandi; metadata.editorRuleDrafts round-trip davranisi ortak helperdan geliyor.`
+  - `Wizard preview IA 4 adimdan 7 adima tasindi: Hedef, Kapsam, Tetikleyici, Kazanim, Kupon ve Puan, Operasyon, Kaydet.`
+  - `Basit mod / Gelismis mod toggle eklendi. Basit mod outcome-first kartlarla condition/action map eder; Gelismis mod ayni kampanyada RuleRow, coklu condition/action, joiner, stopProcessing ve runtime badge editorunu acar.`
+  - `Wizard, useParams ile campaignId okuyup mevcut kampanyayi hydrateCampaignForEditor uzerinden yukleyebilecek hale getirildi; route cutover bu fazda yapilmadi.`
+  - `Kupon ve puan adiminda canonical loyalty coupon dili netlestirildi; kiosk coupon ayarlari ayrica kanal ayari olarak anlatildi.`
+- `Verification`:
+  - `git diff --check -> whitespace error yok; yalniz OperationSync/LOYALTYMEMORY CRLF uyarisi gorundu.`
+  - `node --check src/lib/loyaltyCampaignEditorModel.js -> PASS.`
+  - `npm.cmd run build -> PASS, Vite build exit code 0.`
+  - `npm.cmd run dev -- --host 127.0.0.1 --port 5173 -> Vite Local http://127.0.0.1:5173/ ciktisi dogrulandi; bu shell cagrisinin timeout'u dev serveri kapatti, kalici arka plan sureci bu ortamda elde tutulmadi.`
+- `Route Status`:
+  - `/sadakat/kampanya-sihirbazi-onizleme`: `Yeni wizard preview yuzeyi olarak kaldi.`
+  - `/sadakat/kampanya/yeni` ve `/sadakat/kampanya/:campaignId`: `Halen LoyaltyManagement aciyor; cutover parity smoke sonrasina birakildi.`
+- `Open Risks`:
+  - `RuleRow ve editor modal render parcalari halen iki buyuk component icinde; sonraki fazda ortak component ailesine alinmali.`
+  - `Preview wizard build geciyor ama browser interaction smoke henuz kalici dev server ile gezilmedi.`
+  - `Route cutover yapilmadan create/edit/duplicate/reload parity smoke tamamlanmali.`
+- `Next Step`: `Gelismis rule editor parcalarini ortak component ailesine ayir; ardindan preview wizard'da create/edit/reload smoke'u browser ile kos ve ancak PASS sonrasi /sadakat/kampanya/yeni route cutover icin hazirla.`
+- `Handoff Contract`: `Sonraki agent Phase 2'ye baslarsa Entry 083 ve LOYALTYMEMORY Entry 029'dan devam etsin. DB schema, Railway Postgres disi persistence ve runtime/ledger omurgasina dokunulmadan component extraction + browser smoke + route cutover sirasiyla ilerlenmeli.`

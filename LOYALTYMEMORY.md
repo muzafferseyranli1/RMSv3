@@ -1398,3 +1398,97 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `Canli smoke scripted DB zinciri ile kanitlandi; ayni capability'nin birebir Call Center UI adimlarinda operator smoke'u yine de faydali olur.`
   - `Smoke fixture wallet bakiyesi burn ile 0.00'a dustu; yeni smoke gerekirse bootstrap script ile bakiye tekrar 100'e cekilmeli.`
 - `Next`: `Wizard/LoyaltyManagement tarafinda yeni authority statusunun gorunur oldugunu kisa UI smoke ile dogrula; ardindan redemption readback surfacing'i siparis detay yuzeyleriyle tamamla.`
+
+## Entry 028
+
+- `Timestamp`: `2026-05-19T12:27:48.7404615+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Campaign wizard parity-first yeni nesil IA ve implementasyon faz planı`
+- `Trigger`: `Kullanici, suitablerms-loyalty-module-advisor skill'i ile mevcut campaign modalinin tum yeteneklerini kapsayan ama basit kullanici icin outcome-first yeni wizard tasarimini devralmami istedi.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `LOYALTYMEMORY.md`
+  - `skills/suitablerms-loyalty-module-advisor/SKILL.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/current-module-scope.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/backlog-priorities.md`
+  - `skills/suitablerms-loyalty-module-advisor/references/readiness-audit-template.md`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+  - `src/lib/kioskSettings.js`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/App.jsx`
+- `Files Changed`:
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `LoyaltyManagement.jsx` tam yetenekli kampanya editoru olarak campaign metadata, tarih, kitle, uygulama modu, kanal, cakişma/stacking, applicable/periodic rule bloklari, coklu condition/action, joiner, stopProcessing ve runtime status gorunurlugu tasiyor.`
+  - `LoyaltyCampaignWizard.jsx` mevcut persistence omurgasina bagli ve rule editor paritesinin buyuk kismini kopyaliyor; ancak IA 4 adimli ve kullaniciya erken condition/action dili gosteriyor.`
+  - `loyalty.js` save/load, normalize, coupon series ve editorRuleDrafts metadata round-trip icin kanonik omurga.`
+  - `points_redeem_multiplier` runtime statusu canli smoke sonrasi local + ledger:true; yeni wizard bu statusu gosterebilir.`
+- `Gap`:
+  - `Wizard, mevcut modalin "basit kullanici icin yol gosteren" alternatifi degil; teknik rule editorun ozetlenmis varyanti gibi duruyor.`
+  - `Yeni wizard bilgi mimarisi hedef/kapsam/tetikleyici/kazanim diliyle baslamali, condition/action modeli arka planda map edilmeli ve gelismis modda tam editor gucu korunmali.`
+  - `LoyaltyManagement ve LoyaltyCampaignWizard arasinda editor draft/serialization/render helper kopyasi var; parity hedefi icin ortak helper/component split gerekli.`
+- `Approved Phase`: `Planning / parity IA`
+- `Affected Surfaces`:
+  - `Backoffice loyalty campaign editor`
+  - `Wizard/create/edit flow`
+  - `Coupon set management`
+  - `Runtime status visibility`
+  - `Kiosk coupon perception debt`
+- `Readiness`:
+  - `Save/load parity`: `Ready, ortak helper'a alinmali`
+  - `Runtime/ledger authority`: `Ready for supported actions`
+  - `Wizard UX IA`: `Partial`
+  - `Existing modal removal`: `Not ready until wizard edit route parity and smoke pass`
+- `Decision`:
+  - `Yeni wizard kucuk makyaj degil, iki modlu outcome-first IA olarak tasarlanacak: Basit mod kullanici dilinde secim yapacak, Gelismis mod mevcut rule/action editor gucunu eksiksiz tasiyacak.`
+  - `Eski modal ancak yeni wizard /sadakat/kampanya/yeni ve /sadakat/kampanya/:campaignId route'larinda save/load parity, rule parity ve build/browser smoke gecince kaldirilabilir.`
+  - `Ilk implementasyon fazi ortak campaign editor model/helper split ve wizard shell IA ile baslamali; DB schema veya runtime executor degistirmek su an gerekli degil.`
+- `Risks`:
+  - `Wizard tek dosyada buyumeye devam ederse eski modal ile ikinci bir tam editor kopyasi olusur ve parity tekrar bozulur.`
+  - `Kiosk settings icindeki ayri coupon mantigi loyalty coupon ile ayni kavram gibi anlatilirsa operasyon kafa karisikligi yaratir; yeni wizard canonical loyalty coupon dilini esas almali.`
+  - `Basit mod sadeleştirme bahanesiyle mevcut action/condition yeteneklerini gizleyip ulasilamaz yaparsa eski modal kaldirilamaz.`
+- `Next Loyalty Step`: `Phase 1 implementasyonunda campaign editor serialization/helperlarini ortak dosyaya cikar, yeni wizard route'unda mevcut campaign load/edit destekle, 7 adimli IA shell'i kur ve Gelismis modda mevcut RuleRow + condition/action editorlerini ortak bilesen olarak kullan.`
+
+## Entry 029
+
+- `Timestamp`: `2026-05-19T12:54:29.9502668+03:00`
+- `Agent`: `Codex`
+- `Focus`: `Campaign wizard parity Phase 1 implementation`
+- `Trigger`: `Kullanici onayli Loyalty Campaign Wizard Parity Plan'in uygulanmasini istedi.`
+- `Files Changed`:
+  - `src/lib/loyaltyCampaignEditorModel.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Result`:
+  - `Editor rule draft hydrate/serialize modeli ortak helper dosyasina cikarildi ve hem LoyaltyManagement hem wizard ayni helpera baglandi.`
+  - `Wizard preview 7 adimli IA'ya tasindi: Hedef, Kapsam, Tetikleyici, Kazanim, Kupon ve Puan, Operasyon, Kaydet.`
+  - `Basit mod outcome-first kartlarla trigger/action secimi yapip arka planda condition/action modeline map ediyor.`
+  - `Gelismis mod mevcut rule editor kapasitesini wizard icinde aciyor: applicable/periodic blok, coklu condition/action, joiner, stopProcessing, runtime status.`
+  - `Wizard useParams ile campaignId desteklemeye basladi ve mevcut kampanyayi hydrateCampaignForEditor ile yukleyebiliyor; route cutover bilerek yapilmadi.`
+  - `Kupon adimi canonical loyalty coupon modelini anlatiyor ve kiosk coupon ayarlarini ayni kavram gibi sunmuyor.`
+- `Verification`:
+  - `git diff --check -> PASS, yalniz mevcut OperationSync/LOYALTYMEMORY CRLF uyarisi var.`
+  - `node --check src/lib/loyaltyCampaignEditorModel.js -> PASS.`
+  - `npm.cmd run build -> PASS.`
+  - `npm.cmd run dev -- --host 127.0.0.1 --port 5173 -> Vite Local URL ciktisi alindi; timeout bu dogrudan dev server cagrisini kapatti.`
+- `Route State`:
+  - `/sadakat/kampanya-sihirbazi-onizleme`: `Yeni wizard preview.`
+  - `/sadakat/kampanya/yeni`: `Halen LoyaltyManagement.`
+  - `/sadakat/kampanya/:campaignId`: `Halen LoyaltyManagement.`
+- `Risks`:
+  - `RuleRow/editor UI henuz ortak component dosyasina ayrilmadi; sadece editor model/helper drift'i azaltildi.`
+  - `Browser interaction smoke kalici dev server ile tamamlanmadi.`
+  - `Route cutover icin create/edit/reload/duplicate ve runtime summary smoke halen gerekli.`
+- `Next Loyalty Step`: `RuleRow, condition editor, action editor ve runtime summary parcalarini ortak component ailesine ayir; preview wizard browser smoke gecince /sadakat/kampanya/yeni route cutover'u degerlendir.`
