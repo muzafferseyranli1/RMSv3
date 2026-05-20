@@ -104,11 +104,40 @@ async function loadLoyaltyWorkspaceWithRetry(workspacePayload, attempts = 3) {
   return lastResult
 }
 
+function getAllBranches(tree) {
+  const r = []
+  function walk(n) { for (const x of n||[]) { if(x.type==='sube') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  walk(tree); return r
+}
+
+const campaignButtonStyle = (active, themeColor = '#2563eb') => ({
+  flex: 1,
+  padding: '16px 20px',
+  borderRadius: '12px',
+  border: `2.5px solid ${active ? themeColor : '#cbd5e1'}`,
+  background: active ? `${themeColor}0e` : '#ffffff',
+  color: active ? themeColor : '#475569',
+  fontWeight: '700',
+  fontSize: '.9rem',
+  cursor: 'pointer',
+  transition: 'all 0.2s ease-in-out',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  boxShadow: active ? `0 6px 16px ${themeColor}1a` : '0 2px 4px rgba(0,0,0,0.02)',
+  transform: active ? 'scale(1.02)' : 'none',
+})
+
 const GOAL_PRESETS = [
   {
     value: 'new_customer',
     title: 'Yeni musteri kazan',
     description: 'Ilk aktivite, referans ve hos geldin odulu odakli baslangic akisi.',
+    icon: 'fa-solid fa-user-plus',
+    color: '#2563eb',
+    bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
     audienceType: 'new_customers',
     applicationMode: 'prompt',
     draft: {
@@ -125,6 +154,9 @@ const GOAL_PRESETS = [
     value: 'basket',
     title: 'Sepet ortalamasini buyut',
     description: 'Sepet esigi, urun adedi ve siparis indirimiyle hizli satis kampanyasi.',
+    icon: 'fa-solid fa-cart-shopping',
+    color: '#16a34a',
+    bgGradient: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
     audienceType: 'all',
     applicationMode: 'prompt',
     draft: {
@@ -141,6 +173,9 @@ const GOAL_PRESETS = [
     value: 'frequency',
     title: 'Ziyaret sikligini artir',
     description: 'Donem icinde siparis sayisi veya son ziyaret uzerinden geri kazan.',
+    icon: 'fa-solid fa-arrow-trend-up',
+    color: '#d97706',
+    bgGradient: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
     audienceType: 'inactive_customers',
     applicationMode: 'prompt',
     draft: {
@@ -153,70 +188,93 @@ const GOAL_PRESETS = [
       periodic: [],
     },
   },
-  {
-    value: 'loyalty',
-    title: 'Sadakat uyesine deger kat',
-    description: 'Dogum gunu, puan, kupon ve kategori zenginlestirmesiyle calis.',
-    audienceType: 'members',
-    applicationMode: 'auto',
-    draft: {
-      applicable: [
-        {
-          conditionKey: 'birthday',
-          actionType: 'bonus_points',
-        },
-      ],
-      periodic: [],
-    },
-  },
-  {
-    value: 'event',
-    title: 'Zaman bazli etkinlik kur',
-    description: 'Takvim ve saat penceresi kullanan tekrarlayan kampanya tohumu.',
-    audienceType: 'all',
-    applicationMode: 'auto',
-    draft: {
-      applicable: [
-        {
-          conditionKey: 'happy_hour',
-          actionType: 'total_order_discount_percent',
-        },
-      ],
-      periodic: [
-        {
-          conditionKey: 'calendar_schedule',
-          actionType: 'send_sms',
-        },
-      ],
-    },
-  },
-  {
-    value: 'stamp',
-    title: 'Damga karti mantigi',
-    description: 'Tekrarlayan ziyaret veya harcama hedeflerinden kupon ya da odul ver.',
-    audienceType: 'members',
-    applicationMode: 'auto',
-    draft: {
-      applicable: [
-        {
-          conditionKey: 'period_order_count',
-          actionType: 'issue_coupon',
-        },
-      ],
-      periodic: [],
-    },
-  },
 ]
 
 const WIZARD_STEPS = [
   { key: 'goal', title: 'Hedef' },
   { key: 'scope', title: 'Kapsam' },
-  { key: 'trigger', title: 'Tetikleyici' },
-  { key: 'reward', title: 'Kazanim' },
-  { key: 'coupon-points', title: 'Kupon ve Puan' },
+  { key: 'condition-action', title: 'Koşul/Eylem' },
   { key: 'operations', title: 'Operasyon' },
   { key: 'review', title: 'Kaydet' },
 ]
+
+const RECOMMENDED_CONDITIONS = {
+  new_customer: ['birthday', 'manual_approval'],
+  basket: ['order_total', 'happy_hour'],
+  frequency: ['period_order_count', 'calendar_schedule', 'happy_hour']
+}
+
+const RECOMMENDED_ACTIONS = {
+  new_customer: ['issue_coupon', 'bonus_points', 'total_order_discount_percent'],
+  basket: ['free_products', 'total_order_discount_percent', 'order_discount_amount'],
+  frequency: ['points_earn_multiplier', 'issue_coupon', 'bonus_points']
+}
+
+const CONDITION_HELP_METADATA = {
+  order_total: {
+    title: 'Sepet Tutarı Koşulu',
+    desc: 'Bu koşul, müşterinin tek bir adisyondaki toplam harcama tutarı belirli bir limite ulaştığında kampanyayı tetikler.',
+    usage: 'Örneğin: "1000 TL ve üzeri siparişlerde geçerlidir" kuralını tanımlamak için bu koşulu ekleyin ve kural editöründen tutar limitini düzenleyin.'
+  },
+  period_order_count: {
+    title: 'Ziyaret / Sipariş Sayısı Koşulu',
+    desc: 'Müşterinin belirli bir zaman diliminde (günlük, haftalık, aylık) yaptığı toplam sipariş sayısına göre tetiklenir.',
+    usage: 'Örneğin: "Bu ayki 5. ziyaretinde indirim kazanır" veya "Haftada 3 kere sipariş verirse" kuralları için bu koşulu kullanın.'
+  },
+  birthday: {
+    title: 'Doğum Günü Koşulu',
+    desc: 'Müşterinin doğum tarihi bilgisini kontrol eder ve sadece doğum gününde (veya tanımlanan tolerans günlerinde) geçerli olmasını sağlar.',
+    usage: 'Doğum günü olan müşterilere özel "Doğum Gününüz Kutlu Olsun" kuponu veya puan hediyesi kampanyaları için idealdir.'
+  },
+  happy_hour: {
+    title: 'Gün ve Saat Aralığı (Happy Hour) Koşulu',
+    desc: 'Kampanyanın günün sadece belirli saatlerinde veya haftanın belirli günlerinde geçerli olmasını kısıtlar.',
+    usage: 'Örneğin: "Hafta içi 14:00 - 17:00 saatleri arası" veya "Sadece Çarşamba günleri" geçerli indirimler oluşturmak için kullanılır.'
+  },
+  calendar_schedule: {
+    title: 'Takvimli Tekrar Koşulu',
+    desc: 'Belirli takvim günlerinde veya periyotlarında kampanyanın otomatik çalışmasını sağlar.',
+    usage: 'Örneğin: "Her ayın 15. günü" veya "Yılbaşı döneminde" otomatik puan yüklemeleri yapmak için bu takvim tabanlı koşulu seçin.'
+  },
+  manual_approval: {
+    title: 'Personel Manuel Tetikleme Koşulu',
+    desc: 'Kasiyer veya garsonun POS/Kiosk ekranında bu kampanyayı manuel olarak seçip uygulamasına olanak tanır.',
+    usage: 'Müşteriye özel bir durum olduğunda personelin insiyatifi ile uygulayabileceği ikram veya özel indirim kampanyalarında kullanılır.'
+  }
+}
+
+const ACTION_HELP_METADATA = {
+  total_order_discount_percent: {
+    title: 'Siparişe Yüzde İndirim Eylemi',
+    desc: 'Müşterinin siparişindeki tüm uygun ürünlerin toplamı üzerinden belirtilen yüzde oranında indirim düşer.',
+    usage: 'Örneğin: "Tüm adisyona %15 indirim uygula" eylemi için bunu seçin ve değerini editörden %15 olarak ayarlayın.'
+  },
+  order_discount_amount: {
+    title: 'Siparişe Tutar İndirimi Eylemi',
+    desc: 'Müşterinin toplam adisyon tutarından net bir TL indirim tutarı düşülmesini sağlar.',
+    usage: 'Örneğin: "Siparişte net 100 TL indirim uygulansın" eylemleri için bu eylemi kampanyaya ekleyin.'
+  },
+  free_products: {
+    title: 'Bedava Ürün İkramı Eylemi',
+    desc: 'Adisyondaki belirli ürünleri veya hediye edilmek istenen promosyonları ücretsiz (0 TL) yapar.',
+    usage: 'Örneğin: "Kahve alana kurabiye hediye" veya "3 al 2 öde" kampanyalarında ikram edilecek ürünü sıfırlamak için kullanılır.'
+  },
+  bonus_points: {
+    title: 'Sabit Puan Kazandırma Eylemi',
+    desc: 'Müşterinin sadakat kartı hesabına sabit bir miktar (örn. 50 Puan) bakiye ekler.',
+    usage: 'Müşteri sadaketini pekiştirmek amacıyla belirli limitleri aşan harcamalarda hediye puan vermek için kullanılır.'
+  },
+  points_percent_of_order: {
+    title: 'Sipariş Yüzdesi Kadar Puan Eylemi',
+    desc: 'Müşterinin adisyon tutarı oranında (örn. adisyonun %10\'u kadar) dinamik sadakat puanı kazanmasını sağlar.',
+    usage: 'Örneğin: "Her harcamanın %5\'i kadar puan biriksin" şeklinde çalışan genel sadakat programları oluşturmak için idealdir.'
+  },
+  issue_coupon: {
+    title: 'Kupon Tanımlama Eylemi',
+    desc: 'Müşterinin hesabına sonraki alışverişlerinde indirim veya ikram kazandıracak dijital bir indirim kuponu tanımlar.',
+    usage: 'Örneğin: "Bu alışverişten sonraki siparişte geçerli %20 indirim kuponu kazanır" kurguları için bu eylemi bağlayın.'
+  }
+}
 
 const EDITOR_MODE_OPTIONS = [
   {
@@ -231,95 +289,74 @@ const EDITOR_MODE_OPTIONS = [
   },
 ]
 
-const SIMPLE_CONDITION_CHOICES = [
-  {
-    value: 'order_total',
-    title: 'Sepet tutarina gore',
-    description: 'Sepet belirli tutari gecince kampanya calissin.',
-    triggerType: 'cart_total',
-    scope: 'applicable',
-  },
-  {
-    value: 'period_order_count',
-    title: 'Ziyaret sayisina gore',
-    description: 'Musteri belirli sayida ziyaret/siparise ulasinca calissin.',
-    triggerType: 'visit_count',
-    scope: 'applicable',
-  },
-  {
-    value: 'birthday',
-    title: 'Dogum gunu',
-    description: 'Dogum gunu penceresinde otomatik deger versin.',
-    triggerType: 'birthday',
-    scope: 'applicable',
-  },
-  {
-    value: 'happy_hour',
-    title: 'Gun ve saat araligi',
-    description: 'Happy hour veya servis saatlerine bagli calissin.',
-    triggerType: 'order_completed',
-    scope: 'applicable',
-  },
-  {
-    value: 'calendar_schedule',
-    title: 'Takvimli tekrar',
-    description: 'Gunluk, haftalik, aylik veya yillik periyotta calissin.',
-    triggerType: 'manual',
-    scope: 'periodic',
-  },
-  {
-    value: 'manual_approval',
-    title: 'Personel elle baslatsin',
-    description: 'POS kampanyalar sekmesinden manuel tetiklensin.',
-    triggerType: 'manual',
-    scope: 'applicable',
-  },
-]
+const CONDITION_CHOICES_MAP = {
+  always: { triggerType: 'order_completed', scope: 'applicable' },
+  calendar_schedule: { triggerType: 'manual', scope: 'periodic' },
+  birthday: { triggerType: 'birthday', scope: 'applicable' },
+  period_total_order_amount: { triggerType: 'cart_total', scope: 'applicable' },
+  period_order_count: { triggerType: 'visit_count', scope: 'applicable' },
+  period_product_quantity: { triggerType: 'order_completed', scope: 'applicable' },
+  period_sold_product_quantity: { triggerType: 'order_completed', scope: 'applicable' },
+  missing_products: { triggerType: 'order_completed', scope: 'applicable' },
+  happy_hour: { triggerType: 'order_completed', scope: 'applicable' },
+  gift_card_series: { triggerType: 'order_completed', scope: 'applicable' },
+  campaign_triggered: { triggerType: 'order_completed', scope: 'applicable' },
+  coupon_present: { triggerType: 'order_completed', scope: 'applicable' },
+  manual_approval: { triggerType: 'manual', scope: 'applicable' },
+  days_since_first_activity: { triggerType: 'first_purchase', scope: 'applicable' },
+  customer_has_tag: { triggerType: 'order_completed', scope: 'applicable' },
+  customer_lacks_tag: { triggerType: 'order_completed', scope: 'applicable' },
+  referral_source: { triggerType: 'order_completed', scope: 'applicable' },
+  sales_channel: { triggerType: 'order_completed', scope: 'applicable' },
+  order_item_quantity: { triggerType: 'order_completed', scope: 'applicable' },
+  order_total: { triggerType: 'cart_total', scope: 'applicable' },
+  last_visit_days: { triggerType: 'inactive_winback', scope: 'applicable' },
+}
 
-const SIMPLE_ACTION_CHOICES = [
-  {
-    value: 'total_order_discount_percent',
-    campaignType: 'discount_percent',
-    title: 'Siparise yuzde indirim',
-    description: 'Toplam sipariste yuzde indirim uygula.',
-  },
-  {
-    value: 'order_discount_amount',
-    campaignType: 'discount_amount',
-    title: 'Siparise tutar indirimi',
-    description: 'Sabit tutarda siparis indirimi uygula.',
-  },
-  {
-    value: 'bonus_points',
-    campaignType: 'bonus_points',
-    title: 'Sabit puan kazandir',
-    description: 'Musterinin cuzdanina belirli puan yukle.',
-  },
-  {
-    value: 'points_earn_multiplier',
-    campaignType: 'points_earn_multiplier',
-    title: 'Puan kazanimi carpani',
-    description: 'Kazanim katsayisini kampanya boyunca arttir.',
-  },
-  {
-    value: 'points_redeem_multiplier',
-    campaignType: 'points_redeem_multiplier',
-    title: 'Puan harcama degeri',
-    description: 'Puan kullanirken degeri kampanya icin arttir.',
-  },
-  {
-    value: 'issue_coupon',
-    campaignType: 'coupon_unlock',
-    title: 'Kupon ver',
-    description: 'Canonical loyalty kupon serisinden kupon uret.',
-  },
-  {
-    value: 'free_products',
-    campaignType: 'product_offer',
-    title: 'Hediye urun',
-    description: 'Secili urun/kategori/sablon icin hediye veya urun teklifi ver.',
-  },
-]
+const ACTION_CHOICES_MAP = {
+  free_products: 'product_offer',
+  product_pricing: 'discount_amount',
+  combo_bundle: 'product_offer',
+  write_customer_note: 'bonus_points',
+  send_sms: 'bonus_points',
+  send_webhook: 'bonus_points',
+  remove_customer_tag: 'bonus_points',
+  add_customer_tag: 'bonus_points',
+  special_discount: 'discount_percent',
+  order_extra_charge_amount: 'discount_amount',
+  order_extra_charge_percent: 'discount_percent',
+  order_discount_amount: 'discount_amount',
+  total_order_discount_percent: 'discount_percent',
+  warning_message: 'bonus_points',
+  suggest_products: 'product_offer',
+  bonus_points: 'bonus_points',
+  points_percent_of_order: 'points_percent_of_order',
+  points_earn_multiplier: 'points_earn_multiplier',
+  points_redeem_multiplier: 'points_redeem_multiplier',
+  issue_coupon: 'coupon_unlock',
+  discount_percent: 'discount_percent',
+}
+
+const SIMPLE_CONDITION_CHOICES = CONDITION_LIBRARY.map(item => {
+  const mapData = CONDITION_CHOICES_MAP[item.key] || { triggerType: 'order_completed', scope: 'applicable' }
+  return {
+    value: item.key,
+    title: item.label,
+    description: item.description,
+    triggerType: mapData.triggerType,
+    scope: mapData.scope,
+  }
+})
+
+const SIMPLE_ACTION_CHOICES = ACTION_TYPE_OPTIONS.map(item => {
+  const campaignType = ACTION_CHOICES_MAP[item.value] || 'bonus_points'
+  return {
+    value: item.value,
+    campaignType,
+    title: item.label,
+    description: item.label,
+  }
+})
 
 const WEEKDAY_OPTIONS = ['Pzt', 'Sal', 'Car', 'Per', 'Cum', 'Cmt', 'Paz']
 const MONTH_OPTIONS = [
@@ -435,25 +472,7 @@ function MiniBadge({ active, trueLabel, falseLabel }) {
 }
 
 function RuntimeStatusBadge({ status }) {
-  if (!status) return null
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        borderRadius: 999,
-        border: `1px solid ${status.border}`,
-        background: status.background,
-        color: status.color,
-        padding: '3px 8px',
-        fontSize: '.66rem',
-        fontWeight: 900,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {status.label}
-    </span>
-  )
+  return null
 }
 
 function EditorModal({ title, subtitle = '', onClose, children }) {
@@ -555,8 +574,8 @@ function SearchableMultiSelect({
         onClick={() => setOpen(current => !current)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', cursor: 'pointer', background: '#fff' }}
       >
-        <span style={{ color: selectedOptions.length > 0 ? '#0f172a' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selectedOptions.length > 0 ? selectedOptions.map(option => option.label).join(', ') : placeholder}
+        <span style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {placeholder}
         </span>
         <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ color: '#64748b' }} />
       </button>
@@ -1163,13 +1182,186 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
   )
 }
 
+function getCampaignSummaryText(campaign, selectedGoal, customerCategories, salesChannels, summaryContext) {
+  if (!campaign) return '';
+
+  let sentences = [];
+
+  // 1. Goal (Hedef)
+  if (selectedGoal === 'new_customer') {
+    sentences.push('Bu kampanya yeni müşteri kazanmak üzere tasarlanmıştır.');
+  } else if (selectedGoal === 'basket') {
+    sentences.push('Bu kampanya sepet ortalamasını büyütmek üzere tasarlanmıştır.');
+  } else if (selectedGoal === 'frequency') {
+    sentences.push('Bu kampanya ziyaret sıklığını artırmak üzere tasarlanmıştır.');
+  } else {
+    sentences.push('Bu kampanya sadakat hedeflerine ulaşmak üzere tasarlanmıştır.');
+  }
+
+  // 2. Scope (Kapsam)
+  if (campaign.name) {
+    sentences.push(`Kampanya adı "${campaign.name}" olarak belirlenmiştir.`);
+  }
+
+  // Audience
+  const audienceLabel = CAMPAIGN_AUDIENCE_OPTIONS.find(opt => opt.value === campaign.audienceType)?.label || campaign.audienceType;
+  if (campaign.audienceType === 'all') {
+    sentences.push('Kampanya tüm müşterileri kapsamaktadır.');
+  } else if (campaign.audienceType === 'new_customers') {
+    sentences.push('Hedef kitle olarak özellikle yeni müşteriler belirlenmiştir.');
+  } else if (campaign.audienceType === 'inactive_customers') {
+    sentences.push('Hedef kitle olarak inaktif (pasif) müşteriler hedeflenmiştir.');
+  } else if (campaign.audienceType === 'members') {
+    sentences.push('Kampanyadan sadece sadakat kulübü üyeleri yararlanabilecektir.');
+  } else {
+    sentences.push(`Kampanya hedef kitlesi: ${audienceLabel}.`);
+  }
+
+  // Audience Categories
+  if (Array.isArray(campaign.audienceCategoryIds) && campaign.audienceCategoryIds.length > 0) {
+    const catNames = (customerCategories || [])
+      .filter(c => campaign.audienceCategoryIds.map(String).includes(String(c.id)))
+      .map(c => c.name)
+      .join(', ');
+    if (catNames) {
+      sentences.push(`Sadakat grubu / kategorisi filtreleri: ${catNames}.`);
+    }
+  }
+
+  // Channels
+  if (Array.isArray(campaign.channelTargets) && campaign.channelTargets.length > 0) {
+    const channelNames = (salesChannels || [])
+      .filter(c => campaign.channelTargets.map(String).includes(String(c.value)))
+      .map(c => c.label)
+      .join(', ');
+    if (channelNames) {
+      sentences.push(`Kampanya sadece ${channelNames} satış kanallarında geçerli olacaktır.`);
+    }
+  } else {
+    sentences.push('Kampanya tüm satış kanallarında geçerli olacaktır.');
+  }
+
+  // Branches
+  const selectedBranches = campaign.metadata?.branchSelections || [];
+  if (selectedBranches.length > 0) {
+    const branchNames = selectedBranches.map(item => {
+      if (item.type === 'template') {
+        return `"${item.name}" şube grubu (${(item.branchIds || []).length} şube)`;
+      }
+      return `"${item.name}" şubesi`;
+    }).join(', ');
+    sentences.push(`Kampanya sadece seçilen şubelerde geçerli olacaktır: ${branchNames}.`);
+  } else {
+    sentences.push('Kampanya tüm şubelerde geçerli olacaktır.');
+  }
+
+  // Dates
+  if (campaign.startsAt && campaign.endsAt) {
+    sentences.push(`Kampanya ${campaign.startsAt} ile ${campaign.endsAt} tarihleri arasında aktif kalacaktır.`);
+  } else if (campaign.startsAt) {
+    sentences.push(`Kampanya ${campaign.startsAt} tarihinden itibaren geçerli olacaktır.`);
+  } else if (campaign.endsAt) {
+    sentences.push(`Kampanya ${campaign.endsAt} tarihine kadar geçerli olacaktır.`);
+  } else {
+    sentences.push('Kampanya süresiz (açık uçlu) olarak tanımlanmıştır.');
+  }
+
+  // 3. Rules (Tetikleyici & Kazanım)
+  const appRules = campaign.applicableRules || [];
+  const perRules = campaign.periodicRules || [];
+
+  if (appRules.length === 0 && perRules.length === 0) {
+    sentences.push('Henüz herhangi bir kampanya kuralı veya koşulu eklenmemiştir.');
+  } else {
+    // Summarize Order-time (applicable) rules
+    if (appRules.length > 0) {
+      appRules.forEach((rule, idx) => {
+        const conditions = rule.conditions || [];
+        const actions = rule.actions || [];
+        
+        let condTexts = conditions.map(c => {
+          const pseudoRule = {
+            ...rule,
+            conditionKey: c.conditionKey,
+            conditionConfig: getStandaloneConditionConfig(c.conditionConfig),
+          };
+          return buildConditionSummary(pseudoRule, summaryContext);
+        }).join(rule.conditionConfig?.additionalConditionsMode === 'or' ? ' VEYA ' : ' VE ');
+
+        let actTexts = actions.map(a => {
+          const pseudoRule = {
+            ...rule,
+            actionType: a.actionType,
+            actionConfig: getStandaloneActionConfig(a.actionConfig),
+          };
+          return a.actionSummary || buildActionSummary(pseudoRule, summaryContext);
+        }).join(' VE ');
+
+        if (condTexts && actTexts) {
+          sentences.push(`Sipariş anında çalışan ${idx + 1}. Kural: [${condTexts}] durumunda [${actTexts}] eylemi uygulanacaktır.`);
+        } else if (actTexts) {
+          sentences.push(`Sipariş anında çalışan ${idx + 1}. Kural: Koşulsuz olarak [${actTexts}] uygulanacaktır.`);
+        }
+      });
+    }
+
+    // Summarize Periodic rules
+    if (perRules.length > 0) {
+      perRules.forEach((rule, idx) => {
+        const conditions = rule.conditions || [];
+        const actions = rule.actions || [];
+
+        let condTexts = conditions.map(c => {
+          const pseudoRule = {
+            ...rule,
+            conditionKey: c.conditionKey,
+            conditionConfig: getStandaloneConditionConfig(c.conditionConfig),
+          };
+          return buildConditionSummary(pseudoRule, summaryContext);
+        }).join(rule.conditionConfig?.additionalConditionsMode === 'or' ? ' VEYA ' : ' VE ');
+
+        let actTexts = actions.map(a => {
+          const pseudoRule = {
+            ...rule,
+            actionType: a.actionType,
+            actionConfig: getStandaloneActionConfig(a.actionConfig),
+          };
+          return a.actionSummary || buildActionSummary(pseudoRule, summaryContext);
+        }).join(' VE ');
+
+        if (condTexts && actTexts) {
+          sentences.push(`Arka planda çalışan ${idx + 1}. Periyodik Kural: [${condTexts}] durumunda [${actTexts}] eylemi tetiklenecektir.`);
+        } else if (actTexts) {
+          sentences.push(`Arka planda çalışan ${idx + 1}. Periyodik Kural: Koşulsuz olarak [${actTexts}] tetiklenecektir.`);
+        }
+      });
+    }
+  }
+
+  // 4. Operations
+  const appModeLabel = CAMPAIGN_APPLICATION_MODE_OPTIONS.find(opt => opt.value === campaign.applicationMode)?.label || campaign.applicationMode;
+  sentences.push(`Kampanya önceliği ${campaign.priority} olarak ayarlanmıştır ve uygulama yöntemi "${appModeLabel}" şeklindedir.`);
+  
+  if (campaign.stackable) {
+    sentences.push('Bu kampanya diğer sepet kampanyaları ile birleştirilebilir (stackable).');
+  } else {
+    sentences.push('Bu kampanya diğer sepet kampanyaları ile birleştirilemez.');
+  }
+
+  return sentences.join(' ');
+}
+
 export default function LoyaltyCampaignWizard() {
   const toast = useToast()
   const navigate = useNavigate()
   const { campaignId } = useParams()
   const workspace = useWorkspace()
   const [currentStep, setCurrentStep] = useState(0)
-  const [wizardMode, setWizardMode] = useState('simple')
+  const [wizardMode, setWizardMode] = useState('advanced')
+  const [showAllConditions, setShowAllConditions] = useState(false)
+  const [showAllActions, setShowAllActions] = useState(false)
+  const [selectedLibCondition, setSelectedLibCondition] = useState(SIMPLE_CONDITION_CHOICES[0].value)
+  const [selectedLibAction, setSelectedLibAction] = useState(SIMPLE_ACTION_CHOICES[0].value)
   const [selectedGoal, setSelectedGoal] = useState(GOAL_PRESETS[0].value)
   const [ruleScopeTab, setRuleScopeTab] = useState('applicable')
   const [wizardCampaign, setWizardCampaign] = useState(() => createBlankCampaign(DEFAULT_LOYALTY_PROGRAM.id, GOAL_PRESETS[0]))
@@ -1182,6 +1374,8 @@ export default function LoyaltyCampaignWizard() {
   const [saleItems, setSaleItems] = useState([])
   const [saleCategories, setSaleCategories] = useState([])
   const [saleTemplates, setSaleTemplates] = useState([])
+  const [branches, setBranches] = useState([])
+  const [branchTemplates, setBranchTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [schemaReady, setSchemaReady] = useState(false)
@@ -1200,6 +1394,44 @@ export default function LoyaltyCampaignWizard() {
     () => (customerCategories || []).filter(category => category?.active !== false),
     [customerCategories],
   )
+
+  const sanitizeWizardBranchSelections = useCallback((selections) => {
+    const templates = []
+    const branchesSelected = []
+
+    selections.forEach(val => {
+      if (val.startsWith('template:')) {
+        const id = val.replace('template:', '')
+        const t = branchTemplates.find(x => String(x.id) === id)
+        if (t) {
+          templates.push({
+            id: String(t.id),
+            type: 'template',
+            name: t.name,
+            branchIds: (t.branch_ids || []).map(String)
+          })
+        }
+      } else if (val.startsWith('branch:')) {
+        const id = val.replace('branch:', '')
+        const b = branches.find(x => String(x.id) === id)
+        if (b) {
+          branchesSelected.push({
+            id: String(b.id),
+            type: 'branch',
+            name: b.name
+          })
+        }
+      }
+    })
+
+    const coveredBranchIds = new Set(templates.flatMap(t => t.branchIds || []))
+    const filteredBranches = branchesSelected.filter(b => !coveredBranchIds.has(String(b.id)))
+
+    return [
+      ...templates,
+      ...filteredBranches.map(b => ({ id: b.id, type: 'branch', name: b.name }))
+    ]
+  }, [branches, branchTemplates])
 
   const maskCatalogOptions = useMemo(
     () => createMaskCatalogOptions({ saleItems, saleCategories, saleTemplates }),
@@ -1240,6 +1472,8 @@ export default function LoyaltyCampaignWizard() {
             db.from('sales_items').select('id,name,sku,deleted_at').is('deleted_at', null).order('name'),
             db.from('sale_categories').select('id,name,deleted_at').is('deleted_at', null).order('name'),
             db.from('sale_templates').select('id,name,description,sale_ids').order('name'),
+            db.from('settings').select('value').eq('key', 'company_tree').single(),
+            db.from('branch_templates').select('id,name,branch_ids,deleted_at').is('deleted_at', null).order('name'),
           ]),
         ])
 
@@ -1267,7 +1501,7 @@ export default function LoyaltyCampaignWizard() {
         setDatabaseUnavailable(Boolean(workspaceResult?.databaseUnavailable))
         setSchemaIssues(Array.isArray(workspaceResult?.schemaIssues) ? workspaceResult.schemaIssues : [])
 
-        const [salesChannelsResult, saleItemsResult, saleCategoriesResult, saleTemplatesResult] = lookupResults
+        const [salesChannelsResult, saleItemsResult, saleCategoriesResult, saleTemplatesResult, companyTreeResult, branchTemplatesResult] = lookupResults
 
         if (salesChannelsResult.status === 'fulfilled' && !salesChannelsResult.value.error) {
           const rows = salesChannelsResult.value.data || []
@@ -1298,6 +1532,15 @@ export default function LoyaltyCampaignWizard() {
             description: template.description || '',
             saleIds: Array.isArray(template.sale_ids) ? template.sale_ids : [],
           })))
+        }
+
+        if (companyTreeResult && companyTreeResult.status === 'fulfilled' && !companyTreeResult.value.error) {
+          const val = companyTreeResult.value.data?.value
+          setBranches(getAllBranches(val))
+        }
+
+        if (branchTemplatesResult && branchTemplatesResult.status === 'fulfilled' && !branchTemplatesResult.value.error) {
+          setBranchTemplates(branchTemplatesResult.value.data || [])
         }
 
         const routeCampaign = campaignId && campaignId !== 'yeni'
@@ -1605,7 +1848,7 @@ export default function LoyaltyCampaignWizard() {
           actionType,
           actionSummary: '',
           actionConfig: {
-            ...getDefaultActionConfig(actionType),
+            ...getSimpleActionConfig(actionType),
             additionalActions: Array.isArray(currentConfig.additionalActions) ? currentConfig.additionalActions : [],
             __draftEmptyAction: false,
           },
@@ -1621,7 +1864,7 @@ export default function LoyaltyCampaignWizard() {
               id: createId('subaction'),
               actionType,
               actionSummary: '',
-              actionConfig: getDefaultActionConfig(actionType),
+              actionConfig: getSimpleActionConfig(actionType),
             },
           ],
         },
@@ -1792,51 +2035,31 @@ export default function LoyaltyCampaignWizard() {
     const scope = choice.scope || 'applicable'
     setRuleScopeTab(scope)
     updateCampaign({ triggerType: choice.triggerType || wizardCampaign.triggerType })
-    replaceRules(scope, rules => {
-      const baseRule = rules[0] || createDraftRule(choice.value, 'bonus_points', scope, 0)
-      const currentConfig = baseRule.conditionConfig || {}
-      return [
-        {
-          ...baseRule,
-          conditionKey: choice.value,
-          conditionConfig: {
-            ...getDefaultConditionConfig(choice.value),
-            additionalConditions: Array.isArray(currentConfig.additionalConditions) ? currentConfig.additionalConditions : [],
-            additionalConditionsMode: currentConfig.additionalConditionsMode || 'and',
-            __draftEmptyCondition: false,
-          },
-        },
-        ...rules.slice(1),
-      ]
-    })
+    const ruleList = scope === 'periodic' ? periodicRules : activeRules
+    if (ruleList.length === 0) {
+      const newRule = createDraftRule(choice.value, 'bonus_points', scope, 0)
+      replaceRules(scope, () => [newRule])
+    } else {
+      addConditionToRule(scope, ruleList[0].id, choice.value)
+    }
   }
 
   function applySimpleAction(choice, scope = ruleScopeTab) {
     setRuleScopeTab(scope)
     updateCampaign({ campaignType: choice.campaignType || wizardCampaign.campaignType })
-    replaceRules(scope, rules => {
-      const baseRule = rules[0] || createDraftRule(scope === 'periodic' ? 'calendar_schedule' : 'order_total', choice.value, scope, 0)
-      const currentConfig = baseRule.actionConfig || {}
-      return [
-        {
-          ...baseRule,
-          actionType: choice.value,
-          actionSummary: '',
-          actionConfig: {
-            ...getSimpleActionConfig(choice.value),
-            additionalActions: Array.isArray(currentConfig.additionalActions) ? currentConfig.additionalActions : [],
-            __draftEmptyAction: false,
-          },
-        },
-        ...rules.slice(1),
-      ]
-    })
+    const ruleList = scope === 'periodic' ? periodicRules : activeRules
+    if (ruleList.length === 0) {
+      const newRule = createDraftRule(scope === 'periodic' ? 'calendar_schedule' : 'order_total', choice.value, scope, 0)
+      replaceRules(scope, () => [newRule])
+    } else {
+      addActionToRule(scope, ruleList[0].id, choice.value)
+    }
   }
 
   function validateBeforeSave() {
     if (!wizardCampaign.name.trim()) {
       toast('Kampanya adi zorunlu', 'error')
-      setCurrentStep(1)
+      setCurrentStep(3)
       return false
     }
     if (wizardCampaign.audienceType === 'tagged_customers' && (wizardCampaign.audienceCategoryIds || []).length === 0) {
@@ -2706,23 +2929,10 @@ export default function LoyaltyCampaignWizard() {
               <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>{subtitle}</div>
             ) : null}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className={ruleScopeTab === 'applicable' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('applicable')}>
-              Siparis Aninda
-            </button>
-            <button className={ruleScopeTab === 'periodic' ? 'btn-p' : 'btn-o'} type="button" onClick={() => setRuleScopeTab('periodic')}>
-              Zaman Bazli
-            </button>
-            <button className="btn-o" type="button" onClick={() => addRule(ruleScopeTab)}>
-              <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-              Blok Ekle
-            </button>
-          </div>
+
         </div>
 
-        <HelperNote title="Parity">
-          Bu panel mevcut campaign editor ile ayni condition/action modelini duzenler. Coklu kosul, VE/VEYA joiner, coklu eylem ve stop processing burada kayipsiz kalir.
-        </HelperNote>
+
 
         {visibleRules.length === 0 ? (
           <div style={{ border: '1px dashed #cbd5e1', borderRadius: 12, padding: 16, color: '#64748b', textAlign: 'center' }}>
@@ -2773,6 +2983,38 @@ export default function LoyaltyCampaignWizard() {
     ))
   }
 
+  const recConditions = RECOMMENDED_CONDITIONS[selectedGoal] || []
+  const recConditionChoices = SIMPLE_CONDITION_CHOICES.filter(choice => recConditions.includes(choice.value))
+  const otherConditionChoices = SIMPLE_CONDITION_CHOICES.filter(choice => !recConditions.includes(choice.value))
+
+  const recActions = RECOMMENDED_ACTIONS[selectedGoal] || []
+  const recActionChoices = SIMPLE_ACTION_CHOICES.filter(choice => recActions.includes(choice.value))
+  const otherActionChoices = SIMPLE_ACTION_CHOICES.filter(choice => !recActions.includes(choice.value))
+
+  const conditionCardStyle = (active) => ({
+    textAlign: 'left',
+    border: `1px solid ${active ? '#3b82f6' : '#e2e8f0'}`,
+    background: active ? '#eff6ff' : '#fff',
+    borderRadius: 12,
+    padding: 14,
+    cursor: 'pointer',
+    display: 'grid',
+    gap: 8,
+    transition: 'all 0.2s',
+  })
+
+  const actionCardStyle = (active) => ({
+    textAlign: 'left',
+    border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
+    background: active ? '#fffbeb' : '#fff',
+    borderRadius: 12,
+    padding: 14,
+    cursor: 'pointer',
+    display: 'grid',
+    gap: 8,
+    transition: 'all 0.2s',
+  })
+
   const reviewRuntimeCampaign = useMemo(
     () => serializeCampaignForPersistence(wizardCampaign, program.id),
     [program.id, wizardCampaign],
@@ -2797,30 +3039,6 @@ export default function LoyaltyCampaignWizard() {
         )}
       />
 
-      <div className="card" style={{ padding: 18, marginBottom: 18, border: '1px solid #dbeafe', background: '#f8fbff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontWeight: 800, color: '#0f172a' }}>Aktif Kapsam</div>
-            <div style={{ marginTop: 6, fontSize: '.9rem', color: '#1e3a8a', fontWeight: 700 }}>
-              {scopeInfo?.label || 'Sadakat kapsami yukleniyor'}
-            </div>
-            <div style={{ marginTop: 6, fontSize: '.8rem', color: '#64748b' }}>
-              Wizard bu kapsam icin {campaignId && campaignId !== 'yeni' ? 'kampanya duzenleme' : 'yeni kampanya create'} akisi olarak calisir.
-            </div>
-          </div>
-          <div style={{
-            borderRadius: 12,
-            padding: '10px 12px',
-            background: schemaReady ? '#ecfdf5' : '#fff7ed',
-            color: schemaReady ? '#166534' : '#9a3412',
-            fontWeight: 700,
-            fontSize: '.82rem',
-          }}>
-            {schemaReady ? 'Sadakat workspace hazir' : 'Sadakat workspace henuz hazir degil'}
-          </div>
-        </div>
-      </div>
-
       {schemaIssues.length > 0 ? (
         <div className="card" style={{ padding: 16, marginBottom: 18, border: '1px solid #facc15', background: '#fffbeb' }}>
           <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>Tanilar</div>
@@ -2836,7 +3054,6 @@ export default function LoyaltyCampaignWizard() {
 
       <div className="card" style={{ padding: 18, marginBottom: 18 }}>
         <div style={{ display: 'grid', gap: 14 }}>
-          {renderModeToggle()}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {WIZARD_STEPS.map((step, index) => (
             <StepPill key={step.key} index={index} currentStep={currentStep} title={step.title} onClick={setCurrentStep} />
@@ -2844,6 +3061,27 @@ export default function LoyaltyCampaignWizard() {
           </div>
         </div>
       </div>
+
+      {!loading && wizardCampaign ? (
+        <div className="card" style={{
+          padding: 16,
+          marginBottom: 18,
+          background: 'linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)',
+          border: '1px solid #dbeafe',
+          borderRadius: 16,
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <i className="fa-solid fa-file-signature" style={{ color: '#2563eb', fontSize: '1.1rem' }} />
+            <div style={{ fontWeight: 800, fontSize: '.88rem', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              Kampanya Özeti
+            </div>
+          </div>
+          <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.6, fontWeight: 500 }}>
+            {getCampaignSummaryText(wizardCampaign, selectedGoal, customerCategories, salesChannels, summaryContext)}
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="card" style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
@@ -2854,11 +3092,11 @@ export default function LoyaltyCampaignWizard() {
         <>
           {currentStep === 0 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-              <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Kampanyanin ana hedefi ne?</div>
+              <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Kampanyanın ana hedefini seçin</div>
               <div style={{ fontSize: '.82rem', color: '#64748b', marginBottom: 16 }}>
-                Bu adim sadece baslangic tohumu verir. Sonraki adimda tum kosul ve eylemleri gercek kural editoru ile duzenleyebilirsiniz.
+                Oluşturacağınız kampanya için ana hedefinizi seçin, sonraki adımlarda hedefinize uygun öneriler yapılacaktır.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
                 {GOAL_PRESETS.map(goal => {
                   const active = selectedGoal === goal.value
                   return (
@@ -2867,242 +3105,789 @@ export default function LoyaltyCampaignWizard() {
                       type="button"
                       onClick={() => applyGoalPreset(goal.value)}
                       style={{
-                        border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
-                        background: active ? '#eff6ff' : '#fff',
+                        border: active ? `2px solid ${goal.color}` : '1px solid #e2e8f0',
+                        background: active ? goal.bgGradient : '#fff',
                         color: '#0f172a',
                         borderRadius: 16,
-                        padding: 16,
+                        padding: '20px 18px',
                         textAlign: 'left',
                         cursor: 'pointer',
-                        display: 'grid',
-                        gap: 10,
-                        boxShadow: active ? '0 10px 24px rgba(37,99,235,.12)' : 'none',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 12,
+                        boxShadow: active ? `0 12px 24px rgba(15,23,42,0.06), 0 4px 12px ${goal.color}1e` : '0 4px 6px -1px rgba(15,23,42,0.02)',
+                        transition: 'all 0.2s ease-in-out',
+                        transform: active ? 'scale(1.02)' : 'none',
+                        outline: 'none',
+                        position: 'relative',
+                        overflow: 'hidden'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <div style={{ fontWeight: 800 }}>{goal.title}</div>
-                        {active ? <MiniBadge active trueLabel="Secili" falseLabel="" /> : null}
+                      {/* Decorative background accent */}
+                      <div style={{
+                        position: 'absolute',
+                        right: -10,
+                        top: -10,
+                        fontSize: '5rem',
+                        color: active ? `${goal.color}0c` : 'rgba(15,23,42,0.02)',
+                        pointerEvents: 'none',
+                        transition: 'color 0.2s ease'
+                      }}>
+                        <i className={goal.icon} />
                       </div>
-                      <div style={{ fontSize: '.8rem', color: '#475569', lineHeight: 1.55 }}>{goal.description}</div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <RuntimeStatusBadge status={getConditionRuntimeStatus(goal.draft.applicable[0]?.conditionKey || 'always')} />
-                        <RuntimeStatusBadge status={getActionRuntimeStatus(goal.draft.applicable[0]?.actionType || 'bonus_points')} />
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          background: active ? '#fff' : `${goal.color}12`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: goal.color,
+                          fontSize: '1.2rem',
+                          boxShadow: active ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
+                          border: active ? `1px solid ${goal.color}1e` : 'none',
+                          flexShrink: 0,
+                        }}>
+                          <i className={goal.icon} />
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: '.95rem', color: active ? '#0f172a' : '#1e293b' }}>
+                          {goal.title}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        fontSize: '.82rem',
+                        color: active ? '#334155' : '#64748b',
+                        lineHeight: 1.5,
+                        fontWeight: 500,
+                        zIndex: 1
+                      }}>
+                        {goal.description}
                       </div>
                     </button>
                   )
                 })}
-              </div>
-
-              <div style={{ marginTop: 18 }}>
-                <HelperNote title="Secili tohum">
-                  {goalPreset.title}: hedef kitle varsayilan olarak <strong>{getOptionLabel(CAMPAIGN_AUDIENCE_OPTIONS, goalPreset.audienceType)}</strong>, uygulama modu <strong>{getOptionLabel(CAMPAIGN_APPLICATION_MODE_OPTIONS, goalPreset.applicationMode)}</strong> olacak sekilde hazirlandi.
-                </HelperNote>
               </div>
             </div>
           ) : null}
 
           {currentStep === 1 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+            <div className="card" style={{ padding: 24, marginBottom: 18, display: 'grid', gap: 24 }}>
+              <style>{`
+                .scope-questions-grid {
+                  display: grid;
+                  gap: 20px;
+                  grid-template-columns: 1fr;
+                }
+                @media (min-width: 768px) and (max-width: 1240px) {
+                  .scope-questions-grid {
+                    grid-template-columns: 1fr 1fr;
+                  }
+                }
+                @media (min-width: 1241px) {
+                  .scope-questions-grid {
+                    grid-template-columns: 1fr 1fr 1fr 1fr;
+                  }
+                }
+              `}</style>
               <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Kime, nerede ve hangi tarihte uygulansin?</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Bu adim kampanya kimligini, hedef kitleyi, kanal hedeflerini ve aktif donemi toplar.
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>
+                  Kampanya Kapsamını Belirleyin
+                </h3>
+                <p style={{ fontSize: '.82rem', color: '#64748b', margin: 0 }}>
+                  Aşağıdaki 4 temel soruya cevap vererek kampanyanın sınırlarını kolayca çizin.
+                </p>
+              </div>
+
+              {/* 2x2 Grid for the Questions */}
+              <div className="scope-questions-grid">
+                
+                {/* Question 1: Hedef Kitle (Audience) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #f1f5f9', padding: 16, borderRadius: 16, background: '#fafafb' }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>1. Hedef Kitle</div>
+                  <div style={{ fontSize: '.75rem', color: '#64748b', marginBottom: 6 }}>Bu kampanya hangi müşteri kitlesi için geçerli olsun?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ audienceType: 'all', audienceCategoryIds: [] })}
+                      style={campaignButtonStyle(wizardCampaign.audienceType === 'all', '#2563eb')}
+                    >
+                      <i className="fa-solid fa-users" style={{ fontSize: '1.2rem' }} />
+                      <span>Tüm Müşteriler</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ audienceType: 'tagged_customers' })}
+                      style={campaignButtonStyle(wizardCampaign.audienceType === 'tagged_customers', '#2563eb')}
+                    >
+                      <i className="fa-solid fa-tags" style={{ fontSize: '1.2rem' }} />
+                      <span>Seçili Kategori</span>
+                    </button>
+                  </div>
+
+                  {wizardCampaign.audienceType === 'tagged_customers' && (
+                    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                      <SearchableMultiSelect
+                        options={activeCustomerCategories.map(category => ({
+                          value: category.id,
+                          label: category.name,
+                          description: category.description || category.code || '',
+                        }))}
+                        selectedValues={wizardCampaign.audienceCategoryIds || []}
+                        onChange={next => updateCampaign({ audienceCategoryIds: next })}
+                        placeholder="Müşteri kategorisi seçin"
+                        allowSelectAll
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 12 }}>
-                <FieldStack label="Kampanya adi">
-                  <input className="f-input" value={wizardCampaign.name} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Orn. Hafta Ici 2x Puan" />
-                </FieldStack>
-                <FieldStack label="Kod">
-                  <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu" />
-                </FieldStack>
-              </div>
-
-              <FieldStack label="Aciklama">
-                <textarea className="f-input" rows={3} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanyanin ne yaptigini kisa aciklayin." />
-              </FieldStack>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FieldStack label="Baslangic">
-                  <input className="f-input" type="datetime-local" value={formatDateTimeInput(wizardCampaign.startsAt)} onChange={event => updateCampaign({ startsAt: event.target.value })} />
-                </FieldStack>
-                <FieldStack label="Bitis">
-                  <input className="f-input" type="datetime-local" value={formatDateTimeInput(wizardCampaign.endsAt)} onChange={event => updateCampaign({ endsAt: event.target.value })} />
-                </FieldStack>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FieldStack label="Hedef kitle">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.audienceType} onChange={event => updateCampaign({ audienceType: event.target.value, audienceCategoryIds: event.target.value === 'tagged_customers' ? wizardCampaign.audienceCategoryIds : [] })}>
-                      {audienceOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
+                {/* Question 2: Hangi Satış Kanallarında */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #f1f5f9', padding: 16, borderRadius: 16, background: '#fafafb' }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>2. Satış Kanalları</div>
+                  <div style={{ fontSize: '.75rem', color: '#64748b', marginBottom: 6 }}>Kampanyanın aktif olacağı satış kanallarını seçin.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ channelTargets: [] })}
+                      style={campaignButtonStyle(!wizardCampaign.channelTargets || wizardCampaign.channelTargets.length === 0, '#0284c7')}
+                    >
+                      <i className="fa-solid fa-globe" style={{ fontSize: '1.2rem' }} />
+                      <span>Tüm Kanallar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ channelTargets: [salesChannels[0]?.value].filter(Boolean) })}
+                      style={campaignButtonStyle(wizardCampaign.channelTargets && wizardCampaign.channelTargets.length > 0, '#0284c7')}
+                    >
+                      <i className="fa-solid fa-mobile-screen-button" style={{ fontSize: '1.2rem' }} />
+                      <span>Seçili Kanallar</span>
+                    </button>
                   </div>
-                </FieldStack>
-                <FieldStack label="Uygulama modu" hint="Kasiyere sor veya otomatik uygula davranisi save/load modelinde ayni kalir.">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.applicationMode} onChange={event => updateCampaign({ applicationMode: event.target.value })}>
-                      {CAMPAIGN_APPLICATION_MODE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </div>
-                </FieldStack>
-              </div>
 
-              {wizardCampaign.audienceType === 'tagged_customers' ? (
-                <FieldStack label="Musteri kategorileri">
-                  <SearchableMultiSelect
-                    options={activeCustomerCategories.map(category => ({
-                      value: category.id,
-                      label: category.name,
-                      description: category.description || category.code || '',
-                    }))}
-                    selectedValues={wizardCampaign.audienceCategoryIds || []}
-                    onChange={next => updateCampaign({ audienceCategoryIds: next })}
-                    placeholder="Kategori secin"
-                    allowSelectAll
-                  />
-                </FieldStack>
-              ) : null}
+                  {wizardCampaign.channelTargets && wizardCampaign.channelTargets.length > 0 && (
+                    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                      <SearchableMultiSelect
+                        options={campaignChannelOptions}
+                        selectedValues={wizardCampaign.channelTargets || []}
+                        onChange={next => updateCampaign({ channelTargets: next })}
+                        placeholder="Satış kanalı seçin"
+                      />                    </div>
+                  )}
+                </div>
 
-              <FieldStack label="Kanal hedefleri" hint="Bos birakilirsa tum kanallarda calisir. Rule seviyesindeki satis kanali kosulu bundan daha detayli filtre olabilir.">
-                <SearchableMultiSelect
-                  options={campaignChannelOptions}
-                  selectedValues={wizardCampaign.channelTargets || []}
-                  onChange={next => updateCampaign({ channelTargets: next })}
-                  placeholder="Kanal secin"
-                />
-              </FieldStack>
+                {/* Question 3: Hangi Şubelerde */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #f1f5f9', padding: 16, borderRadius: 16, background: '#fafafb' }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>3. Şubeler</div>
+                  <div style={{ fontSize: '.75rem', color: '#64748b', marginBottom: 6 }}>Kampanyanın geçerli olacağı şube veya şube şablonlarını seçin.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ metadata: { ...wizardCampaign.metadata, branchSelections: [] } })}
+                      style={campaignButtonStyle(!wizardCampaign.metadata?.branchSelections || wizardCampaign.metadata.branchSelections.length === 0, '#7c3aed')}
+                    >
+                      <i className="fa-solid fa-network-wired" style={{ fontSize: '1.2rem' }} />
+                      <span>Tüm Şubeler</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defaultSelection = branchTemplates[0]
+                          ? [{ id: String(branchTemplates[0].id), type: 'template', name: branchTemplates[0].name, branchIds: (branchTemplates[0].branch_ids || []).map(String) }]
+                          : (branches[0] ? [{ id: String(branches[0].id), type: 'branch', name: branches[0].name }] : [])
+                        updateCampaign({ metadata: { ...wizardCampaign.metadata, branchSelections: defaultSelection } })
+                      }}
+                      style={campaignButtonStyle(wizardCampaign.metadata?.branchSelections && wizardCampaign.metadata.branchSelections.length > 0, '#7c3aed')}
+                    >
+                      <i className="fa-solid fa-store" style={{ fontSize: '1.2rem' }} />
+                      <span>Seçili Şubeler</span>
+                    </button>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FieldStack label="Trigger tipi">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.triggerType} onChange={event => updateCampaign({ triggerType: event.target.value })}>
-                      {CAMPAIGN_TRIGGER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
+                  {wizardCampaign.metadata?.branchSelections && wizardCampaign.metadata.branchSelections.length > 0 && (
+                    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                      <SearchableMultiSelect
+                        options={[
+                          ...(branchTemplates || []).map(t => ({
+                            value: `template:${t.id}`,
+                            label: t.name,
+                            description: `${(t.branch_ids || []).length} şube içerir`
+                          })),
+                          ...(branches || []).map(b => ({
+                            value: `branch:${b.id}`,
+                            label: b.name,
+                            description: 'Bireysel Şube'
+                          }))
+                        ]}
+                        selectedValues={(wizardCampaign.metadata.branchSelections || []).map(x => `${x.type}:${x.id}`)}
+                        onChange={next => {
+                          const sanitized = sanitizeWizardBranchSelections(next)
+                          updateCampaign({ metadata: { ...wizardCampaign.metadata, branchSelections: sanitized } })
+                        }}
+                        placeholder="Şube veya şube grubu seçin"
+                      />                    </div>
+                  )}
+                </div>
+
+                {/* Question 4: Ne Zaman */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #f1f5f9', padding: 16, borderRadius: 16, background: '#fafafb' }}>
+                  <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>4. Ne Zaman?</div>
+                  <div style={{ fontSize: '.75rem', color: '#64748b', marginBottom: 6 }}>Kampanyanın hangi tarih aralığında aktif olacağını belirtin.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateCampaign({ startsAt: null, endsAt: null })}
+                      style={campaignButtonStyle(!wizardCampaign.startsAt && !wizardCampaign.endsAt, '#ea580c')}
+                    >
+                      <i className="fa-solid fa-bolt" style={{ fontSize: '1.2rem' }} />
+                      <span>Hemen/Süresiz Başla</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date()
+                        const oneMonthLater = new Date()
+                        oneMonthLater.setMonth(now.getMonth() + 1)
+                        updateCampaign({ startsAt: now.toISOString(), endsAt: oneMonthLater.toISOString() })
+                      }}
+                      style={campaignButtonStyle(wizardCampaign.startsAt || wizardCampaign.endsAt, '#ea580c')}
+                    >
+                      <i className="fa-solid fa-calendar-days" style={{ fontSize: '1.2rem' }} />
+                      <span>Tarih Aralığı Belirt</span>
+                    </button>
                   </div>
-                </FieldStack>
-                <FieldStack label="Kampanya tipi">
-                  <div className="sel-wrap">
-                    <select className="f-input" value={wizardCampaign.campaignType} onChange={event => updateCampaign({ campaignType: event.target.value })}>
-                      {CAMPAIGN_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </div>
-                </FieldStack>
+
+                  {(wizardCampaign.startsAt || wizardCampaign.endsAt) && (
+                    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <FieldStack label="Başlangıç Tarihi">
+                        <input className="f-input" type="datetime-local" value={formatDateTimeInput(wizardCampaign.startsAt)} onChange={event => updateCampaign({ startsAt: event.target.value })} />
+                      </FieldStack>
+                      <FieldStack label="Bitiş Tarihi">
+                        <input className="f-input" type="datetime-local" value={formatDateTimeInput(wizardCampaign.endsAt)} onChange={event => updateCampaign({ endsAt: event.target.value })} />
+                      </FieldStack>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           ) : null}
 
           {currentStep === 2 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Ne zaman calissin?</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Basit mod tetikleyiciyi is diliyle secer; gelismis mod ayni secimi condition bloklari olarak acar.
-                </div>
-              </div>
+            <div className="card" style={{ padding: 20, marginBottom: 18, display: 'grid', gap: 20 }}>
+              <style>{`
+                @media (max-width: 991px) {
+                  .wizard-split-grid {
+                    grid-template-columns: 1fr !important;
+                    gap: 20px !important;
+                  }
+                  .vertical-split-divider {
+                    display: none !important;
+                  }
+                  .wizard-split-col {
+                    padding: 0 !important;
+                    border-right: none !important;
+                  }
+                }
+              `}</style>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                {SIMPLE_CONDITION_CHOICES.map(choice => {
-                  const scopeRules = choice.scope === 'periodic' ? periodicRules : activeRules
-                  const active = scopeRules.some(rule => getEditorRuleConditions(rule).some(condition => condition.conditionKey === choice.value))
-                  return (
-                    <button
-                      key={choice.value}
-                      type="button"
-                      onClick={() => applySimpleCondition(choice)}
-                      style={{
-                        textAlign: 'left',
-                        border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
-                        background: active ? '#eff6ff' : '#fff',
-                        borderRadius: 12,
-                        padding: 14,
-                        cursor: 'pointer',
-                        display: 'grid',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                        <strong style={{ color: active ? '#1d4ed8' : '#0f172a' }}>{choice.title}</strong>
-                        <RuntimeStatusBadge status={getConditionRuntimeStatus(choice.value)} />
+              <div className="wizard-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, position: 'relative' }}>
+                {/* Visual red divider line */}
+                <div className="vertical-split-divider" style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: 0,
+                  bottom: 0,
+                  width: '2px',
+                  background: 'linear-gradient(to bottom, #fecaca, #ef4444, #fecaca)',
+                  transform: 'translateX(-50%)',
+                  zIndex: 10
+                }} />
+
+                {/* Left Column: Conditions Library */}
+                <div className="wizard-split-col" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingRight: 16, background: '#dbeeff', borderRadius: 14, padding: 16 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', background: '#eff6ff', color: '#1d4ed8', fontSize: '.75rem', fontWeight: 900 }}>1</span>
+                      Koşul Kütüphanesi
+                    </div>
+                    <div style={{ fontSize: '.76rem', color: '#64748b' }}>
+                      Kampanyanın tetiklenme koşulunu seçin ve altındaki açıklama kartından detayları inceleyin.
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {/* Recommendation Chips for Conditions */}
+                    {recConditionChoices.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+                        <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b' }}>Önerilenler:</span>
+                        {recConditionChoices.map(choice => {
+                          const active = selectedLibCondition === choice.value
+                          return (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              onClick={() => setSelectedLibCondition(choice.value)}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: 16,
+                                fontSize: '.74rem',
+                                fontWeight: 800,
+                                border: `1.5px solid ${active ? '#3b82f6' : '#e2e8f0'}`,
+                                background: active ? '#eff6ff' : '#f8fafc',
+                                color: active ? '#1d4ed8' : '#475569',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <i className="fa-solid fa-star" style={{ color: active ? '#3b82f6' : '#94a3b8', fontSize: '.68rem' }} />
+                              {choice.title}
+                            </button>
+                          )
+                        })}
                       </div>
-                      <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{choice.description}</div>
-                    </button>
-                  )
-                })}
+                    )}
+
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <select
+                        className="f-input"
+                        value={selectedLibCondition}
+                        onChange={e => setSelectedLibCondition(e.target.value)}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '.9rem', border: '1px solid #cbd5e1', background: '#fff' }}
+                      >
+                        {SIMPLE_CONDITION_CHOICES.map(choice => {
+                          const isRecommended = recConditions.includes(choice.value)
+                          return (
+                            <option key={choice.value} value={choice.value}>
+                              {isRecommended ? '⭐ ' : ''}{choice.title} {isRecommended ? '(Önerilen)' : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Condition details card */}
+                    {(() => {
+                      const choice = SIMPLE_CONDITION_CHOICES.find(c => c.value === selectedLibCondition)
+                      if (!choice) return null
+                      const help = CONDITION_HELP_METADATA[selectedLibCondition] || {
+                        title: choice.title,
+                        desc: choice.description || 'Bu koşul seçildiğinde kampanyaya eklenerek kurallar adımında düzenlenebilir.',
+                        usage: 'Koşulu kurallar listesine eklemek için aşağıdaki butonu kullanın.'
+                      }
+                      return (
+                        <div style={{
+                          background: '#eef5ff',
+                          border: '1px solid #93c5fd',
+                          borderRadius: 12,
+                          padding: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: 180,
+                          marginTop: 8
+                        }}>
+                          <div>
+                            <h5 style={{ fontWeight: 800, color: '#1e40af', margin: '0 0 8px 0', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="fa-solid fa-circle-info" style={{ color: '#3b82f6' }} />
+                              {help.title}
+                            </h5>
+                            <p style={{ fontSize: '.8rem', color: '#1e3a5f', lineHeight: 1.5, margin: '0 0 12px 0' }}>
+                              {help.desc}
+                            </p>
+                            <div style={{ fontSize: '.78rem', color: '#1e3a5f', background: '#fff', padding: '10px 12px', borderRadius: 8, borderLeft: '3px solid #3b82f6', lineHeight: 1.45 }}>
+                              <strong>Nasıl Kullanılır:</strong> {help.usage}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              applySimpleCondition(choice)
+                            }}
+                            className="btn-p"
+                            style={{ width: '100%', marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                          >
+                            <i className="fa-solid fa-plus" /> Koşulu Kampanyaya Ekle
+                          </button>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Blue horizontal divider */}
+                  <div style={{ margin: '20px 0 0 0', height: 2, background: 'linear-gradient(to right, transparent, #3b82f6, transparent)', borderRadius: 2 }} />
+
+                  {/* Current Conditions List */}
+                  <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                    {visibleRules.map((rule, ruleIdx) => {
+                      const conditions = getEditorRuleConditions(rule)
+                      const conditionJoinerMode = rule.conditionConfig?.additionalConditionsMode === 'or' ? 'or' : 'and'
+                      return (
+                        <div key={rule.id} style={{ borderRadius: 12, border: '1px solid #dbeafe', background: '#eef5ff', padding: 12, display: 'grid', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                            <div style={{ fontSize: '.72rem', fontWeight: 900, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                              Tanımlı Koşullar {visibleRules.length > 1 ? `#${ruleIdx + 1}` : ''}
+                            </div>
+                            <button className="btn-o" type="button" onClick={() => addConditionToRule(ruleScopeTab, rule.id)}>
+                              <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+                              Koşul Ekle
+                            </button>
+                          </div>
+                          {conditions.length === 0 ? (
+                            <div style={{ borderRadius: 10, border: '1px dashed #bfdbfe', padding: 10, color: '#64748b', fontSize: '.84rem', background: '#fff' }}>
+                              Henüz koşul eklenmedi.
+                            </div>
+                          ) : conditions.map((condition, index) => {
+                            const pseudoRule = {
+                              ...rule,
+                              conditionKey: condition.conditionKey,
+                              conditionConfig: getStandaloneConditionConfig(condition.conditionConfig),
+                            }
+                            const conditionStatus = getConditionRuntimeStatus(condition.conditionKey)
+                            return (
+                              <div key={condition.id} style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ borderRadius: 10, border: '1px solid #dbeafe', background: '#fff', padding: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getConditionMeta(condition.conditionKey).label}</div>
+                                        <RuntimeStatusBadge status={conditionStatus} />
+                                      </div>
+                                      <div style={{ marginTop: 6, fontSize: '.82rem', color: '#334155', lineHeight: 1.55 }}>
+                                        {buildConditionSummary(pseudoRule, summaryContext)}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', flexShrink: 0, marginLeft: 8 }}>
+                                      <button className="btn-o" type="button" style={{ padding: '4px 8px', fontSize: '.78rem' }} onClick={() => openRuleEditor('conditions', ruleScopeTab, rule.id, condition.id)}>Düzenle</button>
+                                      <button className="btn-danger" type="button" style={{ padding: '4px 8px', fontSize: '.78rem' }} onClick={() => removeConditionFromRule(ruleScopeTab, rule.id, condition.id)}><i className="fa-solid fa-trash" /></button>
+                                    </div>
+                                  </div>
+                                </div>
+                                {index < conditions.length - 1 ? (
+                                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                    <div style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 999, border: '1px solid #bfdbfe', background: '#eff6ff' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateRuleConditionJoinerMode(ruleScopeTab, rule.id, 'and')}
+                                        style={{
+                                          border: 'none',
+                                          borderRadius: 999,
+                                          padding: '4px 10px',
+                                          cursor: 'pointer',
+                                          fontSize: '.7rem',
+                                          fontWeight: 900,
+                                          background: conditionJoinerMode === 'and' ? '#2563eb' : 'transparent',
+                                          color: conditionJoinerMode === 'and' ? '#fff' : '#1d4ed8',
+                                        }}
+                                      >
+                                        VE
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateRuleConditionJoinerMode(ruleScopeTab, rule.id, 'or')}
+                                        style={{
+                                          border: 'none',
+                                          borderRadius: 999,
+                                          padding: '4px 10px',
+                                          cursor: 'pointer',
+                                          fontSize: '.7rem',
+                                          fontWeight: 900,
+                                          background: conditionJoinerMode === 'or' ? '#2563eb' : 'transparent',
+                                          color: conditionJoinerMode === 'or' ? '#fff' : '#1d4ed8',
+                                        }}
+                                      >
+                                        VEYA
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Right Column: Actions Library */}
+                <div className="wizard-split-col" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingLeft: 16, background: '#fff8e1', borderRadius: 14, padding: 16 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', background: '#fffbeb', color: '#b45309', fontSize: '.75rem', fontWeight: 900 }}>2</span>
+                      Eylem Kütüphanesi
+                    </div>
+                    <div style={{ fontSize: '.76rem', color: '#64748b' }}>
+                      Kampanya sonucunda verilecek kazanımı seçin ve altındaki açıklama kartından detayları inceleyin.
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {/* Recommendation Chips for Actions */}
+                    {recActionChoices.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+                        <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b' }}>Önerilenler:</span>
+                        {recActionChoices.map(choice => {
+                          const active = selectedLibAction === choice.value
+                          return (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              onClick={() => setSelectedLibAction(choice.value)}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: 16,
+                                fontSize: '.74rem',
+                                fontWeight: 800,
+                                border: `1.5px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
+                                background: active ? '#fffbeb' : '#f8fafc',
+                                color: active ? '#b45309' : '#475569',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <i className="fa-solid fa-star" style={{ color: active ? '#f59e0b' : '#94a3b8', fontSize: '.68rem' }} />
+                              {choice.title}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <select
+                        className="f-input"
+                        value={selectedLibAction}
+                        onChange={e => setSelectedLibAction(e.target.value)}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: '.9rem', border: '1px solid #cbd5e1', background: '#fff' }}
+                      >
+                        {SIMPLE_ACTION_CHOICES.map(choice => {
+                          const isRecommended = recActions.includes(choice.value)
+                          return (
+                            <option key={choice.value} value={choice.value}>
+                              {isRecommended ? '⭐ ' : ''}{choice.title} {isRecommended ? '(Önerilen)' : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Action details card */}
+                    {(() => {
+                      const choice = SIMPLE_ACTION_CHOICES.find(c => c.value === selectedLibAction)
+                      if (!choice) return null
+                      const help = ACTION_HELP_METADATA[selectedLibAction] || {
+                        title: choice.title,
+                        desc: choice.description || 'Bu eylem seçildiğinde kampanyaya eklenerek kurallar adımında kazanım değeri düzenlenebilir.',
+                        usage: 'Eylemi kurallar listesine eklemek için aşağıdaki butonu kullanın.'
+                      }
+                      return (
+                        <div style={{
+                          background: '#fffbeb',
+                          border: '1px solid #fed7aa',
+                          borderRadius: 12,
+                          padding: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: 180,
+                          marginTop: 8
+                        }}>
+                          <div>
+                            <h5 style={{ fontWeight: 800, color: '#9a3412', margin: '0 0 8px 0', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="fa-solid fa-circle-info" style={{ color: '#f59e0b' }} />
+                              {help.title}
+                            </h5>
+                            <p style={{ fontSize: '.8rem', color: '#7c2d12', lineHeight: 1.5, margin: '0 0 12px 0' }}>
+                              {help.desc}
+                            </p>
+                            <div style={{ fontSize: '.78rem', color: '#451a03', background: '#fff', padding: '10px 12px', borderRadius: 8, borderLeft: '3px solid #f59e0b', lineHeight: 1.45 }}>
+                              <strong>Nasıl Kullanılır:</strong> {help.usage}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              applySimpleAction(choice)
+                            }}
+                            className="btn-p"
+                            style={{ width: '100%', marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
+                          >
+                            <i className="fa-solid fa-plus" /> Eylemi Kampanyaya Ekle
+                          </button>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Yellow horizontal divider */}
+                  <div style={{ margin: '20px 0 0 0', height: 2, background: 'linear-gradient(to right, transparent, #f59e0b, transparent)', borderRadius: 2 }} />
+
+                  {/* Current Actions List */}
+                  <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                    {visibleRules.map((rule, ruleIdx) => {
+                      const actions = getEditorRuleActions(rule)
+                      return (
+                        <div key={rule.id} style={{ borderRadius: 12, border: '1px solid #fed7aa', background: '#fffbeb', padding: 12, display: 'grid', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                            <div style={{ fontSize: '.72rem', fontWeight: 900, color: '#b45309', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                              Tanımlı Eylemler {visibleRules.length > 1 ? `#${ruleIdx + 1}` : ''}
+                            </div>
+                            <button className="btn-o" type="button" onClick={() => addActionToRule(ruleScopeTab, rule.id)}>
+                              <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+                              Eylem Ekle
+                            </button>
+                          </div>
+                          {actions.length === 0 ? (
+                            <div style={{ borderRadius: 10, border: '1px dashed #fed7aa', padding: 10, color: '#64748b', fontSize: '.84rem', background: '#fff' }}>
+                              Henüz eylem eklenmedi.
+                            </div>
+                          ) : actions.map(action => {
+                            const pseudoRule = {
+                              ...rule,
+                              actionType: action.actionType,
+                              actionConfig: getStandaloneActionConfig(action.actionConfig),
+                            }
+                            const actionStatus = getActionRuntimeStatus(action.actionType)
+                            return (
+                              <div key={action.id} style={{ borderRadius: 10, border: '1px solid #fed7aa', background: '#fff', padding: 10 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                      <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getOptionLabel(ACTION_TYPE_OPTIONS, action.actionType)}</div>
+                                      <RuntimeStatusBadge status={actionStatus} />
+                                    </div>
+                                    <div style={{ marginTop: 6, fontSize: '.82rem', color: '#334155', lineHeight: 1.55 }}>
+                                      {action.actionSummary || buildActionSummary(pseudoRule, summaryContext)}
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', flexShrink: 0, marginLeft: 8 }}>
+                                    <button className="btn-o" type="button" style={{ padding: '4px 8px', fontSize: '.78rem' }} onClick={() => openRuleEditor('actions', ruleScopeTab, rule.id, action.id)}>Düzenle</button>
+                                    <button className="btn-danger" type="button" style={{ padding: '4px 8px', fontSize: '.78rem' }} onClick={() => removeActionFromRule(ruleScopeTab, rule.id, action.id)}><i className="fa-solid fa-trash" /></button>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
-
-              <HelperNote title="Arka planda uretilen model">
-                Bu secimler `triggerType`, applicable/periodic rule, condition config ve gerekirse takvim/happy hour ayrintilarina map edilir. Gelismis modda hepsi gorunur ve duzenlenebilir.
-              </HelperNote>
-
-              {wizardMode === 'advanced' ? (
-                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                  {renderRuleEditorPanel({
-                    title: 'Tetikleyici condition bloklari',
-                    subtitle: 'Birden fazla kosul, VE/VEYA joiner ve zaman bazli periyodik kurallar burada yonetilir.',
-                  })}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Secili tetikleyici ozeti</div>
-                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Henuz tetikleyici secilmedi.')}
-                </div>
-              )}
             </div>
           ) : null}
 
           {currentStep === 3 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
               <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Musteri ne kazansin?</div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Operasyon ve Kampanya Bilgileri</div>
                 <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Basit mod odul dilini kullanir; gelismis mod ayni sonucu action bloklari olarak acar.
+                  Kampanya kimliği (ad, kod, açıklama) ile birleşme ve çalışma kuralları buradan yönetilir.
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                {SIMPLE_ACTION_CHOICES.map(choice => {
-                  const active = [...activeRules, ...periodicRules].some(rule => getEditorRuleActions(rule).some(action => action.actionType === choice.value))
-                  return (
-                    <button
-                      key={choice.value}
-                      type="button"
-                      onClick={() => applySimpleAction(choice)}
-                      style={{
-                        textAlign: 'left',
-                        border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
-                        background: active ? '#fffbeb' : '#fff',
-                        borderRadius: 12,
-                        padding: 14,
-                        cursor: 'pointer',
-                        display: 'grid',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                        <strong style={{ color: active ? '#92400e' : '#0f172a' }}>{choice.title}</strong>
-                        <RuntimeStatusBadge status={getActionRuntimeStatus(choice.value)} />
-                      </div>
-                      <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{choice.description}</div>
-                    </button>
-                  )
-                })}
+              {/* Campaign Identification Section */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 16, borderBottom: '1px solid #f1f5f9', paddingBottom: 16 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <FieldStack label="Kampanya Adı">
+                    <input className="f-input" value={wizardCampaign.name || ''} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Kampanya adı" />
+                  </FieldStack>
+                  <FieldStack label="Açıklama">
+                    <textarea className="f-input" style={{ minHeight: 60 }} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanya açıklaması" />
+                  </FieldStack>
+                </div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <FieldStack label="Kampanya Kodu">
+                    <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu (örn. KM001)" />
+                  </FieldStack>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 10 }}>
+                    <FieldStack label="Öncelik" hint="Daha küçük sayı daha güçlü kabul edilir.">
+                      <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
+                    </FieldStack>
+                    <FieldStack label="Durum">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 42, color: '#334155', fontWeight: 800, fontSize: '.84rem' }}>
+                        <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
+                        Aktif
+                      </label>
+                    </FieldStack>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conflict resolution / Merge mode */}
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Çakışma ve Birleşme Kuralı</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                  {STACKING_RULE_OPTIONS.map(option => {
+                    const active = mergeMode === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateMergeMode(option.value)}
+                        style={{
+                          textAlign: 'left',
+                          border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
+                          background: active ? '#eff6ff' : '#fff',
+                          borderRadius: 12,
+                          padding: 14,
+                          cursor: 'pointer',
+                          display: 'grid',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, color: active ? '#1d4ed8' : '#0f172a' }}>{option.label}</div>
+                        <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{option.desc}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {mergeMode === 'group' ? (
+                <FieldStack label="Exclusion group">
+                  <input className="f-input" value={wizardCampaign.exclusionGroup || ''} onChange={event => updateCampaign({ exclusionGroup: event.target.value })} placeholder="Orn. burger-indirimleri" />
+                </FieldStack>
+              ) : null}
+
+              {/* Status information block */}
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Runtime durumu</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Array.from(new Set([
+                    ...activeRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
+                    ...activeRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
+                    ...periodicRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
+                    ...periodicRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
+                  ])).map(token => {
+                    const [kind, value] = token.split(':')
+                    return kind === 'condition'
+                      ? <RuntimeStatusBadge key={token} status={getConditionRuntimeStatus(value)} />
+                      : <RuntimeStatusBadge key={token} status={getActionRuntimeStatus(value)} />
+                  })}
+                </div>
               </div>
 
               {wizardMode === 'advanced' ? (
                 <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
                   {renderRuleEditorPanel({
-                    title: 'Kazanim action bloklari',
-                    subtitle: 'Coklu action, action sirasi, stop processing ve destek durumlari burada kayipsiz duzenlenir.',
+                    title: 'Operasyonel rule kontrolleri',
+                    subtitle: 'Stop processing, aktif/pasif bloklar, manuel approval kosulu ve kanal kosullari burada duzenlenebilir.',
                   })}
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Secili kazanim ozeti</div>
-                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Henuz kazanim secilmedi.')}
-                </div>
-              )}
+              ) : null}
             </div>
           ) : null}
 
@@ -3149,18 +3934,6 @@ export default function LoyaltyCampaignWizard() {
                 </div>
               </div>
 
-              {wizardMode === 'advanced' ? (
-                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                  {renderRuleEditorPanel({
-                    title: 'Kupon ve puan action ayrintilari',
-                    subtitle: 'Kupon serisi, use-after-checkout etkisi, puan kazanma/harcama ve model-only action durumlari burada gorunur.',
-                  })}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {renderRuleSummaryList([...activeRules, ...periodicRules], 'Kupon veya puan action secilmedi.')}
-                </div>
-              )}
             </div>
           ) : null}
 
@@ -3248,7 +4021,7 @@ export default function LoyaltyCampaignWizard() {
             </div>
           ) : null}
 
-          {currentStep === 6 ? (
+          {currentStep === 4 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
               <div>
                 <div style={{ fontWeight: 800, color: '#0f172a' }}>Test, ozet ve kaydet</div>
@@ -3280,35 +4053,6 @@ export default function LoyaltyCampaignWizard() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Siparis aninda calisan kurallar</div>
-                {(wizardCampaign.applicableRules || []).length === 0 ? (
-                  <div style={{ color: '#64748b', fontSize: '.82rem' }}>Bu sekmede kural yok.</div>
-                ) : (
-                  (wizardCampaign.applicableRules || []).map(rule => (
-                    <div key={rule.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, background: '#fff' }}>
-                      <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.55 }}>
-                        {buildConditionSummary(rule, summaryContext)} \u2192 {buildActionSummary(rule, summaryContext)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Zaman bazli kurallar</div>
-                {(wizardCampaign.periodicRules || []).length === 0 ? (
-                  <div style={{ color: '#64748b', fontSize: '.82rem' }}>Bu sekmede kural yok.</div>
-                ) : (
-                  (wizardCampaign.periodicRules || []).map(rule => (
-                    <div key={rule.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, background: '#fff' }}>
-                      <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.55 }}>
-                        {buildConditionSummary(rule, summaryContext)} \u2192 {buildActionSummary(rule, summaryContext)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
             </div>
           ) : null}
         </>
@@ -3331,8 +4075,7 @@ export default function LoyaltyCampaignWizard() {
                       onChange={event => updateActionItem(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', event.target.value)}
                     >
                       {ACTION_TYPE_OPTIONS.map(option => {
-                        const status = getActionRuntimeStatus(option.value)
-                        return <option key={option.value} value={option.value}>{`${option.label} - ${status.label}`}</option>
+                        return <option key={option.value} value={option.value}>{option.label}</option>
                       })}
                     </select>
                   </div>
@@ -3381,8 +4124,7 @@ export default function LoyaltyCampaignWizard() {
                         onChange={event => updateConditionItem(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'conditionKey', event.target.value)}
                       >
                         {CONDITION_LIBRARY.map(option => {
-                          const status = getConditionRuntimeStatus(option.key)
-                          return <option key={option.key} value={option.key}>{`${option.label} - ${status.label}`}</option>
+                          return <option key={option.key} value={option.key}>{option.label}</option>
                         })}
                       </select>
                     </div>
@@ -3435,7 +4177,7 @@ export default function LoyaltyCampaignWizard() {
         <div style={{ fontSize: '.8rem', color: '#64748b' }}>
           {databaseUnavailable || !schemaReady
             ? 'Workspace hazir olmadan kaydetme kapali kalir.'
-            : 'Kaydetme loyalty workspace persistence akisi uzerinden yapilir.'}
+            : null}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className="btn-o" type="button" onClick={() => setCurrentStep(current => Math.max(0, current - 1))} disabled={currentStep === 0 || loading}>

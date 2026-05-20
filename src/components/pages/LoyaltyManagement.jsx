@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -2074,35 +2074,11 @@ function getEditorRuleActionSummaries(rule, context = {}) {
 // RUNTIME_STATUS_META and helpers imported from loyaltyRuntimeStatus.js
 
 function RuntimeStatusBadge({ status, compact = false }) {
-  if (!status) return null
-  return (
-    <span
-      title={status.detail}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        borderRadius: 999,
-        border: `1px solid ${status.border}`,
-        background: status.background,
-        color: status.color,
-        padding: compact ? '3px 8px' : '4px 10px',
-        fontSize: compact ? '.66rem' : '.72rem',
-        fontWeight: 900,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {status.label}
-    </span>
-  )
+  return null
 }
 
 function RuntimeStatusNote({ status }) {
-  if (!status) return null
-  return (
-    <div style={{ borderRadius: 10, border: `1px solid ${status.border}`, background: status.background, color: status.color, padding: '8px 10px', fontSize: '.78rem', lineHeight: 1.45, fontWeight: 700 }}>
-      <RuntimeStatusBadge status={status} compact /> <span style={{ marginLeft: 6 }}>{status.detail}</span>
-    </div>
-  )
+  return null
 }
 
 function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition, onAddAction, onDeleteCondition, onDeleteAction, onToggleConditionJoiner, summaryContext }) {
@@ -5615,13 +5591,7 @@ export default function LoyaltyManagement() {
                     <HelperNote title="Ornek kurulum">
                       Ornek kampanya: zzz musteri kategorisi + Pazartesi 18:00-20:00 + siparis tutari en az 500 TL. Solda ayni bloga birden fazla kosul, sagda ise o blog calisinca uygulanacak bir veya birden fazla eylem ekleyebilirsiniz.
                     </HelperNote>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 800 }}>Calisma durumu:</span>
-                      <RuntimeStatusBadge status={RUNTIME_STATUS_META.local} compact />
-                      <RuntimeStatusBadge status={RUNTIME_STATUS_META.server} compact />
-                      <RuntimeStatusBadge status={RUNTIME_STATUS_META.ledger} compact />
-                      <RuntimeStatusBadge status={RUNTIME_STATUS_META.model} compact />
-                    </div>
+
                   </div>
 
                   {visibleRules.length === 0 ? (
@@ -5705,8 +5675,7 @@ export default function LoyaltyManagement() {
                                 onChange={event => updateActionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', event.target.value)}
                               >
                                 {ACTION_TYPE_OPTIONS.map(option => {
-                                  const status = getActionRuntimeStatus(option.value)
-                                  return <option key={option.value} value={option.value}>{`${option.label} - ${status.label}`}</option>
+                                  return <option key={option.value} value={option.value}>{option.label}</option>
                                 })}
                               </select>
                             </div>
@@ -5754,8 +5723,7 @@ export default function LoyaltyManagement() {
                                   onChange={event => updateConditionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'conditionKey', event.target.value)}
                                 >
                                   {CONDITION_LIBRARY.map(option => {
-                                    const status = getConditionRuntimeStatus(option.key)
-                                    return <option key={option.key} value={option.key}>{`${option.label} - ${status.label}`}</option>
+                                    return <option key={option.key} value={option.key}>{option.label}</option>
                                   })}
                                 </select>
                               </div>

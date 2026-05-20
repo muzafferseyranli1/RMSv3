@@ -1492,3 +1492,57 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `Browser interaction smoke kalici dev server ile tamamlanmadi.`
   - `Route cutover icin create/edit/reload/duplicate ve runtime summary smoke halen gerekli.`
 - `Next Loyalty Step`: `RuleRow, condition editor, action editor ve runtime summary parcalarini ortak component ailesine ayir; preview wizard browser smoke gecince /sadakat/kampanya/yeni route cutover'u degerlendir.`
+
+## Entry 030
+- `Date`: `2026-05-20`
+- `Phase`: `Wizard UI layout updates and mode simplification`
+- `Affected Surface`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Result`:
+  - `Arayuzdeki 'Aktif Kapsam' kartı (scopeInfo render blogu) tamamen kaldırıldı.`
+  - `Basit/gelismis mod secimi (renderModeToggle() UI'ı) kaldırıldı; wizard varsayılan olarak 'advanced' (gelişmiş) modda açılacak şekilde useState('advanced') olarak güncellendi.`
+- `Verification`:
+  - `npm.cmd run build -> exit code 0, Vite build basarili.`
+- `Next`: `Gelismis rule editor parcalarini ortak bilesen ailesine tasimaya devam et ve route cutover'a hazirlan.`
+
+## Entry 031
+- `Date`: `2026-05-20`
+- `Phase`: `Loyalty status badges and suffix descriptions removal`
+- `Affected Surfaces`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+- `Result`:
+  - `RuntimeStatusBadge` ve `RuntimeStatusNote` bileşenleri `null` döndürecek şekilde güncellenerek tüm sayfalardan görsel olarak kaldırıldı.
+  - `LoyaltyManagement.jsx` altındaki "Çalışma durumu" legend tablosu/listesi kaldırıldı.
+  - Eylem/Koşul seçimi dropdown'larında seçeneklerin sonuna eklenen `- Anında çalışır`, `- Canlı kontrol ister` vb. runtime durumu ekleri kaldırıldı.
+- `Verification`:
+  - `npm.cmd run build -> exit code 0, build basarili.`
+
+## Entry 032
+- `Date`: `2026-05-20`
+- `Phase`: `Campaign Wizard Goal Trimming and Automatic Summary Card`
+- `Affected Surfaces`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Result`:
+  - `GOAL_PRESETS` listesindeki hedefler 3 ana başlığa ("Yeni musteri kazan", "Sepet ortalamasini buyut", "Ziyaret sikligini artir") düşürüldü.
+  - Hedef adımındaki "Seçili" ibaresi ve "Seçili tohum" bilgilendirme notu kaldırıldı.
+  - Alt kısımdaki "Kaydetme loyalty workspace..." açıklama metni silindi.
+  - Adım navigasyon barının hemen altına, kampanya genelindeki tüm adımlardan (hedef kitle, kural koşulları, eylemler, geçerli satış kanalları, başlangıç/bitiş tarihleri) beslenerek dynamic Türkçe özet üreten "Kampanya Özeti" kartı eklendi.
+- `Verification`:
+  - `npm.cmd run build -> exit code 0, build basarili.`
+
+## Entry 033
+- `Date`: `2026-05-20`
+- `Phase`: `Campaign Wizard Goal Selection Visual Enhancements`
+- `Affected Surfaces`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Result`:
+  - Adım açıklama metni güncellendi: `"Oluşturacağınız kampanya için ana hedefinizi seçin, sonraki adımlarda hedefinize uygun öneriler yapılacaktır."`
+  - Hedef seçim kartlarına FontAwesome ikonları, canlı renkler ve özel gradyan arka planlar entegre edildi.
+  - Kartların sağ üst köşesine yarı saydam büyük bir filigran (watermark) ikon yerleştirilerek derinlik katıldı.
+  - Seçim durumunda kartların scale-up (1.02x) olması, soft gölge ve ilgili tema renginin kenarlığını alması sağlandı.
+- `Verification`:
+  - `npm.cmd run build -> exit code 0, build basarili.`
+
+
+

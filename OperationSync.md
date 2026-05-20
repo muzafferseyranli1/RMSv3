@@ -4427,8 +4427,92 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `/sadakat/kampanya-sihirbazi-onizleme`: `Yeni wizard preview yuzeyi olarak kaldi.`
   - `/sadakat/kampanya/yeni` ve `/sadakat/kampanya/:campaignId`: `Halen LoyaltyManagement aciyor; cutover parity smoke sonrasina birakildi.`
 - `Open Risks`:
-  - `RuleRow ve editor modal render parcalari halen iki buyuk component icinde; sonraki fazda ortak component ailesine alinmali.`
-  - `Preview wizard build geciyor ama browser interaction smoke henuz kalici dev server ile gezilmedi.`
-  - `Route cutover yapilmadan create/edit/duplicate/reload parity smoke tamamlanmali.`
+  - `RuleRow ve editor UI henuz ortak component dosyasina ayrilmadi; sadece editor model/helper drift'i azaltildi.`
+  - `Browser interaction smoke kalici dev server ile tamamlanmadi.`
+  - `Route cutover icin create/edit/reload/duplicate ve runtime summary smoke halen gerekli.`
 - `Next Step`: `Gelismis rule editor parcalarini ortak component ailesine ayir; ardindan preview wizard'da create/edit/reload smoke'u browser ile kos ve ancak PASS sonrasi /sadakat/kampanya/yeni route cutover icin hazirla.`
 - `Handoff Contract`: `Sonraki agent Phase 2'ye baslarsa Entry 083 ve LOYALTYMEMORY Entry 029'dan devam etsin. DB schema, Railway Postgres disi persistence ve runtime/ledger omurgasina dokunulmadan component extraction + browser smoke + route cutover sirasiyla ilerlenmeli.`
+
+## Entry 084
+
+- `Timestamp`: `2026-05-20T22:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Campaign Wizard UI Cleanup and Mode Simplification`
+- `Intent`: `Kullanicinin istegi uzerine wizard arayuzendeki 'Aktif Kapsam' kartini kaldirmak, 'Basit mod/Gelismis mod' toggle UI'ini devredisi birakip dogrudan gelismis mod (advanced) ile devam etmek.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `wizardMode` varsayilan degeri 'advanced' olarak degistirildi (useState('advanced')).
+  - `Aktif Kapsam` karti (scopeInfo render blogu) arayuzden tamamen kaldirildi.
+  - `renderModeToggle()` cagrisi kaldirilarak basit/gelismis mod secim dugmeleri arayuzden temizlendi.
+- `Verification`:
+  - `npm.cmd run build` -> Basarili, Vite build exit code: 0.
+- `Next Step`: `Ortak rule editor bilesenlerini cikarmaya devam et ve route cutover hazirliklarini tamamla.`
+
+## Entry 085
+
+- `Timestamp`: `2026-05-20T22:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Module Runtime Status Badges and Suffix Removal`
+- `Intent`: `Kullanicinin talebi uzerine hem wizard arayuzundeki hem de diger sadakat sayfalarindaki (LoyaltyManagement) 'Canli kontrol ister', 'Aninda calisir' vb. status badge ve aciklamalarini tamamen kaldirmak.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `LoyaltyCampaignWizard.jsx` dosyasinda `RuntimeStatusBadge` bileseni `null` donecek sekilde guncellendi.
+  - `LoyaltyManagement.jsx` dosyasinda hem `RuntimeStatusBadge` hem de `RuntimeStatusNote` bilesenleri `null` donecek sekilde guncellendi.
+  - `LoyaltyManagement.jsx` altindaki "Calisma durumu" baslikli status legend kismi arayuzden tamamen kaldirildi.
+  - Hem wizard hem de LoyaltyManagement ekranlarindaki kosul/eylem secim select dropdown'larinda seceneklerin sonuna eklenen ` - ${status.label}` ibaresi kaldirildi, sadece `option.label` gösterilmesi saglandi.
+- `Verification`:
+  - `npm.cmd run build` -> Basarili, Vite build exit code: 0.
+- `Next Step`: `Geri kalan backoffice wizard gelistirmelerine devam etmek.`
+
+## Entry 086
+
+- `Timestamp`: `2026-05-20T22:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Campaign Wizard Goal Trimming and Automatic Summary Card`
+- `Intent`: `Kullanicinin talebi uzerine wizard baslangic hedeflerini 3 ana hedefe indirgemek, 'Secili' mini badge ve 'Secili Tohum' yardimci notunu kaldirmak, alttaki persistence notunu silmek ve adim barinin hemen altina otomatik olarak turkce duz metin olusturan 'Kampanya Ozeti' karti yerlestirmek.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `GOAL_PRESETS` listesindeki son 3 hedef (loyalty, event, stamp) kaldirilarak listede sadece 'new_customer', 'basket' ve 'frequency' birakildi.
+  - Hedef secim adimindaki `MiniBadge` (Secili) ve `HelperNote` (Secili tohum) bilesenleri temizlendi.
+  - Sayfa altindaki default kayit persistence aciklama metni temizlendi (database kapali/schema hatali durumu haric).
+  - Adim navigasyon barinin hemen altina dynamic Türkçe özet ureten `getCampaignSummaryText()` yardimci fonksiyonu ve premium tasarimli 'Kampanya Özeti' karti eklendi. Bu kart diger adimlardaki (hedef kitle, kanallar, tarihler, kurallar ve eylemler) durum degisimlerine gore duz metin seklinde anlik olarak kendini gunceller.
+- `Verification`:
+  - `npm.cmd run build` -> Basarili, Vite build exit code: 0.
+- `Next Step`: `Kullanicinin diger geri bildirimlerini dinlemek ve dogrulamalari surdurmek.`
+
+## Entry 087
+
+- `Timestamp`: `2026-05-20T22:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Campaign Wizard Goal Selection Visual Enhancements`
+- `Intent`: `Kullanicinin talebi uzerine baslangic adimindaki yardimci metni degistirmek ve hedef secim kartlarini ikon, renk, gradyan ve watermark ile gucleştirip premium hale getirmek.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - Kart basligi altindaki aciklama metni `"Oluşturacağınız kampanya için ana hedefinizi seçin, sonraki adımlarda hedefinize uygun öneriler yapılacaktır."` olarak degistirildi.
+  - `GOAL_PRESETS` verisine `icon`, `color`, `bgGradient` ozellikleri eklenerek kartlara custom gorsel kimlik kazandirildi:
+    * `new_customer`: Mavi renk temasi, `fa-user-plus` ikonu, mavi soft gradyan arkaplan.
+    * `basket`: Yesil renk temasi, `fa-cart-shopping` ikonu, yesil soft gradyan arkaplan.
+    * `frequency`: Turuncu/Amber renk temasi, `fa-arrow-trend-up` ikonu, turuncu soft gradyan arkaplan.
+  - Kart tasarımları yenilendi:
+    * Sol tarafa renkli dairesel ikon kutusu eklendi.
+    * Kartin sag ust tarafina hafif saydam buyuk bir watermark ikonu eklendi.
+    * Secili kartlara ilgili rengin gradyani, belirgin bir border, scale-up (1.02x) efekti ve golge eklendi.
+- `Verification`:
+  - `npm.cmd run build` -> Basarili, Vite build exit code: 0.
+- `Next Step`: `Kullaniciyla degisiklikleri paylasip onay almak veya yeni adimlara gecmek.`
+
+
+
