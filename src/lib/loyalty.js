@@ -37,11 +37,11 @@ export const CAMPAIGN_TRIGGER_OPTIONS = [
 ]
 
 export const CAMPAIGN_AUDIENCE_OPTIONS = [
-  { value: 'all', label: 'Tum Musteriler' },
-  { value: 'members', label: 'Sadakat Uyeleri' },
-  { value: 'new_customers', label: 'Yeni Musteriler' },
-  { value: 'inactive_customers', label: 'Pasif Musteriler' },
-  { value: 'tagged_customers', label: 'Musteri Kategorileri' },
+  { value: 'all', label: 'Tüm Müşteriler' },
+  { value: 'members', label: 'Sadakat Üyeleri' },
+  { value: 'new_customers', label: 'Yeni Müşteriler' },
+  { value: 'inactive_customers', label: 'Pasif Müşteriler' },
+  { value: 'tagged_customers', label: 'Müşteri Kategorileri' },
 ]
 
 export const CAMPAIGN_CHANNEL_OPTIONS = [
@@ -59,52 +59,52 @@ export const CAMPAIGN_APPLICATION_MODE_OPTIONS = [
 ]
 
 export const RULE_SCOPE_OPTIONS = [
-  { value: 'applicable', label: 'Uygulanabilir kosullar ve eylemler' },
-  { value: 'periodic', label: 'Periyodik kosullar ve eylemler' },
+  { value: 'applicable', label: 'Uygulanabilir koşullar ve eylemler' },
+  { value: 'periodic', label: 'Periyodik koşullar ve eylemler' },
 ]
 
 export const COMPARISON_OPTIONS = [
-  { value: 'eq', label: 'esit' },
+  { value: 'eq', label: 'eşit' },
   { value: 'gt', label: 'daha fazla' },
-  { value: 'gte', label: 'daha fazla veya esit' },
+  { value: 'gte', label: 'daha fazla veya eşit' },
   { value: 'lt', label: 'daha az' },
-  { value: 'lte', label: 'daha az veya esit' },
-  { value: 'divisible', label: 'bolunebilir' },
+  { value: 'lte', label: 'daha az veya eşit' },
+  { value: 'divisible', label: 'bölünebilir' },
 ]
 
 export const PERIOD_OPTIONS = [
-  { value: 'all_time', label: 'Tum zamanlar' },
-  { value: 'day', label: 'Gunde' },
+  { value: 'all_time', label: 'Tüm zamanlar' },
+  { value: 'day', label: 'Günde' },
   { value: 'week', label: 'Haftada' },
   { value: 'month', label: 'Ayda' },
-  { value: 'quarter', label: 'Uc ayda bir' },
-  { value: 'year', label: 'Yilda' },
-  { value: 'current_month_start', label: 'Mevcut ay basina' },
-  { value: 'rolling_days', label: 'Son X gun (kayan)' },
+  { value: 'quarter', label: 'Üç ayda bir' },
+  { value: 'year', label: 'Yılda' },
+  { value: 'current_month_start', label: 'Mevcut ay başına' },
+  { value: 'rolling_days', label: 'Son X gün (kayan)' },
 ]
 
 export const ACTION_TYPE_OPTIONS = [
-  { value: 'free_products', label: 'Hediye urun' },
-  { value: 'product_pricing', label: 'Indirimler ve ozel fiyatlar' },
+  { value: 'free_products', label: 'Hediye ürün' },
+  { value: 'product_pricing', label: 'İndirimler ve özel fiyatlar' },
   { value: 'combo_bundle', label: 'Kombo' },
-  { value: 'write_customer_note', label: 'Musteri hesabi, fis ve teslimat notuna metin yazdir' },
-  { value: 'send_sms', label: 'Musteriye SMS gonder' },
-  { value: 'send_webhook', label: 'Musteriye webhook gonder' },
-  { value: 'remove_customer_tag', label: 'Musteriyi kategoriden cikar' },
-  { value: 'add_customer_tag', label: 'Musteriyi kategoriye dahil et' },
-  { value: 'special_discount', label: 'Ozel indirim' },
-  { value: 'order_extra_charge_amount', label: 'Sipariste ek ucret tutari' },
-  { value: 'order_extra_charge_percent', label: 'Sipariste ek ucret yuzdesi' },
-  { value: 'order_discount_amount', label: 'Siparisteki indirim tutari' },
-  { value: 'total_order_discount_percent', label: 'Tum sipariste indirim %' },
-  { value: 'warning_message', label: 'Uyari' },
-  { value: 'suggest_products', label: 'Ekstra urun teklif et' },
-  { value: 'bonus_points', label: 'Puan yukle' },
-  { value: 'points_percent_of_order', label: 'Siparis tutarinin %X kadar puan kazandir' },
-  { value: 'points_earn_multiplier', label: 'Puan kazanma katsayisi uygula' },
-  { value: 'points_redeem_multiplier', label: 'Puan harcama katsayisi uygula' },
+  { value: 'write_customer_note', label: 'Müşteri hesabı, fiş ve teslimat notuna metin yazdır' },
+  { value: 'send_sms', label: 'Müşteriye SMS gönder' },
+  { value: 'send_webhook', label: 'Müşteriye webhook gönder' },
+  { value: 'remove_customer_tag', label: 'Müşteriyi kategoriden çıkar' },
+  { value: 'add_customer_tag', label: 'Müşteriyi kategoriye dahil et' },
+  { value: 'special_discount', label: 'Özel indirim' },
+  { value: 'order_extra_charge_amount', label: 'Siparişte ek ücret tutarı' },
+  { value: 'order_extra_charge_percent', label: 'Siparişte ek ücret yüzdesi' },
+  { value: 'order_discount_amount', label: 'Siparişteki indirim tutarı' },
+  { value: 'total_order_discount_percent', label: 'Tüm siparişte indirim %' },
+  { value: 'warning_message', label: 'Uyarı' },
+  { value: 'suggest_products', label: 'Ekstra ürün teklif et' },
+  { value: 'bonus_points', label: 'Puan yükle' },
+  { value: 'points_percent_of_order', label: 'Sipariş tutarının %X kadar puan kazandır' },
+  { value: 'points_earn_multiplier', label: 'Puan kazanma katsayısı uygula' },
+  { value: 'points_redeem_multiplier', label: 'Puan harcama katsayısı uygula' },
   { value: 'issue_coupon', label: 'Kupon yarat' },
-  { value: 'discount_percent', label: 'Yuzde indirim uygula' },
+  { value: 'discount_percent', label: 'Yüzde indirim uygula' },
 ]
 
 export const COUPON_CHARSET_OPTIONS = [
@@ -114,27 +114,27 @@ export const COUPON_CHARSET_OPTIONS = [
 ]
 
 export const CONDITION_LIBRARY = [
-  { key: 'always', label: 'Her sipariste', description: 'Ek bir kosul aramadan, hedef kitle ve kanal uygunsa her sipariste calisir.' },
-  { key: 'calendar_schedule', label: 'Takvim', description: 'Periyodik kurali gunluk, haftalik, aylik veya yillik takvime baglar.' },
-  { key: 'birthday', label: 'Dogum gunu', description: 'Musterinin dogum gunu, onceki ve sonraki gun sayisina gore eslesir.' },
-  { key: 'period_total_order_amount', label: 'Donem basina toplam siparis tutari', description: 'Musterinin secili zaman dilimindeki toplam siparis tutarini kontrol eder; istenirse mevcut siparis de hesaba katilir.' },
-  { key: 'period_order_count', label: 'Donem icindeki ziyaret / siparis adedi', description: 'Musterinin belirli donemde yaptigi ziyaret veya verdigi siparis sayisini kontrol eder; istenirse mevcut ziyaret / siparis de bu sayiya dahil edilir.' },
-  { key: 'period_product_quantity', label: 'Donem icindeki urun miktari', description: 'Musterinin donem boyunca siparis ettigi urun adedini kontrol eder.' },
-  { key: 'period_sold_product_quantity', label: 'Donem icinde satilan urun miktari', description: 'Secili urun ve kategorilerin gun, hafta, ay, 3 ay veya yil icindeki toplam satis adedini kontrol eder.' },
-  { key: 'missing_products', label: 'Urun Sipariste yoksa', description: 'Secili urun, kategori veya satis mali sablonundaki urunler sipariste yoksa tetiklenir.' },
-  { key: 'happy_hour', label: 'Happy hour', description: 'Belirli saat ve gun araliginda kosul saglanir.' },
-  { key: 'gift_card_series', label: 'Hediye Karti Serisi', description: 'Belirli bir hediye karti veya kupon serisi ile eslesir.' },
-  { key: 'campaign_triggered', label: 'Kampanya Aktifse', description: 'Secili kampanyalardan biri bu sipariste aktif hale geldiyse veya tetiklendiyse kosul saglanir.' },
-  { key: 'coupon_present', label: 'Kupon', description: 'Belirli kuponlar veya kupon serileri ile eslesir.' },
-  { key: 'manual_approval', label: 'Manuel Tetikleme', description: 'Bu kosul, personelin POS kampanyalar sekmesinden elle baslatacagi kampanyalar icindir; tetikleme yapildiginda diger kosullar da uyuyorsa kampanya calisir.' },
-  { key: 'days_since_first_activity', label: 'Misafirin ilk aktivitesinden sonraki gecen gun', description: 'Ilk kayit veya siparis tarihinden bu yana gecen gunu kontrol eder.' },
-  { key: 'customer_has_tag', label: 'Musteri kategorisindeyse', description: 'Musterinin secili kategori veya etiketlerden birine ait olmasini ister.' },
-  { key: 'customer_lacks_tag', label: 'Musteri kategorisinde degilse', description: 'Musterinin secili kategori veya etiketlerde olmamasini kontrol eder.' },
-  { key: 'referral_source', label: 'Musteri referans uzerine geldi', description: 'Musterinin referral kodu veya referans baglantisi ile geldigini kontrol eder.' },
-  { key: 'sales_channel', label: 'Satis kanali', description: 'Kampanyanin POS, Garson / Masa, kiosk, online veya mobil kanal bazli calismasini saglar.' },
-  { key: 'order_item_quantity', label: 'Siparis edilen urun miktari', description: 'Secili urunlerin bu siparisteki miktarini kontrol eder.' },
-  { key: 'order_total', label: 'Siparis tutari', description: 'Sepet tutarinin belirtilen esigi gecmesini veya altinda kalmasini kontrol eder.' },
-  { key: 'last_visit_days', label: '... Gundur gelmeyen', description: 'Musterinin son siparisinden bu yana kac gun gectigini kontrol eder; belirli suredir gelmeyen musterileri hedeflemek icin kullanilir.' },
+  { key: 'always', label: 'Her siparişte', description: 'Ek bir koşul aramadan, hedef kitle ve kanal uygunsa her siparişte çalışır.' },
+  { key: 'calendar_schedule', label: 'Takvim', description: 'Periyodik kuralı günlük, haftalık, aylık veya yıllık takvime bağlar.' },
+  { key: 'birthday', label: 'Doğum günü', description: 'Müşterinin doğum günü, önceki ve sonraki gün sayısına göre eşleşir.' },
+  { key: 'period_total_order_amount', label: 'Dönem başına toplam sipariş tutarı', description: 'Müşterinin seçili zaman dilimindeki toplam sipariş tutarını kontrol eder; istenirse mevcut sipariş de hesaba katılır.' },
+  { key: 'period_order_count', label: 'Dönem içindeki ziyaret / sipariş adedi', description: 'Müşterinin belirli dönemde yaptığı ziyaret veya verdiği sipariş sayısını kontrol eder; istenirse mevcut ziyaret / sipariş de bu sayıya dahil edilir.' },
+  { key: 'period_product_quantity', label: 'Dönem içindeki ürün miktarı', description: 'Müşterinin dönem boyunca sipariş ettiği ürün adedini kontrol eder.' },
+  { key: 'period_sold_product_quantity', label: 'Dönem içinde satılan ürün miktarı', description: 'Seçili ürün ve kategorilerin gün, hafta, ay, 3 ay veya yıl içindeki toplam satış adedini kontrol eder.' },
+  { key: 'missing_products', label: 'Ürün siparişte yoksa', description: 'Seçili ürün, kategori veya satış malı şablonundaki ürünler siparişte yoksa tetiklenir.' },
+  { key: 'happy_hour', label: 'Happy hour', description: 'Belirli saat ve gün aralığında koşul sağlanır.' },
+  { key: 'gift_card_series', label: 'Hediye kartı serisi', description: 'Belirli bir hediye kartı veya kupon serisi ile eşleşir.' },
+  { key: 'campaign_triggered', label: 'Kampanya aktifse', description: 'Seçili kampanyalardan biri bu siparişte aktif hale geldiyse veya tetiklendiyse koşul sağlanır.' },
+  { key: 'coupon_present', label: 'Kupon', description: 'Belirli kuponlar veya kupon serileri ile eşleşir.' },
+  { key: 'manual_approval', label: 'Manuel tetikleme', description: 'Bu koşul, personelin POS kampanyalar sekmesinden elle başlatacağı kampanyalar içindir; tetikleme yapıldığında diğer koşullar da uyuyorsa kampanya çalışır.' },
+  { key: 'days_since_first_activity', label: 'Misafirin ilk aktivitesinden sonra geçen gün', description: 'İlk kayıt veya sipariş tarihinden bu yana geçen günü kontrol eder.' },
+  { key: 'customer_has_tag', label: 'Müşteri kategorisindeyse', description: 'Müşterinin seçili kategori veya etiketlerden birine ait olmasını ister.' },
+  { key: 'customer_lacks_tag', label: 'Müşteri kategorisinde değilse', description: 'Müşterinin seçili kategori veya etiketlerde olmamasını kontrol eder.' },
+  { key: 'referral_source', label: 'Müşteri referans üzerine geldi', description: 'Müşterinin referral kodu veya referans bağlantısı ile geldiğini kontrol eder.' },
+  { key: 'sales_channel', label: 'Satış kanalı', description: 'Kampanyanın POS, Garson / Masa, kiosk, online veya mobil kanal bazlı çalışmasını sağlar.' },
+  { key: 'order_item_quantity', label: 'Sipariş edilen ürün miktarı', description: 'Seçili ürünlerin bu siparişteki miktarını kontrol eder.' },
+  { key: 'order_total', label: 'Sipariş tutarı', description: 'Sepet tutarının belirtilen eşiği geçmesini veya altında kalmasını kontrol eder.' },
+  { key: 'last_visit_days', label: '... gündür gelmeyen', description: 'Müşterinin son siparişinden bu yana kaç gün geçtiğini kontrol eder; belirli süredir gelmeyen müşterileri hedeflemek için kullanılır.' },
 ]
 
 export const DEFAULT_LOYALTY_PROGRAM = {
@@ -254,14 +254,6 @@ export const DEFAULT_COUPON_SERIES = [
     expiresInDays: 0,
     autoDeactivateOnExpiry: true,
     active: true,
-    benefitConfig: {
-      type: 'none',
-      amount: 0,
-      percent: 0,
-      maxDiscountAmount: 0,
-      productName: '',
-      productItemId: '',
-    },
     codes: [],
     coupons: [],
   },
@@ -1522,6 +1514,7 @@ function toRuleRow(rule = {}, campaignId) {
 }
 
 function fromCampaignRow(row = {}, index = 0) {
+  const metadata = cloneJson(row.metadata, {})
   return normalizeCampaign({
     id: row.id,
     programId: row.program_id,
@@ -1534,23 +1527,27 @@ function fromCampaignRow(row = {}, index = 0) {
     audienceType: row.audience_json?.type,
     audienceCategoryIds: row.audience_json?.categoryIds,
     channelTargets: row.channel_targets,
-    applicationMode: row.metadata?.applicationMode || row.audience_json?.applicationMode,
-    metadata: row.metadata,
+    applicationMode: metadata.applicationMode || row.audience_json?.applicationMode,
+    metadata,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     priority: row.priority,
     stackable: row.stackable,
-    exclusionGroup: row.metadata?.exclusionGroup || '',
+    exclusionGroup: metadata.conflictGroupId || metadata.exclusionGroup || '',
     active: row.active,
   }, index)
 }
 
 function toCampaignRow(campaign = {}, scopeInfo, programId) {
   const normalized = normalizeCampaign({ ...campaign, programId })
+  const conflictGroupId = String(normalized.metadata?.conflictGroupId || normalized.exclusionGroup || '').trim()
+  const conflictGroupName = String(normalized.metadata?.conflictGroupName || '').trim()
   const metadata = {
     ...cloneJson(normalized.metadata, {}),
     applicationMode: normalized.applicationMode,
-    exclusionGroup: normalized.exclusionGroup || undefined,
+    conflictGroupId: conflictGroupId || undefined,
+    conflictGroupName: conflictGroupName || undefined,
+    exclusionGroup: conflictGroupId || undefined,
   }
   return {
     id: normalized.id,
@@ -1584,6 +1581,37 @@ function toCampaignRow(campaign = {}, scopeInfo, programId) {
   }
 }
 
+function fromCampaignConflictGroupRow(row = {}) {
+  return {
+    id: String(row.id || ''),
+    name: toText(row.name),
+    code: toText(row.code),
+    description: toText(row.description),
+    active: row.active !== false,
+    sortOrder: toInt(row.sort_order, 100),
+    metadata: cloneJson(row.metadata, {}),
+  }
+}
+
+function toCampaignConflictGroupRow(group = {}, scopeInfo) {
+  const name = toText(group.name).trim()
+  const id = String(group.id || uid('campaign-conflict-group'))
+  return {
+    id,
+    scope_type: scopeInfo.scopeType,
+    scope_branch_id: scopeInfo.branchId,
+    scope_branch_name: scopeInfo.branchName || null,
+    name,
+    code: normalizeCode(group.code || name, 'conflict_group'),
+    description: toText(group.description) || null,
+    active: group.active !== false,
+    sort_order: toInt(group.sortOrder ?? group.sort_order, 100),
+    metadata: cloneJson(group.metadata, {}),
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+  }
+}
+
 function fromCouponSeriesRow(row = {}, coupons = []) {
   return normalizeCouponSeries({
     id: row.id,
@@ -1606,6 +1634,21 @@ function fromCouponSeriesRow(row = {}, coupons = []) {
 
 function toCouponSeriesRow(series = {}, scopeInfo) {
   const normalized = normalizeCouponSeries(series)
+  const {
+    benefitConfig,
+    benefit_config,
+    redemptionEffect,
+    redemption_effect,
+    validFrom,
+    valid_from,
+    validUntil,
+    valid_until,
+    expiresInDays,
+    expires_in_days,
+    autoDeactivateOnExpiry,
+    auto_deactivate_on_expiry,
+    ...metadata
+  } = normalized.metadata || {}
   return {
     id: normalized.id,
     scope_type: scopeInfo.scopeType,
@@ -1619,14 +1662,7 @@ function toCouponSeriesRow(series = {}, scopeInfo) {
     charset: normalized.charset,
     use_after_checkout: normalized.useAfterCheckout,
     active: normalized.active,
-    metadata: {
-      ...(normalized.metadata || {}),
-      benefitConfig: normalized.benefitConfig,
-      validFrom: normalized.validFrom || null,
-      validUntil: normalized.validUntil || null,
-      expiresInDays: normalized.expiresInDays || 0,
-      autoDeactivateOnExpiry: normalized.autoDeactivateOnExpiry,
-    },
+    metadata,
     updated_at: new Date().toISOString(),
     deleted_at: null,
   }
@@ -2150,6 +2186,66 @@ export async function loadLoyaltyCustomerCategories(workspace = {}) {
       prodSafe: false,
       categories: [],
     }
+  }
+}
+
+export async function loadLoyaltyCampaignConflictGroups(workspace = {}) {
+  const scopeInfo = getLoyaltyScopeInfo(workspace)
+
+  try {
+    const { data, error } = await applyScopeFilter(
+      db.from('loyalty_campaign_conflict_groups')
+        .select('id,name,code,description,active,sort_order,metadata')
+        .is('deleted_at', null)
+        .order('sort_order')
+        .order('name'),
+      scopeInfo,
+    )
+
+    if (error) throw error
+
+    return {
+      scopeInfo,
+      schemaReady: true,
+      databaseUnavailable: false,
+      dataSource: 'table',
+      fallbackMode: 'none',
+      prodSafe: true,
+      groups: (data || []).map(fromCampaignConflictGroupRow),
+    }
+  } catch (error) {
+    if (!isSchemaMissingError(error)) throw error
+    return {
+      scopeInfo,
+      schemaReady: false,
+      databaseUnavailable: true,
+      dataSource: 'table',
+      fallbackMode: 'none',
+      prodSafe: false,
+      groups: [],
+      schemaIssues: [{
+        code: 'loyalty_campaign_conflict_groups',
+        message: String(error?.message || error?.details || error?.hint || 'Conflict groups table missing'),
+      }],
+    }
+  }
+}
+
+export async function createLoyaltyCampaignConflictGroup(workspace = {}, group = {}) {
+  const scopeInfo = getLoyaltyScopeInfo(workspace)
+  const row = toCampaignConflictGroupRow(group, scopeInfo)
+
+  const { data, error } = await db
+    .from('loyalty_campaign_conflict_groups')
+    .upsert(row, { onConflict: 'id' })
+    .select('id,name,code,description,active,sort_order,metadata')
+    .single()
+
+  if (error) throw error
+
+  return {
+    scopeInfo,
+    group: fromCampaignConflictGroupRow(data || row),
   }
 }
 

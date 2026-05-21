@@ -543,6 +543,24 @@ CREATE TABLE IF NOT EXISTS public.loyalty_campaigns (
   CONSTRAINT loyalty_campaigns_program_id_fkey FOREIGN KEY (program_id) REFERENCES loyalty_programs(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.loyalty_campaign_conflict_groups (
+  id TEXT NOT NULL,
+  scope_type TEXT DEFAULT 'global'::text NOT NULL,
+  scope_branch_id UUID,
+  scope_branch_name TEXT,
+  name TEXT NOT NULL,
+  code TEXT,
+  description TEXT,
+  active BOOLEAN DEFAULT true NOT NULL,
+  sort_order INTEGER DEFAULT 100 NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT loyalty_campaign_conflict_groups_pkey PRIMARY KEY (id),
+  CONSTRAINT loyalty_campaign_conflict_groups_scope_type_check CHECK (scope_type = ANY (ARRAY['global'::text, 'branch'::text]))
+);
+
 CREATE TABLE IF NOT EXISTS public.loyalty_card_transactions (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   card_id UUID NOT NULL,
@@ -1790,6 +1808,9 @@ CREATE INDEX idx_loyalty_campaigns_active ON public.loyalty_campaigns USING btre
 CREATE INDEX idx_loyalty_campaigns_code ON public.loyalty_campaigns USING btree (code);
 CREATE INDEX idx_loyalty_campaigns_program_id ON public.loyalty_campaigns USING btree (program_id);
 CREATE INDEX idx_loyalty_campaigns_scope ON public.loyalty_campaigns USING btree (scope_type, scope_branch_id);
+CREATE INDEX idx_loyalty_campaign_conflict_groups_active ON public.loyalty_campaign_conflict_groups USING btree (active, sort_order);
+CREATE INDEX idx_loyalty_campaign_conflict_groups_scope ON public.loyalty_campaign_conflict_groups USING btree (scope_type, scope_branch_id);
+CREATE UNIQUE INDEX uq_loyalty_campaign_conflict_groups_code_scope ON public.loyalty_campaign_conflict_groups USING btree (scope_type, COALESCE(scope_branch_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(COALESCE(code, name))) WHERE (deleted_at IS NULL);
 CREATE INDEX idx_loyalty_card_transactions_card_id ON public.loyalty_card_transactions USING btree (card_id, occurred_at DESC);
 CREATE INDEX idx_loyalty_card_transactions_customer_id ON public.loyalty_card_transactions USING btree (customer_id, occurred_at DESC);
 CREATE INDEX idx_loyalty_cards_customer_id ON public.loyalty_cards USING btree (customer_id, card_status);
@@ -1912,6 +1933,7 @@ ALTER TABLE public.inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_campaign_redemptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_campaign_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loyalty_campaign_conflict_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_card_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_coupon_series ENABLE ROW LEVEL SECURITY;
@@ -1963,6 +1985,7 @@ CREATE POLICY allow_all ON public.inventory_movements AS PERMISSIVE FOR ALL USIN
 CREATE POLICY allow_all_loyalty_campaign_redemptions ON public.loyalty_campaign_redemptions AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_loyalty_campaign_rules ON public.loyalty_campaign_rules AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_loyalty_campaigns ON public.loyalty_campaigns AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY allow_all_loyalty_campaign_conflict_groups ON public.loyalty_campaign_conflict_groups AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_loyalty_card_transactions ON public.loyalty_card_transactions AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_loyalty_cards ON public.loyalty_cards AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_loyalty_coupon_series ON public.loyalty_coupon_series AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);

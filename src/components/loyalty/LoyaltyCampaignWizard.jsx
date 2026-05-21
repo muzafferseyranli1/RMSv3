@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useToast } from '@/hooks/useToast'
-import { db } from '@/lib/db'
+import { db, uploadApiFile } from '@/lib/db'
 import {
   ACTION_TYPE_OPTIONS,
   CAMPAIGN_APPLICATION_MODE_OPTIONS,
@@ -21,7 +21,9 @@ import {
   getDefaultConditionConfig,
   getLoyaltyScopeInfo,
   getSalesChannelConditionValues,
+  createLoyaltyCampaignConflictGroup,
   loadLoyaltyCustomerCategories,
+  loadLoyaltyCampaignConflictGroups,
   loadLoyaltyWorkspace,
   normalizeCampaign,
   normalizeProgram,
@@ -134,7 +136,7 @@ const GOAL_PRESETS = [
   {
     value: 'new_customer',
     title: 'Yeni musteri kazan',
-    description: 'Ilk aktivite, referans ve hos geldin odulu odakli baslangic akisi.',
+    description: 'İlk aktivite, referans ve hoş geldin ödülü odaklı başlangıç akışı.',
     icon: 'fa-solid fa-user-plus',
     color: '#2563eb',
     bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
@@ -153,7 +155,7 @@ const GOAL_PRESETS = [
   {
     value: 'basket',
     title: 'Sepet ortalamasini buyut',
-    description: 'Sepet esigi, urun adedi ve siparis indirimiyle hizli satis kampanyasi.',
+    description: 'Sepet eşiği, ürün adedi ve sipariş indirimiyle hızlı satış kampanyası.',
     icon: 'fa-solid fa-cart-shopping',
     color: '#16a34a',
     bgGradient: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
@@ -172,7 +174,7 @@ const GOAL_PRESETS = [
   {
     value: 'frequency',
     title: 'Ziyaret sikligini artir',
-    description: 'Donem icinde siparis sayisi veya son ziyaret uzerinden geri kazan.',
+    description: 'Dönem içindeki sipariş sayısı veya son ziyaret üzerinden geri kazan.',
     icon: 'fa-solid fa-arrow-trend-up',
     color: '#d97706',
     bgGradient: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
@@ -376,14 +378,14 @@ const MONTH_OPTIONS = [
 const CALENDAR_FREQUENCY_OPTIONS = [
   { value: 'daily', label: 'Gunluk' },
   { value: 'weekly', label: 'Haftalik' },
-  { value: 'monthly', label: 'Aylik' },
-  { value: 'yearly', label: 'Yillik' },
+  { value: 'monthly', label: 'Aylık' },
+  { value: 'yearly', label: 'Yıllık' },
 ]
 const CALENDAR_DAY_OPTIONS = [
   { value: 'last', label: 'Ayin son gunu' },
   ...Array.from({ length: 31 }, (_, index) => ({
     value: index + 1,
-    label: `${index + 1}. gun`,
+    label: `${index + 1}. gün`,
   })),
 ]
 const TIMEZONE_OPTIONS = [
@@ -395,10 +397,10 @@ const CUSTOMER_TARGET_OPTIONS = [
   { value: 'linked_customer', label: 'Bagli musteri' },
 ]
 const GIFT_CARD_MODE_OPTIONS = [
-  { value: 'series_selected', label: 'Musteri hediye karti serisi belirtildi' },
-  { value: 'series_missing', label: 'Musteri hediye kartinin serisi yok' },
-  { value: 'matches_series', label: 'Musteri hediye karti secili seriyle eslesiyor' },
-  { value: 'not_matching_series', label: 'Musteri hediye kartinin serisi yok veya seriyle eslesmiyor' },
+  { value: 'series_selected', label: 'Müşteri hediye kartı serisi belirtildi' },
+  { value: 'series_missing', label: 'Müşteri hediye kartının serisi yok' },
+  { value: 'matches_series', label: 'Müşteri hediye kartı seçili seriyle eşleşiyor' },
+  { value: 'not_matching_series', label: 'Müşteri hediye kartının serisi yok veya seriyle eşleşmiyor' },
 ]
 const MASK_TYPE_OPTIONS = [
   { value: 'product', label: 'Urun' },
@@ -406,7 +408,7 @@ const MASK_TYPE_OPTIONS = [
   { value: 'combo', label: 'Kombo' },
 ]
 const PRICING_APPLY_OPTIONS = [
-  { value: 'all_matches', label: 'Tum eslesenler' },
+  { value: 'all_matches', label: 'Tüm eşleşenler' },
   { value: 'cheapest', label: 'En ucuz' },
   { value: 'most_expensive', label: 'En pahali' },
 ]
@@ -421,10 +423,46 @@ const COMBO_PRICE_MODE_OPTIONS = [
   { value: 'dynamic', label: 'Dinamik fiyat' },
 ]
 const STACKING_RULE_OPTIONS = [
-  { value: 'stackable', label: 'Birlesebilir', desc: 'Diger aktif kampanyalarla ayni sipariste birlikte calisabilir.' },
-  { value: 'group', label: 'Grup bazli cakis', desc: 'Ayni exclusion group icindeki kampanyalarla catisir.' },
-  { value: 'exclusive', label: 'Munhasir', desc: 'Diger munhasir kampanyalarla catisir.' },
+  { value: 'stackable', label: 'Birlesebilir', desc: 'Diger aktif kampanyalarla ayni sipariste birlikte calisabilir.', icon: 'fa-solid fa-layer-group', color: '#16a34a' },
+  { value: 'group', label: 'Grup bazlı çakış', desc: 'Aynı exclusion group içindeki kampanyalarla çatışır.', icon: 'fa-solid fa-object-group', color: '#2563eb' },
+  { value: 'exclusive', label: 'Münhasır', desc: 'Diğer münhasır kampanyalarla çatışır.', icon: 'fa-solid fa-lock', color: '#dc2626' },
 ]
+
+const STACKING_RULE_HELP = {
+  stackable: {
+    title: 'Birleşebilir nasıl çalışır?',
+    summary: 'Bu kampanya, şartları sağlayan diğer kampanyalarla aynı siparişte birlikte uygulanabilir.',
+    examples: [
+      '`%10 kahve indirimi` ile `2x puan` aynı siparişte birlikte çalışabilir.',
+      '`Menü alana patates hediyesi` ile `sepette 50 TL indirim` aynı anda uygulanabilir.',
+      '`Doğum günü indirimi` ile `sadakat puanı kazandır` kampanyası beraber çalışabilir.',
+    ],
+    usage: 'Bir siparişte birden fazla farklı fayda aynı anda verilsin istiyorsanız bu seçenek en doğru tercihtir.',
+    priority: 'Öncelik genelde gerekli olmaz; bu mod çatışma yaratmak yerine birlikte çalışmayı hedefler.',
+  },
+  group: {
+    title: 'Grup bazlı çakış nasıl çalışır?',
+    summary: 'Bu kampanya sadece aynı kampanya grubuna bağlı kampanyalarla çatışır; diğer kampanyalarla birlikte çalışabilir.',
+    examples: [
+      '`burger_indirimleri` grubunda `%20 burger indirimi` ile `2. burger %50` aynı anda çalışmaz; düşük öncelik sayısı kazanır.',
+      '`icecek_faydalari` grubunda `büyük boy içecek bedava` ile `içecekte %30 indirim` birlikte uygulanmaz.',
+      '`tatlı_kampanyaları` grubunda iki farklı tatlı indirimi varsa kasada sadece kazanan kampanya devreye girer.',
+    ],
+    usage: 'Aynı tür kampanyalardan sadece biri seçilsin, ama diğer kategorilerdeki kampanyalar beraber çalışsın istiyorsanız bunu seçin.',
+    priority: 'Öncelik bu modda kritik olur; örnek `10`, `30`dan daha güçlüdür ve çakışınca kazanır.',
+  },
+  exclusive: {
+    title: 'Münhasır nasıl çalışır?',
+    summary: 'Bu kampanya tüm münhasır kampanyalarla çatışır; siparişte sadece tek bir münhasır kampanya kazanır.',
+    examples: [
+      '`Sepette %15 genel indirim` ile `500 TL üstü 100 TL indirim` ikisi de münhasır ise aynı siparişte sadece biri uygulanır.',
+      '`Tüm ürünlerde %20 indirim` ile `hesaba sabit 75 TL indirim` beraber çalışmaz; daha yüksek öncelik kazanır.',
+      '`Kasiyer onaylı büyük kampanya` ile `hafta sonu genel indirim` ikisi de münhasır ise tek kazanan seçilir.',
+    ],
+    usage: 'Kampanya ne olursa olsun bu siparişte sadece tek bir büyük indirim veya tek bir kazanan olsun istiyorsanız bunu seçin.',
+    priority: 'Öncelik bu modda belirleyicidir; en düşük sayı tek kazanan kampanyayı belirler.',
+  },
+}
 
 // RUNTIME_STATUS_META and helpers imported from loyaltyRuntimeStatus.js
 
@@ -469,6 +507,69 @@ function MiniBadge({ active, trueLabel, falseLabel }) {
       {active ? trueLabel : falseLabel}
     </span>
   )
+}
+
+function CampaignConflictPeerRow({ campaign, color }) {
+  return (
+    <div style={{
+      border: `1px solid ${color}33`,
+      borderRadius: 10,
+      padding: '8px 10px',
+      background: '#fff',
+      display: 'grid',
+      gap: 3,
+    }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0, 1fr) auto', gap: 8, alignItems: 'center' }}>
+        <strong style={{ color }}>#{formatNumberInputValue(campaign.priority, '0')}</strong>
+        <span style={{ color: '#334155', fontWeight: 800, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name || campaign.code || campaign.id}</span>
+        <span style={{ color: '#64748b', fontSize: '.74rem', whiteSpace: 'nowrap' }}>{campaign.applicationMode === 'auto' ? 'Otomatik' : 'Kasiyere sor'}</span>
+      </div>
+      {campaign.description ? (
+        <div style={{ color: '#94a3b8', fontSize: '.72rem', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 56 }}>
+          {campaign.description}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function normalizeCampaignImageLibrary(metadata = {}) {
+  const legacyImage = metadata.campaignImage && typeof metadata.campaignImage === 'object' ? metadata.campaignImage : null
+  const library = Array.isArray(metadata.campaignImages) ? metadata.campaignImages : []
+  const images = library
+    .map((image, index) => ({
+      id: String(image.id || `campaign-image-${index + 1}`),
+      url: String(image.url || '').trim(),
+      fileName: image.fileName || image.filename || '',
+      title: image.title || image.fileName || image.filename || `Görsel ${index + 1}`,
+      storage: image.storage || 'railway',
+      mimeType: image.mimeType || image.mimetype || '',
+      size: image.size || 0,
+      uploadedAt: image.uploadedAt || image.createdAt || '',
+      isPrimary: Boolean(image.isPrimary),
+    }))
+    .filter(image => image.url)
+
+  if (legacyImage?.url && !images.some(image => image.url === legacyImage.url)) {
+    images.unshift({
+      id: legacyImage.id || 'campaign-image-legacy',
+      url: legacyImage.url,
+      fileName: legacyImage.fileName || legacyImage.filename || '',
+      title: legacyImage.title || legacyImage.fileName || legacyImage.filename || 'Ana görsel',
+      storage: legacyImage.storage || 'railway',
+      mimeType: legacyImage.mimeType || legacyImage.mimetype || '',
+      size: legacyImage.size || 0,
+      uploadedAt: legacyImage.uploadedAt || legacyImage.createdAt || '',
+      isPrimary: true,
+    })
+  }
+
+  const primaryId = String(metadata.primaryCampaignImageId || images.find(image => image.isPrimary)?.id || images[0]?.id || '')
+  return {
+    images: images.map(image => ({ ...image, isPrimary: image.id === primaryId })),
+    primaryId,
+    primaryImage: images.find(image => image.id === primaryId) || images[0] || null,
+  }
 }
 
 function RuntimeStatusBadge({ status }) {
@@ -606,7 +707,7 @@ function SearchableMultiSelect({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ fontSize: '.74rem', color: '#64748b' }}>{selectedOptions.length} secim</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {allowSelectAll ? <button className="btn-o" type="button" onClick={selectAll}>Tumunu Sec</button> : null}
+                {allowSelectAll ? <button className="btn-o" type="button" onClick={selectAll}>Tümünü Seç</button> : null}
                 <button className="btn-o" type="button" onClick={() => onChange([])}>Temizle</button>
               </div>
             </div>
@@ -689,8 +790,8 @@ function formatPlainNumber(value) {
 }
 
 function formatPeriodWindow(period, periodDays = 30) {
-  if (period === 'rolling_days') return `son ${Math.max(1, Number(periodDays) || 30)} gun`
-  return getOptionLabel(PERIOD_OPTIONS, period, 'Tum zamanlar').toLowerCase()
+  if (period === 'rolling_days') return `son ${Math.max(1, Number(periodDays) || 30)} gün`
+  return getOptionLabel(PERIOD_OPTIONS, period, 'Tüm zamanlar').toLowerCase()
 }
 
 function formatComparisonNatural(operator) {
@@ -705,7 +806,7 @@ function formatComparisonNatural(operator) {
   }
 }
 
-function formatCurrentOrderInclusion(config = {}, label = 'mevcut siparis dahil') {
+function formatCurrentOrderInclusion(config = {}, label = 'mevcut sipariş dahil') {
   return config.includeCurrentOrder !== false ? label : 'yalnizca onceki kayitlar'
 }
 
@@ -713,15 +814,15 @@ function formatBirthdayWindow(daysBefore = 0, daysAfter = 0) {
   const before = Number(daysBefore) || 0
   const after = Number(daysAfter) || 0
   if (before <= 0 && after <= 0) return 'dogum gununde'
-  if (before > 0 && after > 0) return `dogum gununden ${before} gun once ve ${after} gun sonra`
-  if (before > 0) return `dogum gununden ${before} gun once`
-  return `dogum gununden ${after} gun sonra`
+  if (before > 0 && after > 0) return `doğum gününden ${before} gün önce ve ${after} gün sonra`
+  if (before > 0) return `doğum gününden ${before} gün önce`
+  return `doğum gününden ${after} gün sonra`
 }
 
 function formatWeekdaySummary(days = []) {
   const labels = WEEKDAY_OPTIONS.filter((_, index) => Boolean(days?.[index]))
-  if (labels.length === 0) return 'gun secilmedi'
-  if (labels.length === WEEKDAY_OPTIONS.length) return 'her gun'
+  if (labels.length === 0) return 'gün seçilmedi'
+  if (labels.length === WEEKDAY_OPTIONS.length) return 'her gün'
   return labels.join(', ')
 }
 
@@ -737,12 +838,12 @@ function formatHappyHourSummary(windows = []) {
 function formatCalendarScheduleSummary(config = {}) {
   const frequency = config.frequency || 'daily'
   const weekdayLabels = WEEKDAY_OPTIONS.filter((_, index) => Boolean(config.weekdays?.[index]))
-  const dayLabel = config.dayOfMonth === 'last' ? 'ayin son gunu' : `${config.dayOfMonth || 1}. gun`
+  const dayLabel = config.dayOfMonth === 'last' ? 'ayın son günü' : `${config.dayOfMonth || 1}. gün`
   const monthLabel = MONTH_OPTIONS.find(option => Number(option.value) === Number(config.monthOfYear || 1))?.label || 'Ocak'
   switch (frequency) {
     case 'weekly': return `Haftalik${weekdayLabels.length ? ` (${weekdayLabels.join(', ')})` : ''}`
-    case 'monthly': return `Aylik (${dayLabel})`
-    case 'yearly': return `Yillik (${dayLabel} / ${monthLabel})`
+    case 'monthly': return `Aylık (${dayLabel})`
+    case 'yearly': return `Yıllık (${dayLabel} / ${monthLabel})`
     default: return 'Gunluk'
   }
 }
@@ -797,7 +898,7 @@ function buildConditionSummary(rule, context = {}) {
   const conditionMeta = getConditionMeta(rule.conditionKey)
   const config = rule.conditionConfig || {}
   const extraConditions = Array.isArray(config.additionalConditions) ? config.additionalConditions.length : 0
-  const joinerSuffix = extraConditions > 0 ? ` + ${extraConditions} ek kosul (${config.additionalConditionsMode === 'or' ? 'VEYA' : 'VE'})` : ''
+  const joinerSuffix = extraConditions > 0 ? ` + ${extraConditions} ek koşul (${config.additionalConditionsMode === 'or' ? 'VEYA' : 'VE'})` : ''
   const summaryContext = createRuleSummaryContext(context)
   const categoryLabels = formatCompactList(getMappedLabels(config.tags, summaryContext.customerCategoryMap))
   const seriesLabels = formatCompactList(getMappedLabels(config.seriesIds, summaryContext.couponSeriesMap))
@@ -818,7 +919,7 @@ function buildConditionSummary(rule, context = {}) {
     case 'order_total':
       return `${conditionMeta.label}: ${formatComparisonNatural(config.operator || rule.operator)} ${formatAmount(config.amount || 0)}${joinerSuffix}`
     case 'period_order_count':
-      return `${conditionMeta.label}: ${periodLabel} icinde ${formatComparisonNatural(config.operator || rule.operator)} ${config.count || 0} (${formatCurrentOrderInclusion(config, 'mevcut ziyaret / siparis dahil')})${joinerSuffix}`
+      return `${conditionMeta.label}: ${periodLabel} içinde ${formatComparisonNatural(config.operator || rule.operator)} ${config.count || 0} (${formatCurrentOrderInclusion(config, 'mevcut ziyaret / sipariş dahil')})${joinerSuffix}`
     case 'period_product_quantity':
       return `${conditionMeta.label}: ${periodLabel} icinde ${formatComparisonNatural(config.operator || rule.operator)} ${config.quantity || 0}${productMaskSummary ? ` (${productMaskSummary})` : ''}${joinerSuffix}`
     case 'period_sold_product_quantity':
@@ -826,9 +927,9 @@ function buildConditionSummary(rule, context = {}) {
     case 'order_item_quantity':
       return `${conditionMeta.label}: ${formatComparisonNatural(config.operator || rule.operator)} ${config.quantity || 0}${productMaskSummary ? ` (${productMaskSummary})` : ''}${joinerSuffix}`
     case 'last_visit_days':
-      return `${conditionMeta.label}: ${config.days || 0} gun ve daha uzun suredir${joinerSuffix}`
+      return `${conditionMeta.label}: ${config.days || 0} gün ve daha uzun süredir${joinerSuffix}`
     case 'days_since_first_activity':
-      return `${conditionMeta.label}: ${formatComparisonNatural(config.operator || rule.operator)} ${config.days || 0} gun${joinerSuffix}`
+      return `${conditionMeta.label}: ${formatComparisonNatural(config.operator || rule.operator)} ${config.days || 0} gün${joinerSuffix}`
     case 'gift_card_series':
       return `${conditionMeta.label}: ${getOptionLabel(GIFT_CARD_MODE_OPTIONS, config.mode, 'seri eslesmesi')}${seriesLabels ? ` (${seriesLabels})` : ''}${joinerSuffix}`
     case 'campaign_triggered':
@@ -836,13 +937,13 @@ function buildConditionSummary(rule, context = {}) {
     case 'coupon_present':
       return `${conditionMeta.label}: ${config.anySeries ? 'herhangi bir seri' : (seriesLabels || 'secili seriler')}${joinerSuffix}`
     case 'happy_hour':
-      return `${conditionMeta.label}: ${happyHourSummary || 'gun ve saat araligi secin'}${joinerSuffix}`
+      return `${conditionMeta.label}: ${happyHourSummary || 'gün ve saat aralığı seçin'}${joinerSuffix}`
     case 'customer_has_tag':
       return `${conditionMeta.label}: ${categoryLabels || 'secili kategoriler'}${joinerSuffix}`
     case 'customer_lacks_tag':
       return `${conditionMeta.label}: ${categoryLabels || 'secili kategoriler'} haric${joinerSuffix}`
     case 'sales_channel':
-      return `${conditionMeta.label}: ${formatSalesChannelSelections(config, summaryContext.salesChannelMap) || 'secili satis kanallari'}${joinerSuffix}`
+      return `${conditionMeta.label}: ${formatSalesChannelSelections(config, summaryContext.salesChannelMap) || 'seçili satış kanalları'}${joinerSuffix}`
     case 'missing_products':
       return `${conditionMeta.label}: ${productMaskSummary || 'secili urun / kategori / sablon filtreleri'} eksik${joinerSuffix}`
     default:
@@ -881,7 +982,7 @@ function buildActionSummary(rule, context = {}) {
     case 'special_discount':
       return `${formatAmount(config.amount || 0)} ozel indirim uygula`
     case 'order_discount_amount':
-      return `${formatAmount(config.amount || 0)} siparis indirimi uygula`
+      return `${formatAmount(config.amount || 0)} sipariş indirimi uygula`
     case 'order_extra_charge_amount':
       return `${formatAmount(config.amount || 0)} ek ucret uygula`
     case 'order_extra_charge_percent':
@@ -889,13 +990,13 @@ function buildActionSummary(rule, context = {}) {
     case 'discount_percent':
       return `%${config.percent || 0} indirim uygula`
     case 'total_order_discount_percent':
-      return `%${config.percent || 0} toplam siparis indirimi uygula`
+      return `%${config.percent || 0} toplam sipariş indirimi uygula`
     case 'warning_message':
       return String(config.message || '').trim() || actionLabel
     case 'bonus_points':
       return `${config.points || 0} puan yukle`
     case 'points_percent_of_order':
-      return `siparis tutarinin %${config.percent || 0} kadar puan kazandir`
+      return `sipariş tutarının %${config.percent || 0} kadar puan kazandır`
     case 'points_earn_multiplier':
       return `puan kazanimi x${formatPlainNumber(config.multiplier || 1)} katsayi ile uygula`
     case 'points_redeem_multiplier':
@@ -957,6 +1058,33 @@ function createComboGroupItem() {
   return { id: createId('combo-item'), type: 'product', name: '', size: '', blockedOptions: '', priceAdjustment: 0, position: 0 }
 }
 
+function campaignChannelsOverlap(left = {}, right = {}) {
+  const leftTargets = Array.isArray(left.channelTargets) ? left.channelTargets.map(String).filter(Boolean) : []
+  const rightTargets = Array.isArray(right.channelTargets) ? right.channelTargets.map(String).filter(Boolean) : []
+  if (leftTargets.length === 0 || rightTargets.length === 0) return true
+  const rightSet = new Set(rightTargets)
+  return leftTargets.some(target => rightSet.has(target))
+}
+
+function campaignAudiencesOverlap(left = {}, right = {}) {
+  const leftType = left.audienceType || 'all'
+  const rightType = right.audienceType || 'all'
+  if (leftType !== 'tagged_customers' || rightType !== 'tagged_customers') return true
+  const leftCategories = Array.isArray(left.audienceCategoryIds) ? left.audienceCategoryIds.map(String).filter(Boolean) : []
+  const rightCategories = Array.isArray(right.audienceCategoryIds) ? right.audienceCategoryIds.map(String).filter(Boolean) : []
+  if (leftCategories.length === 0 || rightCategories.length === 0) return true
+  const rightSet = new Set(rightCategories)
+  return leftCategories.some(categoryId => rightSet.has(categoryId))
+}
+
+function campaignOperationalScopeOverlaps(left = {}, right = {}) {
+  return campaignChannelsOverlap(left, right) && campaignAudiencesOverlap(left, right)
+}
+
+function getCampaignConflictGroupId(campaign = {}) {
+  return String(campaign.metadata?.conflictGroupId || campaign.exclusionGroup || campaign.metadata?.exclusionGroup || '').trim()
+}
+
 function createDraftRule(conditionKey, actionType, scope = 'applicable', index = 0) {
   return hydrateEditorRuleFromDraft({
     id: createId('rule'),
@@ -1007,9 +1135,9 @@ function createBlankCampaign(programId, goalPreset = GOAL_PRESETS[0]) {
 function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition, onAddAction, onDeleteCondition, onDeleteAction, onToggleConditionJoiner, summaryContext }) {
   const conditions = getEditorRuleConditions(rule)
   const actions = getEditorRuleActions(rule)
-  const primaryConditionLabel = conditions[0] ? getConditionMeta(conditions[0].conditionKey).label : 'Bos kosul blogu'
-  const blockTitle = conditions.length > 1 ? `${primaryConditionLabel} + ${conditions.length - 1} kosul` : primaryConditionLabel
-  const blockMeta = `${conditions.length} kosul / ${actions.length} eylem`
+  const primaryConditionLabel = conditions[0] ? getConditionMeta(conditions[0].conditionKey).label : 'Boş koşul bloğu'
+  const blockTitle = conditions.length > 1 ? `${primaryConditionLabel} + ${conditions.length - 1} koşul` : primaryConditionLabel
+  const blockMeta = `${conditions.length} koşul / ${actions.length} eylem`
   const conditionJoinerMode = rule.conditionConfig?.additionalConditionsMode === 'or' ? 'or' : 'and'
 
   return (
@@ -1028,7 +1156,7 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
               color: '#1d4ed8',
               border: '1px solid #bfdbfe',
             }}>
-              Kosul Blogu
+              Koşul Bloğu
             </span>
             <MiniBadge active={rule.active} trueLabel="Aktif" falseLabel="Pasif" />
             {rule.stopProcessing ? <MiniBadge active trueLabel="Akisi durdurur" falseLabel="" /> : null}
@@ -1045,16 +1173,16 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
         <div style={{ borderRadius: 12, border: '1px solid #dbeafe', background: '#f8fbff', padding: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
             <div style={{ fontSize: '.72rem', fontWeight: 900, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-              Kosul
+              Koşul
             </div>
             <button className="btn-o" type="button" onClick={onAddCondition}>
               <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-              Kosul Ekle
+              Koşul Ekle
             </button>
           </div>
           {conditions.length === 0 ? (
             <div style={{ borderRadius: 10, border: '1px dashed #bfdbfe', padding: 10, color: '#64748b', fontSize: '.84rem' }}>
-              Henuz kosul eklenmedi.
+              Henüz koşul eklenmedi.
             </div>
           ) : conditions.map((condition, index) => {
             const pseudoRule = {
@@ -1077,7 +1205,7 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn-o" type="button" onClick={() => onEditCondition(condition.id)}>Duzenle</button>
+                      <button className="btn-o" type="button" onClick={() => onEditCondition(condition.id)}>Düzenle</button>
                       <button className="btn-danger" type="button" onClick={() => onDeleteCondition(condition.id)}><i className="fa-solid fa-trash" /></button>
                     </div>
                   </div>
@@ -1137,7 +1265,7 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
           </div>
           {actions.length === 0 ? (
             <div style={{ borderRadius: 10, border: '1px dashed #fde68a', padding: 10, color: '#64748b', fontSize: '.84rem' }}>
-              Henuz eylem eklenmedi.
+              Henüz eylem eklenmedi.
             </div>
           ) : actions.map((action, index) => {
             const pseudoRule = {
@@ -1161,7 +1289,7 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn-o" type="button" onClick={() => onEditAction(action.id)}>Duzenle</button>
+                      <button className="btn-o" type="button" onClick={() => onEditAction(action.id)}>Düzenle</button>
                       <button className="btn-danger" type="button" onClick={() => onDeleteAction(action.id)}><i className="fa-solid fa-trash" /></button>
                     </div>
                   </div>
@@ -1354,6 +1482,7 @@ function getCampaignSummaryText(campaign, selectedGoal, customerCategories, sale
 export default function LoyaltyCampaignWizard() {
   const toast = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const { campaignId } = useParams()
   const workspace = useWorkspace()
   const [currentStep, setCurrentStep] = useState(0)
@@ -1368,6 +1497,7 @@ export default function LoyaltyCampaignWizard() {
   const [program, setProgram] = useState(normalizeProgram(DEFAULT_LOYALTY_PROGRAM))
   const [tiers, setTiers] = useState([])
   const [couponSeries, setCouponSeries] = useState([])
+  const [conflictGroups, setConflictGroups] = useState([])
   const [existingCampaigns, setExistingCampaigns] = useState([])
   const [customerCategories, setCustomerCategories] = useState([])
   const [salesChannels, setSalesChannels] = useState(CAMPAIGN_CHANNEL_OPTIONS.map(option => ({ value: option.value, label: option.label })))
@@ -1383,11 +1513,17 @@ export default function LoyaltyCampaignWizard() {
   const [scopeInfo, setScopeInfo] = useState(null)
   const [schemaIssues, setSchemaIssues] = useState([])
   const [ruleEditorState, setRuleEditorState] = useState(null)
+  const [stackingHelpKey, setStackingHelpKey] = useState(null)
+  const [campaignImageUploading, setCampaignImageUploading] = useState(false)
+  const [conflictGroupModalOpen, setConflictGroupModalOpen] = useState(false)
+  const [conflictGroupDraft, setConflictGroupDraft] = useState({ name: '', description: '' })
+  const [conflictGroupSaving, setConflictGroupSaving] = useState(false)
   const workspaceSnapshotRef = useRef({
     program: normalizeProgram(DEFAULT_LOYALTY_PROGRAM),
     tiers: [],
     campaigns: [],
     couponSeries: [],
+    conflictGroups: [],
   })
 
   const activeCustomerCategories = useMemo(
@@ -1464,9 +1600,15 @@ export default function LoyaltyCampaignWizard() {
           branchName: workspace.branchName,
         }
 
-        const [workspaceResult, categoryResult, lookupResults] = await Promise.all([
+        const [workspaceResult, categoryResult, conflictGroupResult, lookupResults] = await Promise.all([
           loadLoyaltyWorkspaceWithRetry(workspacePayload),
           loadLoyaltyCustomerCategories(workspacePayload).catch(() => ({ categories: [] })),
+          loadLoyaltyCampaignConflictGroups(workspacePayload).catch(error => ({
+            groups: [],
+            schemaReady: false,
+            databaseUnavailable: true,
+            schemaIssues: [{ code: 'loyalty_campaign_conflict_groups', message: String(error?.message || 'Conflict groups load failed') }],
+          })),
           Promise.allSettled([
             db.from('sales_channels').select('id,name,deleted_at').is('deleted_at', null).order('sort_order').order('name'),
             db.from('sales_items').select('id,name,sku,deleted_at').is('deleted_at', null).order('name'),
@@ -1483,23 +1625,29 @@ export default function LoyaltyCampaignWizard() {
         const safeCampaigns = Array.isArray(workspaceResult?.campaigns) ? workspaceResult.campaigns : []
         const safeCouponSeries = Array.isArray(workspaceResult?.couponSeries) ? workspaceResult.couponSeries : []
         const safeTiers = Array.isArray(workspaceResult?.tiers) ? workspaceResult.tiers : []
+        const safeConflictGroups = Array.isArray(conflictGroupResult?.groups) ? conflictGroupResult.groups : []
 
         workspaceSnapshotRef.current = {
           program: safeProgram,
           tiers: safeTiers,
           campaigns: safeCampaigns,
           couponSeries: safeCouponSeries,
+          conflictGroups: safeConflictGroups,
         }
 
         setProgram(safeProgram)
         setTiers(safeTiers)
         setCouponSeries(safeCouponSeries)
+        setConflictGroups(safeConflictGroups)
         setExistingCampaigns(safeCampaigns)
         setCustomerCategories(categoryResult?.categories || [])
         setScopeInfo(workspaceResult?.scopeInfo || getLoyaltyScopeInfo(workspacePayload))
         setSchemaReady(Boolean(workspaceResult?.schemaReady))
         setDatabaseUnavailable(Boolean(workspaceResult?.databaseUnavailable))
-        setSchemaIssues(Array.isArray(workspaceResult?.schemaIssues) ? workspaceResult.schemaIssues : [])
+        setSchemaIssues([
+          ...(Array.isArray(workspaceResult?.schemaIssues) ? workspaceResult.schemaIssues : []),
+          ...(Array.isArray(conflictGroupResult?.schemaIssues) ? conflictGroupResult.schemaIssues : []),
+        ])
 
         const [salesChannelsResult, saleItemsResult, saleCategoriesResult, saleTemplatesResult, companyTreeResult, branchTemplatesResult] = lookupResults
 
@@ -1578,7 +1726,9 @@ export default function LoyaltyCampaignWizard() {
   const activeRules = wizardCampaign.applicableRules || []
   const periodicRules = wizardCampaign.periodicRules || []
   const visibleRules = ruleScopeTab === 'periodic' ? periodicRules : activeRules
-  const mergeMode = wizardCampaign.stackable ? 'stackable' : (wizardCampaign.exclusionGroup ? 'group' : 'exclusive')
+  const mergeMode = wizardCampaign.stackable
+    ? 'stackable'
+    : (wizardCampaign.metadata?.stackMode === 'group' || wizardCampaign.exclusionGroup ? 'group' : 'exclusive')
   const audienceOptions = CAMPAIGN_AUDIENCE_OPTIONS
   const goalPreset = GOAL_PRESETS.find(item => item.value === selectedGoal) || GOAL_PRESETS[0]
   const campaignChannelOptions = useMemo(
@@ -1589,6 +1739,39 @@ export default function LoyaltyCampaignWizard() {
     })),
     [salesChannels],
   )
+  const operationalPeerCampaigns = useMemo(() => (
+    existingCampaigns
+      .filter(campaign => String(campaign.id) !== String(wizardCampaign.id))
+      .filter(campaign => campaign?.active !== false)
+      .filter(campaign => campaignOperationalScopeOverlaps(campaign, wizardCampaign))
+  ), [existingCampaigns, wizardCampaign])
+  const stackablePeerCampaigns = useMemo(() => (
+    operationalPeerCampaigns
+      .filter(campaign => campaign.stackable)
+      .sort((left, right) => Number(left.priority || 0) - Number(right.priority || 0) || String(left.name || '').localeCompare(String(right.name || ''), 'tr'))
+  ), [operationalPeerCampaigns])
+  const activeExclusiveCampaigns = useMemo(() => (
+    operationalPeerCampaigns
+      .filter(campaign => !campaign.stackable && !getCampaignConflictGroupId(campaign))
+      .sort((left, right) => Number(left.priority || 0) - Number(right.priority || 0) || String(left.name || '').localeCompare(String(right.name || ''), 'tr'))
+  ), [operationalPeerCampaigns])
+  const activeConflictGroups = useMemo(() => (
+    conflictGroups.filter(group => group?.active !== false)
+  ), [conflictGroups])
+  const selectedConflictGroupId = String(wizardCampaign.metadata?.conflictGroupId || wizardCampaign.exclusionGroup || '').trim()
+  const selectedConflictGroup = useMemo(() => (
+    activeConflictGroups.find(group => String(group.id) === selectedConflictGroupId)
+    || activeConflictGroups.find(group => String(group.name || '').trim() === selectedConflictGroupId)
+    || null
+  ), [activeConflictGroups, selectedConflictGroupId])
+  const selectedGroupCampaigns = useMemo(() => {
+    const groupId = selectedConflictGroup?.id || selectedConflictGroupId
+    if (!groupId) return []
+    return operationalPeerCampaigns
+      .filter(campaign => getCampaignConflictGroupId(campaign) === groupId)
+      .sort((left, right) => Number(left.priority || 0) - Number(right.priority || 0) || String(left.name || '').localeCompare(String(right.name || ''), 'tr'))
+  }, [operationalPeerCampaigns, selectedConflictGroup?.id, selectedConflictGroupId])
+  const activeStackingHelp = stackingHelpKey ? STACKING_RULE_HELP[stackingHelpKey] : null
 
   const activeRuleEditorRule = useMemo(() => {
     if (!ruleEditorState) return null
@@ -1609,6 +1792,128 @@ export default function LoyaltyCampaignWizard() {
       ...(typeof patch === 'function' ? patch(current) : patch),
     }))
   }, [])
+
+  async function uploadCampaignImage(file) {
+    if (!file) return
+    if (!file.type?.startsWith('image/')) {
+      toast('Lütfen kampanya görseli için bir resim dosyası seçin.', 'error')
+      return
+    }
+    setCampaignImageUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'loyalty-campaigns')
+      formData.append('entity', 'loyalty_campaign')
+      const uploaded = await uploadApiFile(formData)
+      const url = uploaded?.url || uploaded?.publicUrl || uploaded?.public_url || uploaded?.path || uploaded?.fileUrl || uploaded?.file_url || ''
+      if (!url) throw new Error('Yükleme başarılı oldu ancak dosya URL bilgisi dönmedi.')
+      const imageId = createId('campaign-image')
+      const imageRecord = {
+        id: imageId,
+        storage: 'railway',
+        url,
+        fileName: uploaded?.fileName || uploaded?.filename || file.name,
+        title: uploaded?.fileName || uploaded?.filename || file.name,
+        mimeType: uploaded?.mimeType || uploaded?.mimetype || file.type,
+        size: uploaded?.size || file.size,
+        uploadedAt: new Date().toISOString(),
+      }
+      updateCampaign(current => ({
+        metadata: (() => {
+          const metadata = current.metadata || {}
+          const library = normalizeCampaignImageLibrary(metadata)
+          const nextImages = [...library.images.map(image => ({ ...image, isPrimary: false })), imageRecord]
+          const primaryId = library.primaryId || imageId
+          return {
+            ...metadata,
+            campaignImages: nextImages.map(image => ({ ...image, isPrimary: image.id === primaryId })),
+            primaryCampaignImageId: primaryId,
+            campaignImage: { ...(nextImages.find(image => image.id === primaryId) || imageRecord), isPrimary: true },
+          }
+        })(),
+      }))
+      toast('Kampanya görseli yüklendi.', 'success')
+    } catch (error) {
+      toast(`Kampanya görseli yüklenemedi: ${error.message}`, 'error')
+    } finally {
+      setCampaignImageUploading(false)
+    }
+  }
+
+  function addCampaignImageUrl(url) {
+    const cleanUrl = String(url || '').trim()
+    if (!cleanUrl) return
+    updateCampaign(current => ({
+      metadata: (() => {
+        const metadata = current.metadata || {}
+        const library = normalizeCampaignImageLibrary(metadata)
+        const existing = library.images.find(image => image.url === cleanUrl)
+        const imageRecord = existing || {
+          id: createId('campaign-image-url'),
+          storage: 'railway',
+          url: cleanUrl,
+          title: `Görsel ${library.images.length + 1}`,
+          uploadedAt: new Date().toISOString(),
+        }
+        const nextImages = existing ? library.images : [...library.images, imageRecord]
+        const primaryId = library.primaryId || imageRecord.id
+        return {
+          ...metadata,
+          campaignImages: nextImages.map(image => ({ ...image, isPrimary: image.id === primaryId })),
+          primaryCampaignImageId: primaryId,
+          campaignImage: { ...(nextImages.find(image => image.id === primaryId) || imageRecord), isPrimary: true },
+        }
+      })(),
+    }))
+  }
+
+  function setPrimaryCampaignImage(imageId) {
+    updateCampaign(current => ({
+      metadata: (() => {
+        const metadata = current.metadata || {}
+        const library = normalizeCampaignImageLibrary(metadata)
+        const primaryImage = library.images.find(image => image.id === imageId) || library.images[0] || null
+        return {
+          ...metadata,
+          campaignImages: library.images.map(image => ({ ...image, isPrimary: primaryImage?.id === image.id })),
+          primaryCampaignImageId: primaryImage?.id || '',
+          campaignImage: primaryImage ? { ...primaryImage, isPrimary: true } : {},
+        }
+      })(),
+    }))
+  }
+
+  function removeCampaignImage(imageId) {
+    updateCampaign(current => ({
+      metadata: (() => {
+        const metadata = current.metadata || {}
+        const library = normalizeCampaignImageLibrary(metadata)
+        const nextImages = library.images.filter(image => image.id !== imageId)
+        const primaryImage = nextImages.find(image => image.id === library.primaryId) || nextImages[0] || null
+        return {
+          ...metadata,
+          campaignImages: nextImages.map(image => ({ ...image, isPrimary: primaryImage?.id === image.id })),
+          primaryCampaignImageId: primaryImage?.id || '',
+          campaignImage: primaryImage ? { ...primaryImage, isPrimary: true } : {},
+        }
+      })(),
+    }))
+  }
+
+  function openCampaignTaskCreate() {
+    const returnTo = `${location.pathname}${location.search || ''}`
+    const params = new URLSearchParams({
+      create: '1',
+      source: 'loyalty_campaign',
+      campaignId: wizardCampaign.id || campaignId || '',
+      campaignName: wizardCampaign.name || 'Adsız kampanya',
+      taskTitle: `Kampanya görevi: ${wizardCampaign.name || 'Adsız kampanya'}`,
+      taskDescription: `Kampanya adı: ${wizardCampaign.name || 'Adsız kampanya'}`,
+      returnTo,
+    })
+    navigate(`/tasks?${params.toString()}`)
+  }
 
   function replaceRules(scope, updater) {
     const ruleKey = scope === 'periodic' ? 'periodicRules' : 'applicableRules'
@@ -1976,21 +2281,102 @@ export default function LoyaltyCampaignWizard() {
           ...current,
           stackable: true,
           exclusionGroup: '',
+          metadata: {
+            ...(current.metadata || {}),
+            stackMode: 'stackable',
+            conflictGroupId: undefined,
+            conflictGroupName: undefined,
+            exclusionGroup: undefined,
+          },
         }
       }
       if (mode === 'group') {
+        const selectedGroup = activeConflictGroups.find(group => String(group.id) === String(current.metadata?.conflictGroupId || current.exclusionGroup || ''))
+          || activeConflictGroups[0]
         return {
           ...current,
           stackable: false,
-          exclusionGroup: current.exclusionGroup || 'wizard-group',
+          exclusionGroup: selectedGroup?.id || '',
+          metadata: {
+            ...(current.metadata || {}),
+            stackMode: 'group',
+            conflictGroupId: selectedGroup?.id || '',
+            conflictGroupName: selectedGroup?.name || '',
+            exclusionGroup: selectedGroup?.id || '',
+          },
         }
       }
       return {
         ...current,
         stackable: false,
         exclusionGroup: '',
+        metadata: {
+          ...(current.metadata || {}),
+          stackMode: 'exclusive',
+          conflictGroupId: undefined,
+          conflictGroupName: undefined,
+          exclusionGroup: undefined,
+        },
       }
     })
+  }
+
+  function selectConflictGroup(groupId) {
+    const selected = activeConflictGroups.find(group => String(group.id) === String(groupId)) || null
+    updateCampaign(current => ({
+      ...current,
+      stackable: false,
+      exclusionGroup: selected?.id || '',
+      metadata: {
+        ...(current.metadata || {}),
+        stackMode: 'group',
+        conflictGroupId: selected?.id || '',
+        conflictGroupName: selected?.name || '',
+        exclusionGroup: selected?.id || '',
+      },
+    }))
+  }
+
+  async function saveConflictGroup() {
+    const name = conflictGroupDraft.name.trim()
+    if (!name) {
+      toast('Grup adi zorunlu', 'error')
+      return
+    }
+
+    setConflictGroupSaving(true)
+    try {
+      const result = await createLoyaltyCampaignConflictGroup({
+        scope: workspace.scope,
+        branchId: workspace.branchId,
+        branchName: workspace.branchName,
+      }, {
+        name,
+        description: conflictGroupDraft.description,
+        sortOrder: (conflictGroups.length + 1) * 10,
+      })
+      const createdGroup = result.group
+      setConflictGroups(current => [...current.filter(group => group.id !== createdGroup.id), createdGroup].sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0) || String(left.name || '').localeCompare(String(right.name || ''), 'tr')))
+      updateCampaign(current => ({
+        ...current,
+        stackable: false,
+        exclusionGroup: createdGroup.id,
+        metadata: {
+          ...(current.metadata || {}),
+          stackMode: 'group',
+          conflictGroupId: createdGroup.id,
+          conflictGroupName: createdGroup.name,
+          exclusionGroup: createdGroup.id,
+        },
+      }))
+      setConflictGroupDraft({ name: '', description: '' })
+      setConflictGroupModalOpen(false)
+      toast('Çakışma grubu kaydedildi', 'success')
+    } catch (error) {
+      toast(error?.message || 'Çakışma grubu kaydedilemedi', 'error')
+    } finally {
+      setConflictGroupSaving(false)
+    }
   }
 
   function toggleChannelTarget(nextValue) {
@@ -2063,14 +2449,19 @@ export default function LoyaltyCampaignWizard() {
       return false
     }
     if (wizardCampaign.audienceType === 'tagged_customers' && (wizardCampaign.audienceCategoryIds || []).length === 0) {
-      toast('Musteri kategorileri hedefi icin en az bir kategori secin', 'error')
+      toast('Müşteri kategorileri hedefi için en az bir kategori seçin', 'error')
       setCurrentStep(1)
+      return false
+    }
+    if (mergeMode === 'group' && !String(wizardCampaign.metadata?.conflictGroupId || wizardCampaign.exclusionGroup || '').trim()) {
+      toast('Grup bazlı çakışma için bir kampanya grubu seçin veya yeni grup oluşturun', 'error')
+      setCurrentStep(3)
       return false
     }
 
     const runtimeCampaign = serializeCampaignForPersistence(wizardCampaign, program.id)
     if ((runtimeCampaign.applicableRules || []).length === 0 && (runtimeCampaign.periodicRules || []).length === 0) {
-      toast('Kaydetmeden once en az bir gecerli kosul ve eylem blogu olusturun', 'error')
+      toast('Kaydetmeden önce en az bir geçerli koşul ve eylem bloğu oluşturun', 'error')
       setCurrentStep(2)
       return false
     }
@@ -2080,7 +2471,7 @@ export default function LoyaltyCampaignWizard() {
   async function handleSave() {
     if (!validateBeforeSave()) return
     if (databaseUnavailable || !schemaReady) {
-      toast('Sadakat workspace hazir olmadigi icin kaydetme kapali', 'error')
+      toast('Sadakat workspace hazır olmadığı için kaydetme kapalı', 'error')
       return
     }
 
@@ -2105,6 +2496,7 @@ export default function LoyaltyCampaignWizard() {
         program,
         tiers,
         couponSeries: Array.isArray(result?.couponSeries) ? result.couponSeries : couponSeries,
+        conflictGroups,
         campaigns: [...existingCampaignsWithoutCurrent, runtimeCampaign],
       }
 
@@ -2117,7 +2509,7 @@ export default function LoyaltyCampaignWizard() {
     }
   }
 
-  function renderMaskSelect(value, onChange, placeholder = 'Urun / kategori / sablon secin') {
+  function renderMaskSelect(value, onChange, placeholder = 'Ürün / kategori / şablon seçin') {
     return (
       <SearchableSelect
         value={value}
@@ -2133,7 +2525,7 @@ export default function LoyaltyCampaignWizard() {
     const masks = Array.isArray(config.productMasks) ? config.productMasks : []
     return (
       <div style={{ display: 'grid', gap: 8 }}>
-        <FieldStack label={label} hint="Bu alandan urun, kategori veya satis mali sablonu secilebilir.">
+        <FieldStack label={label} hint="Bu alandan ürün, kategori veya satış malı şablonu seçilebilir.">
           <div style={{ display: 'grid', gap: 8 }}>
             {masks.map(mask => {
               const selectedValue = mask.itemId ? `${mask.type || 'product'}:${mask.itemId}` : ''
@@ -2184,11 +2576,11 @@ export default function LoyaltyCampaignWizard() {
 
     switch (conditionKey) {
       case 'always':
-        return <HelperNote title="Temel siparis kosulu">Ek bir esik aramadan, hedef kitle ve kanal uyuyorsa her sipariste calisir.</HelperNote>
+        return <HelperNote title="Temel sipariş koşulu">Ek bir eşik aramadan, hedef kitle ve kanal uyuyorsa her siparişte çalışır.</HelperNote>
       case 'calendar_schedule':
         return (
           <div style={{ display: 'grid', gap: 12 }}>
-            <HelperNote title="Periyodik takvim kosulu">Gunluk, haftalik, aylik veya yillik tekrar eden kampanyalar icin kullanilir.</HelperNote>
+            <HelperNote title="Periyodik takvim koşulu">Günlük, haftalık, aylık veya yıllık tekrar eden kampanyalar için kullanılır.</HelperNote>
             <div style={{ display: 'grid', gap: 10 }}>
               {CALENDAR_FREQUENCY_OPTIONS.map(option => {
                 const active = (config.frequency || 'daily') === option.value
@@ -2255,10 +2647,10 @@ export default function LoyaltyCampaignWizard() {
       case 'birthday':
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <FieldStack label="Dogum gununden gun once">
+            <FieldStack label="Doğum gününden gün önce">
               <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.daysBefore)} onChange={event => onPatch({ daysBefore: event.target.value })} />
             </FieldStack>
-            <FieldStack label="Dogum gununden gun sonra">
+            <FieldStack label="Doğum gününden gün sonra">
               <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.daysAfter)} onChange={event => onPatch({ daysAfter: event.target.value })} />
             </FieldStack>
           </div>
@@ -2289,7 +2681,7 @@ export default function LoyaltyCampaignWizard() {
               ) : <div />}
             </div>
             {conditionKey === 'period_total_order_amount' && (config.period || 'all_time') === 'rolling_days' ? (
-              <FieldStack label="Kayan gun sayisi">
+              <FieldStack label="Kayan gün sayısı">
                 <input className="f-input" type="number" min={1} value={formatNumberInputValue(config.periodDays, '30')} onChange={event => onPatch({ periodDays: event.target.value })} />
               </FieldStack>
             ) : null}
@@ -2306,7 +2698,7 @@ export default function LoyaltyCampaignWizard() {
         return (
           <div style={{ display: 'grid', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-              <FieldStack label="Ziyaret / siparis adedi">
+              <FieldStack label="Ziyaret / sipariş adedi">
                 <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.count)} onChange={event => onPatch({ count: event.target.value })} />
               </FieldStack>
               <FieldStack label="Karsilastirma">
@@ -2325,7 +2717,7 @@ export default function LoyaltyCampaignWizard() {
               </FieldStack>
             </div>
             {(config.period || 'all_time') === 'rolling_days' ? (
-              <FieldStack label="Kayan gun sayisi">
+              <FieldStack label="Kayan gün sayısı">
                 <input className="f-input" type="number" min={1} value={formatNumberInputValue(config.periodDays, '30')} onChange={event => onPatch({ periodDays: event.target.value })} />
               </FieldStack>
             ) : null}
@@ -2360,7 +2752,7 @@ export default function LoyaltyCampaignWizard() {
               </FieldStack>
             </div>
             {(conditionKey === 'period_product_quantity' || conditionKey === 'period_sold_product_quantity') && (config.period || 'all_time') === 'rolling_days' ? (
-              <FieldStack label="Kayan gun sayisi">
+              <FieldStack label="Kayan gün sayısı">
                 <input className="f-input" type="number" min={1} value={formatNumberInputValue(config.periodDays, '30')} onChange={event => onPatch({ periodDays: event.target.value })} />
               </FieldStack>
             ) : null}
@@ -2451,7 +2843,7 @@ export default function LoyaltyCampaignWizard() {
               }))}
               selectedValues={config.seriesIds || []}
               onChange={next => onPatch({ seriesIds: next })}
-              placeholder="Kupon / hediye karti serisi secin"
+              placeholder="Kupon / hediye kartı serisi seçin"
             />
           </div>
         )
@@ -2465,7 +2857,7 @@ export default function LoyaltyCampaignWizard() {
             }))}
             selectedValues={config.relatedCampaignIds || []}
             onChange={next => onPatch({ relatedCampaignIds: next })}
-            placeholder="Kampanya secin"
+            placeholder="Kampanya seçin"
           />
         )
       case 'coupon_present':
@@ -2484,7 +2876,7 @@ export default function LoyaltyCampaignWizard() {
               }))}
               selectedValues={config.seriesIds || []}
               onChange={next => onPatch({ seriesIds: next })}
-              placeholder="Kupon serisi secin"
+              placeholder="Kupon serisi seçin"
             />
           </div>
         )
@@ -2494,12 +2886,12 @@ export default function LoyaltyCampaignWizard() {
             <FieldStack label="Referans olay">
               <div className="sel-wrap">
                 <select className="f-input" value={config.eventType || 'signup'} onChange={event => onPatch({ eventType: event.target.value })}>
-                  <option value="signup">Kayit</option>
-                  <option value="first_order">Ilk siparis</option>
+                  <option value="signup">Kayıt</option>
+                  <option value="first_order">İlk sipariş</option>
                 </select>
               </div>
             </FieldStack>
-            <FieldStack label="Gun sayisi">
+            <FieldStack label="Gün sayısı">
               <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.days)} onChange={event => onPatch({ days: event.target.value })} />
             </FieldStack>
             <FieldStack label="Karsilastirma">
@@ -2512,12 +2904,12 @@ export default function LoyaltyCampaignWizard() {
           </div>
         )
       case 'manual_approval':
-        return <HelperNote title="Manuel Tetikleme">Bu kosul kampanyanin personel tarafindan elle baslatildigi senaryolar icindir.</HelperNote>
+        return <HelperNote title="Manuel Tetikleme">Bu koşul kampanyanın personel tarafından elle başlatıldığı senaryolar içindir.</HelperNote>
       case 'customer_has_tag':
       case 'customer_lacks_tag':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <FieldStack label="Musteri kategorileri">
+            <FieldStack label="Müşteri kategorileri">
               <SearchableMultiSelect
                 options={activeCustomerCategories.map(category => ({
                   value: category.id,
@@ -2526,7 +2918,7 @@ export default function LoyaltyCampaignWizard() {
                 }))}
                 selectedValues={config.tags || []}
                 onChange={next => onPatch({ tags: next })}
-                placeholder="Musteri kategorisi secin"
+                placeholder="Müşteri kategorisi seçin"
               />
             </FieldStack>
             <FieldStack label="Kontrol edilen musteri">
@@ -2539,22 +2931,22 @@ export default function LoyaltyCampaignWizard() {
           </div>
         )
       case 'referral_source':
-        return <HelperNote title="Referans kaynagi">Bu kosul referans baglantisi veya referral kodu ile gelen musterileri hedefler.</HelperNote>
+        return <HelperNote title="Referans kaynağı">Bu koşul referans bağlantısı veya referral kodu ile gelen müşterileri hedefler.</HelperNote>
       case 'sales_channel':
         return (
-          <FieldStack label="Gecerli satis kanallari" hint="POS, Garson / Masa, kiosk, online veya mobil kanallarini secin.">
+          <FieldStack label="Geçerli satış kanalları" hint="POS, Garson / Masa, kiosk, online veya mobil kanallarını seçin.">
             <SearchableMultiSelect
               options={salesChannels}
               selectedValues={getSalesChannelConditionValues(config)}
               onChange={next => onPatch({ channelValues: next })}
-              placeholder="Satis kanali secin"
+              placeholder="Satış kanalı seçin"
             />
           </FieldStack>
         )
       case 'last_visit_days':
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '.8fr .9fr', gap: 10 }}>
-            <FieldStack label="Gun sayisi">
+            <FieldStack label="Gün sayısı">
               <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.days)} onChange={event => onPatch({ days: event.target.value })} />
             </FieldStack>
             <FieldStack label="Karsilastirma">
@@ -2744,10 +3136,10 @@ export default function LoyaltyCampaignWizard() {
       case 'write_customer_note':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <FieldStack label="Musteri varsa yazilacak not">
+            <FieldStack label="Müşteri varsa yazılacak not">
               <textarea className="f-input" rows={3} value={config.customerTemplate || ''} onChange={event => onPatch({ customerTemplate: event.target.value })} />
             </FieldStack>
-            <FieldStack label="Musteri yoksa yazilacak not">
+            <FieldStack label="Müşteri yoksa yazılacak not">
               <textarea className="f-input" rows={3} value={config.anonymousTemplate || ''} onChange={event => onPatch({ anonymousTemplate: event.target.value })} />
             </FieldStack>
             <FieldStack label="Musteriye teklif">
@@ -2788,7 +3180,7 @@ export default function LoyaltyCampaignWizard() {
               <FieldStack label="Kategori">
                 <div className="sel-wrap">
                   <select className="f-input" value={config.category || ''} onChange={event => onPatch({ category: event.target.value })}>
-                    <option value="">Kategori secin</option>
+                    <option value="">Kategori seçin</option>
                     {activeCustomerCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
                   </select>
                 </div>
@@ -2821,7 +3213,7 @@ export default function LoyaltyCampaignWizard() {
       case 'total_order_discount_percent':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <FieldStack label="Toplam siparis indirim yuzdesi">
+            <FieldStack label="Toplam sipariş indirim yüzdesi">
               <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => onPatch({ percent: event.target.value })} />
             </FieldStack>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
@@ -2876,7 +3268,7 @@ export default function LoyaltyCampaignWizard() {
               }))}
               selectedValues={config.seriesIds || []}
               onChange={next => onPatch({ seriesIds: next })}
-              placeholder="Kupon serisi secin"
+              placeholder="Kupon serisi seçin"
             />
           </div>
         )
@@ -3019,21 +3411,28 @@ export default function LoyaltyCampaignWizard() {
     () => serializeCampaignForPersistence(wizardCampaign, program.id),
     [program.id, wizardCampaign],
   )
+  const campaignImageLibrary = useMemo(
+    () => normalizeCampaignImageLibrary(wizardCampaign.metadata || {}),
+    [wizardCampaign.metadata],
+  )
+  const campaignImages = campaignImageLibrary.images
+  const primaryCampaignImage = campaignImageLibrary.primaryImage
+  const campaignImageUrl = String(primaryCampaignImage?.url || '').trim()
 
   return (
     <div>
       <Header
-        title="Akilli Kampanya Wizard"
-        subtitle="Yeni kampanya acilis akisini wizard uzerine tasiyip, kural motorunu mevcut sadakat modeliyle birebir yonetin."
+        title="Akıllı Kampanya Wizard"
+        subtitle="Yeni kampanya açılış akışını wizard üzerine taşıyıp kural motorunu mevcut sadakat modeliyle birebir yönetin."
         actions={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn-o" type="button" onClick={() => navigate('/sadakat')}>
               <i className="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />
-              Listeye Don
+              Listeye Dön
             </button>
             <button className="btn-o" type="button" onClick={() => navigate('/sadakat/kategoriler')}>
               <i className="fa-solid fa-tags" style={{ marginRight: 6 }} />
-              Musteri Kategorileri
+              Müşteri Kategorileri
             </button>
           </div>
         )}
@@ -3052,13 +3451,84 @@ export default function LoyaltyCampaignWizard() {
         </div>
       ) : null}
 
-      <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-        <div style={{ display: 'grid', gap: 14 }}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {WIZARD_STEPS.map((step, index) => (
-            <StepPill key={step.key} index={index} currentStep={currentStep} title={step.title} onClick={setCurrentStep} />
-          ))}
+      <div className="card" style={{
+        padding: 18,
+        marginBottom: 18,
+        position: 'relative',
+        overflow: 'hidden',
+        border: campaignImageUrl ? '1px solid #bfdbfe' : undefined,
+      }}>
+        {campaignImageUrl ? (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: `linear-gradient(90deg, rgba(255,255,255,.96), rgba(255,255,255,.88)), url("${campaignImageUrl}")`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              opacity: 0.9,
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
+        <div style={{ display: 'grid', gap: 14, position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {WIZARD_STEPS.map((step, index) => (
+                <StepPill key={step.key} index={index} currentStep={currentStep} title={step.title} onClick={setCurrentStep} />
+              ))}
+            </div>
+            <label style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              minHeight: 40,
+              padding: '0 12px',
+              border: `1px solid ${wizardCampaign?.active === false ? '#fecaca' : '#bbf7d0'}`,
+              borderRadius: 10,
+              background: wizardCampaign?.active === false ? '#fff1f2' : '#f0fdf4',
+              color: wizardCampaign?.active === false ? '#991b1b' : '#166534',
+              fontWeight: 900,
+              fontSize: '.84rem',
+            }}>
+              <input
+                type="checkbox"
+                checked={wizardCampaign?.active !== false}
+                onChange={event => updateCampaign({ active: event.target.checked })}
+                disabled={loading}
+              />
+              {wizardCampaign?.active === false ? 'Pasif' : 'Aktif'}
+            </label>
           </div>
+          {campaignImages.length > 0 ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {campaignImages.slice(0, 6).map(image => (
+                <button
+                  key={image.id}
+                  type="button"
+                  title={image.isPrimary ? 'Ana kampanya görseli' : 'Ana görsel yap'}
+                  onClick={() => setPrimaryCampaignImage(image.id)}
+                  style={{
+                    width: 54,
+                    height: 38,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    border: `2px solid ${image.isPrimary ? '#2563eb' : '#e2e8f0'}`,
+                    padding: 0,
+                    background: '#fff',
+                    cursor: 'pointer',
+                    boxShadow: image.isPrimary ? '0 6px 14px rgba(37,99,235,.18)' : 'none',
+                  }}
+                >
+                  <img src={image.url} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </button>
+              ))}
+              {campaignImages.length > 6 ? (
+                <span style={{ color: '#64748b', fontSize: '.78rem', fontWeight: 800 }}>+{campaignImages.length - 6} görsel</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -3792,224 +4262,423 @@ export default function LoyaltyCampaignWizard() {
           {currentStep === 3 ? (
             <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
               <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Operasyon ve Kampanya Bilgileri</div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>Operasyon ve Çakışma Kuralları</div>
                 <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Kampanya kimliği (ad, kod, açıklama) ile birleşme ve çalışma kuralları buradan yönetilir.
+                  Kampanyanın satış anında otomatik mi yoksa kasacı tarafından mı tetikleneceği ve diğer kampanyalarla çakışma davranışı buradan yönetilir.
                 </div>
               </div>
 
-              {/* Campaign Identification Section */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 16, borderBottom: '1px solid #f1f5f9', paddingBottom: 16 }}>
-                <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, borderBottom: '1px solid #f1f5f9', paddingBottom: 16 }}>
+                <FieldStack label="Tetikleme şekli" hint="Otomatik seçilirse koşullar sağlandığında POS/Garson/Kiosk akışı kampanyayı kendisi uygular.">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={wizardCampaign.applicationMode || 'prompt'} onChange={event => updateCampaign({ applicationMode: event.target.value })}>
+                      {CAMPAIGN_APPLICATION_MODE_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </FieldStack>
+                <FieldStack label="Öncelik" hint="Daha küçük sayı daha güçlü kabul edilir ve çakışma durumunda önce değerlendirilir.">
+                  <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
+                </FieldStack>
+              </div>
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Çakışma ve Birleşme Kuralı</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))', gap: 12, alignItems: 'start' }}>
+                  {STACKING_RULE_OPTIONS.map(option => {
+                    const active = mergeMode === option.value
+                    const cardBorder = active ? option.color : '#cbd5e1'
+                    return (
+                      <div key={option.value} style={{ display: 'grid', gap: 10 }}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={active}
+                          onClick={() => updateMergeMode(option.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              updateMergeMode(option.value)
+                            }
+                          }}
+                          style={{
+                            textAlign: 'left',
+                            border: `2.5px solid ${cardBorder}`,
+                            background: active ? `${option.color}0e` : '#fff',
+                            borderRadius: 14,
+                            padding: 16,
+                            cursor: 'pointer',
+                            display: 'grid',
+                            gap: 12,
+                            minHeight: 118,
+                            boxShadow: active ? `0 6px 16px ${option.color}1a` : '0 2px 4px rgba(0,0,0,0.02)',
+                            transform: active ? 'scale(1.01)' : 'none',
+                            transition: 'all 0.2s ease-in-out',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 12,
+                              background: active ? '#fff' : `${option.color}12`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: option.color,
+                              fontSize: '1.2rem',
+                              boxShadow: active ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
+                              border: active ? `1px solid ${option.color}1e` : 'none',
+                              flexShrink: 0,
+                            }}>
+                              <i className={option.icon} />
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: '.95rem', color: active ? '#0f172a' : '#1e293b', minWidth: 0, flex: 1 }}>{option.label}</div>
+                            <button
+                              type="button"
+                              title={`${option.label} yardım`}
+                              aria-label={`${option.label} yardım`}
+                              onClick={event => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setStackingHelpKey(option.value)
+                              }}
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                border: `1px solid ${option.color}33`,
+                                background: active ? '#fff' : '#fffbeb',
+                                color: '#d97706',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                boxShadow: active ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <i className="fa-solid fa-lightbulb" />
+                            </button>
+                          </div>
+                          <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{option.desc}</div>
+                        </div>
+
+                        {option.value === 'stackable' && active ? (
+                          <div style={{ border: '1px solid #bbf7d0', borderRadius: 12, padding: 10, background: '#f0fdf4', display: 'grid', gap: 8 }}>
+                            <div style={{ fontWeight: 900, color: '#166534' }}>Birleşebileceği aktif kampanyalar</div>
+                            {stackablePeerCampaigns.length > 0 ? stackablePeerCampaigns.slice(0, 6).map(campaign => (
+                              <CampaignConflictPeerRow key={campaign.id} campaign={campaign} color="#166534" />
+                            )) : <div style={{ color: '#64748b', fontSize: '.82rem' }}>Bu kapsamda birleşebilir aktif kampanya bulunamadı.</div>}
+                          </div>
+                        ) : null}
+
+                        {option.value === 'group' && active ? (
+                          <div style={{ border: '1px solid #bfdbfe', borderRadius: 12, padding: 10, background: '#f8fbff', display: 'grid', gap: 8 }}>
+                            <FieldStack label="Kayıtlı kampanya grubu">
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                                <div className="sel-wrap">
+                                  <select className="f-input" value={selectedConflictGroup?.id || ''} onChange={event => selectConflictGroup(event.target.value)}>
+                                    <option value="">Grup seçin</option>
+                                    {activeConflictGroups.map(group => (
+                                      <option key={group.id} value={group.id}>{group.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <button className="btn-o" type="button" onClick={() => setConflictGroupModalOpen(true)}>
+                                  <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+                                  Yeni
+                                </button>
+                              </div>
+                            </FieldStack>
+                            {selectedConflictGroup ? (
+                              <div style={{ color: '#1d4ed8', fontSize: '.78rem', fontWeight: 800 }}>
+                                Seçili grup: {selectedConflictGroup.name}
+                              </div>
+                            ) : (
+                              <div style={{ color: '#64748b', fontSize: '.82rem' }}>DB'de kayıtlı bir grup seçin veya yeni grup ekleyin.</div>
+                            )}
+                            {selectedGroupCampaigns.length > 0 ? (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ fontSize: '.76rem', fontWeight: 900, color: '#1d4ed8' }}>Bu gruptaki aktif kampanyalar</div>
+                                {selectedGroupCampaigns.slice(0, 6).map(campaign => (
+                                  <CampaignConflictPeerRow key={campaign.id} campaign={campaign} color="#1d4ed8" />
+                                ))}
+                              </div>
+                            ) : selectedConflictGroup ? (
+                              <div style={{ color: '#64748b', fontSize: '.82rem' }}>
+                                Bu grupta aktif kampanya yok.
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {option.value === 'exclusive' && active ? (
+                          <div style={{ border: '1px solid #fecaca', borderRadius: 12, padding: 10, background: '#fff7f7', display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'grid', gap: 4 }}>
+                              <div style={{ fontWeight: 900, color: '#991b1b' }}>Aktif münhasır kampanyalar</div>
+                              <div style={{ fontSize: '.74rem', color: '#7f1d1d', fontWeight: 800 }}>Sıralama: önce küçük öncelik, sonra kampanya adı</div>
+                            </div>
+                            {activeExclusiveCampaigns.length > 0 ? activeExclusiveCampaigns.slice(0, 6).map(campaign => (
+                              <CampaignConflictPeerRow key={campaign.id} campaign={campaign} color="#991b1b" />
+                            )) : <div style={{ color: '#64748b', fontSize: '.82rem' }}>Bu kapsamda aktif başka münhasır kampanya bulunamadı.</div>}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize: '.74rem', color: '#64748b', lineHeight: 1.5 }}>
+                  Liste kapsamı seçili şube, satış kanalı ve müşteri kategorisi kesişimine göre daraltılır; farklı kanaldaki kampanya bu ekranda çakışma adayı sayılmaz.
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {currentStep === 4 ? (
+            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
+              <div style={{ display: 'grid', gap: 12, borderBottom: '1px solid #f1f5f9', paddingBottom: 16 }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Kampanya Kimliği</div>
+                  <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                    Kampanya adı, kodu, açıklaması, özeti ve görselleri kayıt öncesi son sekmede tamamlanır.
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 12 }}>
                   <FieldStack label="Kampanya Adı">
                     <input className="f-input" value={wizardCampaign.name || ''} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Kampanya adı" />
                   </FieldStack>
-                  <FieldStack label="Açıklama">
-                    <textarea className="f-input" style={{ minHeight: 60 }} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanya açıklaması" />
-                  </FieldStack>
-                </div>
-                <div style={{ display: 'grid', gap: 12 }}>
                   <FieldStack label="Kampanya Kodu">
                     <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu (örn. KM001)" />
                   </FieldStack>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 10 }}>
-                    <FieldStack label="Öncelik" hint="Daha küçük sayı daha güçlü kabul edilir.">
-                      <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
-                    </FieldStack>
-                    <FieldStack label="Durum">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 42, color: '#334155', fontWeight: 800, fontSize: '.84rem' }}>
-                        <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
-                        Aktif
-                      </label>
-                    </FieldStack>
-                  </div>
                 </div>
+                <FieldStack label="Açıklama">
+                  <textarea className="f-input" style={{ minHeight: 74 }} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanya açıklaması" />
+                </FieldStack>
               </div>
 
-              {/* Conflict resolution / Merge mode */}
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Çakışma ve Birleşme Kuralı</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                  {STACKING_RULE_OPTIONS.map(option => {
-                    const active = mergeMode === option.value
-                    return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 12, alignItems: 'start' }}>
+                <div style={{ border: '1px solid #dbeafe', borderRadius: 14, padding: 14, background: '#f8fbff', display: 'grid', gap: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: '#1d4ed8' }}>Kampanya Özeti</div>
+                    <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                      Bu özet hedef, kapsam, koşul/eylem ve operasyon sekmelerindeki seçimlerden otomatik oluşur.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '.84rem', color: '#334155', lineHeight: 1.65 }}>
+                    {getCampaignSummaryText(wizardCampaign, selectedGoal, customerCategories, salesChannels, summaryContext)}
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, background: '#fff', display: 'grid', gap: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: '#0f172a' }}>Kampanya Görsel Kütüphanesi</div>
+                    <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                      Görseller Railway storage'a yüklenir; kampanya kaydında DB metadata referansı ve geçmiş görsel kütüphanesi saklanır.
+                    </div>
+                  </div>
+                  <div style={{ aspectRatio: '16 / 9', border: '1px dashed #cbd5e1', borderRadius: 12, background: '#f8fafc', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+                    {campaignImageUrl ? (
+                      <img src={campaignImageUrl} alt={wizardCampaign.name || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ color: '#94a3b8', fontSize: '.82rem', textAlign: 'center', padding: 16 }}>
+                        Henüz kampanya görseli yüklenmedi.
+                      </div>
+                    )}
+                  </div>
+                  <FieldStack label="Yeni Görsel URL">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                      <input
+                        className="f-input"
+                        defaultValue=""
+                        placeholder="Railway storage / CDN URL"
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            addCampaignImageUrl(event.currentTarget.value)
+                            event.currentTarget.value = ''
+                          }
+                        }}
+                      />
                       <button
-                        key={option.value}
                         type="button"
-                        onClick={() => updateMergeMode(option.value)}
-                        style={{
-                          textAlign: 'left',
-                          border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
-                          background: active ? '#eff6ff' : '#fff',
-                          borderRadius: 12,
-                          padding: 14,
-                          cursor: 'pointer',
-                          display: 'grid',
-                          gap: 8,
+                        className="btn-o"
+                        onClick={event => {
+                          const input = event.currentTarget.parentElement?.querySelector('input')
+                          addCampaignImageUrl(input?.value || '')
+                          if (input) input.value = ''
                         }}
                       >
-                        <div style={{ fontWeight: 800, color: active ? '#1d4ed8' : '#0f172a' }}>{option.label}</div>
-                        <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{option.desc}</div>
+                        URL Ekle
                       </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {mergeMode === 'group' ? (
-                <FieldStack label="Exclusion group">
-                  <input className="f-input" value={wizardCampaign.exclusionGroup || ''} onChange={event => updateCampaign({ exclusionGroup: event.target.value })} placeholder="Orn. burger-indirimleri" />
-                </FieldStack>
-              ) : null}
-
-              {/* Status information block */}
-            </div>
-          ) : null}
-
-          {currentStep === 4 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Kupon ve puan detaylari</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Wizard loyalty coupon modelini kullanir; kiosk ayarlarindaki kupon mantigi ayri kanal davranisi olarak kalir.
-                </div>
-              </div>
-
-              <HelperNote title="Canonical loyalty coupon">
-                Kupon secimleri `loyalty_coupon_series`, `loyalty_coupons` ve `loyalty_campaign_redemptions` omurgasina baglanir. Kiosk settings coupon ayni kavram gibi sunulmaz; kanal ayari olarak kalir.
-              </HelperNote>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#fff', display: 'grid', gap: 8 }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Kupon serileri</div>
-                  <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>
-                    Aktif seri sayisi: <strong>{couponSeries.filter(series => series?.active !== false).length}</strong>
+                    </div>
+                  </FieldStack>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label className="btn-o" style={{ margin: 0, cursor: campaignImageUploading ? 'not-allowed' : 'pointer' }}>
+                      <i className={`fa-solid ${campaignImageUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`} style={{ marginRight: 6 }} />
+                      {campaignImageUploading ? 'Yükleniyor' : 'Görsel Yükle'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={campaignImageUploading}
+                        style={{ display: 'none' }}
+                        onChange={event => uploadCampaignImage(event.target.files?.[0])}
+                      />
+                    </label>
                   </div>
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    {couponSeries.slice(0, 5).map(series => (
-                      <div key={series.id} style={{ fontSize: '.78rem', color: '#334155', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <span>{series.name || series.prefix || series.id}</span>
-                        <span style={{ color: series.useAfterCheckout ? '#0f766e' : '#64748b', fontWeight: 800 }}>{series.useAfterCheckout ? 'Checkout sonrasi' : 'Aninda'}</span>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: '.76rem', fontWeight: 900, color: '#64748b' }}>
+                      Kütüphane ({campaignImages.length})
+                    </div>
+                    {campaignImages.length > 0 ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(124px, 1fr))', gap: 8 }}>
+                        {campaignImages.map(image => (
+                          <div key={image.id} style={{ border: `1px solid ${image.isPrimary ? '#2563eb' : '#e2e8f0'}`, borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'grid' }}>
+                            <button type="button" onClick={() => setPrimaryCampaignImage(image.id)} style={{ border: 'none', padding: 0, background: '#fff', cursor: 'pointer', aspectRatio: '16 / 9', overflow: 'hidden' }}>
+                              <img src={image.url} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            </button>
+                            <div style={{ padding: 8, display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: '.72rem', color: image.isPrimary ? '#1d4ed8' : '#64748b', fontWeight: 900 }}>
+                                {image.isPrimary ? 'Ana görsel' : 'Arşiv görseli'}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {!image.isPrimary ? (
+                                  <button type="button" className="btn-o" style={{ padding: '5px 8px', fontSize: '.72rem' }} onClick={() => setPrimaryCampaignImage(image.id)}>Ana Yap</button>
+                                ) : null}
+                                <button type="button" className="btn-g" style={{ padding: '5px 8px', fontSize: '.72rem' }} onClick={() => removeCampaignImage(image.id)}>Kaldır</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {couponSeries.length === 0 ? <div style={{ fontSize: '.78rem', color: '#64748b' }}>Henuz kupon serisi yok.</div> : null}
+                    ) : (
+                      <div style={{ border: '1px dashed #cbd5e1', borderRadius: 12, padding: 12, color: '#94a3b8', fontSize: '.82rem' }}>
+                        Bu kampanya için henüz görsel kütüphanesi yok.
+                      </div>
+                    )}
                   </div>
                 </div>
+              </div>
 
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#fff', display: 'grid', gap: 8 }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Puan davranislari</div>
-                  <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>
-                    Sabit puan, siparis yuzdesi, kazanma katsayisi ve harcama katsayisi ayni action modelinden yonetilir.
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, background: '#f8fafc', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: '#0f172a' }}>Kayıt Öncesi Kontrol</div>
+                    <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
+                      Kayıt, loyalty workspace persistence akışı üzerinden yapılır; editorRuleDrafts round-trip korunur.
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {['bonus_points', 'points_percent_of_order', 'points_earn_multiplier', 'points_redeem_multiplier'].map(actionType => (
-                      <RuntimeStatusBadge key={actionType} status={getActionRuntimeStatus(actionType)} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          ) : null}
-
-          {currentStep === 5 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Cakisma ve operasyon</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Birlesme, exclusion group, oncelik, manuel tetikleme ve stop processing davranislari burada toparlanir.
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FieldStack label="Oncelik" hint="Daha kucuk sayi daha guclu kabul edilir.">
-                  <input className="f-input" type="number" min={0} value={formatNumberInputValue(wizardCampaign.priority, '10')} onChange={event => updateCampaign({ priority: event.target.value })} />
-                </FieldStack>
-                <FieldStack label="Durum">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 42, color: '#334155', fontWeight: 800 }}>
-                    <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
-                    Kampanya aktif
-                  </label>
-                </FieldStack>
-              </div>
-
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Cakisma ve birlesme kurali</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                  {STACKING_RULE_OPTIONS.map(option => {
-                    const active = mergeMode === option.value
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => updateMergeMode(option.value)}
-                        style={{
-                          textAlign: 'left',
-                          border: `1px solid ${active ? '#bfdbfe' : '#e2e8f0'}`,
-                          background: active ? '#eff6ff' : '#fff',
-                          borderRadius: 12,
-                          padding: 14,
-                          cursor: 'pointer',
-                          display: 'grid',
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, color: active ? '#1d4ed8' : '#0f172a' }}>{option.label}</div>
-                        <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.5 }}>{option.desc}</div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {mergeMode === 'group' ? (
-                <FieldStack label="Exclusion group">
-                  <input className="f-input" value={wizardCampaign.exclusionGroup || ''} onChange={event => updateCampaign({ exclusionGroup: event.target.value })} placeholder="Orn. burger-indirimleri" />
-                </FieldStack>
-              ) : null}
-            </div>
-          ) : null}
-
-          {currentStep === 4 ? (
-            <div className="card" style={{ padding: 18, marginBottom: 18, display: 'grid', gap: 16 }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Test, ozet ve kaydet</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                  Kayit, loyalty workspace persistence akisi uzerinden yapilir; editorRuleDrafts round-trip korunur.
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 12 }}>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 16, background: '#fff' }}>
-                  <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '1.1rem' }}>{wizardCampaign.name || 'Adsiz kampanya'}</div>
-                  <div style={{ marginTop: 8, fontSize: '.84rem', color: '#64748b', lineHeight: 1.6 }}>
-                    {wizardCampaign.description || 'Aciklama girilmedi.'}
-                  </div>
-                  <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
-                    <div style={{ fontSize: '.82rem', color: '#334155' }}>Hedef kitle: <strong>{getOptionLabel(CAMPAIGN_AUDIENCE_OPTIONS, wizardCampaign.audienceType)}</strong></div>
-                    <div style={{ fontSize: '.82rem', color: '#334155' }}>Uygulama modu: <strong>{getOptionLabel(CAMPAIGN_APPLICATION_MODE_OPTIONS, wizardCampaign.applicationMode)}</strong></div>
-                    <div style={{ fontSize: '.82rem', color: '#334155' }}>Kanallar: <strong>{(wizardCampaign.channelTargets || []).length > 0 ? formatCompactList((wizardCampaign.channelTargets || []).map(value => getOptionLabel(CAMPAIGN_CHANNEL_OPTIONS, value, value))) : 'Tum kanallar'}</strong></div>
-                    <div style={{ fontSize: '.82rem', color: '#334155' }}>Cakisma modu: <strong>{mergeMode}</strong></div>
-                    <div style={{ fontSize: '.82rem', color: '#334155' }}>Oncelik: <strong>{wizardCampaign.priority}</strong></div>
-                  </div>
-                </div>
-
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 16, background: '#f8fafc', display: 'grid', gap: 10 }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Runtime ozet</div>
-                  <MiniBadge active={(reviewRuntimeCampaign.applicableRules || []).length > 0} trueLabel={`${reviewRuntimeCampaign.applicableRules.length} siparis kuralı`} falseLabel="Siparis kuralı yok" />
+                    <MiniBadge active={(reviewRuntimeCampaign.applicableRules || []).length > 0} trueLabel={`${reviewRuntimeCampaign.applicableRules.length} sipariş kuralı`} falseLabel="Sipariş kuralı yok" />
                   <MiniBadge active={(reviewRuntimeCampaign.periodicRules || []).length > 0} trueLabel={`${reviewRuntimeCampaign.periodicRules.length} periyodik kural`} falseLabel="Periyodik kural yok" />
-                  <MiniBadge active={schemaReady} trueLabel="Kayda hazir" falseLabel="Workspace hazir degil" />
+                    <MiniBadge active={schemaReady} trueLabel="Kayda hazır" falseLabel="Workspace hazır değil" />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Kampanya: <strong>{wizardCampaign.name || 'Adsız kampanya'}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Kod: <strong>{wizardCampaign.code || 'Kod girilmedi'}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Hedef kitle: <strong>{getOptionLabel(CAMPAIGN_AUDIENCE_OPTIONS, wizardCampaign.audienceType)}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Uygulama modu: <strong>{getOptionLabel(CAMPAIGN_APPLICATION_MODE_OPTIONS, wizardCampaign.applicationMode)}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Kanallar: <strong>{(wizardCampaign.channelTargets || []).length > 0 ? formatCompactList((wizardCampaign.channelTargets || []).map(value => getOptionLabel(CAMPAIGN_CHANNEL_OPTIONS, value, value))) : 'Tüm kanallar'}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Çakışma modu: <strong>{getOptionLabel(STACKING_RULE_OPTIONS, mergeMode, mergeMode)}</strong></div>
+                  <div style={{ fontSize: '.82rem', color: '#334155' }}>Öncelik: <strong>{wizardCampaign.priority}</strong></div>
                 </div>
               </div>
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn-o" onClick={openCampaignTaskCreate}>
+                    <i className="fa-solid fa-list-check" style={{ marginRight: 6 }} />
+                    Görev Oluştur
+                  </button>
+                  <button type="button" className="btn-o" onClick={() => toast('Duyuru modülü hazır olduğunda bu buton kampanya duyurusu oluşturma akışına bağlanacak.', 'info')}>
+                    <i className="fa-solid fa-bullhorn" style={{ marginRight: 6 }} />
+                    Duyuru Oluştur
+                  </button>
+                </div>
+                <div style={{ color: '#64748b', fontSize: '.78rem', lineHeight: 1.5 }}>
+                  Görev oluşturma akışı kampanya adını görev tanımına taşır; görev kaydedilince wizard ekranına dönülür.
+                </div>
+              </div>
             </div>
           ) : null}
         </>
       )}
 
+      {activeStackingHelp ? (
+        <EditorModal
+          title={activeStackingHelp.title}
+          subtitle="Çakışma ve birleşme kuralı yardım ekranı"
+          onClose={() => setStackingHelpKey(null)}
+        >
+          <div style={{ display: 'grid', gap: 14 }}>
+            <HelperNote title="Çalışma mantığı">
+              {activeStackingHelp.summary}
+            </HelperNote>
+            <div style={{ border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: 12, padding: 12, display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: '.76rem', fontWeight: 900, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Örnek senaryolar</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {activeStackingHelp.examples.map((example, index) => (
+                  <div key={example} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 8, fontSize: '.84rem', color: '#475569', lineHeight: 1.55 }}>
+                    <strong style={{ color: '#1d4ed8' }}>{index + 1}.</strong>
+                    <span>{example.replaceAll('`', '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 8, fontSize: '.84rem', color: '#475569', lineHeight: 1.6 }}>
+              <div><strong style={{ color: '#0f172a' }}>Kullanım:</strong> {activeStackingHelp.usage}</div>
+              <div><strong style={{ color: '#0f172a' }}>Öncelik:</strong> {activeStackingHelp.priority}</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn-p" type="button" onClick={() => setStackingHelpKey(null)}>Tamam</button>
+            </div>
+          </div>
+        </EditorModal>
+      ) : null}
+
+      {conflictGroupModalOpen ? (
+        <EditorModal
+          title="Yeni Çakışma Grubu"
+          subtitle="Grup DB'ye kaydedilir ve bu kampanya seçilen gruba dahil edilir."
+          onClose={() => {
+            if (!conflictGroupSaving) setConflictGroupModalOpen(false)
+          }}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <FieldStack label="Grup adı">
+              <input
+                className="f-input"
+                value={conflictGroupDraft.name}
+                onChange={event => setConflictGroupDraft(current => ({ ...current, name: event.target.value }))}
+                placeholder="Örn. burger indirimleri"
+                autoFocus
+              />
+            </FieldStack>
+            <FieldStack label="Açıklama">
+              <textarea
+                className="f-input"
+                style={{ minHeight: 78 }}
+                value={conflictGroupDraft.description}
+                onChange={event => setConflictGroupDraft(current => ({ ...current, description: event.target.value }))}
+                placeholder="Bu grup hangi kampanyaları birbiriyle yarıştırır?"
+              />
+            </FieldStack>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn-o" type="button" disabled={conflictGroupSaving} onClick={() => setConflictGroupModalOpen(false)}>Vazgeç</button>
+              <button className="btn-p" type="button" disabled={conflictGroupSaving} onClick={saveConflictGroup}>
+                {conflictGroupSaving
+                  ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Kaydediliyor</>
+                  : <><i className="fa-solid fa-floppy-disk" style={{ marginRight: 6 }} />Grubu Kaydet</>}
+              </button>
+            </div>
+          </div>
+        </EditorModal>
+      ) : null}
+
       {ruleEditorState && activeRuleEditorRule && activeRuleEditorItem ? (
         <EditorModal
-          title={ruleEditorState.mode === 'actions' ? 'Eylemi Duzenle' : 'Kosulu Duzenle'}
+          title={ruleEditorState.mode === 'actions' ? 'Eylemi Düzenle' : 'Koşulu Düzenle'}
           subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazli akisa bagli blog' : 'Siparis aninda calisan blog'}
           onClose={closeRuleEditor}
         >
@@ -4029,7 +4698,7 @@ export default function LoyaltyCampaignWizard() {
                     </select>
                   </div>
                 </FieldStack>
-                <FieldStack label="Kisa ozet">
+                <FieldStack label="Kısa özet">
                   <input
                     className="f-input"
                     value={activeRuleEditorItem.actionSummary || ''}
@@ -4064,7 +4733,7 @@ export default function LoyaltyCampaignWizard() {
           ) : (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'end' }}>
-                <FieldStack label="Kosul tipi">
+                <FieldStack label="Koşul tipi">
                   <div style={{ display: 'grid', gap: 8 }}>
                     <div className="sel-wrap">
                       <select
@@ -4125,7 +4794,7 @@ export default function LoyaltyCampaignWizard() {
       }}>
         <div style={{ fontSize: '.8rem', color: '#64748b' }}>
           {databaseUnavailable || !schemaReady
-            ? 'Workspace hazir olmadan kaydetme kapali kalir.'
+            ? 'Workspace hazır olmadan kaydetme kapalı kalır.'
             : null}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -4140,7 +4809,7 @@ export default function LoyaltyCampaignWizard() {
             <button className="btn-p" type="button" onClick={handleSave} disabled={saving || loading || databaseUnavailable || !schemaReady}>
               {saving
                 ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Kaydediliyor</>
-                : <><i className="fa-solid fa-floppy-disk" style={{ marginRight: 6 }} />Kaydet ve Editore Git</>}
+                : <><i className="fa-solid fa-floppy-disk" style={{ marginRight: 6 }} />Kaydet ve Editöre Git</>}
             </button>
           )}
         </div>

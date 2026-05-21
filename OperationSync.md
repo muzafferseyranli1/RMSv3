@@ -4543,3 +4543,52 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Next Step`: `Wizard akisi artik koşul/eylem yonetimini tamamen Adim 2'de merkezilestiriyor. Diger adimlarda sadece operasyonel ve ozet bilgileri kaliyor.`
 - `Handoff Contract`: `Sonraki agent wizard'a dokunacaksa once LOYALTYMEMORY Entry 034 ve bu entry'yi okusun. Koşul/eylem tanimi artik yalnizca Adim 2'de yapiliyor; Adim 4/5'te bu alanlara donmesin.`
 
+## Entry 089
+
+- `Timestamp`: `2026-05-21T12:05:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Campaign wizard operasyon adiminda DB kaynakli cakişma gruplari`
+- `Intent`: `Kullanicinin talebi uzerine kampanya cakişma gruplarini serbest metadata yazisi olmaktan cikarip DB tablosundan yonetmek; wizard Adim 4'te grup dropdown, yeni grup modalı ve kapsam uyumlu aday kampanya listelerini kurmak.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/lib/loyalty.js`
+  - `loyalty-foundation.sql`
+  - `schema-railway-master.sql`
+  - `migrations/010_loyalty_campaign_conflict_groups.sql`
+  - `LOYALTY_MASTER_PLAN.md`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Decisions`:
+  - Yeni tablo `loyalty_campaign_conflict_groups` eklendi; scope kolonlari, aktiflik, siralama, metadata, RLS policy ve unique scope/code index tanimlandi.
+  - Wizard grup bazli cakiş secildiginde artik DB'den gelen aktif gruplari dropdown olarak listeler; `Yeni` butonu modal acip grubu DB'ye kaydeder.
+  - Kampanya secili grubu runtime cakişma uyumu icin `metadata.conflictGroupId`, `metadata.conflictGroupName`, `metadata.exclusionGroup` ve `exclusionGroup` uzerinden tasir.
+  - Birlesebilir, grup bazli ve munhasir aday listeleri sadece ayni operasyonel kapsamda gorunur: mevcut workspace/sube scope'u, satis kanali kesişimi ve musteri kategori kesişimi dikkate alinir.
+  - Alt bilgi kartlari secili cakişma tipinin kendi kart kolonunda gosterilir; altta ayri genis panel olarak kopuk durmaz.
+  - Aday kampanya kartlari tum cakişma tiplerinde tek satir kompakt satira indirildi; aciklama varsa kucuk gri alt satirda gosterilir.
+  - Grup bazli cakiş kartinin bos grup seciminde munhasir moda geri dusmesi `metadata.stackMode` ile engellendi.
+  - Grup secildiginde ayni kapsamda aktif kampanya yoksa bos alan birakilmaz; `Bu grupta aktif kampanya yok.` mesaji gosterilir.
+  - Cakişma kartlarina ampul yardim ikonu eklendi; mevcut kampanya olusturma ekranindaki birlesebilir/grup bazli/munhasir ornekleri modal yardim olarak acilir ve `Tamam` ile kapanir.
+  - Adim 5'ten kupon/puan detaylari kaldirildi; kampanya adi/kodu/aciklamasi, otomatik kampanya ozeti, Railway storage/DB metadata gorsel alani, gorev olustur ve duyuru olustur hazirligi bu sekmeye tasindi.
+  - Kampanya gorsel alani tekil gorsel yerine `metadata.campaignImages[]`, `metadata.primaryCampaignImageId` ve geriye uyumlu `metadata.campaignImage` ile kampanya bazli gorsel kutuphanesine cevrildi.
+  - Ilk yuklenen/eklenen gorsel otomatik ana gorsel olur; ana gorsel wizard adim barinin zemininde kullanilir ve adim barinda kutuphane thumbnail'lari gosterilir.
+  - `Gorev Olustur` butonu `/tasks` sayfasini kampanya adi/tanimi query prefill'iyle acar; gorev kaydedilince `returnTo` ile wizard'a donme akisi eklendi.
+  - Wizard gorunen metinleri ve wizard'da kullanilan sadakat secenekleri Turkce karakter/dilbilgisi acisindan tarandi; kosul, eylem, ozet, uyari ve secim etiketleri duzeltildi.
+  - `src/components/pages/LoyaltyCouponSets.jsx` yeni/duzenle modalı sade `Kupon serisi olustur` akisina indirildi: seri adi, onek, tek kupon, kupon sayisi, rastgele parca uzunlugu, karakter seti ve siparisi kapattiktan sonra kullan secimi kaldi.
+  - Kupon setinin ne ise yarayacagi bu ekranin konusu olmaktan cikarildi; indirim/etki/urun hedefi/gecerlilik/import-export/kod gecmisi bloklari kaldirildi ve kosul/eylem kural modeline birakildi.
+  - Kaldirilan etki/gecerlilik bilgileri fiziksel DB kolonu degildi; `loyalty_coupon_series.metadata` icindeki `benefitConfig`, `redemptionEffect`, `validFrom`, `validUntil`, `expiresInDays`, `autoDeactivateOnExpiry` kalintilari yeni kayitlarda/savelerde yazilmayacak sekilde temizlendi.
+- `Verification`:
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-conflict-groups-2` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-compact-conflict` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-group-empty-state` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-conflict-help` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-review-assets-task` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-image-library` -> Basarili.
+  - `npm.cmd run build:web -- --outDir temp-dist-coupon-set-simple-modal` -> Basarili.
+  - `Invoke-WebRequest http://127.0.0.1:5173/sadakat/kupon-setleri` -> HTTP 200; headless browser smoke yapilamadi cunku workspace node_modules icinde Playwright/Puppeteer yok.
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md` icindeki DB URL chat'e yazdirilmadan gecici runner ile kullanildi.
+  - Ilk local run sandbox network `EACCES` verdi; escalated run sonrasi `migration_010_applied` alindi.
+  - Gecici `temp/apply-loyalty-conflict-groups.mjs` dosyasi silindi.
+- `Open Notes`:
+  - Canli UI smoke henuz yapilmadi; tablo canli DB'de var, ama wizard uzerinden dropdown/modal kayit readback'i sonraki kontrolde yapilmali.
+  - Route truth degismedi: `/sadakat/kampanya/yeni` ve `/sadakat/kampanya/:campaignId` halen `LoyaltyManagement`, wizard preview route ayrik.
+- `Handoff Contract`: `Sonraki agent wizard'a dokunacaksa LOYALTYMEMORY Entry 035 ve OperationSync Entry 089'u okusun. Cakişma grubu artik DB tablosu kaynaklidir; serbest text input'a geri donulmesin. Adim 1-3 kullanici tarafindan tamam sayildi, gereksiz degistirilmesin.`

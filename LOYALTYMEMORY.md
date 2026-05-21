@@ -1571,3 +1571,43 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `npm run build -> exit code 0, Vite build basarili (24.85s).`
 - `Next`: `Adım 4/5 sadeleştirmesi sonrasında wizard akışı daha odaklı; koşul/eylem yönetimi artık tamamen Adım 2'de merkezileştirildi.`
 
+## Entry 035
+- `Date`: `2026-05-21`
+- `Phase`: `Campaign Wizard DB-managed Conflict Groups`
+- `Affected Surfaces`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/lib/loyalty.js`
+  - `loyalty-foundation.sql`
+  - `schema-railway-master.sql`
+  - `migrations/010_loyalty_campaign_conflict_groups.sql`
+- `Result`:
+  - `Adım 4 Operasyon` sekmesinde aktif/pasif checkbox adım barının sağına taşındı.
+  - `Birleşebilir`, `Grup bazlı çakış`, `Münhasır` seçim kartları hedef kartlarıyla uyumlu ikonlu/renkli kart diline çekildi.
+  - Seçili çakışma tipinin alt bilgileri artık ilgili kartın altında aynı kolon/blok içinde gösteriliyor.
+  - `loyalty_campaign_conflict_groups` tablosu eklendi; grup bazlı çakışmada kayıtlı gruplar DB'den dropdown olarak geliyor.
+  - Yeni grup modalı, governance dosyasındaki Railway Postgres bağlantısı kullanılarak canlı DB'ye uygulanan migration sonrası grubu DB'ye kaydedecek şekilde bağlandı.
+  - Kampanya seçili grubu `metadata.conflictGroupId`, `metadata.conflictGroupName` ve runtime uyumu için `metadata.exclusionGroup` / `exclusionGroup` ile taşır.
+  - Birleşebilir, grup bazlı ve münhasır listelerinde aday kampanyalar şube scope'u, satış kanalı kesişimi ve müşteri kategori kesişimi dikkate alınarak filtrelenir.
+  - Aday kampanyalar tüm çakışma tiplerinde tek satır kompakt kart olarak gösterilir; açıklama varsa küçük gri alt satır olarak kalır.
+  - Grup bazlı çakış kartının boş grup seçiminde münhasır moda geri düşme hatası `metadata.stackMode` ile giderildi.
+  - Grup seçildiğinde aynı kapsamda aktif kampanya yoksa boş panel yerine `Bu grupta aktif kampanya yok.` mesajı gösterilir.
+  - Çakışma kartlarına ampul yardım ikonu eklendi; ikon mevcut kampanya oluşturma ekranındaki birleşebilir/grup bazlı/münhasır örneklerini modal yardım ekranında gösterir ve `Tamam` ile kapanır.
+  - Adım 5'ten kupon/puan detayları kaldırıldı; bu sekme kampanya adı, kodu, açıklaması, otomatik kampanya özeti, Railway storage/DB metadata görsel alanı, görev oluştur ve duyuru oluştur hazırlığına ayrıldı.
+  - Kampanya görsel alanı tekil görsel yerine `metadata.campaignImages[]`, `metadata.primaryCampaignImageId` ve geriye uyumlu `metadata.campaignImage` ile kampanya bazlı görsel kütüphanesine çevrildi.
+  - İlk yüklenen/eklenen görsel otomatik ana görsel olur; ana görsel wizard adım barının zemininde kullanılır ve adım barında kütüphane thumbnail'ları gösterilir.
+  - `Görev Oluştur` butonu `/tasks` sayfasını kampanya adı/tanımı query prefill'iyle açar; görev kaydedilince `returnTo` ile wizard'a dönme akışı eklendi.
+  - Wizard görünen metinleri ve wizard'da kullanılan sadakat seçenekleri Türkçe karakter/dilbilgisi açısından tarandı; koşul, eylem, özet, uyarı ve seçim etiketleri düzeltildi.
+  - `src/components/pages/LoyaltyCouponSets.jsx` yeni/düzenle modalı sade `Kupon serisi oluştur` akışına indirildi: seri adı, önek, tek kupon, kupon sayısı, rastgele parça uzunluğu, karakter seti ve siparişi kapattıktan sonra kullan seçimi kaldı.
+  - Kupon setinin ne işe yarayacağı artık bu modalın konusu değil; indirim/etki/ürün hedefi/geçerlilik/import-export/kod geçmişi blokları kaldırıldı ve koşul/eylem kural modeline bırakıldı.
+  - Kaldırılan etki/geçerlilik bilgileri fiziksel DB kolonu değildi; `loyalty_coupon_series.metadata` içindeki `benefitConfig`, `redemptionEffect`, `validFrom`, `validUntil`, `expiresInDays`, `autoDeactivateOnExpiry` kalıntıları yeni kayıtlarda/savelerde yazılmayacak şekilde temizlendi.
+- `Verification`:
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-conflict-groups-2` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-compact-conflict` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-group-empty-state` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-conflict-help` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-review-assets-task` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-wizard-image-library` -> exit code 0.
+  - `npm.cmd run build:web -- --outDir temp-dist-coupon-set-simple-modal` -> exit code 0.
+  - `Invoke-WebRequest http://127.0.0.1:5173/sadakat/kupon-setleri` -> HTTP 200; headless browser smoke yapılamadı çünkü workspace node_modules içinde Playwright/Puppeteer yok.
+  - `node temp\apply-loyalty-conflict-groups.mjs` escalated run -> `migration_010_applied`; geçici runner dosyası silindi.
+- `Next`: `Canlı UI'da grup dropdown/modal smoke yapılmalı; route truth değişmedi, /sadakat/kampanya/yeni halen LoyaltyManagement.`

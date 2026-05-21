@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -164,7 +165,10 @@ function fieldGrid(children) {
 
 export default function Tasks({ scope = 'center' }) {
   const toast = useToast()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const workspace = useWorkspace()
+  const taskPrefillAppliedRef = useRef(false)
   const [actor, setActor] = useState(null)
   const [actorError, setActorError] = useState('')
   const [branchOptions, setBranchOptions] = useState([])
@@ -277,6 +281,20 @@ export default function Tasks({ scope = 'center' }) {
     }
   }, [actor])
 
+  useEffect(() => {
+    if (!actor || taskPrefillAppliedRef.current || searchParams.get('create') !== '1') return
+    const campaignName = searchParams.get('campaignName') || ''
+    const taskTitle = searchParams.get('taskTitle') || (campaignName ? `Kampanya görevi: ${campaignName}` : '')
+    const taskDescription = searchParams.get('taskDescription') || (campaignName ? `Kampanya adı: ${campaignName}` : '')
+    taskPrefillAppliedRef.current = true
+    setForm({
+      ...createInitialForm(actor.branchId || ''),
+      title: taskTitle,
+      description: taskDescription,
+    })
+    setCreateOpen(true)
+  }, [actor, searchParams])
+
   async function openTask(task) {
     setDetailLoading(true)
     const result = await fetchTaskDetail(task.id)
@@ -319,6 +337,11 @@ export default function Tasks({ scope = 'center' }) {
       toast('Gorev olusturuldu.', 'success')
       setCreateOpen(false)
       setForm(createInitialForm(actor.branchId || ''))
+      const returnTo = searchParams.get('returnTo')
+      if (searchParams.get('source') === 'loyalty_campaign' && returnTo) {
+        navigate(returnTo)
+        return
+      }
       await refreshTasks()
     } catch (error) {
       toast(`Gorev kaydedilemedi: ${error.message}`, 'error')

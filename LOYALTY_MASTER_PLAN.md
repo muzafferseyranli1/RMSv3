@@ -25,7 +25,7 @@ Amac: SuitableRMS sadakat / kampanya modulu icin tek sayfada takip edilen ana pl
 - [x] Campaign/rule/tier/coupon/category modeli tek loyalty omurgasinda toplansin.
 - [x] Ana loyalty management ekranÄ± gercek persistence akÄ±sÄ±na bagli olsun.
 - [~] Wizard create flow ile ana editor parity'si netlestirilsin.
-  Not: `/sadakat/kampanya/yeni` halen `LoyaltyManagement`, wizard ayrik route'ta.
+  Not: `/sadakat/kampanya/yeni` halen `LoyaltyManagement`, wizard ayrik route'ta. Wizard Adim 4 artik DB kaynakli `loyalty_campaign_conflict_groups` ile kampanya cakişma gruplarini yonetiyor. Adim 5 kupon/puan konusu degil; kampanya kimligi, ozet, Railway storage/DB metadata gorsel kutuphanesi, gorev olusturma ve duyuru hazirligi icin kullaniliyor.
 - [ ] Hazir kampanya sablonlari backoffice tarafina eklensin.
 - [ ] Hazir segment kutuphanesi backoffice tarafina eklensin.
 - [ ] Lifecycle campaign presetleri eklenip operasyon ekibi icin hizlandirilsin.
@@ -85,3 +85,6 @@ Amac: SuitableRMS sadakat / kampanya modulu icin tek sayfada takip edilen ana pl
 - [x] POS / Garson / Kiosk yuzeylerinde hazir avantaj gorunurlugu
 - [x] Siparis kapanisinda wallet / points / redemption posting zinciri
 - [x] Call Center runtime loyalty evaluation + manual trigger + sale loyalty snapshot + ledger posting
+- [x] Campaign wizard operasyon adiminda DB kaynakli cakişma grubu dropdown/modal akisi ve kapsam uyumlu kampanya listeleri
+- [x] Campaign wizard Adim 5 kupon/puan detaylarindan arindirildi; kampanya kimligi, ozet, gorsel kutuphanesi, gorev ve duyuru hazirligi eklendi
+- [x] Kupon seti yeni/duzenle modali sade seri/kod uretim akisina indirildi; kuponun etkisi kosul/eylem kural modeline birakildi
