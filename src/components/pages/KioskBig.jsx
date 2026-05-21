@@ -2469,14 +2469,22 @@ export default function KioskBig() {
   const isZeroTotalOrder = orderTotal <= 0.009
   const primaryCheckoutLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : '\u00d6demeye ge\u00e7'
   const paymentConfirmLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : 'Sipari\u015fi Tamamla'
-  const saleLoyaltySnapshot = useMemo(
-    () => createSaleLoyaltySnapshot(appliedLoyaltyOffer),
-    [appliedLoyaltyOffer],
-  )
-  const activeLoyaltyLabel = displayText(
+  const saleLoyaltySnapshot = useMemo(() => {
+    const multipliersActive = (loyaltyEvaluation.combinedEarnMultiplier && loyaltyEvaluation.combinedEarnMultiplier !== 1) ||
+                              (loyaltyEvaluation.combinedRedeemMultiplier && loyaltyEvaluation.combinedRedeemMultiplier !== 1);
+    const loyaltyCampaignPayload = appliedLoyaltyOffer || (multipliersActive ? {
+      decisionContext: {
+        combinedEarnMultiplier: loyaltyEvaluation.combinedEarnMultiplier,
+        combinedRedeemMultiplier: loyaltyEvaluation.combinedRedeemMultiplier,
+        tierPointsMultiplier: (loyaltyCustomer?.tierPointsMultiplier || loyaltyCustomer?.pointsMultiplier || loyaltyCustomer?.points_multiplier || 1)
+      }
+    } : null);
+    return createSaleLoyaltySnapshot(loyaltyCampaignPayload);
+  }, [appliedLoyaltyOffer, loyaltyEvaluation.combinedEarnMultiplier, loyaltyEvaluation.combinedRedeemMultiplier, loyaltyCustomer])
+  const activeLoyaltyLabel = useMemo(() => displayText(
     appliedLoyaltyOffer?.campaignName || loyaltyCustomer?.selectedCampaignName || '',
     'Sadakat kampanyası',
-  )
+  ), [appliedLoyaltyOffer, loyaltyCustomer])
   const activeLoyaltyNote = displayText(
     appliedLoyaltyOffer?.offerLabel || activeLoyaltyLabel,
     '',

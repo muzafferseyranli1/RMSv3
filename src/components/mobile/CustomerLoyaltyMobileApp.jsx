@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   buildCustomerMobileViewModel,
+  bindCouponToCustomer,
   formatMobileDate,
   formatMobileMoney,
   formatMobileNumber,
@@ -521,9 +522,102 @@ function CardScreen({ model }) {
   )
 }
 
-function CouponsScreen({ model }) {
+function CouponsScreen({ model, onAddCoupon }) {
+  const [couponCode, setCouponCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState({ text: '', type: '' })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!couponCode.trim()) return
+    setLoading(true)
+    setMessage({ text: '', type: '' })
+    try {
+      await onAddCoupon(couponCode)
+      setMessage({ text: 'Kupon hesabınıza başarıyla tanımlandı!', type: 'success' })
+      setCouponCode('')
+    } catch (err) {
+      setMessage({ text: err.message || 'Kupon eklenirken bir hata oluştu.', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {/* Kupon Ekleme Formu */}
+      <form onSubmit={handleSubmit} style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 10 }}>
+        <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '0.88rem' }}>Yeni Kupon Ekle</div>
+        <div style={{ fontSize: '.76rem', color: '#64748b', lineHeight: 1.5 }}>
+          Sahip olduğunuz kupon kodunu buraya girerek hesabınızla eşleştirebilirsiniz.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value)}
+            placeholder="Kupon Kodu (Örn: SAVE20)"
+            style={{
+              flex: 1,
+              minHeight: 40,
+              borderRadius: 12,
+              border: '1px solid rgba(148,163,184,.22)',
+              background: '#fff',
+              color: '#0f172a',
+              padding: '0 12px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              textTransform: 'uppercase'
+            }}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading || !couponCode.trim()}
+            style={{
+              minWidth: 80,
+              minHeight: 40,
+              borderRadius: 12,
+              border: 'none',
+              background: 'linear-gradient(135deg,#f97316,#ea580c)',
+              color: '#fff',
+              fontWeight: 900,
+              cursor: loading || !couponCode.trim() ? 'not-allowed' : 'pointer',
+              opacity: loading || !couponCode.trim() ? 0.6 : 1,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6
+            }}
+          >
+            {loading ? (
+              <i className="fa-solid fa-spinner fa-spin" />
+            ) : (
+              <>
+                <i className="fa-solid fa-plus" />
+                Ekle
+              </>
+            )}
+          </button>
+        </div>
+        {message.text && (
+          <div style={{
+            fontSize: '.74rem',
+            fontWeight: 700,
+            color: message.type === 'success' ? '#166534' : '#b91c1c',
+            background: message.type === 'success' ? '#ecfdf5' : '#fef2f2',
+            padding: '8px 12px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            <i className={message.type === 'success' ? 'fa-solid fa-circle-check' : 'fa-solid fa-triangle-exclamation'} />
+            {message.text}
+          </div>
+        )}
+      </form>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <SummaryTile label="Aktif kupon" value={String(model.activeCoupons.length)} hint="Kullanima hazir veya ayrilmis" color="#ea580c" />
         <SummaryTile label="Yakinda bitecek" value={String(model.expiringCoupons.length)} hint="7 gun icinde sonlanir" color="#dc2626" />
@@ -855,6 +949,7 @@ function AppViewport({
   onSelectCampaign,
   onSelectCoupon,
   onConnectLink,
+  onAddCoupon,
   standalone = false,
 }) {
   return (
@@ -940,7 +1035,7 @@ function AppViewport({
           }
         }} /> : null}
         {activeTab === 'card' ? <CardScreen model={model} /> : null}
-        {activeTab === 'coupons' ? <CouponsScreen model={model} /> : null}
+        {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} /> : null}
         {activeTab === 'campaigns' ? <CampaignsScreen model={model} /> : null}
         {activeTab === 'account' ? <AccountScreen model={model} accountView={accountView} onChange={onAccountViewChange} /> : null}
       </div>
@@ -1304,6 +1399,13 @@ export default function CustomerLoyaltyMobileApp({
     }
   }
 
+  async function handleAddCoupon(couponCode) {
+    if (!selectedCustomerId) throw new Error('Müşteri seçilmemiş.')
+    await bindCouponToCustomer(selectedCustomerId, couponCode)
+    const result = await loadCustomerMobileSnapshot(selectedCustomerId)
+    setSnapshot(result)
+  }
+
   function renderBody() {
     if (loading) {
       return (
@@ -1384,6 +1486,7 @@ export default function CustomerLoyaltyMobileApp({
         onSelectCampaign={handleSelectLinkCampaign}
         onSelectCoupon={handleSelectLinkCoupon}
         onConnectLink={() => { void connectLinkSession() }}
+        onAddCoupon={handleAddCoupon}
         standalone={isStandalone}
       />
     )

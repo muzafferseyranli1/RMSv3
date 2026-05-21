@@ -418,3 +418,55 @@ export function formatMobileRelativeDateLabel(value) {
   if (key === yesterday) return 'Dün'
   return formatMobileDate(value, { day: '2-digit', month: 'short' })
 }
+
+export async function bindCouponToCustomer(customerId, couponCode) {
+  if (!customerId) throw new Error('Geçersiz müşteri oturumu.')
+  if (!couponCode || !couponCode.trim()) throw new Error('Lütfen bir kupon kodu girin.')
+
+  const cleanCode = couponCode.trim()
+
+  const { data: couponRows, error: fetchError } = await db
+    .from('loyalty_coupons')
+    .select('id, customer_id, code, is_used, redemption_status, active, deleted_at, expires_at')
+    .ilike('code', cleanCode)
+    .is('deleted_at', null)
+    .limit(1)
+
+  if (fetchError) throw fetchError
+  const coupon = couponRows?.[0]
+  if (!coupon) {
+    throw new Error('Geçersiz veya bulunamayan kupon kodu.')
+  }
+
+  if (coupon.customer_id) {
+    if (String(coupon.customer_id) === String(customerId)) {
+      throw new Error('Bu kupon zaten hesabınıza tanımlı.')
+    } else {
+      throw new Error('Bu kupon kodu başka bir hesaba tanımlı.')
+    }
+  }
+
+  if (coupon.is_used || coupon.redemption_status === 'used') {
+    throw new Error('Bu kupon zaten kullanılmış.')
+  }
+
+  if (coupon.redemption_status === 'expired' || (coupon.expires_at && new Date(coupon.expires_at) < new Date())) {
+    throw new Error('Bu kuponun süresi dolmuş.')
+  }
+
+  if (!coupon.active) {
+    throw new Error('Bu kupon aktif değil.')
+  }
+
+  const { error: updateError } = await db
+    .from('loyalty_coupons')
+    .update({
+      customer_id: customerId,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', coupon.id)
+
+  if (updateError) throw updateError
+  return coupon
+}
+

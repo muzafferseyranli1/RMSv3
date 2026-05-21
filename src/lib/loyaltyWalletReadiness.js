@@ -219,6 +219,7 @@ export async function resolveLoyaltyProgramRedemptionModel({
       redemptionRate: null,
       unit: '1 puan = redemption_rate TL',
       errorMessage: '',
+      program: null,
     }
   }
 
@@ -236,13 +237,14 @@ export async function resolveLoyaltyProgramRedemptionModel({
       redemptionRate,
       unit: '1 puan = redemption_rate TL',
       errorMessage: '',
+      program,
     }
   }
 
   try {
     const { data, error } = await db
       .from('loyalty_programs')
-      .select('id,redemption_model,redemption_rate')
+      .select('id,redemption_model,redemption_rate,metadata')
       .eq('id', normalizedProgramId)
       .limit(1)
 
@@ -264,6 +266,7 @@ export async function resolveLoyaltyProgramRedemptionModel({
       redemptionRate,
       unit: '1 puan = redemption_rate TL',
       errorMessage: '',
+      program: row,
     }
   } catch (error) {
     return {
@@ -276,6 +279,7 @@ export async function resolveLoyaltyProgramRedemptionModel({
       redemptionRate: null,
       unit: '1 puan = redemption_rate TL',
       errorMessage: error?.message || String(error || ''),
+      program: null,
     }
   }
 }

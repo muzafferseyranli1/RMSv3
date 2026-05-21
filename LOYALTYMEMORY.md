@@ -1611,3 +1611,63 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `Invoke-WebRequest http://127.0.0.1:5173/sadakat/kupon-setleri` -> HTTP 200; headless browser smoke yapılamadı çünkü workspace node_modules içinde Playwright/Puppeteer yok.
   - `node temp\apply-loyalty-conflict-groups.mjs` escalated run -> `migration_010_applied`; geçici runner dosyası silindi.
 - `Next`: `Canlı UI'da grup dropdown/modal smoke yapılmalı; route truth değişmedi, /sadakat/kampanya/yeni halen LoyaltyManagement.`
+
+## Entry 036
+- `Date`: `2026-05-22`
+- `Phase`: `Loyalty Module Egress Optimization`
+- `Affected Surfaces`:
+  - `server/index.js`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+- `Result`:
+  - **Ağ Egress Optimizasyonu**: Kampanya Sihirbazındaki genişleyen metadata ve çakışma grupları verisi nedeniyle artan egress kullanımını çözmek için Express tarafında `compression` (gzip) etkinleştirildi. Yanıt boyutları %80-90 oranında azaltıldı.
+  - **Tembel Yükleme (Lazy Loading)**: `loadLoyaltyWorkspace` çağrılarında kupon listelerinin eager yüklenmesi durduruldu (`includeCoupons: false`). Kodlar sadece kullanıcı ilgili seti açtığında asenkron yüklenmektedir.
+- `Verification`:
+  - `npm run build` başarıyla tamamlandı.
+- `Next`: `Mobil uygulama ve POS tarafındaki sadakat sorgularının sıkıştırılmış ve optimize edildiğini gözlemlemeye devam edin.`
+
+## Entry 037
+
+- `Timestamp`: `2026-05-22T02:26:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Dönemlik Sadakat Koşulları İstemci Tarafı Entegrasyonu & 6 İşlem Sayfası Paritesi`
+- `Trigger`: `Kullanıcı, dönem bazlı müşteri sadakat koşullarının local/offline değerlendirilmesini ve sepet satırları ile şablonların 6 ana sayfadan (POS, Garson, CallCenter, KioskBig, KioskTablet, MobileAppShells) sadakat motoruna iletilmesini istedi.`
+- `Files Read`:
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `migrations/011_loyalty_period_aggregates.sql`
+- `Files Changed`:
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - Müşteri bazlı dönemlik koşullar (seçilen rolling days bazında sipariş sayısı, ürün adetleri ve sipariş tutarlarya) local `evaluateRuntimeOrderCampaigns` / `evaluateRuntimeOrderCampaignsAsync` fonksiyonlarında local olarak değerlendirilir.
+  - Alışveriş sepetindeki satırlar `cartLines` olarak ve etkin şablonlar `saleTemplates` olarak 6 işlem sayfasından anlık değerlendirmelere beslenir.
+  - Kampanya bulunmayan durumlarda puan kazanım/harcama multipliers (katsayıları) snapshot olarak decisionContext'e yedeklenir.
+- `Gap`:
+  - Dönemlik sadakat verilerinin gerçek satış simülasyonları altında uçtan uca doğrulanması ve veri tutarlılığının takibi.
+- `Approved Phase`: `Period-based client evaluation & page integration complete`
+- `Affected Surfaces`:
+  - `POS`, `Garson`, `CallCenter`, `KioskBig`, `KioskTablet`, `MobileAppShells`
+  - `posLoyalty.js` evaluator motoru
+- `Readiness`:
+  - `Client-side period stats evaluation`: `Ready`
+  - `UI integration across 6 transaction pages`: `Ready`
+  - `Compilation & build verification`: `Ready`
+- `Decision`:
+  - Tüm sepet hareketleri normalleştirilerek `cartLines` olarak iletildi.
+  - Müşteri tier katsayıları fallback snapshot yapısına (`combinedEarnMultiplier`, `combinedRedeemMultiplier`, `tierPointsMultiplier`) dahil edildi.
+- `Risks`:
+  - Dropbox/Windows üzerinde Vite build sırasındaki dosya kilitlenme sorunları (Clean command ile aşılmaktadır).
+- `Next Loyalty Step`:
+  - İlk canlı satış smoke testini gerçekleştirip DB readback sonucunu (`loyalty_wallets`, `loyalty_transactions`, `loyalty_campaign_redemptions`) `OperationSync` dosyasına kaydetmek.

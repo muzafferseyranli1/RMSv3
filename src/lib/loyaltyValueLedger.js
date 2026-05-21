@@ -101,23 +101,25 @@ function buildActionEntries(rule = null, loyaltyCampaign = {}) {
   return entries
 }
 
-function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}) {
+function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}, decisionContext = null) {
   const config = action.actionConfig || {}
   switch (action.actionType) {
     case 'bonus_points':
       return roundPoints(config.points || campaign.reward_value || campaign.rewardValue || 0)
     case 'points_percent_of_order':
       return roundPoints(saleAmount * Number(config.percent || campaign.reward_value || campaign.rewardValue || 0) / 100)
-    case 'points_earn_multiplier':
-      return roundPoints(saleAmount * Number(config.multiplier || 1))
+    case 'points_earn_multiplier': {
+      const combinedEarnMultiplier = Number(decisionContext?.combinedEarnMultiplier || config.multiplier || 1)
+      return roundPoints(saleAmount * combinedEarnMultiplier)
+    }
     case 'points_redeem_multiplier': {
+      const combinedRedeemMultiplier = Number(decisionContext?.combinedRedeemMultiplier || config.multiplier || config.redemptionContext?.multiplier || 1)
       const explicitUsedPoints = roundPoints(config.usedPoints || config.redemptionContext?.usedPoints || 0)
       if (explicitUsedPoints > 0) return -explicitUsedPoints
 
       const discountAmount = Number(config.discountAmount || config.redemptionContext?.discountAmount || 0)
       const redemptionRate = Number(config.redemptionRate || config.redemptionContext?.redemptionRate || 0)
-      const multiplier = Number(config.multiplier || config.redemptionContext?.multiplier || 1)
-      const pointValue = redemptionRate * multiplier
+      const pointValue = redemptionRate * combinedRedeemMultiplier
       if (discountAmount > 0 && pointValue > 0) return -roundPoints(discountAmount / pointValue)
       return 0
     }
@@ -515,6 +517,131 @@ async function createRewardEntitlement({
   if (existingError) throw existingError
   if (Array.isArray(existing) && existing[0]?.id) return existing[0]
 
+  let assignedCouponCode = null
+  let enrichedPayload = { ...rewardPayload }
+
+  if (entitlementType === 'coupon' || rewardPayload?.type === 'issue_coupon') {
+    let seriesId = null
+    if (rewardPayload?.actionConfig?.seriesIds?.length) {
+      seriesId = rewardPayload.actionConfig.seriesIds[0]
+    } else if (rewardPayload?.actionConfig?.seriesId) {
+      seriesId = rewardPayload.actionConfig.seriesId
+    } else if (rewardPayload?.seriesIds?.length) {
+      seriesId = rewardPayload.seriesIds[0]
+    } else if (rewardPayload?.seriesId) {
+      seriesId = rewardPayload.seriesId
+    } else if (rewardPayload?.value) {
+      seriesId = rewardPayload.value
+    }
+
+    if (seriesId) {
+      const { data: coupons, error: couponError } = await db
+        .from('loyalty_coupons')
+        .select('id, code')
+        .eq('series_id', seriesId)
+        .is('customer_id', null)
+        .eq('is_used', false)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
+        .limit(1)
+
+      if (couponError) throw couponError
+
+      if (coupons && coupons.length > 0) {
+        const coupon = coupons[0]
+        const { error: updateError } = await db
+          .from('loyalty_coupons')
+          .update({
+            customer_id: customerId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', coupon.id)
+
+        if (updateError) throw updateError
+        assignedCouponCode = coupon.code
+      } else {
+        const { data: seriesRows, error: seriesError } = await db
+          .from('loyalty_coupon_series')
+          .select('id, name, code_prefix, code_length, code_charset, coupon_count, expires_at')
+          .eq('id', seriesId)
+          .limit(1)
+
+        if (seriesError) throw seriesError
+        const series = seriesRows?.[0]
+        if (series) {
+          const prefix = series.code_prefix || ''
+          const length = Number(series.code_length || 8)
+          const charset = series.code_charset || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+          
+          let randomPart = ''
+          for (let i = 0; i < (length - prefix.length); i++) {
+            randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
+          }
+          let uniqueCode = (prefix + randomPart).toUpperCase()
+
+          let attempts = 0
+          while (attempts < 10) {
+            const { data: existingCodes, error: checkError } = await db
+              .from('loyalty_coupons')
+              .select('id')
+              .eq('code', uniqueCode)
+              .limit(1)
+            if (checkError) throw checkError
+            if (!existingCodes?.length) break
+
+            randomPart = ''
+            for (let i = 0; i < (length - prefix.length); i++) {
+              randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
+            }
+            uniqueCode = (prefix + randomPart).toUpperCase()
+            attempts++
+          }
+
+          const newCouponId = `coupon-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+          const expiresAt = series.expires_at || null
+
+          const { error: insertError } = await db
+            .from('loyalty_coupons')
+            .insert({
+              id: newCouponId,
+              series_id: seriesId,
+              customer_id: customerId,
+              code: uniqueCode,
+              is_used: false,
+              active: true,
+              redemption_status: 'available',
+              expires_at: expiresAt,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              metadata: {
+                generatedBy: 'loyalty_value_ledger',
+                seriesName: series.name
+              }
+            })
+
+          if (insertError) throw insertError
+          assignedCouponCode = uniqueCode
+
+          const currentCount = Number(series.coupon_count || 0)
+          const { error: seriesUpdateError } = await db
+            .from('loyalty_coupon_series')
+            .update({
+              coupon_count: currentCount + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', seriesId)
+
+          if (seriesUpdateError) throw seriesUpdateError
+        }
+      }
+    }
+  }
+
+  if (assignedCouponCode) {
+    enrichedPayload.couponCode = assignedCouponCode
+  }
+
   const { data, error } = await db
     .from('loyalty_reward_entitlements')
     .insert({
@@ -531,12 +658,13 @@ async function createRewardEntitlement({
       source_ref_no: saleId,
       target_scope_type: 'any',
       target_scope_json: {},
-      reward_payload: rewardPayload,
+      reward_payload: enrichedPayload,
       quantity: 1,
       earned_at: new Date().toISOString(),
       note,
       metadata: {
         createdBy: 'sale_loyalty_value_ledger',
+        ...(assignedCouponCode ? { assignedCouponCode } : {})
       },
     })
     .select('id')
@@ -568,11 +696,21 @@ export async function postSaleLoyaltyValueLedger({
   const customerName = getCustomerName(customer || {}, saleHeader)
   const saleAmount = getSaleAmount(saleHeader)
   const actionEntries = buildActionEntries(rule, loyaltyCampaign || {})
+  let decisionContext = loyaltyCampaign?.decisionContext || null;
+  if (!decisionContext && (saleHeader?.loyalty_decision_context_json || saleHeader?.loyaltyDecisionContextJson)) {
+    try {
+      const rawContext = saleHeader.loyalty_decision_context_json || saleHeader.loyaltyDecisionContextJson;
+      decisionContext = typeof rawContext === 'string' ? JSON.parse(rawContext) : rawContext;
+    } catch (e) {
+      decisionContext = null;
+    }
+  }
+
   const resolvedPointActions = actionEntries
     .filter(action => POINTS_ACTIONS.has(action.actionType))
     .map(action => ({
       action,
-      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}),
+      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}, decisionContext),
     }))
   const resolvedPointAction = resolvedPointActions.find(entry => entry.pointsDelta !== 0) || resolvedPointActions[0] || null
   const pointsAction = resolvedPointAction?.action || null

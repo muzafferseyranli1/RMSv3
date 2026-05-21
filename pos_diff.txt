@@ -1,0 +1,345 @@
+﻿diff --git a/src/components/pages/POS.jsx b/src/components/pages/POS.jsx
+index 051e77b..2331678 100644
+--- a/src/components/pages/POS.jsx
++++ b/src/components/pages/POS.jsx
+@@ -1479,6 +1479,201 @@ function OdemeModalFlow({
+     }
+   }, [externalLinkedCustomer])
+ 
++  const groupedUnpaidItems = useMemo(
++    () => collapsePaymentItems(unpaidItems),
++    [unpaidItems]
++  )
++  const linkedPreparedAdvantage = useMemo(
++    () => resolvePreparedLoyaltyAdvantage(linkedLoyaltyCustomer, loyaltyCampaigns),
++    [linkedLoyaltyCustomer, loyaltyCampaigns],
++  )
++  const availableIds = unpaidItems.map(item => item.id)
++  const effectiveSelectedIds = scope === 'selected'
++    ? selectedIds.filter(id => availableIds.includes(id))
++    : availableIds
++  const selectedTargetItems = unpaidItems.filter(item => effectiveSelectedIds.includes(item.id))
++  const targetItems = scope === 'selected' ? selectedTargetItems : groupedUnpaidItems
++  const displayItems = scope === 'selected' ? unpaidItems : groupedUnpaidItems
++  const targetBaseTotal = targetItems.reduce((sum, item) => sum + getCartLineTotal(item), 0)
++  const discountAmount = calcDiscountAmount(targetBaseTotal, discountMode, discountValue)
++  const targetNetTotal = Math.max(0, targetBaseTotal - discountAmount)
++  const completedPaidAmount = completedPayments.reduce((sum, payment) => sum + payment.amount, 0)
++  const draftPaidAmount = draftPayments.reduce((sum, payment) => sum + payment.amount, 0)
++  const totalPaidAmount = completedPaidAmount + draftPaidAmount
++  const discountLocked = totalPaidAmount > 0
++  const totalRemainingAmount = Math.max(0, targetNetTotal - totalPaidAmount)
++  const splitSetupPending = scope === 'split' && (!splitPlan || splitPlan.totalParts === 0)
++  const splitFlowStarted = splitPlan?.totalParts > 0
++  const splitPreviewAmounts = useMemo(
++    () => splitPlan?.totalParts > 0
++      ? buildSplitPreviewAmounts(targetNetTotal, splitPlan.totalParts, splitPlan.completedParts, completedPaidAmount)
++      : [],
++    [splitPlan, targetNetTotal, completedPaidAmount]
++  )
++  const selectedSplitTargetAmount = splitPlan?.totalParts > 0
++    ? roundMoney(
++        selectedSplitSlots.reduce(
++          (sum, slotIndex) => sum + (splitPreviewAmounts[slotIndex] || 0),
++          0
++        )
++      )
++    : 0
++  const splitSelectionMissing = splitPlan?.totalParts > 0 && selectedSplitSlots.length === 0
++              rows={4}
++              placeholder={'A\u00e7\u0131klama notu...'}
++              style={{ width:'100%', resize:'vertical', borderRadius:14, border:'1px solid rgba(255,255,255,.12)', background:'rgba(255,255,255,.04)', color:'#fff', padding:'12px 14px', outline:'none' }}
++            />
++          </div>
++        </div>
++
++        <div style={{ padding:'16px 20px', borderTop:'1px solid rgba(255,255,255,.08)', display:'flex', justifyContent:'flex-end', gap:10 }}>
++          <button type="button" onClick={onClose} style={{ minWidth:120, minHeight:48, borderRadius:12, border:'1px solid rgba(255,255,255,.12)', background:'transparent', color:'#cbd5e1', fontWeight:800, cursor:'pointer' }}>{'Vazge\u00e7'}</button>
++          <button
++            type="button"
++            disabled={!selectedCustomer}
++            onClick={() => selectedCustomer && onConfirm({ customer: selectedCustomer, note })}
++            style={{ minWidth:140, minHeight:48, borderRadius:12, border:'none', background:!selectedCustomer ? 'rgba(255,255,255,.08)' : 'linear-gradient(135deg,#f59e0b,#fbbf24)', color:!selectedCustomer ? '#64748b' : '#111827', fontWeight:900, cursor:!selectedCustomer ? 'not-allowed' : 'pointer' }}
++          >
++            {'Borca Yaz'}
++          </button>
++        </div>
++      </div>
++    </div>
++  )
++}
++function BranchSelectModal({ branches, selectedId, onSelect }) {
++  const [search, setSearch] = useState('')
++
++  const query = search.trim().toLowerCase()
++  const filteredBranches = branches.filter(branch => {
++    if (!query) return true
++
++    return (branch.branchName || '').toLowerCase().includes(query)
++      || (branch.legalEntityName || '').toLowerCase().includes(query)
++      || (branch.companyName || '').toLowerCase().includes(query)
++  })
++
++  const metaSeparator = ' \u2022 '
++
++  return (
++    <div style={{ position:'fixed', inset:0, background:'rgba(2,6,23,.78)', zIndex:150, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
++      <div className="touch-modal" style={{ width:680, maxWidth:'96vw', maxHeight:'90vh', overflow:'hidden', background:'#0b1249', border:'1px solid rgba(255,255,255,.12)', borderRadius:24, boxShadow:'0 30px 80px rgba(0,0,0,.55)', display:'flex', flexDirection:'column' }}>
++        <div style={{ padding:'20px 22px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
++          <div style={{ color:'#fff', fontWeight:900, fontSize:'1.18rem' }}>{'\u015eube Se\u00e7in'}</div>
++          <div style={{ color:'#94a3b8', fontSize:'.84rem', marginTop:8 }}>{'POS sat\u0131\u015flar\u0131n\u0131n hangi \u015fube i\u00e7in i\u015flenece\u011fini se\u00e7in. Se\u00e7im bu cihazda hat\u0131rlan\u0131r.'}</div>
++        </div>
++
++        <div style={{ padding:'18px 22px', display:'grid', gap:16, overflowY:'auto' }}>
++          <input
++            value={search}
++            onChange={event => setSearch(event.target.value)}
++            placeholder={'\u015eube, t\u00fczel ki\u015filik veya \u015firket ara...'}
++            style={{ width:'100%', background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', borderRadius:14, padding:'14px 16px', color:'#fff', outline:'none' }}
++          />
++
++          <div style={{ display:'grid', gap:12 }}>
++            {filteredBranches.length === 0 ? (
++              <div style={{ border:'1px solid rgba(255,255,255,.08)', borderRadius:18, background:'rgba(255,255,255,.03)', color:'#94a3b8', textAlign:'center', padding:'24px 18px' }}>{'E\u015fle\u015fen \u015fube bulunamad\u0131.'}</div>
++            ) : (
++              filteredBranches.map(branch => {
++                const selected = branch.branchId === selectedId
++                const meta = [branch.legalEntityName, branch.companyName].filter(Boolean).join(metaSeparator)
++
++                return (
++                  <button
++                    key={branch.branchId}
++                    type="button"
++                    onClick={() => onSelect(branch.branchId)}
++                    style={{ textAlign:'left', border:'1px solid ' + (selected ? 'rgba(251,191,36,.4)' : 'rgba(255,255,255,.08)'), borderRadius:18, padding:'16px 18px', background:selected ? 'rgba(251,191,36,.12)' : 'rgba(255,255,255,.03)', color:'#fff', cursor:'pointer', display:'grid', gap:8 }}
++                  >
++                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
++                      <div style={{ fontWeight:900, fontSize:'1rem' }}>{branch.branchName || '\u0130simsiz \u015eube'}</div>
++                      {selected && <div style={{ fontSize:'.72rem', color:'#fde68a', fontWeight:800 }}>{'Se\u00e7ili'}</div>}
++                    </div>
++                    <div style={{ color:'#cbd5e1', fontSize:'.82rem' }}>{meta || '\u015eube ba\u011flant\u0131 tan\u0131m\u0131 yok'}</div>
++                    <div style={{ color:'#64748b', fontSize:'.76rem' }}>{branch.orgUnitName || UI_TEXT.dash}</div>
++                  </button>
++                )
++              })
++            )}
++          </div>
++        </div>
++      </div>
++    </div>
++  )
++}
++function OdemeModalSafe(props) {
++  return <OdemeModalFlow {...props} />
++}
++function OdemeModalFlow({
++  cart,
++  orderNote,
++  masaNo,
++  channelName,
++  branchId = '',
++  branchName = '',
++  registerNo = '1',
++  registerLabel = 'POS 1',
++  loyaltyCampaigns = [],
++  manuallyTriggeredCampaignIds = [],
++  runtimeLoyaltyChannel = 'pos',
++  externalLinkedCustomer = null,
++  onConfirm,
++  onSaveDebt,
++  onOpenCustomers,
++  onClose,
++}) {
++  const timerRef = useRef(null)
++  const loyaltyPollRef = useRef(null)
++  const lastLoyaltyContextKeyRef = useRef('')
++  const [unpaidItems, setUnpaidItems] = useState(() => expandCartForPayment(cart))
++  const [selectedIds, setSelectedIds] = useState(() => expandCartForPayment(cart).map(item => item.id))
++  const [scope, setScope] = useState('all')
++  const [amountInput, setAmountInput] = useState('')
++  const [discountMode, setDiscountMode] = useState(null)
++  const [discountValue, setDiscountValue] = useState('')
++  const [draftPayments, setDraftPayments] = useState([])
++  const [completedPayments, setCompletedPayments] = useState([])
++  const [completedSteps, setCompletedSteps] = useState([])
++  const [busy, setBusy] = useState(false)
++  const [showOtherPayments, setShowOtherPayments] = useState(false)
++  const [showDebtModal, setShowDebtModal] = useState(false)
++  const [splitCountInput, setSplitCountInput] = useState('')
++  const [splitPlan, setSplitPlan] = useState(null)
++  const [selectedSplitSlots, setSelectedSplitSlots] = useState([])
++  const [autoCloseText, setAutoCloseText] = useState('')
++  const [loyaltyDecisionMap, setLoyaltyDecisionMap] = useState({})
++  const [appliedLoyaltyCampaignId, setAppliedLoyaltyCampaignId] = useState('')
++  const [showLoyaltyLinkModal, setShowLoyaltyLinkModal] = useState(false)
++  const [loyaltySession, setLoyaltySession] = useState(null)
++  const [loyaltyQrUrl, setLoyaltyQrUrl] = useState('')
++  const [linkedLoyaltyCustomer, setLinkedLoyaltyCustomer] = useState(() => externalLinkedCustomer || null)
++  const [loyaltyLinkError, setLoyaltyLinkError] = useState('')
++  const [loyaltyLinkStatus, setLoyaltyLinkStatus] = useState('')
++  const [giftPaymentItemIds, setGiftPaymentItemIds] = useState([])
++
++  useEffect(() => {
++    const nextExpanded = expandCartForPayment(cart)
++    setUnpaidItems(nextExpanded)
++    setSelectedIds(prev => {
++      const validIds = new Set(nextExpanded.map(item => item.id))
++      const nextSelected = prev.filter(id => validIds.has(id))
++      return nextSelected.length > 0 ? nextSelected : nextExpanded.map(item => item.id)
++    })
++  }, [cart])
++
++  useEffect(() => () => {
++    if (timerRef.current) window.clearTimeout(timerRef.current)
++    if (loyaltyPollRef.current) window.clearInterval(loyaltyPollRef.current)
++  }, [])
++
++  // ├ûdeme modal─▒ a├ğ─▒lmadan ├Ânce kasiyer m├╝┼şteriyi tan─▒mlad─▒ysa ba─şla
++  useEffect(() => {
++    if (externalLinkedCustomer?.customerId) {
++      setLinkedLoyaltyCustomer(externalLinkedCustomer)
++    }
++  }, [externalLinkedCustomer])
++
+   const groupedUnpaidItems = useMemo(
+     () => collapsePaymentItems(unpaidItems),
+     [unpaidItems]
+@@ -1534,11 +1729,14 @@ function OdemeModalFlow({
+             customerId: linkedLoyaltyCustomer.customerId,
+             customerName: linkedLoyaltyCustomer.customerName,
+             customerCategoryIds: linkedLoyaltyCustomer.customerCategoryIds || [],
++            tierPointsMultiplier: linkedLoyaltyCustomer.tierPointsMultiplier || linkedLoyaltyCustomer.pointsMultiplier || linkedLoyaltyCustomer.points_multiplier || 1,
+           }
+         : {},
+       manuallyTriggeredCampaignIds,
++      cartLines: targetItems,
++      saleTemplates: [],
+     }),
+-    [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds]
++    [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds, targetItems]
+   )
+   const applicableLoyaltyOffers = loyaltyEvaluation.applicableOffers
+   const autoApplicableLoyaltyCampaign = applicableLoyaltyOffers.find(
+@@ -1970,6 +2168,15 @@ function OdemeModalFlow({
+   async function finalizeCurrentSelection(allPayments, mode = 'payment', debtPayload = null) {
+     if (busy || targetItems.length === 0) return
+     setBusy(true)
++    const multipliersActive = (loyaltyEvaluation.combinedEarnMultiplier && loyaltyEvaluation.combinedEarnMultiplier !== 1) ||
++                              (loyaltyEvaluation.combinedRedeemMultiplier && loyaltyEvaluation.combinedRedeemMultiplier !== 1);
++    const loyaltyCampaignPayload = appliedLoyaltyCampaign || (multipliersActive ? {
++      decisionContext: {
++        combinedEarnMultiplier: loyaltyEvaluation.combinedEarnMultiplier,
++        combinedRedeemMultiplier: loyaltyEvaluation.combinedRedeemMultiplier,
++        tierPointsMultiplier: (linkedLoyaltyCustomer?.tierPointsMultiplier || linkedLoyaltyCustomer?.pointsMultiplier || linkedLoyaltyCustomer?.points_multiplier || 1)
++      }
++    } : null);
+     const payload = {
+       items: targetItems.map(item => ({ ...item })),
+       payments: allPayments,
+@@ -1977,7 +2184,7 @@ function OdemeModalFlow({
+       discountValue,
+       discountAmount,
+       total: targetNetTotal,
+-      loyaltyCampaign: createSaleLoyaltySnapshot(appliedLoyaltyCampaign),
++      loyaltyCampaign: createSaleLoyaltySnapshot(loyaltyCampaignPayload),
+       customer: linkedLoyaltyCustomer
+         ? {
+             id: linkedLoyaltyCustomer.customerId,
+@@ -2923,6 +3130,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+   const [tableCatalogLoading, setTableCatalogLoading] = useState(false)
+   const activeStaff = forcedActiveStaff
+   const [loyaltyCampaignCatalog, setLoyaltyCampaignCatalog] = useState([])
++  const [saleTemplates, setSaleTemplates] = useState([])
+   const [loyaltyCampaignLoading, setLoyaltyCampaignLoading] = useState(false)
+   const [loyaltyCampaignError, setLoyaltyCampaignError] = useState('')
+   const [manualTriggeredCampaignIds, setManualTriggeredCampaignIds] = useState([])
+@@ -3369,54 +3577,6 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+       setActiveChannel(headerChannels[0].id)
+     }
+   }, [channels, headerChannels, activeChannel, quickSaleChannel])
+-
+-  useEffect(() => {
+-    if (!branchLocked || !workspaceBranchId) return
+-    setSelectedBranchId(current => (current === workspaceBranchId ? current : workspaceBranchId))
+-  }, [branchLocked, workspaceBranchId])
+-
+-  useEffect(() => {
+-    let cancelled = false
+-    let refreshTimer = null
+-
+-    async function loadLoyaltyCampaigns({ background = false, preferFresh = false } = {}) {
+-      if (!background) setLoyaltyCampaignLoading(true)
+-      try {
+-        const snapshot = await loadCachedRuntimeLoyaltyCampaignCatalog({
+-          branchId: selectedBranchContext?.branchId || '',
+-          branchName: selectedBranchContext?.branchName || '',
+-          preferFresh,
+-        })
+-        if (cancelled) return
+-
+-        setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+-        const schemaIssueText = (snapshot?.issues || []).filter(Boolean).join(' | ')
+-
+-        if (snapshot?.stale) {
+-          setLoyaltyCampaignError(schemaIssueText || 'Canli loyalty baglantisi gecici olarak kullanilamadi. Son senkron kampanya listesi gosteriliyor.')
+-          return
+-        }
+-
+-        if (snapshot?.databaseUnavailable) {
+-          setLoyaltyCampaignError('Loyalty veri kaynagina su anda ulasilamiyor.')
+-          return
+-        }
+-
+-        if (snapshot?.schemaReady === false) {
+-          setLoyaltyCampaignError(schemaIssueText || 'Loyalty tablolarinin yapisi henuz hazir degil.')
+-          return
+-        }
+-
+-        setLoyaltyCampaignError('')
+-      } catch (error) {
+-        if (cancelled) return
+-        setLoyaltyCampaignCatalog([])
+-        setLoyaltyCampaignError(error?.message || 'Loyalty kampanyalari yuklenemedi.')
+-      } finally {
+-        if (!background && !cancelled) setLoyaltyCampaignLoading(false)
+-      }
+-    }
+-
+     loadLoyaltyCampaigns()
+     if (typeof window !== 'undefined') {
+       refreshTimer = window.setInterval(() => {
+@@ -3911,6 +4071,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+           customerId: preOrderLinkedCustomer.customerId,
+           customerName: preOrderLinkedCustomer.customerName,
+           customerCategoryIds: preOrderLinkedCustomer.customerCategoryIds || [],
++          tierPointsMultiplier: preOrderLinkedCustomer.tierPointsMultiplier || preOrderLinkedCustomer.pointsMultiplier || preOrderLinkedCustomer.points_multiplier || 1,
+         }
+       : {}
+     const syncFallback = evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
+@@ -3919,6 +4080,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+       customerContext,
+       selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
+       manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
++      cartLines: activeCart,
++      saleTemplates,
+     })
+ 
+     ;(async () => {
+@@ -3930,6 +4093,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+           selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
+           manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+           programId: selectedLoyaltyProgramId,
++          cartLines: activeCart,
++          saleTemplates,
+         })
+         if (ignore) return
+         setLoyaltyCampaignPreview(evaluated)
+@@ -3950,6 +4115,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+     preOrderLinkedCustomer,
+     manualTriggeredCampaignIds,
+     selectedLoyaltyProgramId,
++    activeCart,
++    saleTemplates,
+   ])
+ 
+   useEffect(() => {

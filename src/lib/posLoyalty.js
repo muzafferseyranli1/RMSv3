@@ -10,9 +10,18 @@ import {
 
 export const RUNTIME_LOYALTY_CACHE_TTL_MS = 15 * 60 * 1000
 const RUNTIME_LOYALTY_CACHE_KEY = 'suitable_runtime_loyalty_catalog_v1'
-const LOCAL_RULE_CONDITION_KEYS = new Set(['always', 'order_total', 'sales_channel', 'manual_approval'])
+const LOCAL_RULE_CONDITION_KEYS = new Set([
+  'always',
+  'order_total',
+  'sales_channel',
+  'manual_approval',
+  'period_total_order_amount',
+  'period_order_count',
+  'period_product_quantity',
+  'period_sold_product_quantity'
+])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag'])
-const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products'])
+const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products', 'points_earn_multiplier'])
 const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
 function normalizeText(value) {
@@ -123,6 +132,119 @@ function compareValues(operator, actual, expected) {
   }
 }
 
+export function normalizeCartLines(cartLines = []) {
+  if (!Array.isArray(cartLines)) return []
+  return cartLines.map(line => {
+    if (!line) return null
+    const productId = String(
+      line.productId ||
+      line.product_id ||
+      line.id ||
+      line.prod?.id ||
+      line.prod?.productId ||
+      line.product?.id ||
+      ''
+    ).trim()
+
+    const qty = Number(line.qty !== undefined ? line.qty : (line.quantity !== undefined ? line.quantity : (line.prod?.qty || 1))) || 0
+    
+    const lineGrossAfterDiscount = Number(
+      line.lineGrossAfterDiscount !== undefined ? line.lineGrossAfterDiscount :
+      (line.line_gross_after_discount !== undefined ? line.line_gross_after_discount :
+      (line.price !== undefined ? line.price * qty :
+      (line.gross !== undefined ? line.gross :
+      (line.unitPrice !== undefined ? line.unitPrice * qty :
+      (line.prod?.price !== undefined ? line.prod.price * qty : 0)))))
+    ) || 0
+
+    const topCategoryId = String(
+      line.topCategoryId ||
+      line.top_category_id ||
+      line.topCategory ||
+      line.prod?.topCategoryId ||
+      line.prod?.top_category_id ||
+      line.prod?.category_id ||
+      line.categoryId ||
+      ''
+    ).trim()
+
+    const subCategoryId = String(
+      line.subCategoryId ||
+      line.sub_category_id ||
+      line.subCategory ||
+      line.prod?.subCategoryId ||
+      line.prod?.sub_category_id ||
+      ''
+    ).trim()
+
+    return {
+      productId,
+      qty,
+      lineGrossAfterDiscount,
+      topCategoryId,
+      subCategoryId
+    }
+  }).filter(line => line && line.productId)
+}
+
+function getMatchingCartLinesContribution(cartLines = [], productMasks = [], saleTemplates = []) {
+  let matchedTotalAmount = 0
+  let matchedQuantity = 0
+  
+  if (!Array.isArray(cartLines) || cartLines.length === 0) {
+    return { amount: 0, qty: 0, matched: false }
+  }
+
+  const masks = Array.isArray(productMasks) ? productMasks : []
+  if (masks.length === 0) {
+    const amount = cartLines.reduce((sum, line) => sum + (line.lineGrossAfterDiscount || 0), 0)
+    const qty = cartLines.reduce((sum, line) => sum + (line.qty || 0), 0)
+    return { amount, qty, matched: true }
+  }
+
+  let isAnyLineMatched = false
+  for (const line of cartLines) {
+    let lineMatched = false
+    for (const mask of masks) {
+      const maskType = String(mask.type || '').trim().toLowerCase()
+      const maskItemId = String(mask.itemId || '').trim()
+
+      if (maskType === 'product') {
+        if (String(line.productId) === maskItemId) {
+          lineMatched = true
+          break
+        }
+      } else if (maskType === 'category') {
+        if (String(line.topCategoryId) === maskItemId || String(line.subCategoryId) === maskItemId) {
+          lineMatched = true
+          break
+        }
+      } else if (maskType === 'sale_template') {
+        const template = saleTemplates.find(st => String(st.id) === maskItemId)
+        if (template) {
+          const saleIds = Array.isArray(template.sale_ids) ? template.sale_ids : parseJsonValue(template.sale_ids, [])
+          if (Array.isArray(saleIds) && saleIds.map(String).includes(String(line.productId))) {
+            lineMatched = true
+            break
+          }
+        }
+      }
+    }
+
+    if (lineMatched) {
+      isAnyLineMatched = true
+      matchedTotalAmount += (line.lineGrossAfterDiscount || 0)
+      matchedQuantity += (line.qty || 0)
+    }
+  }
+
+  return {
+    amount: matchedTotalAmount,
+    qty: matchedQuantity,
+    matched: isAnyLineMatched
+  }
+}
+
 function normalizeRuntimeChannelKey(channelKey) {
   const normalized = normalizeText(channelKey)
   if (!normalized) return 'pos'
@@ -226,6 +348,53 @@ function normalizeRuntimeCustomerContext(customerContext = {}) {
     customerId: String(customerContext.customerId || '').trim(),
     customerName: String(customerContext.customerName || '').trim(),
     customerCategoryIds: normalizeStringList(customerContext.customerCategoryIds),
+    tierPointsMultiplier: Number(customerContext.tierPointsMultiplier || customerContext.pointsMultiplier || customerContext.points_multiplier || 1) || 1,
+  }
+}
+
+export function calculateCombinedEarnMultiplier(campaignOffers = [], tierPointsMultiplier = 1, strategy = 'compound') {
+  const multipliers = campaignOffers
+    .filter(offer => offer.actionType === 'points_earn_multiplier' && typeof offer.multiplier === 'number')
+    .map(offer => offer.multiplier)
+
+  if (strategy === 'additive') {
+    let sumBonus = (tierPointsMultiplier - 1)
+    for (const m of multipliers) {
+      sumBonus += (m - 1)
+    }
+    return Math.max(0.01, 1 + sumBonus)
+  } else if (strategy === 'max_wins') {
+    return Math.max(tierPointsMultiplier, ...multipliers, 1)
+  } else { // compound
+    let product = tierPointsMultiplier
+    for (const m of multipliers) {
+      product *= m
+    }
+    return Math.max(0.01, product)
+  }
+}
+
+export function calculateCombinedRedeemMultiplier(campaignOffers = [], strategy = 'compound') {
+  const multipliers = campaignOffers
+    .filter(offer => offer.actionType === 'points_redeem_multiplier' && typeof offer.multiplier === 'number')
+    .map(offer => offer.multiplier)
+
+  if (multipliers.length === 0) return 1
+
+  if (strategy === 'additive') {
+    let sumBonus = 0
+    for (const m of multipliers) {
+      sumBonus += (m - 1)
+    }
+    return Math.max(0.01, 1 + sumBonus)
+  } else if (strategy === 'max_wins') {
+    return Math.max(...multipliers, 1)
+  } else { // compound
+    let product = 1
+    for (const m of multipliers) {
+      product *= m
+    }
+    return Math.max(0.01, product)
   }
 }
 
@@ -309,6 +478,30 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
 }
 
   switch (rule.actionType) {
+    case 'points_earn_multiplier': {
+      const multiplier = Number(config.multiplier || campaign.rewardValue || 1)
+      if (multiplier <= 0) return null
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name || 'Kampanya',
+        priority: Number(campaign.priority || 0),
+        discountType: 'points_earn_multiplier',
+        discountValue: 0,
+        discountAmount: 0,
+        multiplier,
+        offerLabel: `${multiplier}x puan kazanma`,
+        conditionLabel: getConditionPreview(rule),
+        runtimeStatus: 'eligible',
+        actionType: rule.actionType,
+        sourceRuleId: rule.id,
+        applicationMode,
+        applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+        selectedCouponCode: orderContext.selectedCouponCode || null,
+        appliedActionsSummary: getAppliedActionsSummary(),
+        decisionContext: getDecisionContext(),
+      }
+    }
+
     case 'discount_percent':
     case 'total_order_discount_percent': {
       const percent = Number(config.percent || campaign.rewardValue || 0)
@@ -553,6 +746,77 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
             : 'Musteri kategori kosulu bekliyor'),
       }
     }
+    case 'period_total_order_amount':
+    case 'period_order_count':
+    case 'period_product_quantity':
+    case 'period_sold_product_quantity': {
+      const customerId = String(orderContext.customerId || '').trim()
+      if (!customerId) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Musteri tanimlanmadi (Donem kosulu)',
+        }
+      }
+
+      const config = condition.conditionConfig || {}
+      const period = String(config.period || 'rolling_days')
+      const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
+      const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+
+      const sortedMasks = [...productMasks].sort((a, b) => {
+        const keyA = `${a.type || ''}:${a.itemId || ''}`
+        const keyB = `${b.type || ''}:${b.itemId || ''}`
+        return keyA.localeCompare(keyB)
+      })
+      const queryKey = `${period}:${periodDays}:${JSON.stringify(sortedMasks)}`
+
+      const stats = (orderContext.customerPeriodStats && orderContext.customerPeriodStats[queryKey]) || {
+        total_amount: 0,
+        order_count: 0,
+        product_quantity: 0
+      }
+
+      const includeCurrentOrder = config.includeCurrentOrder !== false
+      let currentAmount = 0
+      let currentQty = 0
+      let currentOrderCount = 0
+
+      if (includeCurrentOrder && orderContext.cartLines) {
+        const contribution = getMatchingCartLinesContribution(orderContext.cartLines, productMasks, orderContext.saleTemplates || [])
+        currentAmount = contribution.amount
+        currentQty = contribution.qty
+        if (contribution.matched) {
+          currentOrderCount = 1
+        }
+      }
+
+      const operator = String(config.operator || condition.operator || 'gte')
+      let actual = 0
+      let expected = 0
+      let label = ''
+
+      if (condition.conditionKey === 'period_total_order_amount') {
+        actual = stats.total_amount + currentAmount
+        expected = Number(config.amount || condition.threshold_value || 0)
+        label = `Donemlik siparis tutari: ${formatAmount(actual)} (Hedef: ${operator} ${formatAmount(expected)})`
+      } else if (condition.conditionKey === 'period_order_count') {
+        actual = stats.order_count + currentOrderCount
+        expected = Number(config.count || config.orderCount || condition.threshold_value || 0)
+        label = `Donemlik siparis sayisi: ${actual} (Hedef: ${operator} ${expected})`
+      } else {
+        actual = stats.product_quantity + currentQty
+        expected = Number(config.quantity || config.productQuantity || condition.threshold_value || 0)
+        label = `Donemlik urun adedi: ${actual} (Hedef: ${operator} ${expected})`
+      }
+
+      const matched = compareValues(operator, actual, expected)
+      return {
+        matched,
+        supported: true,
+        reason: matched ? `${label} kosulu saglandi` : `${label} kosulu bekleniyor`
+      }
+    }
     default:
       return { matched: false, supported: false, reason: 'Bu prototipte manuel kontrol gerekir' }
   }
@@ -795,18 +1059,22 @@ function mergeCampaignLists(globalCampaigns = [], branchCampaigns = []) {
 export async function loadRuntimeLoyaltyCampaignCatalog({ branchId = '', branchName = '' } = {}) {
   const hasBranchIdentity = Boolean(String(branchId || '').trim() || String(branchName || '').trim())
 
-  const [globalWorkspace, branchWorkspace] = await Promise.all([
+  const [globalWorkspace, branchWorkspace, templatesRes] = await Promise.all([
     loadLoyaltyWorkspace({ scope: 'global' }),
     hasBranchIdentity
       ? loadLoyaltyWorkspace({ scope: 'branch', branchId, branchName })
       : Promise.resolve(null),
+    db.from('sale_templates').select('id,name,sale_ids').catch(() => ({ data: [], error: null }))
   ])
+
+  const saleTemplates = templatesRes?.data || []
 
   return {
     schemaReady: Boolean(globalWorkspace?.schemaReady) && (branchWorkspace ? Boolean(branchWorkspace.schemaReady) : true),
     databaseUnavailable: Boolean(globalWorkspace?.databaseUnavailable) && Boolean(branchWorkspace?.databaseUnavailable),
     campaigns: mergeCampaignLists(globalWorkspace?.campaigns || [], branchWorkspace?.campaigns || []),
     couponSeries: mergeCouponSeriesLists(globalWorkspace?.couponSeries || [], branchWorkspace?.couponSeries || []),
+    saleTemplates,
     issues: [
       ...(globalWorkspace?.schemaIssues || []),
       ...(branchWorkspace?.schemaIssues || []),
@@ -872,7 +1140,13 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   selectedCampaignId = '',
   manuallyTriggeredCampaignIds = [],
   runtimeWalletContext = null,
+  multiplierStrategy = 'compound',
+  program = null,
+  cartLines = [],
+  customerPeriodStats = {},
+  saleTemplates = [],
 } = {}) {
+  const normalizedCartLines = normalizeCartLines(cartLines)
   const normalizedRuntimeChannel = normalizeRuntimeChannelKey(runtimeChannel)
   const normalizedCustomerContext = normalizeRuntimeCustomerContext(customerContext)
   const normalizedSelectedId = String(selectedCampaignId || '').trim()
@@ -885,6 +1159,9 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
       orderTotal: roundMoney(orderTotal),
       manualTriggeredCampaignIds: triggeredCampaignIds,
       runtimeWalletContext,
+      cartLines: normalizedCartLines,
+      customerPeriodStats,
+      saleTemplates,
       ...normalizedCustomerContext,
     }, normalizedSelectedId))
 
@@ -904,6 +1181,9 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   const groupWinners = new Map() // groupKey → winner campaignId
 
   for (const campaign of eligibleCampaigns) {
+    const isMultiplierCampaign = campaign.offer && (campaign.offer.actionType === 'points_earn_multiplier' || campaign.offer.actionType === 'points_redeem_multiplier')
+    if (isMultiplierCampaign) continue // Multipliers are background stackable campaigns
+
     if (campaign.stackable) continue
     const groupKey = String(campaign.exclusionGroup || '').trim() || '__global__'
     if (!groupWinners.has(groupKey)) {
@@ -940,9 +1220,55 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
       description: campaign.description || '',
     }))
 
+  const finalStrategy = multiplierStrategy 
+    || program?.metadata?.multiplier_strategy 
+    || program?.metadata?.multiplierStrategy 
+    || 'compound'
+
+  const combinedEarnMultiplier = calculateCombinedEarnMultiplier(applicableOffers, normalizedCustomerContext.tierPointsMultiplier, finalStrategy)
+  const combinedRedeemMultiplier = calculateCombinedRedeemMultiplier(applicableOffers, finalStrategy)
+
+  // Recalculate redeem multiplier offer values if combinedRedeemMultiplier !== 1
+  if (combinedRedeemMultiplier !== 1) {
+    const updateRedeemOffer = (offer) => {
+      if (offer && offer.actionType === 'points_redeem_multiplier') {
+        const walletContext = runtimeWalletContext || null
+        const redemptionRate = Number(offer.redemptionRate || walletContext?.redemptionRate || walletContext?.programRedemption?.redemptionRate || 0)
+        const pointsBalance = Number(walletContext?.pointsBalance || 0)
+        const pointValue = redemptionRate * combinedRedeemMultiplier
+        if (pointValue > 0 && pointsBalance > 0) {
+          const maxPointsForOrder = truncatePoints(orderTotal / pointValue)
+          const usedPoints = roundPoints(Math.min(pointsBalance, maxPointsForOrder))
+          const computedDiscount = roundMoney(Math.min(orderTotal, usedPoints * pointValue))
+          
+          offer.discountValue = computedDiscount
+          offer.discountAmount = computedDiscount
+          offer.offerLabel = `${usedPoints.toLocaleString('tr-TR')} puan ile ${formatAmount(computedDiscount)} indirim`
+          offer.usedPoints = usedPoints
+          offer.multiplier = combinedRedeemMultiplier
+          if (offer.redemptionContext) {
+            offer.redemptionContext.usedPoints = usedPoints
+            offer.redemptionContext.multiplier = combinedRedeemMultiplier
+            offer.redemptionContext.computedDiscount = computedDiscount
+            offer.redemptionContext.discountAmount = computedDiscount
+          }
+        }
+      }
+    }
+
+    applicableOffers.forEach(offer => updateRedeemOffer(offer))
+    finalVisibleCampaigns.forEach(c => {
+      if (c.offer) {
+        updateRedeemOffer(c.offer)
+      }
+    })
+  }
+
   return {
     visibleCampaigns: finalVisibleCampaigns,
     applicableOffers,
+    combinedEarnMultiplier,
+    combinedRedeemMultiplier,
   }
 }
 
@@ -979,6 +1305,7 @@ export async function prepareRuntimeWalletContext({
       && redemptionReadiness.ok
       && redemptionReadiness.supported
     ),
+    program: redemptionReadiness.program || program || null,
   }
 }
 
@@ -990,10 +1317,110 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
     walletType: 'points',
   })
 
+  const customerId = options.customerContext?.customerId
+  const periodQueries = []
+  const customerPeriodStats = {}
+
+  if (customerId) {
+    const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
+    const seenQueries = new Set()
+    const audienceContext = options.customerContext || {}
+
+    for (const campaign of activeCampaigns) {
+      if (!matchesRuntimeChannel(campaign, options.runtimeChannel)) continue
+      
+      const audience = buildAudienceStatus(campaign, audienceContext)
+      if (!audience.supported || !audience.matched) continue
+
+      const rules = (campaign.applicableRules || []).filter(r => r.active !== false)
+      for (const rule of rules) {
+        const conditionEntries = getRuleConditionEntries(rule)
+        for (const cond of conditionEntries) {
+          if (
+            cond.conditionKey === 'period_total_order_amount' ||
+            cond.conditionKey === 'period_order_count' ||
+            cond.conditionKey === 'period_product_quantity' ||
+            cond.conditionKey === 'period_sold_product_quantity'
+          ) {
+            const config = cond.conditionConfig || {}
+            const period = String(config.period || 'rolling_days')
+            const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
+            const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+            
+            const sortedMasks = [...productMasks].sort((a, b) => {
+              const keyA = `${a.type || ''}:${a.itemId || ''}`
+              const keyB = `${b.type || ''}:${b.itemId || ''}`
+              return keyA.localeCompare(keyB)
+            })
+            const queryKey = `${period}:${periodDays}:${JSON.stringify(sortedMasks)}`
+            
+            if (!seenQueries.has(queryKey)) {
+              seenQueries.add(queryKey)
+              periodQueries.push({
+                period,
+                periodDays,
+                productMasks,
+                key: queryKey
+              })
+            }
+          }
+        }
+      }
+    }
+
+    if (periodQueries.length > 0) {
+      await Promise.all(
+        periodQueries.map(async (q) => {
+          try {
+            const res = await db.rpc('get_customer_period_stats', {
+              p_customer_id: customerId,
+              p_period: q.period,
+              p_period_days: q.periodDays,
+              p_product_masks: q.productMasks
+            })
+            if (res && res.data && res.data[0]) {
+              customerPeriodStats[q.key] = {
+                total_amount: Number(res.data[0].total_amount || 0),
+                order_count: Number(res.data[0].order_count || 0),
+                product_quantity: Number(res.data[0].product_quantity || 0)
+              }
+            } else {
+              customerPeriodStats[q.key] = { total_amount: 0, order_count: 0, product_quantity: 0 }
+            }
+          } catch (err) {
+            console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch period stats:', q, err)
+            customerPeriodStats[q.key] = { total_amount: 0, order_count: 0, product_quantity: 0 }
+          }
+        })
+      )
+    }
+  }
+
+  let saleTemplates = options.saleTemplates
+  if (!saleTemplates && customerId && periodQueries.length > 0) {
+    const hasSaleTemplateMask = periodQueries.some(q => 
+      q.productMasks.some(m => String(m.type).toLowerCase() === 'sale_template')
+    )
+    if (hasSaleTemplateMask) {
+      try {
+        const res = await db.from('sale_templates').select('id,name,sale_ids')
+        saleTemplates = res?.data || []
+      } catch (err) {
+        console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch sale templates', err)
+      }
+    }
+  }
+  if (!saleTemplates) {
+    saleTemplates = []
+  }
+
   return {
     ...evaluateRuntimeOrderCampaigns(campaigns, {
       ...options,
+      customerPeriodStats,
+      saleTemplates,
       runtimeWalletContext: walletReadiness,
+      program: walletReadiness.program || options.program || null,
     }),
     walletReadiness,
   }

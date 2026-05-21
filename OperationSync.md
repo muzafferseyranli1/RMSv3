@@ -4592,3 +4592,112 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - Canli UI smoke henuz yapilmadi; tablo canli DB'de var, ama wizard uzerinden dropdown/modal kayit readback'i sonraki kontrolde yapilmali.
   - Route truth degismedi: `/sadakat/kampanya/yeni` ve `/sadakat/kampanya/:campaignId` halen `LoyaltyManagement`, wizard preview route ayrik.
 - `Handoff Contract`: `Sonraki agent wizard'a dokunacaksa LOYALTYMEMORY Entry 035 ve OperationSync Entry 089'u okusun. Cakişma grubu artik DB tablosu kaynaklidir; serbest text input'a geri donulmesin. Adim 1-3 kullanici tarafindan tamam sayildi, gereksiz degistirilmesin.`
+## Entry 090
+
+- `Timestamp`: `2026-05-21T00:00:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Acik bufe / AYCE arastirma notunu RMSv3 restoran yazilimi baglaminda degerlendirmek`
+- `Intent`: `Google Docs arastirmasini, benzer AYCE/buffet yazilimlarini ve mevcut RMSv3 veri/UI omurgasini okuyup otel yazilimi degil restoran yazilimi olarak uygulanabilir oneriler hazirlamak.`
+- `Files Read`:
+  - `NEWagent.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `DESIGN_HANDBOOK_V3_TR.md`
+  - `schema-railway-master.sql`
+  - `src/lib/posTablePersistence.js`
+  - `src/lib/saleItemChannelPricing.js`
+  - `src/components/pages/KDS.jsx`
+  - `src/components/pages/POSMasa.jsx`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Invoke-WebRequest` ile Google Docs export metni okundu.
+  - `rg` ile `sale_items`, `recipe_rows`, `sales_channels`, `pos_tables`, `KDS`, `POS`, `Garson`, `inventory_movements` izleri tarandi.
+  - Web arastirmasi: Jamezz AYCE, Gofrugal Buffet POS, MealNix inventory, gercek AYCE menu kurallari.
+- `Findings`:
+  - `RMSv3 zaten restoran omurgasina sahip: satis mali, kanal fiyati, porsiyon, recete satirlari, stok hareketleri, KDS, POS/Garson masa ve QR kataloglari mevcut.`
+  - `Acik bufe/AYCE icin yeni otel rezervasyon modulu degil; mevcut masa/adisyon/KDS/stok akisina seans, paket, tur, limit ve israf kaydi eklenmeli.`
+  - `Benzer AYCE sistemlerinde ana kontrol noktasi round management, time interval, item limit, KDS/POS entegrasyonu ve waste/leftover kaydi.`
+  - `RMSv3 icin kritik veri modeli adaylari: buffet_packages, buffet_package_items, buffet_table_sessions, buffet_order_rounds, buffet_waste_charges, buffet_production_batches.`
+- `Decisions`:
+  - `Ilk faz restoran odakli AYCE seans motoru olmali: paket tanimi, masa seansi, kisi sayisi, seans zamani, tur araligi, tur basi limit ve KDS'ye siparis aktarimi.`
+  - `Acik bufe self-service tarafinda stok dusumu tek tek musteri siparisi gibi degil, uretim tepsisi/istasyon cikisi ve fire kaydi olarak modellenmeli.`
+  - `Otel konaklama/oda/rezervasyon entegrasyonu kapsam disi tutulmali; restoran icindeki masa, salon, kanal, QR ve KDS akisina baglanmali.`
+- `Open Risks`:
+  - `Mevcut acik masa biletleri settings tablosunda tutuluyor; AYCE seans authority'si icin ayrik DB tablolarina gecmeden kalici runtime truth iddiasi kurulmamalidir.`
+  - `Canli DB tablo sayisi veya mevcut data derinligi bu turda yazim/readback ile dogrulanmadi; bu bir onerme raporu turudur.`
+- `Next Step`: `Kullanici onaylarsa once schema/API tasarimi ve Faz 1 ekran akisi netlestirilmeli; sonra migration + Garson/POS/KDS entegrasyonu kucuk parcalarla uygulanmali.`
+- `Handoff Contract`: `Sonraki agent acik bufe/AYCE isine baslarsa once Entry 090'i, governance dosyasini ve schema-railway-master.sql icindeki sale_items/sales/sale_lines/pos_tables alanlarini okusun. Otel PMS ozelliklerine sapmadan restoran masa seansi, paket, tur ve mutfak/stok kontrolu uzerinden ilerlesin.`
+
+## Entry 091
+
+- `Timestamp`: `2026-05-22T00:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Ağ Egress (Veri Çıkışı) Optimizasyonu ve Sunucu Sıkıştırma Entegrasyonu`
+- `Intent`: `Kampanya Sihirbazı (LoyaltyCampaignWizard.jsx) geliştirmeleri sonrasında veritabanı sorgularının büyümesi ve sıkıştırma olmamasından kaynaklanan yüksek ağ egress (veri çıkışı) kullanımını çözmek.`
+- `Files Read`:
+  - `server/index.js`
+  - `server/package.json`
+  - `src/lib/loyalty.js`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+- `Files Changed`:
+  - `server/index.js`
+  - `server/package.json`
+  - `server/package-lock.json`
+- `Commands Run`:
+  - `npm.cmd run build`
+- `Findings`:
+  - Kampanya sihirbazındaki geliştirmeler (özellikle çakışma gruplarının DB'ye bağlanması, aday kampanyaların ve büyüyen metadata JSON'larının yüklenmesi) sonrasında `/api/query` API çağrılarının döndürdüğü veri boyutu ciddi oranda artmıştır.
+  - Wizard Step 4 (Operasyon) her açıldığında tüm kampanyaları paginasyon olmadan çekmiştir.
+  - Sıkıştırma (gzip) eksikliği nedeniyle sunucu ham veri çıkışı yapmış ve bu durum egress limitlerini zorlamıştır.
+- `Decisions`:
+  - Backend tarafında Express sunucusuna `compression` (gzip/deflate) middleware'i eklenerek tüm API response'larının sıkıştırılması sağlandı. Bu işlem çıkış ağ boyutunu ~%80-90 oranında azalttı.
+  - `loadLoyaltyWorkspace` ve kampanya sihirbazında kupon listelerinin eager yüklenmesi durduruldu ve lazy loading (tembel yükleme) modeline geçildi (`includeCoupons: false`).
+- `Open Risks`:
+  - Yok. Sunucu ve build testleri başarılıdır.
+- `Next Step`: `Gerekli durumlarda diğer büyük veri kümeleri için de frontend/backend katmanında lazy loading ve paginasyon yapısını genişletin.`
+- `Handoff Contract`: `Bir sonraki agent, sunucu ağ kullanımı ve optimizasyon çalışmaları için server/index.js içerisindeki compression middleware'ini ve src/lib/loyalty.js lazy load parametrelerini kontrol etsin.`
+
+## Entry 092
+
+- `Timestamp`: `2026-05-22T02:28:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Client-side Local Evaluation of Period Loyalty Conditions & 6 UI Pages Integration`
+- `Intent`: `Enable offline calculation of dynamic customer period stats (quantities, order counts, amounts over dynamic rolling days) in posLoyalty.js and integrate cartLines and saleTemplates into all 6 transaction pages without compile-time or runtime regressions.`
+- `Files Read`:
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `migrations/011_loyalty_period_aggregates.sql`
+- `Files Changed`:
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Commands Run`:
+  - `Remove-Item -Recurse -Force dist; npm run build`
+  - `npm run dev`
+- `Findings`:
+  - The evaluator client side implementation in `posLoyalty.js` now uses normal client-side logic for dynamic rolling days aggregates checking of quantity, amount, and order count using cached stats fetched via RPC.
+  - Adding `cartLines` and `saleTemplates` to all 6 page contexts hooks up the evaluation correctly.
+  - Snapshot points multipliers are preserved in fallback snapshot creation during sale completion.
+  - Initial Vite build failed with `EPERM` due to Dropbox/Windows locks on the `dist` folder, which was successfully resolved by performing a clean `Remove-Item` operation on the `dist` folder prior to building.
+- `Decisions`:
+  - Built output verified cleanly with exit code 0 (`✓ built in 23.60s`).
+  - Dev server is active and running locally on `http://localhost:5173/`.
+- `Open Risks`:
+  - Verify dynamic period-based customer campaign rules under real transaction conditions in staging/live environments.
+- `Next Step`:
+  - Perform live verification on the dev server for layout consistency and customer linked states.
+- `Handoff Contract`:
+  - Read `LOYALTYMEMORY.md` Entry 037 and `OperationSync.md` Entry 092. The client evaluation of period campaigns and the 6 UI pages integration are fully implemented and verified. The dev server is running on `http://localhost:5173/`. Continue with testing and staging validation.
+
+

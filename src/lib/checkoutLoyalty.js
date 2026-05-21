@@ -228,20 +228,20 @@ export function isLoyaltyPersistenceColumnError(error) {
  * These fields are optional and will be null if not provided by the campaign evaluation.
  */
 export function createSaleLoyaltySnapshot(campaign = null) {
-  if (!campaign?.campaignId) return null
+  if (!campaign?.campaignId && !campaign?.decisionContext) return null
 
   return {
-    campaignId: String(campaign.campaignId),
-    campaignName: String(campaign.campaignName || ''),
-    applicationMode: normalizeLoyaltyApplicationMode(campaign.applicationMode),
-    actionType: String(campaign.actionType || ''),
-    sourceRuleId: String(campaign.sourceRuleId || ''),
-    offerLabel: String(campaign.offerLabel || ''),
-    discountType: String(campaign.discountType || ''),
+    campaignId: campaign.campaignId ? String(campaign.campaignId) : null,
+    campaignName: campaign.campaignName ? String(campaign.campaignName) : null,
+    applicationMode: campaign.applicationMode ? normalizeLoyaltyApplicationMode(campaign.applicationMode) : null,
+    actionType: campaign.actionType ? String(campaign.actionType) : null,
+    sourceRuleId: campaign.sourceRuleId ? String(campaign.sourceRuleId) : null,
+    offerLabel: campaign.offerLabel ? String(campaign.offerLabel) : null,
+    discountType: campaign.discountType ? String(campaign.discountType) : null,
     discountValue: Number(campaign.discountValue || 0),
     discountAmount: Number(campaign.discountAmount || 0),
     // New expanded fields for audit/readback
-    selectedCouponCode: String(campaign.selectedCouponCode || '') || null,
+    selectedCouponCode: campaign.selectedCouponCode ? String(campaign.selectedCouponCode) : null,
     appliedActionsSummary: campaign.appliedActionsSummary || null,
     decisionContext: campaign.decisionContext || null,
     redemptionContext: campaign.redemptionContext || campaign.decisionContext?.redemptionContext || null,

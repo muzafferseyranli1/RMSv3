@@ -4,6 +4,8 @@ const { Pool } = require('pg')
 const fs = require('fs')
 const multer = require('multer')
 const path = require('path')
+const compression = require('compression')
+
 
 function loadServerEnv() {
   const envPath = path.join(__dirname, '.env')
@@ -41,6 +43,7 @@ const pool = new Pool({
 })
 
 const app = express()
+app.use(compression())
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/app/uploads'
 
 if (!fs.existsSync(UPLOAD_DIR)) {

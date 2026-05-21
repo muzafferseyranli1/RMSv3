@@ -295,6 +295,7 @@ function MobileOrderSurface({
   selectedCampaignId = '',
   selectedCouponCode = '',
   loyaltyCampaigns = [],
+  saleTemplates = [],
   couponContext = {},
   onBack,
   onDone,
@@ -387,6 +388,7 @@ function MobileOrderSurface({
       customerId: linkedCustomer?.customerId || customerId || '',
       customerName: linkedCustomer?.customerName || customerName || '',
       customerCategoryIds: linkedCustomer?.customerCategoryIds || [],
+      tierPointsMultiplier: linkedCustomer?.tierPointsMultiplier || linkedCustomer?.pointsMultiplier || linkedCustomer?.points_multiplier || 1,
     }
   }, [customerId, customerName, linkedCustomer])
   const [loyaltyEvaluation, setLoyaltyEvaluation] = useState({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
@@ -412,6 +414,8 @@ function MobileOrderSurface({
       orderTotal: cartTotal,
       customerContext,
       selectedCampaignId,
+      cartLines: buildMobileTicketItems(cart),
+      saleTemplates,
     })
 
     ;(async () => {
@@ -422,6 +426,8 @@ function MobileOrderSurface({
           customerContext,
           selectedCampaignId,
           programId: selectedLoyaltyProgramId,
+          cartLines: buildMobileTicketItems(cart),
+          saleTemplates,
         })
         if (ignore) return
         setLoyaltyEvaluation(evaluated)
@@ -432,7 +438,7 @@ function MobileOrderSurface({
     })()
 
     return () => { ignore = true }
-  }, [cartTotal, customerContext, loyaltyCampaigns, mode, selectedCampaignId, selectedLoyaltyProgramId])
+  }, [cart, cartTotal, customerContext, loyaltyCampaigns, mode, selectedCampaignId, selectedLoyaltyProgramId, saleTemplates])
   const selectedLoyaltyOffer = useMemo(
     () => loyaltyEvaluation.applicableOffers.find(offer => String(offer.campaignId || '') === String(selectedCampaignId || ''))
       || loyaltyEvaluation.applicableOffers.find(offer => offer.applicationMode === 'auto')
@@ -526,7 +532,22 @@ function MobileOrderSurface({
 
       const displayNo = await getNextKioskDisplayNo(branchId, branchName)
       const saleDate = new Date().toISOString()
-      const saleLoyaltySnapshot = createSaleLoyaltySnapshot(selectedLoyaltyOffer)
+      const loyaltyCampaignPayload = selectedLoyaltyOffer
+        ? {
+            ...selectedLoyaltyOffer,
+            selectedCouponCode: selectedLoyaltyOffer.selectedCouponCode || (selectedCoupon?.code || ''),
+            decisionContext: loyaltyEvaluation?.decisionContext || null,
+          }
+        : (linkedCustomer || customerId)
+          ? {
+              decisionContext: {
+                combinedEarnMultiplier: loyaltyEvaluation?.combinedEarnMultiplier || 1,
+                combinedRedeemMultiplier: loyaltyEvaluation?.combinedRedeemMultiplier || 1,
+                tierPointsMultiplier: (linkedCustomer?.tierPointsMultiplier || linkedCustomer?.pointsMultiplier || linkedCustomer?.points_multiplier || 1),
+              }
+            }
+          : null
+      const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaignPayload)
       const discountAllocations = buildProportionalDiscountAllocations(cart, {
         discountAmount: loyaltyDiscountAmount,
         getKey: item => item.id,
@@ -1306,6 +1327,7 @@ function QrMenuPhone() {
   const [submitting, setSubmitting] = useState(false)
   const [loyaltyCampaigns, setLoyaltyCampaigns] = useState([])
   const [couponSeries, setCouponSeries] = useState([])
+  const [saleTemplates, setSaleTemplates] = useState([])
   const [loyaltyLoading, setLoyaltyLoading] = useState(false)
   const [loyaltyError, setLoyaltyError] = useState('')
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
@@ -1379,6 +1401,7 @@ function QrMenuPhone() {
         if (cancelled) return
         setLoyaltyCampaigns(snapshot?.campaigns || [])
         setCouponSeries(snapshot?.couponSeries || [])
+        setSaleTemplates(snapshot?.saleTemplates || [])
         const schemaIssueText = (snapshot?.issues || []).filter(Boolean).join(' | ')
         setLoyaltyError(snapshot?.stale || snapshot?.schemaReady === false ? schemaIssueText : '')
       })
@@ -1386,6 +1409,7 @@ function QrMenuPhone() {
         if (!cancelled) {
           setLoyaltyCampaigns([])
           setCouponSeries([])
+          setSaleTemplates([])
           setLoyaltyError(loadError?.message || 'Sadakat avantajlari yuklenemedi.')
         }
       })
@@ -1532,11 +1556,14 @@ function QrMenuPhone() {
             customerId: loyaltyCustomer.customerId,
             customerName: loyaltyCustomer.customerName,
             customerCategoryIds: loyaltyCustomer.customerCategoryIds || [],
+            tierPointsMultiplier: loyaltyCustomer.tierPointsMultiplier || loyaltyCustomer.pointsMultiplier || loyaltyCustomer.points_multiplier || 1,
           }
         : {},
       selectedCampaignId,
+      cartLines: [],
+      saleTemplates,
     }),
-    [loyaltyCampaigns, loyaltyCustomer, selectedCampaignId],
+    [loyaltyCampaigns, loyaltyCustomer, selectedCampaignId, saleTemplates],
   )
   const visibleAdvantageCampaigns = advantagePreview.visibleCampaigns.filter(campaign => campaign.audienceSupported !== false)
   const preparedAdvantage = resolvePreparedLoyaltyAdvantage(loyaltyCustomer, loyaltyCampaigns)
@@ -1631,6 +1658,7 @@ function QrMenuPhone() {
               selectedCampaignId={selectedCampaignId}
               selectedCouponCode={selectedCouponCode}
               loyaltyCampaigns={loyaltyCampaigns}
+              saleTemplates={saleTemplates}
               couponContext={{ couponSeries }}
               onBack={() => setActiveView('home')}
               onDone={(result) => {

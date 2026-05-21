@@ -1892,6 +1892,7 @@ export default function KioskTablet() {
   const [loyaltySession, setLoyaltySession] = useState(null)
   const [loyaltyCustomer, setLoyaltyCustomer] = useState(null)
   const [loyaltyCampaignCatalog, setLoyaltyCampaignCatalog] = useState([])
+  const [saleTemplates, setSaleTemplates] = useState([])
   const [clockNow, setClockNow] = useState(() => new Date())
   const [cartDockY, setCartDockY] = useState(164)
   const [cartPulse, setCartPulse] = useState(false)
@@ -2105,7 +2106,10 @@ export default function KioskTablet() {
       setChannel(chanRes.data || null)
       setTaxes(taxRes.data || [])
       loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: true })
-        .then(snapshot => setLoyaltyCampaignCatalog(snapshot?.campaigns || []))
+        .then(snapshot => {
+          setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+          setSaleTemplates(snapshot?.saleTemplates || [])
+        })
         .catch(() => {})
       setError('')
     } catch (err) {
@@ -2165,7 +2169,10 @@ export default function KioskTablet() {
 
     loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: true })
       .then(snapshot => {
-        if (!cancelled) setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+        if (!cancelled) {
+          setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+          setSaleTemplates(snapshot?.saleTemplates || [])
+        }
       })
       .catch(() => {})
 
@@ -2465,6 +2472,7 @@ export default function KioskTablet() {
           customerId: String(loyaltyCustomer.customerId || ''),
           customerName: displayText(loyaltyCustomer.customerName || ''),
           customerCategoryIds: loyaltyCustomer.customerCategoryIds || [],
+          tierPointsMultiplier: loyaltyCustomer.tierPointsMultiplier || loyaltyCustomer.pointsMultiplier || loyaltyCustomer.points_multiplier || 1,
         }
       : {}
   ), [loyaltyCustomer])
@@ -2502,6 +2510,8 @@ export default function KioskTablet() {
       orderTotal: cartSubtotal,
       customerContext: loyaltyCustomerContext,
       selectedCampaignId: selectedLoyaltyCampaignId,
+      cartLines: cart,
+      saleTemplates,
     })
     const syncCompat = selectedLoyaltyCampaignId
       ? evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
@@ -2509,6 +2519,8 @@ export default function KioskTablet() {
         orderTotal: cartSubtotal,
         customerContext: loyaltyCustomerContext,
         selectedCampaignId: selectedLoyaltyCampaignId,
+        cartLines: cart,
+        saleTemplates,
       })
       : { visibleCampaigns: [], applicableOffers: [], walletReadiness: null }
 
@@ -2521,6 +2533,8 @@ export default function KioskTablet() {
             customerContext: loyaltyCustomerContext,
             selectedCampaignId: selectedLoyaltyCampaignId,
             programId: selectedLoyaltyProgramId,
+            cartLines: cart,
+            saleTemplates,
           }),
           selectedLoyaltyCampaignId
             ? evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
@@ -2529,6 +2543,8 @@ export default function KioskTablet() {
               customerContext: loyaltyCustomerContext,
               selectedCampaignId: selectedLoyaltyCampaignId,
               programId: selectedLoyaltyProgramId,
+              cartLines: cart,
+              saleTemplates,
             })
             : Promise.resolve({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null }),
         ])
@@ -2543,7 +2559,7 @@ export default function KioskTablet() {
     })()
 
     return () => { ignore = true }
-  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId, selectedLoyaltyProgramId])
+  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId, selectedLoyaltyProgramId, cart, saleTemplates])
   const selectedLoyaltyOffer = useMemo(() => {
     const selectedId = selectedLoyaltyCampaignId
     if (!selectedId) return null
@@ -2680,14 +2696,22 @@ export default function KioskTablet() {
   const isZeroTotalOrder = orderTotal <= 0.009
   const primaryCheckoutLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : '\u00d6demeye ge\u00e7'
   const paymentConfirmLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : 'Sipari\u015fi Tamamla'
-  const saleLoyaltySnapshot = useMemo(
-    () => createSaleLoyaltySnapshot(appliedLoyaltyOffer),
-    [appliedLoyaltyOffer],
-  )
-  const activeLoyaltyLabel = displayText(
+  const saleLoyaltySnapshot = useMemo(() => {
+    const multipliersActive = (loyaltyEvaluation.combinedEarnMultiplier && loyaltyEvaluation.combinedEarnMultiplier !== 1) ||
+                              (loyaltyEvaluation.combinedRedeemMultiplier && loyaltyEvaluation.combinedRedeemMultiplier !== 1);
+    const loyaltyCampaignPayload = appliedLoyaltyOffer || (multipliersActive ? {
+      decisionContext: {
+        combinedEarnMultiplier: loyaltyEvaluation.combinedEarnMultiplier,
+        combinedRedeemMultiplier: loyaltyEvaluation.combinedRedeemMultiplier,
+        tierPointsMultiplier: (loyaltyCustomer?.tierPointsMultiplier || loyaltyCustomer?.pointsMultiplier || loyaltyCustomer?.points_multiplier || 1)
+      }
+    } : null);
+    return createSaleLoyaltySnapshot(loyaltyCampaignPayload);
+  }, [appliedLoyaltyOffer, loyaltyEvaluation.combinedEarnMultiplier, loyaltyEvaluation.combinedRedeemMultiplier, loyaltyCustomer])
+  const activeLoyaltyLabel = useMemo(() => displayText(
     appliedLoyaltyOffer?.campaignName || loyaltyCustomer?.selectedCampaignName || '',
     'Sadakat kampanyası',
-  )
+  ), [appliedLoyaltyOffer, loyaltyCustomer])
   const activeLoyaltyNote = displayText(
     appliedLoyaltyOffer?.offerLabel || activeLoyaltyLabel,
     '',

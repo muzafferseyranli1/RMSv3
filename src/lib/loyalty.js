@@ -1,4 +1,4 @@
-﻿import { normalizeLoyaltyApplicationMode } from '@/lib/checkoutLoyalty'
+import { normalizeLoyaltyApplicationMode } from '@/lib/checkoutLoyalty'
 import { db } from '@/lib/db'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -1095,6 +1095,7 @@ function normalizeCouponSeriesBase(series = {}, index = 0) {
     || metadata.redemptionEffect
     || {},
   )
+  const _couponsNotLoaded = toBoolean(series._couponsNotLoaded || metadata?._couponsNotLoaded, false)
   const normalized = {
     id: String(series.id || uid('coupon-series')),
     name: toText(series.name || `Kupon Serisi ${index + 1}`),
@@ -1116,13 +1117,16 @@ function normalizeCouponSeriesBase(series = {}, index = 0) {
     active: series.active !== false,
     metadata,
     benefitConfig,
+    _couponsNotLoaded,
   }
 
-  const rawCoupons = Array.isArray(series.coupons)
-    ? series.coupons
-    : (Array.isArray(series.codes)
-      ? series.codes.map(code => ({ code }))
-      : [])
+  const rawCoupons = _couponsNotLoaded
+    ? []
+    : (Array.isArray(series.coupons)
+      ? series.coupons
+      : (Array.isArray(series.codes)
+        ? series.codes.map(code => ({ code }))
+        : []))
 
   const coupons = rawCoupons
     .map((coupon, couponIndex) => normalizeCouponRecord(coupon, normalized, couponIndex))
@@ -1194,6 +1198,9 @@ function createUniqueCouponEntries(series = {}, targetCount = 1, seedCoupons = [
 
 export function syncCouponSeriesCodes(series = {}, options = {}) {
   const normalized = normalizeCouponSeriesBase(series)
+  if (normalized._couponsNotLoaded) {
+    return normalized
+  }
   const targetCount = getCouponTargetCount(normalized)
   const mode = options.mode === 'regenerate' ? 'regenerate' : 'preserve'
 
@@ -1220,6 +1227,8 @@ export function syncCouponSeriesCodes(series = {}, options = {}) {
 
 export function normalizeCouponSeries(series = {}, index = 0) {
   const normalized = normalizeCouponSeriesBase(series, index)
+
+  if (normalized._couponsNotLoaded) return normalized
 
   if (normalized.coupons.length > 0) return normalized
   const coupons = createUniqueCouponEntries(normalized, getCouponTargetCount(normalized))
@@ -1899,6 +1908,10 @@ function buildCouponPersistencePlan(couponSeries = [], existingRows = []) {
 
   ;(couponSeries || []).forEach(series => {
     const normalizedSeries = syncCouponSeriesCodes(series)
+    if (normalizedSeries._couponsNotLoaded) {
+      persistedCouponSeries.push(normalizedSeries)
+      return
+    }
     const currentRows = existingRowsBySeries.get(normalizedSeries.id) || []
     const currentRowsById = new Map(currentRows.map(row => [String(row.id || ''), row]))
     const currentRowsByCode = new Map(currentRows.map(row => [String(row.code || '').trim(), row]))
@@ -2047,10 +2060,27 @@ async function softDeleteMissingChildRows(tableName, parentColumn, parentIds = [
   if (updateError) throw updateError
 }
 
+export async function loadCouponsForSeries(seriesId) {
+  const schemaIssues = []
+  const couponsRes = await runSchemaSafeQuery(
+    () => db.from('loyalty_coupons')
+      .select('id,series_id,customer_id,code,is_used,used_at,source_ref_id,use_after_checkout,active,metadata,created_at')
+      .eq('series_id', seriesId)
+      .is('deleted_at', null),
+    schemaIssues,
+    'loyalty_coupons'
+  )
+  if (!couponsRes.ok) {
+    throw new Error(schemaIssues.map(i => i.message).join(', ') || 'Failed to load coupons')
+  }
+  return couponsRes.data || []
+}
+
 export async function loadLoyaltyWorkspace(workspace = {}) {
   const scopeInfo = getLoyaltyScopeInfo(workspace)
   const customerSnapshot = await loadCustomerSnapshots()
   const schemaIssues = []
+  const includeCoupons = workspace.includeCoupons === true
 
   const [programRes, tierRes, campaignRes, couponSeriesRes] = await Promise.all([
     runScopeAwareSchemaSafeQuery(() => applyScopeFilter(
@@ -2108,7 +2138,7 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
         .is('deleted_at', null)
         .order('sort_order'), schemaIssues, 'loyalty_campaign_rules')
       : Promise.resolve({ data: [], ok: true }),
-    seriesIds.length > 0
+    (seriesIds.length > 0 && includeCoupons)
       ? runSchemaSafeQuery(() => db.from('loyalty_coupons')
         .select('id,series_id,customer_id,code,is_used,used_at,source_ref_id,use_after_checkout,active,metadata,created_at')
         .in('series_id', seriesIds)
@@ -2146,7 +2176,14 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
     campaigns: campaignReadBroken ? [] : campaigns,
     couponSeries: couponSeriesReadBroken
       ? []
-      : couponSeriesRes.data.map(series => fromCouponSeriesRow(series, couponMap.get(series.id) || [])),
+      : couponSeriesRes.data.map(series => {
+          const coupons = couponMap.get(series.id) || []
+          const item = fromCouponSeriesRow(series, coupons)
+          if (!includeCoupons) {
+            item._couponsNotLoaded = true
+          }
+          return item
+        }),
     customerInsights: buildCustomerInsights(customerSnapshot.baseCustomers, customerSnapshot.profileCustomers),
     customerSchemaReady: customerSnapshot.customerSchemaReady,
   }

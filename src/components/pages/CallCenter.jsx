@@ -431,6 +431,7 @@ export default function OrderHub() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [campaigns, setCampaigns] = useState([])
+  const [saleTemplates, setSaleTemplates] = useState([])
   const [campaignCatalogIssues, setCampaignCatalogIssues] = useState([])
   const [customerCategoryIds, setCustomerCategoryIds] = useState([])
   const [manualTriggeredCampaignIds, setManualTriggeredCampaignIds] = useState([])
@@ -680,6 +681,7 @@ export default function OrderHub() {
       customerId: selectedCustomer?.id || '',
       customerName: activeCustomerName,
       customerCategoryIds,
+      tierPointsMultiplier: selectedCustomer?.tierPointsMultiplier || selectedCustomer?.pointsMultiplier || selectedCustomer?.points_multiplier || 1,
     }
     const syncFallback = evaluateRuntimeOrderCampaigns(campaigns, {
       runtimeChannel: runtimeLoyaltyChannel,
@@ -687,6 +689,8 @@ export default function OrderHub() {
       customerContext,
       selectedCampaignId: selectedLoyaltyCampaignId,
       manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+      cartLines: cart,
+      saleTemplates,
     })
 
     setWalletLoading(true)
@@ -700,6 +704,8 @@ export default function OrderHub() {
           selectedCampaignId: selectedLoyaltyCampaignId,
           manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
           programId: selectedLoyaltyProgramId,
+          cartLines: cart,
+          saleTemplates,
         })
         if (ignore) return
         setEvaluatedRuntimeCampaigns(evaluated)
@@ -733,6 +739,8 @@ export default function OrderHub() {
     selectedLoyaltyCampaignId,
     manualTriggeredCampaignIds,
     selectedLoyaltyProgramId,
+    cart,
+    saleTemplates,
   ])
 
   const walletBalanceLabel = walletLoading
@@ -887,10 +895,12 @@ export default function OrderHub() {
         })
         if (ignore) return
         setCampaigns(snapshot.campaigns || [])
+        setSaleTemplates(snapshot.saleTemplates || [])
         setCampaignCatalogIssues(snapshot.issues || [])
       } catch (error) {
         if (!ignore) {
           setCampaigns([])
+          setSaleTemplates([])
           setCampaignCatalogIssues([error?.message || 'Loyalty kampanya katalogu yuklenemedi'])
         }
       }
@@ -1421,7 +1431,16 @@ export default function OrderHub() {
       const safePromisedDate = Number.isNaN(promisedDate.getTime()) ? now : promisedDate
       const releaseDate = getCallCenterKdsReleaseAt(safePromisedDate, now)
       const saleDate = now.toISOString()
-      const saleLoyaltySnapshot = createSaleLoyaltySnapshot(appliedLoyaltyCampaign)
+      const multipliersActive = (evaluatedRuntimeCampaigns.combinedEarnMultiplier && evaluatedRuntimeCampaigns.combinedEarnMultiplier !== 1) ||
+                                (evaluatedRuntimeCampaigns.combinedRedeemMultiplier && evaluatedRuntimeCampaigns.combinedRedeemMultiplier !== 1);
+      const loyaltyCampaignPayload = appliedLoyaltyCampaign || (multipliersActive ? {
+        decisionContext: {
+          combinedEarnMultiplier: evaluatedRuntimeCampaigns.combinedEarnMultiplier,
+          combinedRedeemMultiplier: evaluatedRuntimeCampaigns.combinedRedeemMultiplier,
+          tierPointsMultiplier: (selectedCustomer?.tierPointsMultiplier || selectedCustomer?.pointsMultiplier || selectedCustomer?.points_multiplier || 1)
+        }
+      } : null);
+      const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaignPayload)
       const orderNote = buildCallCenterOrderNote({
         fulfillmentType,
         promisedAt: safePromisedDate,

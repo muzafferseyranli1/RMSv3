@@ -1423,6 +1423,7 @@ function OdemeModalFlow({
   manuallyTriggeredCampaignIds = [],
   runtimeLoyaltyChannel = 'pos',
   externalLinkedCustomer = null,
+  saleTemplates = [],
   onConfirm,
   onSaveDebt,
   onOpenCustomers,
@@ -1534,11 +1535,14 @@ function OdemeModalFlow({
             customerId: linkedLoyaltyCustomer.customerId,
             customerName: linkedLoyaltyCustomer.customerName,
             customerCategoryIds: linkedLoyaltyCustomer.customerCategoryIds || [],
+            tierPointsMultiplier: linkedLoyaltyCustomer.tierPointsMultiplier || linkedLoyaltyCustomer.pointsMultiplier || linkedLoyaltyCustomer.points_multiplier || 1,
           }
         : {},
       manuallyTriggeredCampaignIds,
+      cartLines: targetItems,
+      saleTemplates,
     }),
-    [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds]
+    [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds, targetItems, saleTemplates]
   )
   const applicableLoyaltyOffers = loyaltyEvaluation.applicableOffers
   const autoApplicableLoyaltyCampaign = applicableLoyaltyOffers.find(
@@ -1970,6 +1974,15 @@ function OdemeModalFlow({
   async function finalizeCurrentSelection(allPayments, mode = 'payment', debtPayload = null) {
     if (busy || targetItems.length === 0) return
     setBusy(true)
+    const multipliersActive = (loyaltyEvaluation.combinedEarnMultiplier && loyaltyEvaluation.combinedEarnMultiplier !== 1) ||
+                              (loyaltyEvaluation.combinedRedeemMultiplier && loyaltyEvaluation.combinedRedeemMultiplier !== 1);
+    const loyaltyCampaignPayload = appliedLoyaltyCampaign || (multipliersActive ? {
+      decisionContext: {
+        combinedEarnMultiplier: loyaltyEvaluation.combinedEarnMultiplier,
+        combinedRedeemMultiplier: loyaltyEvaluation.combinedRedeemMultiplier,
+        tierPointsMultiplier: (linkedLoyaltyCustomer?.tierPointsMultiplier || linkedLoyaltyCustomer?.pointsMultiplier || linkedLoyaltyCustomer?.points_multiplier || 1)
+      }
+    } : null);
     const payload = {
       items: targetItems.map(item => ({ ...item })),
       payments: allPayments,
@@ -1977,7 +1990,7 @@ function OdemeModalFlow({
       discountValue,
       discountAmount,
       total: targetNetTotal,
-      loyaltyCampaign: createSaleLoyaltySnapshot(appliedLoyaltyCampaign),
+      loyaltyCampaign: createSaleLoyaltySnapshot(loyaltyCampaignPayload),
       customer: linkedLoyaltyCustomer
         ? {
             id: linkedLoyaltyCustomer.customerId,
@@ -2923,6 +2936,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
   const [tableCatalogLoading, setTableCatalogLoading] = useState(false)
   const activeStaff = forcedActiveStaff
   const [loyaltyCampaignCatalog, setLoyaltyCampaignCatalog] = useState([])
+  const [saleTemplates, setSaleTemplates] = useState([])
   const [loyaltyCampaignLoading, setLoyaltyCampaignLoading] = useState(false)
   const [loyaltyCampaignError, setLoyaltyCampaignError] = useState('')
   const [manualTriggeredCampaignIds, setManualTriggeredCampaignIds] = useState([])
@@ -3390,6 +3404,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
         if (cancelled) return
 
         setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+        setSaleTemplates(snapshot?.saleTemplates || [])
         const schemaIssueText = (snapshot?.issues || []).filter(Boolean).join(' | ')
 
         if (snapshot?.stale) {
@@ -3411,6 +3426,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
       } catch (error) {
         if (cancelled) return
         setLoyaltyCampaignCatalog([])
+        setSaleTemplates([])
         setLoyaltyCampaignError(error?.message || 'Loyalty kampanyalari yuklenemedi.')
       } finally {
         if (!background && !cancelled) setLoyaltyCampaignLoading(false)
@@ -3911,6 +3927,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           customerId: preOrderLinkedCustomer.customerId,
           customerName: preOrderLinkedCustomer.customerName,
           customerCategoryIds: preOrderLinkedCustomer.customerCategoryIds || [],
+          tierPointsMultiplier: preOrderLinkedCustomer.tierPointsMultiplier || preOrderLinkedCustomer.pointsMultiplier || preOrderLinkedCustomer.points_multiplier || 1,
         }
       : {}
     const syncFallback = evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
@@ -3919,6 +3936,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
       customerContext,
       selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
       manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+      cartLines: activeCart,
+      saleTemplates,
     })
 
     ;(async () => {
@@ -3930,6 +3949,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
           manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
           programId: selectedLoyaltyProgramId,
+          cartLines: activeCart,
+          saleTemplates,
         })
         if (ignore) return
         setLoyaltyCampaignPreview(evaluated)
@@ -3950,6 +3971,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     preOrderLinkedCustomer,
     manualTriggeredCampaignIds,
     selectedLoyaltyProgramId,
+    activeCart,
+    saleTemplates,
   ])
 
   useEffect(() => {
@@ -5615,6 +5638,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           manuallyTriggeredCampaignIds={manualTriggeredCampaignIds}
           runtimeLoyaltyChannel={runtimeLoyaltyChannel}
           externalLinkedCustomer={preOrderLinkedCustomer}
+          saleTemplates={saleTemplates}
           onConfirm={completeSaleGroup}
           onSaveDebt={saveDebtSaleGroup}
           onOpenCustomers={() => navigate('/musteriler')}

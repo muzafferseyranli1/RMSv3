@@ -27,6 +27,7 @@ import {
   getSalesChannelConditionValues,
   loadLoyaltyCustomerCategoryAudience,
   loadLoyaltyWorkspace,
+  loadCouponsForSeries,
   loadLoyaltyCustomerCategories,
   normalizeCampaign,
   normalizeCampaignChannelTarget,
