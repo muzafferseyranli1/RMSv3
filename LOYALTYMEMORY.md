@@ -1544,5 +1544,30 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Verification`:
   - `npm.cmd run build -> exit code 0, build basarili.`
 
-
+## Entry 034
+- `Date`: `2026-05-21`
+- `Phase`: `Campaign Wizard Step 2 Split Layout Redesign & Step 4/5 Cleanup`
+- `Affected Surfaces`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Result`:
+  - **Adım 2 (Koşul/Eylem) İkili Sütun Tasarımı**:
+    - Koşul Kütüphanesi (sol) ve Eylem Kütüphanesi (sağ) yan yana grid layout ile düzenlendi.
+    - Sol sütun `#dbeeff` mavi zemine, sağ sütun `#fff8e1` sarı zemine kavuştu; kartlar konteynerin içinden ayrışacak şekilde hafifçe açık tonda (`#eef5ff` / `#fffbeb`).
+    - Dikey ayrım çizgisi kırmızı gradyan (`#fecaca → #ef4444 → #fecaca`), koşul yatay divider mavi, eylem yatay divider sarı olarak ayarlandı.
+  - **Koşul & Eylem Kütüphanesi Dropdown Genişletme**:
+    - Dropdown listeleri artık `LoyaltyManagement.jsx` sayfasındaki `CONDITION_LIBRARY` ve `ACTION_TYPE_OPTIONS` sisteminin tamamını dinamik olarak çekiyor.
+    - Özel açıklama şablonu bulunmayan koşul/eylem tipleri için fallback bilgi kartı mekanizması kuruldu.
+  - **Öneri Chip'leri Bug Fix**:
+    - Öneri chip'lerinin kaynağı tanımsız `wizardCampaign.goalType` yerine ilk adımda seçilen `selectedGoal` state değişkenine bağlandı.
+    - İlk sayfada seçilen amaca göre ⭐ yıldızlı/önerilen etiketleri dropdown menülere de yansıtıldı.
+  - **Çoklu Koşul/Eylem Ekleme**:
+    - `applySimpleCondition` ve `applySimpleAction` fonksiyonları üst üste yazmak yerine 2./3. alt koşul/eylem olarak listenin sonuna eklenecek şekilde güncellendi.
+  - **Tanımlı Koşullar/Eylemler Liste Bloğu**:
+    - Her sütunun alt kısmına, o kampanyaya eklenmiş koşul ve eylemleri düzenle/sil butonlarıyla gösteren kartlar eklendi.
+  - **Adım 4 (Operasyon) ve Adım 5 (Çakışma) Temizliği**:
+    - Her iki adımdan `renderRuleEditorPanel`, `renderRuleSummaryList`, Runtime durumu badge blokları ve sipariş/zaman bazlı kural listeleme blokları kaldırıldı.
+    - Kupon serileri referans kutusu kaldırıldı.
+- `Verification`:
+  - `npm run build -> exit code 0, Vite build basarili (24.85s).`
+- `Next`: `Adım 4/5 sadeleştirmesi sonrasında wizard akışı daha odaklı; koşul/eylem yönetimi artık tamamen Adım 2'de merkezileştirildi.`
 

@@ -4514,5 +4514,32 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `npm.cmd run build` -> Basarili, Vite build exit code: 0.
 - `Next Step`: `Kullaniciyla degisiklikleri paylasip onay almak veya yeni adimlara gecmek.`
 
+## Entry 088
 
+- `Timestamp`: `2026-05-21T10:41:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Campaign Wizard Step 2 Split Layout Redesign, Divider Colors & Step 4/5 Condition/Action Removal`
+- `Intent`: `Kampanya sihirbazinin Koşul/Eylem adimini ikili sutunlu premium tasarimla yeniden duzenlemek, divider renklerini ayarlamak, öneri chiplerini calistirmak ve 4./5. adimlardan gereksiz koşul/eylem alanlarini kaldirmak.`
+- `Files Read`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Decisions`:
+  - Adim 2 (Koşul/Eylem) ikili sutun grid layout ile yeniden tasarlandi; sol Koşul Kütüphanesi (#dbeeff mavi zemin), sag Eylem Kütüphanesi (#fff8e1 sari zemin).
+  - Dikey ayirici kirmizi gradyan, koşul yatay divider mavi, eylem yatay divider sari olarak ayarlandi.
+  - Koşul ve eylem kartlari konteyner zeminine göre hafifce açık tonda (#eef5ff / #fffbeb) ayarlandi.
+  - Dropdown listeleri CONDITION_LIBRARY ve ACTION_TYPE_OPTIONS tamamini dinamik cekecek sekilde genisletildi; fallback kart mekanizmasi eklendi.
+  - Oneri chiplerinin kaynagi wizardCampaign.goalType yerine selectedGoal state'ine baglandi (bug fix).
+  - applySimpleCondition/applySimpleAction ust uste yazmak yerine listeye ekleme yapacak sekilde güncellendi.
+  - renderRuleEditorPanel, renderRuleSummaryList, Runtime durumu badge bloklari ve siparis/zaman bazli kural listeme bloklari adim 4 (Operasyon) ve adim 5 (Cakisma) adimlarindan kaldirildi.
+  - Kupon serileri referans kutusu kaldirildi.
+- `Verification`:
+  - `npm run build` -> exit code 0, Vite build basarili (24.85s).
+- `Next Step`: `Wizard akisi artik koşul/eylem yonetimini tamamen Adim 2'de merkezilestiriyor. Diger adimlarda sadece operasyonel ve ozet bilgileri kaliyor.`
+- `Handoff Contract`: `Sonraki agent wizard'a dokunacaksa once LOYALTYMEMORY Entry 034 ve bu entry'yi okusun. Koşul/eylem tanimi artik yalnizca Adim 2'de yapiliyor; Adim 4/5'te bu alanlara donmesin.`
 

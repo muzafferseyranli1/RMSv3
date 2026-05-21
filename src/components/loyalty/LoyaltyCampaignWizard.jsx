@@ -3863,31 +3863,6 @@ export default function LoyaltyCampaignWizard() {
               ) : null}
 
               {/* Status information block */}
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Runtime durumu</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {Array.from(new Set([
-                    ...activeRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
-                    ...activeRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
-                    ...periodicRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
-                    ...periodicRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
-                  ])).map(token => {
-                    const [kind, value] = token.split(':')
-                    return kind === 'condition'
-                      ? <RuntimeStatusBadge key={token} status={getConditionRuntimeStatus(value)} />
-                      : <RuntimeStatusBadge key={token} status={getActionRuntimeStatus(value)} />
-                  })}
-                </div>
-              </div>
-
-              {wizardMode === 'advanced' ? (
-                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                  {renderRuleEditorPanel({
-                    title: 'Operasyonel rule kontrolleri',
-                    subtitle: 'Stop processing, aktif/pasif bloklar, manuel approval kosulu ve kanal kosullari burada duzenlenebilir.',
-                  })}
-                </div>
-              ) : null}
             </div>
           ) : null}
 
@@ -3991,32 +3966,6 @@ export default function LoyaltyCampaignWizard() {
                 <FieldStack label="Exclusion group">
                   <input className="f-input" value={wizardCampaign.exclusionGroup || ''} onChange={event => updateCampaign({ exclusionGroup: event.target.value })} placeholder="Orn. burger-indirimleri" />
                 </FieldStack>
-              ) : null}
-
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Runtime durumu</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {Array.from(new Set([
-                    ...activeRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
-                    ...activeRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
-                    ...periodicRules.flatMap(rule => getEditorRuleConditions(rule).map(condition => `condition:${condition.conditionKey}`)),
-                    ...periodicRules.flatMap(rule => getEditorRuleActions(rule).map(action => `action:${action.actionType}`)),
-                  ])).map(token => {
-                    const [kind, value] = token.split(':')
-                    return kind === 'condition'
-                      ? <RuntimeStatusBadge key={token} status={getConditionRuntimeStatus(value)} />
-                      : <RuntimeStatusBadge key={token} status={getActionRuntimeStatus(value)} />
-                  })}
-                </div>
-              </div>
-
-              {wizardMode === 'advanced' ? (
-                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                  {renderRuleEditorPanel({
-                    title: 'Operasyonel rule kontrolleri',
-                    subtitle: 'Stop processing, aktif/pasif bloklar, manuel approval kosulu ve kanal kosullari burada duzenlenebilir.',
-                  })}
-                </div>
               ) : null}
             </div>
           ) : null}
