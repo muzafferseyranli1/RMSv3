@@ -4884,6 +4884,35 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Handoff Contract`:
   - Sonraki agent, kupon mevcut (coupon_present) kuralı yerel değerlendirmesi ve yapılan arayüz yazım düzeltmeleri için Entry 099'u okusun.
 
+## Entry 100
+
+- `Timestamp`: `2026-05-22 20:55 +03:00`
+- `Agent`: `Antigravity`
+- `Task`: `PostgreSQL JSONB serialization fix in backend (/api/query)`
+- `Intent`: `Resolve the 'invalid input syntax for type json' database error by registering all JSONB columns in server/index.js so JavaScript objects are properly stringified before SQL queries execute.`
+- `Files Read`:
+  - `server/index.js`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `server/index.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Commands Run`:
+  - `node -c server/index.js`
+  - `npm run api:dev`
+  - `node scratch/test-save.js`
+- `Findings`:
+  - `Backend uses normalizeWriteValue to serialize JSONB fields before querying Postgres.`
+  - `New loyalty tables (e.g. loyalty_coupon_series) and other system tables with JSONB columns were missing, leading to postgres rejecting JS objects with type errors.`
+  - `Registering all missing JSONB columns in server/index.js successfully resolved the issue.`
+- `Decisions`:
+  - `All JSONB fields in all tables were registered in jsonbColumns inside server/index.js.`
+- `Open Risks`:
+  - `None. Verification with local backend server and test script proved successful insertion, retrieval, and deletion of JSONB objects.`
+- `Next Step`: `Deploy updated server/index.js to Railway staging/production.`
+- `Handoff Contract`: `The JSONB serialization registry in server/index.js handles all known JSONB columns. Future tables with JSONB columns must also be registered in jsonbColumns registry.`
+
+
 
 
 

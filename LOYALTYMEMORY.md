@@ -1767,4 +1767,17 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Next Loyalty Step`:
   - Kupon kodu kısıtlı kampanyaları POS sepetinde girilen kupon koduyla yerel olarak test et.
 
+## Entry 043
 
+- `Timestamp`: `2026-05-22T20:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kupon Seti ve Sadakat Modülü Veri Kaydetme Hatasının Giderilmesi (PostgreSQL JSONB Serialization)`
+- `Trigger`: `Kullanıcı, kupon setlerini ve diğer sadakat programı verilerini kaydederken karşılaşılan 'invalid input syntax for type json' PostgreSQL hatasının giderilmesini talep etti.`
+- `Files Changed`:
+  - `server/index.js`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `server/index.js` dosyasında, veritabanına veri yazma işlemlerinde JSONB olarak tanımlanmış ancak serialize edilmeyen tüm kolonlar (`loyalty_coupon_series`, `loyalty_coupons`, `loyalty_programs`, `loyalty_tiers`, `loyalty_campaigns`, `loyalty_campaign_rules`, `loyalty_campaign_conflict_groups`, `loyalty_wallets`, `loyalty_transactions`, `loyalty_card_transactions`, `loyalty_cards`, `loyalty_reward_entitlements`, `loyalty_frequency_progress`, `loyalty_campaign_redemptions`, `tasks`, `task_approval_requests`, vb.) `normalizeWriteValue` fonksiyonunun `jsonbColumns` kayıt defterine eklendi.
+  - Bu sayede ön yüzden gelen JavaScript nesneleri, SQL sorgusu çalıştırılmadan önce otomatik olarak JSON stringine dönüştürülür ve veritabanı seviyesinde `invalid input syntax for type json` hatası alınması tamamen engellenir.
+- `Next Loyalty Step`:
+  - Değişiklikleri Railway staging ortamında canlıda test et ve kupon serisi / kampanya kaydının başarıyla yapıldığını doğrula.

@@ -1,10 +1,23 @@
-# Walkthrough - Sadakat Koşulları Yerel Entegrasyonları ve Arayüz Düzeltmeleri
+# Walkthrough - Sadakat Koşulları Yerel Entegrasyonları ve PostgreSQL JSONB Düzeltmeleri
 
-Bu belgede, sadakat koşullarının POS sadakat değerlendirme motorunda (`posLoyalty.js`) yerel (local) olarak çözülmesi için yapılan son geliştirmeler ve arayüzdeki yazım düzeltmeleri özetlenmiştir.
+Bu belgede, sadakat koşullarının POS sadakat değerlendirme motorunda yerel (local) olarak çözülmesi, PostgreSQL JSONB kaydetme hatasının giderilmesi ve arayüzdeki yazım düzeltmeleri özetlenmiştir.
 
 ---
 
-## Son Yapılan Geliştirmeler: Kupon Koşulu (`coupon_present`) Yerel Çözümlemesi & Arayüz Düzeltmeleri
+## Son Yapılan Geliştirmeler: PostgreSQL JSONB Kolonları İçin Otomatik Stringify Entegrasyonu (`server/index.js`)
+
+- **JSONB Veri Kayıt Hatasının Giderilmesi**:
+  - Kupon setleri (`loyalty_coupon_series`, `loyalty_coupons`), sadakat programları (`loyalty_programs`), kampanyalar (`loyalty_campaigns`), kurallar (`loyalty_campaign_rules`), görevler (`tasks`) ve diğer birçok yeni JSONB kolonu içeren tabloda veri kaydetme sırasında karşılaşılan `invalid input syntax for type json` hatası giderildi.
+- **`normalizeWriteValue` Kayıt Defteri Güncellemesi**:
+  - `server/index.js` içerisindeki `normalizeWriteValue` fonksiyonunda yer alan `jsonbColumns` kayıt defterine yeni eklenen tüm tablolar ve bunlara ait JSONB kolon isimleri tanımlandı.
+  - Bu sayede ön yüzden gönderilen JavaScript nesneleri, SQL sorgusuna parametre olarak gönderilmeden önce otomatik olarak geçerli JSON string değerlerine dönüştürülür.
+- **Güvenli Fallback Tanımları**:
+  - Gelecekte benzer veri kaydetme sorunları yaşanmaması adına, şema dosyasındaki tüm JSONB kolonları (`count_flows`, `customer_addresses`, `order_flows`, `pos_sales` vb.) taranarak tamamı `jsonbColumns` kapsamına dahil edildi.
+
+---
+
+## Önceki Geliştirmeler: Kupon Koşulu (`coupon_present`) Yerel Çözümlemesi & Arayüz Düzeltmeleri
+
 
 ### 1. Kupon Koşulu (`coupon_present`) Yerel Entegrasyonu (`posLoyalty.js` & `loyaltyRuntimeStatus.js`)
 - **Yerel Çözümleme Yeteneği**: `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` anahtarı eklenerek, kuralın harici sunucuya yönlendirilmeden yerel olarak çözümlenmesi sağlandı.
