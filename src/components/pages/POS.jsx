@@ -1689,6 +1689,7 @@ function OdemeModalFlow({
 
       if (loyaltyPollRef.current) window.clearInterval(loyaltyPollRef.current)
       loyaltyPollRef.current = window.setInterval(async () => {
+        if (document.hidden) return
         const next = await readPosLoyaltyLinkSession(session.token)
         if (!next || next.status !== 'linked' || !next.customerId) return
         setLoyaltySession(next)
@@ -2750,8 +2751,6 @@ function PosOrderHubPanel({ branchId, branchName }) {
 
   useEffect(() => {
     loadOrders()
-    const timer = window.setInterval(loadOrders, 10000)
-    return () => window.clearInterval(timer)
   }, [loadOrders])
 
   const filteredOrders = useMemo(() => (
@@ -3434,15 +3433,9 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     }
 
     loadLoyaltyCampaigns()
-    if (typeof window !== 'undefined') {
-      refreshTimer = window.setInterval(() => {
-        loadLoyaltyCampaigns({ background: true, preferFresh: true })
-      }, RUNTIME_LOYALTY_CACHE_TTL_MS)
-    }
 
     return () => {
       cancelled = true
-      if (refreshTimer) window.clearInterval(refreshTimer)
     }
   }, [selectedBranchContext?.branchId, selectedBranchContext?.branchName])
 

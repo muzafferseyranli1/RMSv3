@@ -999,6 +999,7 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
   const [tableRequests, setTableRequests] = useState([])
   const [selectedTableKey, setSelectedTableKey] = useState('')
   const [activeView, setActiveView] = useState('tables')
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   useEffect(() => {
     if (!branchId) {
@@ -1048,12 +1049,10 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
     }
 
     hydrateRuntime()
-    const interval = window.setInterval(() => hydrateRuntime({ background: true }), MOBILE_GARSON_POLL_MS)
     return () => {
       cancelled = true
-      window.clearInterval(interval)
     }
-  }, [branchId])
+  }, [branchId, refreshTrigger])
 
   const activeTables = useMemo(
     () => (catalog.tables || []).filter(table => table.status === 'active' && table.is_active !== false),
@@ -1122,13 +1121,33 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
             <div style={{ marginTop: 4, color: '#0f172a', fontWeight: 900, fontSize: '1rem' }}>{getPersonnelDisplayName(activeStaff)}</div>
             <div style={{ marginTop: 2, color: '#64748b', fontSize: '.74rem' }}>Masa sec, sonra siparisi telefondan al.</div>
           </div>
-          <button
-            type="button"
-            onClick={onStaffLogout}
-            style={{ width: 42, height: 42, borderRadius: 14, border: '1px solid rgba(239,68,68,.18)', background: 'rgba(254,226,226,.7)', color: '#dc2626', cursor: 'pointer', flexShrink: 0 }}
-          >
-            <i className="fa-solid fa-right-from-bracket" />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setRefreshTrigger(prev => prev + 1)}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 14,
+                border: '1px solid rgba(14,165,233,.18)',
+                background: 'rgba(224,242,254,.7)',
+                color: '#0284c7',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+              }}
+              title="Yenile"
+            >
+              <i className={`fa-solid fa-rotate ${refreshing ? 'fa-spin' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={onStaffLogout}
+              style={{ width: 42, height: 42, borderRadius: 14, border: '1px solid rgba(239,68,68,.18)', background: 'rgba(254,226,226,.7)', color: '#dc2626', cursor: 'pointer' }}
+            >
+              <i className="fa-solid fa-right-from-bracket" />
+            </button>
+          </div>
         </div>
 
         {selectedTable ? (

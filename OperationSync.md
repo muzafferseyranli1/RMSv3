@@ -4700,4 +4700,48 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Handoff Contract`:
   - Read `LOYALTYMEMORY.md` Entry 037 and `OperationSync.md` Entry 092. The client evaluation of period campaigns and the 6 UI pages integration are fully implemented and verified. The dev server is running on `http://localhost:5173/`. Continue with testing and staging validation.
 
+## Entry 093
+
+- `Timestamp`: `2026-05-22T11:32:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Supabase Realtime and Polling Removal for Egress Optimization & Manual Refresh Buttons`
+- `Intent`: `Eliminate background database listeners and automatic polling loops from KDS, Pickup, Queue, Garson, Mobile Garson, POS, and Kiosks to reduce Railway network egress usage, replacing them with manual refresh buttons and background checks.`
+- `Files Read`:
+  - `src/components/pages/KDS.jsx`
+  - `src/components/pages/PickupScreen.jsx`
+  - `src/components/pages/QueueScreen.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `src/components/pages/QueueScreen.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run build`
+- `Findings`:
+  - Background database listeners and 5-10 second interval checks created unnecessary egress traffic, especially when tabs/apps were in the background.
+  - Adding `document.hidden` checks in intervals inside `POS.jsx` and Kiosks prevents egress leakage when pages are inactive.
+  - Kiosks had a logic that recreated loyalty link sessions in an infinite loop on timeout, which was solved by extending session timeout to 24 hours (86400s) and stopping token deletion/recreation.
+- `Decisions`:
+  - Realtime subscriptions and background pollings were completely removed from staff pages (`KDS`, `Pickup`, `Queue`, `Garson`, `MobileGarsonRuntime`, `POS`).
+  - Styled manual "Yenile" buttons were added to `QueueScreen`, `Garson`, and `MobileGarsonRuntime`.
+  - Polling intervals inside `POS` and Kiosk screens were optimized with `document.hidden` logic.
+  - Config refresh rate in Kiosks was reduced to 30s.
+  - Successful local production build verification exit code 0 (`built in 53.73s`).
+- `Open Risks`:
+  - None. Build succeeded and no regression detected.
+- `Next Step`:
+  - Deploy to Railway staging/production environment to observe the significant drop in network egress traffic.
+- `Handoff Contract`:
+  - Read `OperationSync.md` Entry 093. Check the modified files to verify the absence of automatic background queries and check the placement of manual "Yenile" buttons in Queue, Garson, and Mobile Garson screens.
+
+
 

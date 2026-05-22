@@ -3208,6 +3208,30 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
     writePosBranchId(resolvedBranchId)
   }, [resolvedBranchId])
 
+  const [refreshing, setRefreshing] = useState(false)
+  const handleManualRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const nextLayoutValue = await hydrateTableLayoutFromDb()
+      const nextLayoutTables = extractTableDirectoryFromLayoutValue(nextLayoutValue)
+      setLayoutTableDirectory(nextLayoutTables)
+
+      const nextTickets = await hydrateOpenTableTicketsFromDb(nextLayoutTables)
+      lastTableTicketsSignatureRef.current = JSON.stringify(nextTickets || {})
+      setTableTickets(nextTickets)
+
+      if (selectedBranchContext?.branchId) {
+        const nextRequests = await loadActiveTableServiceRequests(selectedBranchContext.branchId)
+        setTableServiceRequests(nextRequests)
+      }
+    } catch (error) {
+      console.error('Garson manual refresh failed', error)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshing, selectedBranchContext?.branchId])
+
   useEffect(() => {
     let cancelled = false
 
@@ -3280,30 +3304,6 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
   }, [layoutTableDirectory])
 
   useEffect(() => {
-    if (!tablePersistenceHydratedRef.current) return
-    let cancelled = false
-    const pollTimer = window.setInterval(() => {
-      hydrateOpenTableTicketsFromDb(layoutTableDirectory)
-        .then(nextTickets => {
-          if (cancelled) return
-          const nextSignature = JSON.stringify(nextTickets || {})
-          lastTableTicketsSignatureRef.current = nextSignature
-          setTableTickets(currentTickets => (
-            JSON.stringify(currentTickets || {}) === nextSignature ? currentTickets : nextTickets
-          ))
-        })
-        .catch(error => {
-          if (!cancelled) console.error('Garson open tickets poll failed', error)
-        })
-    }, OPEN_TICKET_POLL_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(pollTimer)
-    }
-  }, [layoutTableDirectory])
-
-  useEffect(() => {
     if (!selectedBranchContext?.branchId) {
       setTableServiceRequests([])
       return
@@ -3321,11 +3321,9 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
     }
 
     refreshTableRequests()
-    const pollTimer = window.setInterval(refreshTableRequests, TABLE_REQUEST_POLL_MS)
 
     return () => {
       cancelled = true
-      window.clearInterval(pollTimer)
     }
   }, [selectedBranchContext?.branchId])
 
@@ -4523,10 +4521,36 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
         boxShadow:'4px 0 24px rgba(0,0,0,.3)'
       }}>
         {/* Baslik ve aktif sube bilgisi */}
-        <div style={{display:'flex',flexDirection:'column',gap:3,minWidth:0,padding:'0 16px',marginBottom:10}}>
-          <span style={{fontSize:'1rem',fontWeight:900,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+        <div style={{display:'flex',flexDirection:'row',alignItems:'center',justifyContent:'space-between',minWidth:0,padding:'0 16px',marginBottom:10,marginTop:12}}>
+          <span style={{fontSize:'1rem',fontWeight:900,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',flex:1}}>
             {visibleBranchName}
           </span>
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            title="Yenile"
+            style={{
+              background: 'rgba(255,255,255,.08)',
+              border: 'none',
+              borderRadius: 8,
+              padding: '6px 10px',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              marginLeft: 8,
+              transition: 'all 0.2s',
+            }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,.15)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+          >
+            <i className={`fa-solid fa-rotate${refreshing ? ' fa-spin' : ''}`} />
+            Yenile
+          </button>
         </div>
         {activeStaff && (
           <div style={{padding:'0 16px',marginBottom:10}}>

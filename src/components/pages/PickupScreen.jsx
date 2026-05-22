@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
 import {
@@ -431,35 +431,6 @@ export default function PickupScreen() {
     return () => { ignore = true }
   }, [])
 
-  useEffect(() => {
-    if (!branchId) return undefined
-
-    subRef.current = db
-      .channel(`pickup-${branchId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_lines' }, scheduleRefresh)
-      .subscribe()
-
-    return () => {
-      if (refreshTimerRef.current) {
-        window.clearTimeout(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-      if (subRef.current) db.removeChannel(subRef.current)
-    }
-  }, [branchId, scheduleRefresh])
-
-  useEffect(() => {
-    if (!branchId) return undefined
-
-    const timer = window.setInterval(() => {
-      loadOrders({ silent: true })
-    }, BACKGROUND_REFRESH_MS)
-
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [branchId, loadOrders])
 
   async function callCustomer(saleId) {
     if (!supportsPickupCalledRef.current) {

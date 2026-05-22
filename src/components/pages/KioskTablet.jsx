@@ -2005,12 +2005,10 @@ export default function KioskTablet() {
     if (!token) return
     clearInterval(loyaltyPollRef.current)
     loyaltyPollRef.current = setInterval(async () => {
+      if (document.hidden) return
       const next = await readKioskLoyaltyLinkSession(token)
       if (!next) {
         clearInterval(loyaltyPollRef.current)
-        setLoyaltySession(null)
-        setLoyaltyQrUrl('')
-        setIdleLoyaltyQrUrl('')
         return
       }
       if (next.status !== 'linked') return
@@ -2026,7 +2024,7 @@ export default function KioskTablet() {
     const session = await createKioskLoyaltyLinkSession({
       branchId,
       branchName,
-      timeoutSec: settings.loyalty_session_timeout_sec || 180,
+      timeoutSec: 86400,
       kioskStationCode: selectedKioskStation?.code || kioskStationConfig.stationCode || '',
       kioskStationNumber: selectedKioskStation?.kiosk_number || null,
       kioskStationName: selectedKioskStation?.name || '',
@@ -2125,6 +2123,7 @@ export default function KioskTablet() {
 
   useEffect(() => {
     function refreshRuntimeConfig() {
+      if (document.hidden) return
       loadKioskSettings().then(setSettings).catch(() => {})
       setDeviceKioskCode(loadKioskDeviceStationCode())
     }
@@ -2146,7 +2145,7 @@ export default function KioskTablet() {
       refreshRuntimeConfig()
     }
 
-    const interval = setInterval(refreshRuntimeConfig, 10000)
+    const interval = setInterval(refreshRuntimeConfig, 30000)
     window.addEventListener('focus', refreshRuntimeConfig)
     window.addEventListener('storage', onStorage)
     window.addEventListener('kiosk-device-station-change', onDeviceStationChange)

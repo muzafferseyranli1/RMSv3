@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
 import {
@@ -160,34 +160,6 @@ export default function QueueScreen() {
     loadOrders()
   }, [loadOrders])
 
-  useEffect(() => {
-    if (!branchId) return undefined
-
-    subRef.current = db
-      .channel(`queue-${branchId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, scheduleRefresh)
-      .subscribe()
-
-    return () => {
-      if (refreshTimerRef.current) {
-        window.clearTimeout(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-      if (subRef.current) db.removeChannel(subRef.current)
-    }
-  }, [branchId, scheduleRefresh])
-
-  useEffect(() => {
-    if (!branchId) return undefined
-
-    const timer = window.setInterval(() => {
-      loadOrders({ silent: true })
-    }, BACKGROUND_REFRESH_MS)
-
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [branchId, loadOrders])
 
   function displayNo(order) {
     return order.kiosk_display_no ? String(order.kiosk_display_no).padStart(3, '0') : order.id?.slice(-4).toUpperCase()
@@ -226,6 +198,29 @@ export default function QueueScreen() {
         <span style={{ color: '#94a3b8', fontSize: 14 }}>
           {new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
         </span>
+        <button
+          type="button"
+          onClick={() => loadOrders({ silent: true })}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: 'rgba(255,255,255,0.1)',
+            color: '#e2e8f0',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'background .2s',
+          }}
+          onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.18)'}
+          onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+        >
+          <i className="fa-solid fa-rotate" />
+          Yenile
+        </button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: portrait ? 'column' : 'row', position: 'relative' }}>

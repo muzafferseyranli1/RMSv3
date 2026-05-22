@@ -1,0 +1,9 @@
+- [x] KDS.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması
+- [x] PickupScreen.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması
+- [x] QueueScreen.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması, manuel Yenile butonu eklenmesi
+- [x] Garson.jsx otomatik yenileme (adisyon, istekler) kaldırılması, sol başlığa Yenile butonu eklenmesi
+- [x] MobileAppShells.jsx otomatik yenileme kaldırılması, Yenile butonu eklenmesi ve trigger state yönetimi
+- [x] POS.jsx otomatik yenileme (sipariş, loyalty kampanya) kaldırılması, loyalty QR polling hidden kontrolü eklenmesi
+- [x] KioskBig.jsx QR kod timeout 24 saate çıkarılması, sonsuz QR üretilmesinin kapatılması, config refresh 30s ve hidden kontrolü eklenmesi
+- [x] KioskTablet.jsx QR kod timeout 24 saate çıkarılması, sonsuz QR üretilmesinin kapatılması, config refresh 30s ve hidden kontrolü eklenmesi
+- [x] Lokal derleme kontrolü (npm run build)
