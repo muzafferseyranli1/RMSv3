@@ -4743,5 +4743,27 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Handoff Contract`:
   - Read `OperationSync.md` Entry 093. Check the modified files to verify the absence of automatic background queries and check the placement of manual "Yenile" buttons in Queue, Garson, and Mobile Garson screens.
 
+## Entry 094
+
+- `Timestamp`: `2026-05-22T12:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Period Condition Filter Parameters and Reward Scaling Integration`
+- `Intent`: `Dönemlik ürün miktarı koşulunda repeatable (ödül katlama), allowSameItemRepeat=false (aynı ürün tekrarlarını saymama) ve excludeFreeItems=true (ücretsiz ürünleri hariç tutma) parametrelerini posLoyalty.js evaluator'ına ve evaluateRuntimeOrderCampaignsAsync veri çekme/RPC katmanına tam olarak entegre etmek.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `OperationSync.md`
+- `Decisions`:
+  - `evaluateRuntimeOrderCampaignsAsync` içinde `saleTemplates` asenkron çekim mantığı en üste taşındı. Böylece `allowSameItemRepeat === false` ve `includeCurrentOrder !== false` durumunda, sepet satırlarındaki eşleşen ürün şablonu/ürün ID'leri bulunup database RPC çağrısına `p_current_product_ids` olarak gönderilebiliyor.
+  - `evaluateRuntimeOrderCampaignsAsync` period query oluşturma döngüsünde `excludeFreeItems` ve `allowSameItemRepeat` seçenekleri config'den okundu; query key yapısı `evaluateSingleCondition` ile birebir uyumlu olacak şekilde `${period}:${periodDays}:${excludeFreeItems}:${allowSameItemRepeat}:${JSON.stringify(sortedMasks)}` olarak güncellendi.
+  - `get_customer_period_stats` RPC fonksiyonuna yeni filtre parametreleri (`p_exclude_free_items`, `p_allow_same_item_repeat`, `p_current_product_ids`) geçirildi.
+  - `buildCampaignCard` içinde `buildOfferFromRule` çağrısı, eşleşen kuralın hesapladığı `ruleEvaluation?.repeatMultiplier` değeri ile güncellenerek hediyeler, indirimler ve puanların katlanması sağlandı.
+- `Verification`:
+  - `npm run build` -> Başarılı, Vite build exit code: 0, 276 modül sorunsuz derlendi.
+- `Next Step`:
+  - Dönemlik kuralların farklı parametre kombinasyonlarıyla POS ve Garson ekranlarında doğru çalıştığını test et.
+- `Handoff Contract`:
+  - Sonraki agent, `src/lib/posLoyalty.js` içerisindeki period aggregates ve multiplier entegrasyonu için Entry 094'ü okusun. Arayüz ve veri katmanı tamamen senkronize durumdadır.
+
+
 
 

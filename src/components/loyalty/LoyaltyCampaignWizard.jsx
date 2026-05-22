@@ -1611,7 +1611,7 @@ export default function LoyaltyCampaignWizard() {
           })),
           Promise.allSettled([
             db.from('sales_channels').select('id,name,deleted_at').is('deleted_at', null).order('sort_order').order('name'),
-            db.from('sales_items').select('id,name,sku,deleted_at').is('deleted_at', null).order('name'),
+            db.from('sale_items').select('id,name,sku,deleted_at').is('deleted_at', null).order('name'),
             db.from('sale_categories').select('id,name,deleted_at').is('deleted_at', null).order('name'),
             db.from('sale_templates').select('id,name,description,sale_ids').order('name'),
             db.from('settings').select('value').eq('key', 'company_tree').single(),

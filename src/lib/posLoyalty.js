@@ -187,45 +187,54 @@ export function normalizeCartLines(cartLines = []) {
   }).filter(line => line && line.productId)
 }
 
-function getMatchingCartLinesContribution(cartLines = [], productMasks = [], saleTemplates = []) {
+function getMatchingCartLinesContribution(cartLines = [], productMasks = [], saleTemplates = [], options = {}) {
   let matchedTotalAmount = 0
   let matchedQuantity = 0
+  const matchedProductIds = new Set()
   
   if (!Array.isArray(cartLines) || cartLines.length === 0) {
-    return { amount: 0, qty: 0, matched: false }
+    return { amount: 0, qty: 0, matched: false, productIds: [] }
   }
+
+  const excludeFreeItems = Boolean(options.excludeFreeItems)
+  const allowSameItemRepeat = options.allowSameItemRepeat !== false
 
   const masks = Array.isArray(productMasks) ? productMasks : []
-  if (masks.length === 0) {
-    const amount = cartLines.reduce((sum, line) => sum + (line.lineGrossAfterDiscount || 0), 0)
-    const qty = cartLines.reduce((sum, line) => sum + (line.qty || 0), 0)
-    return { amount, qty, matched: true }
-  }
-
   let isAnyLineMatched = false
-  for (const line of cartLines) {
-    let lineMatched = false
-    for (const mask of masks) {
-      const maskType = String(mask.type || '').trim().toLowerCase()
-      const maskItemId = String(mask.itemId || '').trim()
 
-      if (maskType === 'product') {
-        if (String(line.productId) === maskItemId) {
-          lineMatched = true
-          break
-        }
-      } else if (maskType === 'category') {
-        if (String(line.topCategoryId) === maskItemId || String(line.subCategoryId) === maskItemId) {
-          lineMatched = true
-          break
-        }
-      } else if (maskType === 'sale_template') {
-        const template = saleTemplates.find(st => String(st.id) === maskItemId)
-        if (template) {
-          const saleIds = Array.isArray(template.sale_ids) ? template.sale_ids : parseJsonValue(template.sale_ids, [])
-          if (Array.isArray(saleIds) && saleIds.map(String).includes(String(line.productId))) {
+  for (const line of cartLines) {
+    // 1. Ücretsiz öğeleri hariç tut (excludeFreeItems)
+    const lineAmount = line.lineGrossAfterDiscount || 0
+    if (excludeFreeItems && lineAmount <= 0) {
+      continue
+    }
+
+    let lineMatched = false
+    if (masks.length === 0) {
+      lineMatched = true
+    } else {
+      for (const mask of masks) {
+        const maskType = String(mask.type || '').trim().toLowerCase()
+        const maskItemId = String(mask.itemId || '').trim()
+
+        if (maskType === 'product') {
+          if (String(line.productId) === maskItemId) {
             lineMatched = true
             break
+          }
+        } else if (maskType === 'category') {
+          if (String(line.topCategoryId) === maskItemId || String(line.subCategoryId) === maskItemId) {
+            lineMatched = true
+            break
+          }
+        } else if (maskType === 'sale_template') {
+          const template = saleTemplates.find(st => String(st.id) === maskItemId)
+          if (template) {
+            const saleIds = Array.isArray(template.sale_ids) ? template.sale_ids : parseJsonValue(template.sale_ids, [])
+            if (Array.isArray(saleIds) && saleIds.map(String).includes(String(line.productId))) {
+              lineMatched = true
+              break
+            }
           }
         }
       }
@@ -233,15 +242,28 @@ function getMatchingCartLinesContribution(cartLines = [], productMasks = [], sal
 
     if (lineMatched) {
       isAnyLineMatched = true
-      matchedTotalAmount += (line.lineGrossAfterDiscount || 0)
-      matchedQuantity += (line.qty || 0)
+      matchedTotalAmount += lineAmount
+      
+      // 2. Aynı ürün tekrarlarını sayma (allowSameItemRepeat = false)
+      if (!allowSameItemRepeat) {
+        if (!matchedProductIds.has(line.productId)) {
+          matchedQuantity += 1
+        }
+      } else {
+        matchedQuantity += (line.qty || 0)
+      }
+      
+      if (line.productId) {
+        matchedProductIds.add(line.productId)
+      }
     }
   }
 
   return {
     amount: matchedTotalAmount,
     qty: matchedQuantity,
-    matched: isAnyLineMatched
+    matched: isAnyLineMatched,
+    productIds: Array.from(matchedProductIds)
   }
 }
 
@@ -421,10 +443,11 @@ export function getRuntimeCampaignResolutionMode(campaign = {}, customerContext 
   return applicableRules.every(ruleCanResolveLocally) ? 'local' : 'live_lookup'
 }
 
-function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
+function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatMultiplier = 1) {
   const config = rule.actionConfig || {}
   const orderTotal = Number(orderContext.orderTotal || 0)
   const applicationMode = normalizeLoyaltyApplicationMode(campaign.applicationMode)
+  const mult = Math.max(1, Number(repeatMultiplier) || 1)
 
   // Build applied actions summary for audit/readback
   const getAppliedActionsSummary = () => {
@@ -433,15 +456,17 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
       const percent = Number(config.percent || campaign.rewardValue || 0)
       actions.push({ type: 'discount_percent', value: percent, label: `%${percent} indirim` })
     } else if (rule.actionType === 'order_discount_amount') {
-      const amount = Number(config.amount || 0)
+      const amount = Number(config.amount || 0) * mult
       actions.push({ type: 'order_discount_amount', value: amount, label: `${formatAmount(amount)} indirim` })
     } else if (rule.actionType === 'free_products') {
       const rawItems = Array.isArray(config.items) ? config.items : []
       if (rawItems.length > 0) {
-        actions.push({ type: 'free_products', items: rawItems.length, label: `${rawItems.length} bedava ürün` })
+        const totalQty = rawItems.reduce((sum, item) => sum + (Math.max(1, parseInt(item.qty, 10) || 1) * mult), 0)
+        actions.push({ type: 'free_products', items: rawItems.length, label: `${totalQty} bedava ürün` })
       }
     } else if (rule.actionType === 'bonus_points') {
-      actions.push({ type: 'bonus_points', value: config.points || 0, label: `${config.points || 0} bonus puan` })
+      const pts = (config.points || 0) * mult
+      actions.push({ type: 'bonus_points', value: pts, label: `${pts} bonus puan` })
     } else if (rule.actionType === 'points_percent_of_order') {
       actions.push({ type: 'points_percent_of_order', value: config.percent || 0, label: `%${config.percent || 0} puan` })
     } else if (rule.actionType === 'points_earn_multiplier') {
@@ -474,8 +499,9 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
       customerId: orderContext.customerId || null,
       redemptionContext: orderContext.redemptionContext || null,
       resolvedAt: new Date().toISOString(),
+      repeatMultiplier: mult
     }
-}
+  }
 
   switch (rule.actionType) {
     case 'points_earn_multiplier': {
@@ -520,7 +546,6 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
         sourceRuleId: rule.id,
         applicationMode,
         applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
-// New audit fields for snapshot/readback
         selectedCouponCode: orderContext.selectedCouponCode || null,
         appliedActionsSummary: getAppliedActionsSummary(),
         decisionContext: getDecisionContext(),
@@ -528,7 +553,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
     }
 
     case 'order_discount_amount': {
-      const amount = Number(config.amount || 0)
+      const amount = Number(config.amount || 0) * mult
       if (amount <= 0) return null
       return {
         campaignId: campaign.id,
@@ -568,7 +593,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}) {
           || '',
         ),
         name: String(item.product_name || item.productName || item.name || 'Hediye Urun'),
-        qty: Math.max(1, parseInt(item.qty, 10) || 1),
+        qty: Math.max(1, parseInt(item.qty, 10) || 1) * mult,
       })).filter(item => item.productId || item.name)
       if (giftItems.length === 0) return null
       const itemLabel = giftItems.map(item => `${item.qty}x ${item.name}`).join(', ')
@@ -756,6 +781,7 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
           matched: false,
           supported: true,
           reason: 'Musteri tanimlanmadi (Donem kosulu)',
+          repeatMultiplier: 0
         }
       }
 
@@ -763,13 +789,15 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
       const period = String(config.period || 'rolling_days')
       const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
       const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+      const excludeFreeItems = Boolean(config.excludeFreeItems)
+      const allowSameItemRepeat = config.allowSameItemRepeat !== false
 
       const sortedMasks = [...productMasks].sort((a, b) => {
         const keyA = `${a.type || ''}:${a.itemId || ''}`
         const keyB = `${b.type || ''}:${b.itemId || ''}`
         return keyA.localeCompare(keyB)
       })
-      const queryKey = `${period}:${periodDays}:${JSON.stringify(sortedMasks)}`
+      const queryKey = `${period}:${periodDays}:${excludeFreeItems}:${allowSameItemRepeat}:${JSON.stringify(sortedMasks)}`
 
       const stats = (orderContext.customerPeriodStats && orderContext.customerPeriodStats[queryKey]) || {
         total_amount: 0,
@@ -783,7 +811,12 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
       let currentOrderCount = 0
 
       if (includeCurrentOrder && orderContext.cartLines) {
-        const contribution = getMatchingCartLinesContribution(orderContext.cartLines, productMasks, orderContext.saleTemplates || [])
+        const contribution = getMatchingCartLinesContribution(
+          orderContext.cartLines,
+          productMasks,
+          orderContext.saleTemplates || [],
+          { excludeFreeItems, allowSameItemRepeat }
+        )
         currentAmount = contribution.amount
         currentQty = contribution.qty
         if (contribution.matched) {
@@ -805,16 +838,22 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
         expected = Number(config.count || config.orderCount || condition.threshold_value || 0)
         label = `Donemlik siparis sayisi: ${actual} (Hedef: ${operator} ${expected})`
       } else {
-        actual = stats.product_quantity + currentQty
+        actual = stats.product_quantity + (allowSameItemRepeat ? currentQty : 0)
         expected = Number(config.quantity || config.productQuantity || condition.threshold_value || 0)
         label = `Donemlik urun adedi: ${actual} (Hedef: ${operator} ${expected})`
       }
 
       const matched = compareValues(operator, actual, expected)
+      const isRepeatable = Boolean(config.repeatable)
+      const repeatMultiplier = matched
+        ? (isRepeatable && expected > 0 ? Math.max(1, Math.floor(actual / expected)) : 1)
+        : 0
+
       return {
         matched,
         supported: true,
-        reason: matched ? `${label} kosulu saglandi` : `${label} kosulu bekleniyor`
+        reason: matched ? `${label} kosulu saglandi` : `${label} kosulu bekleniyor`,
+        repeatMultiplier
       }
     }
     default:
@@ -843,10 +882,17 @@ function evaluateRuleForOrder(rule = {}, orderContext = {}, campaign = {}) {
     ? evaluations.find(evaluation => evaluation.matched)?.reason
     : evaluations.find(evaluation => !evaluation.matched)?.reason
 
+  const matchedEvaluations = evaluations.filter(evaluation => evaluation.matched)
+  const multipliers = matchedEvaluations.map(e => e.repeatMultiplier || 1)
+  const repeatMultiplier = matched
+    ? (joinerMode === 'or' ? Math.max(...multipliers) : Math.min(...multipliers))
+    : 0
+
   return {
     matched,
     supported: true,
     reason: primaryReason || (matched ? 'Kosullar saglandi' : 'Kosullar bekliyor'),
+    repeatMultiplier
   }
 }
 
@@ -983,7 +1029,7 @@ function buildCampaignCard(campaign = {}, orderContext = {}, selectedCampaignId 
   const pendingRuleEvaluation = pendingRuleEntry?.evaluation || null
   const offer = canResolveLocally
     ? (matchingRule
-      ? buildOfferFromRule(campaign, matchingRule, orderContext)
+      ? buildOfferFromRule(campaign, matchingRule, orderContext, ruleEvaluation?.repeatMultiplier || 1)
       : (applicableRules.length === 0 ? buildFallbackOffer(campaign, orderContext) : null))
     : null
 
@@ -1321,6 +1367,50 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
   const periodQueries = []
   const customerPeriodStats = {}
 
+  let saleTemplates = options.saleTemplates
+  if (!saleTemplates && customerId) {
+    const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
+    let hasSaleTemplateMask = false
+    for (const campaign of activeCampaigns) {
+      if (!matchesRuntimeChannel(campaign, options.runtimeChannel)) continue
+      const audience = buildAudienceStatus(campaign, options.customerContext || {})
+      if (!audience.supported || !audience.matched) continue
+
+      const rules = (campaign.applicableRules || []).filter(r => r.active !== false)
+      for (const rule of rules) {
+        const conditionEntries = getRuleConditionEntries(rule)
+        for (const cond of conditionEntries) {
+          if (
+            cond.conditionKey === 'period_total_order_amount' ||
+            cond.conditionKey === 'period_order_count' ||
+            cond.conditionKey === 'period_product_quantity' ||
+            cond.conditionKey === 'period_sold_product_quantity'
+          ) {
+            const config = cond.conditionConfig || {}
+            const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+            if (productMasks.some(m => String(m.type).toLowerCase() === 'sale_template')) {
+              hasSaleTemplateMask = true
+              break
+            }
+          }
+        }
+        if (hasSaleTemplateMask) break
+      }
+      if (hasSaleTemplateMask) break
+    }
+    if (hasSaleTemplateMask) {
+      try {
+        const res = await db.from('sale_templates').select('id,name,sale_ids')
+        saleTemplates = res?.data || []
+      } catch (err) {
+        console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch sale templates', err)
+      }
+    }
+  }
+  if (!saleTemplates) {
+    saleTemplates = []
+  }
+
   if (customerId) {
     const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
     const seenQueries = new Set()
@@ -1346,20 +1436,38 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
             const period = String(config.period || 'rolling_days')
             const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
             const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+            const excludeFreeItems = Boolean(config.excludeFreeItems)
+            const allowSameItemRepeat = config.allowSameItemRepeat !== false
+            const includeCurrentOrder = config.includeCurrentOrder !== false
             
             const sortedMasks = [...productMasks].sort((a, b) => {
               const keyA = `${a.type || ''}:${a.itemId || ''}`
               const keyB = `${b.type || ''}:${b.itemId || ''}`
               return keyA.localeCompare(keyB)
             })
-            const queryKey = `${period}:${periodDays}:${JSON.stringify(sortedMasks)}`
+            const queryKey = `${period}:${periodDays}:${excludeFreeItems}:${allowSameItemRepeat}:${JSON.stringify(sortedMasks)}`
             
+            let currentProductIds = []
+            if (!allowSameItemRepeat && includeCurrentOrder && options.cartLines) {
+              const normalizedLines = normalizeCartLines(options.cartLines)
+              const contribution = getMatchingCartLinesContribution(
+                normalizedLines,
+                productMasks,
+                saleTemplates,
+                { excludeFreeItems, allowSameItemRepeat: false }
+              )
+              currentProductIds = contribution.productIds || []
+            }
+
             if (!seenQueries.has(queryKey)) {
               seenQueries.add(queryKey)
               periodQueries.push({
                 period,
                 periodDays,
                 productMasks,
+                excludeFreeItems,
+                allowSameItemRepeat,
+                currentProductIds,
                 key: queryKey
               })
             }
@@ -1376,7 +1484,10 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
               p_customer_id: customerId,
               p_period: q.period,
               p_period_days: q.periodDays,
-              p_product_masks: q.productMasks
+              p_product_masks: q.productMasks,
+              p_exclude_free_items: q.excludeFreeItems,
+              p_allow_same_item_repeat: q.allowSameItemRepeat,
+              p_current_product_ids: q.currentProductIds
             })
             if (res && res.data && res.data[0]) {
               customerPeriodStats[q.key] = {
@@ -1394,24 +1505,6 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
         })
       )
     }
-  }
-
-  let saleTemplates = options.saleTemplates
-  if (!saleTemplates && customerId && periodQueries.length > 0) {
-    const hasSaleTemplateMask = periodQueries.some(q => 
-      q.productMasks.some(m => String(m.type).toLowerCase() === 'sale_template')
-    )
-    if (hasSaleTemplateMask) {
-      try {
-        const res = await db.from('sale_templates').select('id,name,sale_ids')
-        saleTemplates = res?.data || []
-      } catch (err) {
-        console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch sale templates', err)
-      }
-    }
-  }
-  if (!saleTemplates) {
-    saleTemplates = []
   }
 
   return {

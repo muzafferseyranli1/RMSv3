@@ -42,6 +42,11 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
 })
 
+// Handle pool errors to prevent application crash
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle database client', err)
+})
+
 const app = express()
 app.use(compression())
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/app/uploads'
@@ -91,8 +96,10 @@ const upload = multer({
   },
 })
 
-const CACHE_TTL_MS = 30_000
+const CACHE_TTL_MS = 300_000 // 5 minutes
 const queryCache = new Map()
+const pendingRequests = new Map()
+const rateLimitMap = new Map()
 
 function cacheKey(body) {
   return JSON.stringify(body)
@@ -110,6 +117,72 @@ function cacheGet(key) {
 
 function cacheSet(key, data) {
   queryCache.set(key, { data, ts: Date.now() })
+}
+
+// Recursively strips empty values (null, undefined, empty arrays) from objects/arrays
+function stripEmptyValues(val) {
+  if (val === null || val === undefined) return undefined
+  
+  if (Array.isArray(val)) {
+    if (val.length === 0) return undefined
+    const cleanedArr = val.map(stripEmptyValues).filter(v => v !== undefined)
+    return cleanedArr.length > 0 ? cleanedArr : undefined
+  }
+  
+  if (typeof val === 'object' && val.constructor === Object) {
+    const cleanedObj = {}
+    for (const [k, v] of Object.entries(val)) {
+      const cv = stripEmptyValues(v)
+      if (cv !== undefined) {
+        cleanedObj[k] = cv
+      }
+    }
+    return cleanedObj
+  }
+  
+  return val
+}
+
+// Cleans API responses while preserving root data array structure
+function cleanApiResponse(result) {
+  if (!result || !result.data) return result
+  const cleanedData = result.data.map(row => {
+    const cleaned = stripEmptyValues(row)
+    return cleaned === undefined ? {} : cleaned
+  })
+  return { data: cleanedData, error: result.error ?? null }
+}
+
+// Cleanup interval to prevent rateLimitMap from growing unbounded
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const active = timestamps.filter(ts => now - ts < 60_000)
+    if (active.length === 0) {
+      rateLimitMap.delete(ip)
+    } else {
+      rateLimitMap.set(ip, active)
+    }
+  }
+}, 60_000)
+
+function rateLimiter(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  
+  let timestamps = rateLimitMap.get(ip) || []
+  timestamps = timestamps.filter(ts => now - ts < 60_000)
+  
+  if (timestamps.length >= 100) {
+    return res.status(429).json({
+      data: null,
+      error: { message: 'Too many requests. Please try again later.' }
+    })
+  }
+  
+  timestamps.push(now)
+  rateLimitMap.set(ip, timestamps)
+  next()
 }
 
 function cacheClearTable(table) {
@@ -311,18 +384,27 @@ app.get('/api/files/:filename', (req, res) => {
   return res.sendFile(absolutePath)
 })
 
-app.all('/api/query', async (req, res) => {
+app.all('/api/query', rateLimiter, async (req, res) => {
   const body = req.method === 'GET' ? req.query : req.body
   const { table, operation, select, filters = [], data, options = {}, rpc, params } = body
   const isReadOnly = rpc || operation === 'select'
+  const key = cacheKey(body)
 
   if (isReadOnly) {
-    const key = cacheKey(body)
     const cached = cacheGet(key)
     if (cached) return res.json(cached)
+
+    if (pendingRequests.has(key)) {
+      try {
+        const result = await pendingRequests.get(key)
+        return res.json(result)
+      } catch (err) {
+        return res.json({ data: null, error: { message: err.message } })
+      }
+    }
   }
 
-  try {
+  const executeQuery = async () => {
     if (rpc) {
       validateIdentifier(rpc)
       const keys = Object.keys(params || {})
@@ -330,9 +412,7 @@ app.all('/api/query', async (req, res) => {
       const argList = keys.map((k, i) => `${k} => $${i + 1}`).join(', ')
       const sql = `SELECT * FROM "${rpc}"(${argList})`
       const { rows } = await pool.query(sql, vals)
-      const result = { data: rows, error: null }
-      cacheSet(cacheKey(body), result)
-      return res.json(result)
+      return { data: rows, error: null }
     }
 
     validateIdentifier(table)
@@ -340,7 +420,7 @@ app.all('/api/query', async (req, res) => {
     const { conditions, values, orders, limitVal, offsetVal } = buildConditions(filters)
     const whereStr = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const orderStr = orders.length ? `ORDER BY ${orders.join(', ')}` : ''
-    const limitStr = limitVal != null ? `LIMIT ${Number(limitVal)}` : ''
+    let limitStr = limitVal != null ? `LIMIT ${Number(limitVal)}` : ''
     const offsetStr = offsetVal != null ? `OFFSET ${Number(offsetVal)}` : ''
 
     if (!isReadOnly) cacheClearTable(table)
@@ -352,16 +432,20 @@ app.all('/api/query', async (req, res) => {
             return trimmed === '*' ? '*' : `"${trimmed}"`
           }).join(', ')
         : '*'
+
+      // Enforce a hard cap of 1000 rows
+      const parsedLimit = limitVal != null ? Number(limitVal) : 1000
+      const finalLimit = Math.min(parsedLimit, 1000)
+      limitStr = `LIMIT ${finalLimit}`
+
       const sql = `SELECT ${cols} FROM "${table}" ${whereStr} ${orderStr} ${limitStr} ${offsetStr}`
       const { rows } = await pool.query(sql, values)
-      const result = { data: rows, error: null }
-      cacheSet(cacheKey(body), result)
-      return res.json(result)
+      return { data: rows, error: null }
     }
 
     if (operation === 'insert') {
       const records = Array.isArray(data) ? data : [data]
-      if (!records.length) return res.json({ data: [], error: null })
+      if (!records.length) return { data: [], error: null }
       const cols = Object.keys(records[0])
       cols.forEach(validateIdentifier)
       const colStr = cols.map(c => `"${c}"`).join(', ')
@@ -373,14 +457,12 @@ app.all('/api/query', async (req, res) => {
           `INSERT INTO "${table}" (${colStr}) VALUES (${placeholders}) RETURNING *`,
           vals
         )
-        return res.json({ data: Array.isArray(data) ? rows : (rows[0] ?? null), error: null })
+        return { data: Array.isArray(data) ? rows : (rows[0] ?? null), error: null }
       }
 
       const allVals = []
       const rowPlaceholders = records.map(rec => {
         const vals = cols.map(c => normalizeWriteValue(table, c, rec[c]))
-        const ph = vals.map(() => `$${allVals.length + vals.indexOf(vals[vals.indexOf(vals[0])]) + 1}`)
-        // rebuild correctly:
         const start = allVals.length + 1
         allVals.push(...vals)
         return `(${vals.map((_, i) => `$${start + i}`).join(', ')})`
@@ -389,7 +471,7 @@ app.all('/api/query', async (req, res) => {
         `INSERT INTO "${table}" (${colStr}) VALUES ${rowPlaceholders.join(', ')} RETURNING *`,
         allVals
       )
-      return res.json({ data: rows, error: null })
+      return { data: rows, error: null }
     }
 
     if (operation === 'update') {
@@ -402,18 +484,18 @@ app.all('/api/query', async (req, res) => {
       const oStr = whereOrders.length ? `ORDER BY ${whereOrders.join(', ')}` : ''
       const sql = `UPDATE "${table}" SET ${setStr} ${wStr} ${oStr} RETURNING *`
       const { rows } = await pool.query(sql, [...dataVals, ...whereVals])
-      return res.json({ data: rows, error: null })
+      return { data: rows, error: null }
     }
 
     if (operation === 'delete') {
       const sql = `DELETE FROM "${table}" ${whereStr} ${orderStr} RETURNING *`
       const { rows } = await pool.query(sql, values)
-      return res.json({ data: rows, error: null })
+      return { data: rows, error: null }
     }
 
     if (operation === 'upsert') {
       const records = Array.isArray(data) ? data : [data]
-      if (!records.length) return res.json({ data: [], error: null })
+      if (!records.length) return { data: [], error: null }
 
       const cols = Object.keys(records[0])
       cols.forEach(validateIdentifier)
@@ -437,7 +519,7 @@ app.all('/api/query', async (req, res) => {
           `INSERT INTO "${table}" (${colStr}) VALUES (${placeholders}) ON CONFLICT (${conflictStr}) ${doUpdate} RETURNING *`,
           vals
         )
-        return res.json({ data: Array.isArray(data) ? rows : (rows[0] ?? null), error: null })
+        return { data: Array.isArray(data) ? rows : (rows[0] ?? null), error: null }
       }
 
       const allVals = []
@@ -451,13 +533,35 @@ app.all('/api/query', async (req, res) => {
         `INSERT INTO "${table}" (${colStr}) VALUES ${rowPlaceholders.join(', ')} ON CONFLICT (${conflictStr}) ${doUpdate} RETURNING *`,
         allVals
       )
-      return res.json({ data: rows, error: null })
+      return { data: rows, error: null }
     }
 
-    return res.status(400).json({ data: null, error: { message: `Unknown operation: ${operation}` } })
-  } catch (err) {
-    console.error('[api/query]', err.message)
-    return res.json({ data: null, error: { message: err.message } })
+    throw new Error(`Unknown operation: ${operation}`)
+  }
+
+  if (isReadOnly) {
+    const promise = executeQuery().finally(() => {
+      pendingRequests.delete(key)
+    })
+    pendingRequests.set(key, promise)
+
+    try {
+      const result = await promise
+      const cleanedResult = cleanApiResponse(result)
+      cacheSet(key, cleanedResult)
+      return res.json(cleanedResult)
+    } catch (err) {
+      console.error('[api/query]', err.message)
+      return res.json({ data: null, error: { message: err.message } })
+    }
+  } else {
+    try {
+      const result = await executeQuery()
+      return res.json(result)
+    } catch (err) {
+      console.error('[api/query]', err.message)
+      return res.json({ data: null, error: { message: err.message } })
+    }
   }
 })
 

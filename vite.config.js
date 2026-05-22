@@ -13,6 +13,6 @@ export default defineConfig({
     alias: { '@': '/src' }
   },
   build: {
-    emptyOutDir: true,
+    emptyOutDir: false,
   }
 })
