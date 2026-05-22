@@ -91,7 +91,7 @@ const upload = multer({
   },
 })
 
-const CACHE_TTL_MS = 30_000
+const CACHE_TTL_MS = 300_000
 const queryCache = new Map()
 
 function cacheKey(body) {
@@ -119,6 +119,49 @@ function cacheClearTable(table) {
       if (parsed.table === table) queryCache.delete(key)
     } catch { /* ignore */ }
   }
+}
+
+// Pending requests map for deduplication of identical concurrent queries
+const pendingRequests = new Map()
+
+// Rate limiting: max 100 requests per minute per IP
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 100
+const rateLimitMap = new Map()
+
+function getRateLimitKey(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown'
+}
+
+function checkRateLimit(ip) {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 })
+    return true
+  }
+  entry.count++
+  return entry.count <= RATE_LIMIT_MAX
+}
+
+// Periodically clean up stale rate limit entries to prevent memory growth
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, entry] of rateLimitMap.entries()) {
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) rateLimitMap.delete(ip)
+  }
+}, RATE_LIMIT_WINDOW_MS)
+
+function stripEmptyValues(obj) {
+  if (Array.isArray(obj)) return obj.map(stripEmptyValues)
+  if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
+        .map(([k, v]) => [k, stripEmptyValues(v)])
+    )
+  }
+  return obj
 }
 
 const pkCache = {}
@@ -312,6 +355,12 @@ app.get('/api/files/:filename', (req, res) => {
 })
 
 app.all('/api/query', async (req, res) => {
+  // Rate limiting
+  const ip = getRateLimitKey(req)
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ data: null, error: { message: 'Too many requests. Please slow down.' } })
+  }
+
   const body = req.method === 'GET' ? req.query : req.body
   const { table, operation, select, filters = [], data, options = {}, rpc, params } = body
   const isReadOnly = rpc || operation === 'select'
@@ -320,21 +369,67 @@ app.all('/api/query', async (req, res) => {
     const key = cacheKey(body)
     const cached = cacheGet(key)
     if (cached) return res.json(cached)
+
+    // Deduplicate identical concurrent requests — attach to the in-flight promise
+    if (pendingRequests.has(key)) {
+      try {
+        const result = await pendingRequests.get(key)
+        return res.json(result)
+      } catch (err) {
+        return res.json({ data: null, error: { message: err.message } })
+      }
+    }
+
+    // Wrap the DB query in a promise and register it before awaiting
+    let resolvePending, rejectPending
+    const pendingPromise = new Promise((resolve, reject) => {
+      resolvePending = resolve
+      rejectPending = reject
+    })
+    pendingRequests.set(key, pendingPromise)
+
+    try {
+      let result
+      if (rpc) {
+        validateIdentifier(rpc)
+        const keys = Object.keys(params || {})
+        const vals = Object.values(params || {})
+        const argList = keys.map((k, i) => `${k} => $${i + 1}`).join(', ')
+        const sql = `SELECT * FROM "${rpc}"(${argList})`
+        const { rows } = await pool.query(sql, vals)
+        result = { data: stripEmptyValues(rows), error: null }
+      } else {
+        validateIdentifier(table)
+        const { conditions, values, orders, limitVal, offsetVal } = buildConditions(filters)
+        const whereStr = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+        const orderStr = orders.length ? `ORDER BY ${orders.join(', ')}` : ''
+        // Enforce a max of 1000 rows when no limit is specified to cap response size
+        const effectiveLimit = limitVal != null ? Math.min(Number(limitVal), 1000) : 1000
+        const limitStr = `LIMIT ${effectiveLimit}`
+        const offsetStr = offsetVal != null ? `OFFSET ${Number(offsetVal)}` : ''
+        const cols = select && select !== '*'
+          ? select.split(',').map(c => {
+              const trimmed = c.trim()
+              return trimmed === '*' ? '*' : `"${trimmed}"`
+            }).join(', ')
+          : '*'
+        const sql = `SELECT ${cols} FROM "${table}" ${whereStr} ${orderStr} ${limitStr} ${offsetStr}`
+        const { rows } = await pool.query(sql, values)
+        result = { data: stripEmptyValues(rows), error: null }
+      }
+      cacheSet(key, result)
+      resolvePending(result)
+      return res.json(result)
+    } catch (err) {
+      rejectPending(err)
+      console.error('[api/query]', err.message)
+      return res.json({ data: null, error: { message: err.message } })
+    } finally {
+      pendingRequests.delete(key)
+    }
   }
 
   try {
-    if (rpc) {
-      validateIdentifier(rpc)
-      const keys = Object.keys(params || {})
-      const vals = Object.values(params || {})
-      const argList = keys.map((k, i) => `${k} => $${i + 1}`).join(', ')
-      const sql = `SELECT * FROM "${rpc}"(${argList})`
-      const { rows } = await pool.query(sql, vals)
-      const result = { data: rows, error: null }
-      cacheSet(cacheKey(body), result)
-      return res.json(result)
-    }
-
     validateIdentifier(table)
 
     const { conditions, values, orders, limitVal, offsetVal } = buildConditions(filters)
@@ -343,9 +438,11 @@ app.all('/api/query', async (req, res) => {
     const limitStr = limitVal != null ? `LIMIT ${Number(limitVal)}` : ''
     const offsetStr = offsetVal != null ? `OFFSET ${Number(offsetVal)}` : ''
 
-    if (!isReadOnly) cacheClearTable(table)
+    cacheClearTable(table)
 
     if (operation === 'select') {
+      // This branch is unreachable (select is handled above as read-only),
+      // but kept as a safety fallback.
       const cols = select && select !== '*'
         ? select.split(',').map(c => {
             const trimmed = c.trim()
