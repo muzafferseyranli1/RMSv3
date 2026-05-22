@@ -65,10 +65,10 @@ export const RULE_SCOPE_OPTIONS = [
 
 export const COMPARISON_OPTIONS = [
   { value: 'eq', label: 'eşit' },
-  { value: 'gt', label: 'daha fazla' },
-  { value: 'gte', label: 'daha fazla veya eşit' },
-  { value: 'lt', label: 'daha az' },
-  { value: 'lte', label: 'daha az veya eşit' },
+  { value: 'gt', label: 'büyük' },
+  { value: 'gte', label: 'eşit veya büyük' },
+  { value: 'lt', label: 'küçük' },
+  { value: 'lte', label: 'eşit veya küçük' },
   { value: 'divisible', label: 'bölünebilir' },
 ]
 

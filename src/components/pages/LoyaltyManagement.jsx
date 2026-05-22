@@ -608,17 +608,17 @@ function sanitizeBranchSelections(selections) {
 function formatComparisonNatural(operator) {
   switch (operator) {
     case 'gte':
-      return 'en az'
+      return 'eşit veya büyük'
     case 'lte':
-      return 'en fazla'
+      return 'eşit veya küçük'
     case 'gt':
-      return 'daha fazla'
+      return 'büyük'
     case 'lt':
-      return 'daha az'
+      return 'küçük'
     case 'eq':
-      return 'tam olarak'
+      return 'eşit'
     case 'divisible':
-      return 'bolunebilir'
+      return 'bölünebilir'
     default:
       return getOptionLabel(COMPARISON_OPTIONS, operator).toLowerCase()
   }
@@ -2085,7 +2085,7 @@ function RuntimeStatusNote({ status }) {
 function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition, onAddAction, onDeleteCondition, onDeleteAction, onToggleConditionJoiner, summaryContext }) {
   const conditions = getEditorRuleConditions(rule)
   const actions = getEditorRuleActions(rule)
-  const primaryConditionLabel = conditions[0] ? getConditionMeta(conditions[0].conditionKey).label : 'Bos kosul blogu'
+  const primaryConditionLabel = conditions[0] ? getConditionMeta(conditions[0].conditionKey).label : 'Boş koşul bloğu'
   const blockTitle = conditions.length > 1 ? `${primaryConditionLabel} + ${conditions.length - 1} kosul` : primaryConditionLabel
   const blockMeta = `${conditions.length} kosul / ${actions.length} eylem`
   const conditionJoinerMode = rule.conditionConfig?.additionalConditionsMode === 'or' ? 'or' : 'and'
@@ -2106,7 +2106,7 @@ function RuleRow({ rule, onEditCondition, onEditAction, onDelete, onAddCondition
               color: '#1d4ed8',
               border: '1px solid #bfdbfe',
             }}>
-              Kosul Blogu
+              Koşul Bloğu
             </span>
             <MiniBadge active={rule.active} trueLabel="Aktif" falseLabel="Pasif" />
             {rule.stopProcessing ? <MiniBadge active trueLabel="Akisi durdurur" falseLabel="" /> : null}
@@ -3961,12 +3961,12 @@ export default function LoyaltyManagement() {
           <div style={{ display: 'grid', gap: 10 }}>
             {conditionKey === 'order_item_quantity' ? (
               <HelperNote title="3 al 2 ode kurulumu">
-                3 al 2 ode icin adet `3`; 1 alana 1 bedava veya 2. urun indirimli icin adet `2` secin. `Daha fazla veya esit` esigi gecince, `esit` tam adette, `bolunebilir` ise her 2'li / 3'lu / 4'lu grup icin calisir. Urun / kategori / sablon alanindan kategori, satis mali sablonu veya tekil urunleri belirleyin. Gun-saat siniri gerekiyorsa ayni bloga ek kosul olarak `Happy hour` ekleyin.
+                3 al 2 ode icin adet `3`; 1 alana 1 bedava veya 2. urun indirimli icin adet `2` secin. `Daha fazla veya esit` esigi gecince, `esit` tam adette, `bolunebilir` ise her 2'li / 3'lu / 4'lu grup icin calisir. Urun / kategori / sablon alanindan kategori, satis mali sablonu veya tekil urunleri belirleyin. Gun-saat siniri gerekiyorsa ayni bloğa ek kosul olarak `Happy hour` ekleyin.
               </HelperNote>
             ) : null}
             {conditionKey === 'period_sold_product_quantity' ? (
               <HelperNote title="Toplam satis hacmi kosulu">
-                Bu kosul musteri bazli degil, secili urun, kategori ve satis mali sablonlarinin donem icindeki toplam satis adedine bakar. Ayni bloga hem `xxx` urunu hem de `yyy` urun kategorisini ya da bir satis mali sablonunu ekleyebilirsiniz; sistem secili filtrelerdeki toplam adedi izler.
+                Bu kosul musteri bazli degil, secili urun, kategori ve satis mali sablonlarinin donem icindeki toplam satis adedine bakar. Ayni bloğa hem `xxx` urunu hem de `yyy` urun kategorisini ya da bir satis mali sablonunu ekleyebilirsiniz; sistem secili filtrelerdeki toplam adedi izler.
               </HelperNote>
             ) : null}
             <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 0.9fr 1fr', gap: 10 }}>
@@ -4050,7 +4050,7 @@ export default function LoyaltyManagement() {
                 <button className="btn-o" onClick={() => patchCondition(cfg => ({ ...cfg, windows: [...(cfg.windows || []), { id: createId('window'), start: '00:00', end: '00:00', days: [false, false, false, false, false, false, false] }] }))}>+ Olustur</button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'none', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FieldStack label="Saat dilimi kaynagi">
                 <div className="sel-wrap">
                   <select className="f-input" value={config.timezoneMode || 'default'} onChange={event => patchCondition({ timezoneMode: event.target.value })}>
@@ -5513,7 +5513,7 @@ export default function LoyaltyManagement() {
                         <div>
                           <div style={{ fontSize: '.78rem', color: '#9d174d', fontWeight: 900 }}>Legacy Musteri Kategorisi Hedefi</div>
                           <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 3 }}>
-                            Bu kampanyada eski tip kategori hedefi bulundu. Bunu kosul bloglarina tasirsan kampanya yeni editor mantigi ile uyumlu olur.
+                            Bu kampanyada eski tip kategori hedefi bulundu. Bunu koşul bloklarına taşırsan kampanya yeni editör mantığı ile uyumlu olur.
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -5565,7 +5565,7 @@ export default function LoyaltyManagement() {
                     <div>
                       <div style={{ fontWeight: 800, color: '#0f172a' }}>Kosullar ve Eylemler</div>
                       <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                        Kampanya bloglarini iki parcali duzende yonetin: solda kosul, sagda ayni blogun eylemi.
+                        Kampanya bloklarını iki parçalı düzende yönetin: solda koşul, sağda aynı bloğun eylemi.
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -5583,21 +5583,21 @@ export default function LoyaltyManagement() {
                       </button>
                       <button className="btn-o" onClick={() => addRule(selectedCampaign.id, activeRuleTab, 'conditions')}>
                         <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-                        Kosul Blogu Ekle
+                        Kosul Bloğu Ekle
                       </button>
                     </div>
                   </div>
 
                   <div style={{ marginBottom: 12 }}>
                     <HelperNote title="Ornek kurulum">
-                      Ornek kampanya: zzz musteri kategorisi + Pazartesi 18:00-20:00 + siparis tutari en az 500 TL. Solda ayni bloga birden fazla kosul, sagda ise o blog calisinca uygulanacak bir veya birden fazla eylem ekleyebilirsiniz.
+                      Ornek kampanya: zzz musteri kategorisi + Pazartesi 18:00-20:00 + siparis tutari en az 500 TL. Solda aynı bloğa birden fazla koşul, sağda ise o blok çalışınca uygulanacak bir veya birden fazla eylem ekleyebilirsiniz.
                     </HelperNote>
 
                   </div>
 
                   {visibleRules.length === 0 ? (
                     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 14, padding: 18, color: '#64748b', textAlign: 'center' }}>
-                      Bu kampanyada henuz blog yok.
+                      Bu kampanyada henüz blok yok.
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 10 }}>
@@ -5653,7 +5653,7 @@ export default function LoyaltyManagement() {
                 {ruleEditorState && activeRuleEditorRule && activeRuleEditorCampaign && activeRuleEditorItem ? (
                   <EditorModal
                     title={ruleEditorState.mode === 'actions' ? 'Eylemi Duzenle' : 'Kosulu Duzenle'}
-                    subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazli akisa bagli blog' : 'Siparis aninda calisan blog'}
+                    subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazlı akışa bağlı blok' : 'Sipariş anında çalışan blok'}
                     onClose={closeRuleEditor}
                   >
                     {ruleEditorState.mode === 'actions' ? (

@@ -1,87 +1,57 @@
-# Railway Egress Tüketimini Düşürme ve Polling Optimizasyonu Planı
+# Kupon Koşulu (`coupon_present`) Yerel Değerlendirme Planı
 
-Bu plan, Railway üzerinde yayında olan ve aktif olarak kullanılmadığında bile yüksek ağ egres trafiği (213 GB+) üreten geliştirme/test aşamasındaki projenin ağ trafiğini optimize etmeyi amaçlamaktadır. 
+Bu plan, "Kupon mevcut" (`coupon_present`) sadakat koşulunun POS, Garson, Kiosk ve Mobil Uygulama gibi tüm kanallarda sunucu değerlendiricisi gerektirmeden yerel/istemci tarafında (local) çözülebilmesi için gerekli altyapıyı tanımlar.
 
-Kullanıcı geri bildirimi doğrultusunda, tüm otomatik arka plan sorgularını (`setInterval`), polling işlemlerini ve Supabase Realtime bağlantılarını (`db.channel(...)`) tamamen kaldırarak, ekranlara kullanıcı tarafından tetiklenebilecek şık manuel "Yenile" (Refresh) butonları yerleştireceğiz.
-
-Kiosk ekranlarında ise test ortamına uygun şekilde QR kod oturumunun süresini 24 saate (86400 saniye) çıkaracak ve oturum sonlandığında otomatik olarak sonsuz döngüyle yeni QR üretilmesini engelleyeceğiz.
-
-## User Review Required
+## Kullanıcı İncelemesi Gereken Konular
 
 > [!IMPORTANT]
-> Yapılacak değişikliklerle tüm ekranlardan (KDS, Pickup, Queue, Garson, Mobil Garson ve POS) otomatik yenilemeler kaldırılacak ve veri güncellemeleri yalnızca manuel "Yenile" butonları ile yapılacaktır.
-> Kiosk için QR kodunun yenilenme döngüsü kapatılacak, QR kod ilk açılışta bir kez üretilecektir.
-
-## Open Questions
-
-Herhangi bir açık soru bulunmamaktadır.
-
----
-
-## Proposed Changes
-
-### 1. Otomatik Güncellemelerin ve Realtime Bağlantıların Kaldırılması & Manuel Yenileme Butonları
-
-#### [MODIFY] [KDS.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/KDS.jsx)
-- Supabase Realtime aboneliğini (`db.channel('kds-...')`) tamamen kaldıracağız.
-- Siparişlerin otomatik çekilmesini sağlayan `setInterval` döngüsünü tamamen kaldıracağız.
-- Halihazırda var olan manuel yenileme butonunun işlevini koruyacağız.
-
-#### [MODIFY] [PickupScreen.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/PickupScreen.jsx)
-- Supabase Realtime aboneliğini (`db.channel('pickup-...')`) tamamen kaldıracağız.
-- `setInterval` otomatik yenileme döngüsünü tamamen kaldıracağız.
-- Halihazırda var olan manuel yenileme butonunun işlevini koruyacağız.
-
-#### [MODIFY] [QueueScreen.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/QueueScreen.jsx)
-- Supabase Realtime aboneliğini (`db.channel('queue-...')`) tamamen kaldıracağız.
-- `setInterval` otomatik yenileme döngüsünü tamamen kaldıracağız.
-- Ekranın sağ üst köşesine (saat bilgisinin yanına) şık bir manuel "Yenile" butonu ekleyeceğiz.
-
-#### [MODIFY] [Garson.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/Garson.jsx)
-- Masa adisyonlarını sorgulayan `OPEN_TICKET_POLL_MS` interval döngüsünü tamamen kaldıracağız.
-- Masa isteklerini sorgulayan `TABLE_REQUEST_POLL_MS` interval döngüsünü tamamen kaldıracağız.
-- Sol taraftaki şube başlığının yanına bir "Yenile" butonu ekleyeceğiz. Bu buton tıklandığında masa düzenini, adisyonları ve masa isteklerini veritabanından güncelleyecektir (`handleManualRefresh` callback).
-
-#### [MODIFY] [MobileAppShells.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/MobileAppShells.jsx)
-- Mobil garson ekranındaki `MOBILE_GARSON_POLL_MS` interval döngüsünü tamamen kaldıracağız.
-- `MobileGarsonRuntime` bileşeni için bir `refreshTrigger` state'i tanımlayarak, bu state değiştiğinde `useEffect` içindeki `hydrateRuntime()` fonksiyonunun yeniden çalışmasını sağlayacağız.
-- Mobil ekranın sağ üstündeki çıkış butonunun soluna şık bir "Yenile" butonu ekleyeceğiz.
-
-#### [MODIFY] [POS.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/POS.jsx)
-- Siparişlerin otomatik çekilmesini sağlayan `setInterval` döngüsünü (10 saniye) tamamen kaldıracağız.
-- Kampanyaların periyodik olarak yenilenmesini sağlayan `setInterval` döngüsünü (`RUNTIME_LOYALTY_CACHE_TTL_MS`) kaldıracağız.
-- Kullanıcı işlemiyle tetiklenen loyalty QR modalındaki 2.5 saniyelik sorgulama döngüsüne `if (document.hidden) return;` kontrolü ekleyeceğiz.
-
-#### [MODIFY] [CallCenter.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/CallCenter.jsx)
-- Halihazırda var olan manuel yenileme butonunun (`loadBase`) işlevini koruyacağız. Otomatik güncelleme bulunmadığı doğrulanmıştır.
+> - **Kupon Geçerlilik Kriterleri**: 
+>   - Kupon aktif olmalıdır (`active !== false`).
+>   - Kupon daha önce kullanılmamış olmalıdır (`is_used !== true` ve `redemption_status` değeri `'used'`, `'expired'`, `'cancelled'` olmamalıdır).
+>   - Süresi dolmamış olmalıdır (varsa `expires_at >= now`).
+>   - Kupon serisi, kuralın `seriesIds` listesinde tanımlı olmalıdır (eğer `anySeries` seçili değilse).
+> - **Veri Çekme Yaklaşımı**: Yerel değerlendirici senkron çalıştığından, kupon detayları `evaluateRuntimeOrderCampaignsAsync` fonksiyonu içerisinde önceden asenkron olarak veritabanından çekilip `orderContext` nesnesine (`couponDetails`) eklenecektir.
 
 ---
 
-### 2. Kiosk Ekranlarındaki QR Kod Sonsuz Döngüsünün Kapatılması
+## Yapılacak Değişiklikler
 
-Kiosk boştayken (`screen === 'idle'`) oluşturulan QR kodun sürekli yenilenmesine test ortamında gerek yoktur. 24 saatlik bir timeout vererek QR kodun gün boyunca geçerli kalmasını sağlayacağız. Polling sırasında oturum sonlanırsa, yeni bir QR oluşturulmasını tetiklemeyerek döngüyü kıracağız.
+### 1. İş Mantığı Katmanı (JavaScript)
 
-#### [MODIFY] [KioskBig.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/KioskBig.jsx)
-- Sadakat QR oturumu oluşturulurken `timeoutSec` değerini `86400` (24 saat) yapacağız.
-- `startLoyaltyPolling` döngüsündeki `if (!next)` hata kontrolü içinde `setIdleLoyaltyQrUrl('')` temizleme işlemini kaldıracağız; böylece QR kodu ekrandan kaybolmayacak ve useEffect bağımlılığı tetiklenerek sonsuz döngüyle yeni QR üretilmeyecektir.
-- Polling döngüsünün içine `if (document.hidden) return;` ekleyeceğiz.
-- Genel kiosk ayarlarını yenileyen `refreshRuntimeConfig` interval süresini 10 saniyeden `30000` (30 saniye) değerine çıkarıp `if (document.hidden) return;` ekleyeceğiz.
+#### [MODIFY] [posLoyalty.js](file:///C:/RMSggl/Dropbox/RMSv3/src/lib/posLoyalty.js)
 
-#### [MODIFY] [KioskTablet.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/pages/KioskTablet.jsx)
-- `KioskBig.jsx` dosyasında yapılan tüm optimizasyonların (timeout değerinin 86400'e çıkarılması, state temizlemesinin kaldırılması, hidden kontrolü ve config yenileme süresinin 30 saniyeye çekilmesi) aynısını uygulayacağız.
+- **Veritabanı İmport Ayarı**: Dosyanın en üstüne `import { db } from '@/lib/db'` eklenecektir.
+- **Koşulun Yerel Listeye Eklenmesi**: `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` eklenecektir.
+- **Kupon Özet Metni**: `getConditionPreview` fonksiyonunda `case 'coupon_present':` eklenerek kampanya detaylarında gösterilecek metin ayarlanacaktır:
+  - `anySeries` aktif ise: *"Herhangi bir kupon serisi"*
+  - Değilse: *"Seçili X kupon serisinden biri"*
+- **Asenkron Kupon Detayı Çekimi**: `evaluateRuntimeOrderCampaignsAsync` fonksiyonunun başında, `options.selectedCouponCode` veya `options.customerContext?.selectedCouponCode` alanlarından kupon kodu (`selectedCouponCode`) ayıklanacaktır.
+  - Eğer bir kupon kodu tanımlanmışsa, veritabanından asenkron olarak bilgileri çekilecektir:
+    ```javascript
+    const res = await db.from('loyalty_coupons')
+      .select('id,code,series_id,is_used,active,redemption_status,expires_at')
+      .eq('code', selectedCouponCode)
+      .maybeSingle()
+    ```
+  - Çekilen veri `couponDetails` adıyla `evaluateRuntimeOrderCampaigns` çağrısına argüman olarak eklenecektir.
+- **Kural Değerlendirme Parametreleri**: `evaluateRuntimeOrderCampaigns` fonksiyonu argümanlarında `selectedCouponCode` ve `couponDetails` parametrelerini karşılayacaktır. Bu değerler `buildCampaignCard` içindeki `orderContext` nesnesine aktarılacaktır.
+- **Koşul Değerlendirme Mantığı**: `evaluateSingleCondition` fonksiyonu altına `case 'coupon_present':` bloğu eklenerek aşağıdaki kontroller gerçekleştirilecektir:
+  - Aktiflik, kullanım durumu, son kullanma tarihi ve seri eşleşme doğrulamaları.
+
+#### [MODIFY] [loyaltyRuntimeStatus.js](file:///C:/RMSggl/Dropbox/RMSv3/src/lib/loyaltyRuntimeStatus.js)
+
+- **Durum Güncellemesi**: `CONDITION_KEY_STATUS` haritasındaki `coupon_present` kaydının `category` değeri `'server'` yerine `'local'` olarak güncellenecektir. Böylece arayüzler ve motor bu kuralı doğrudan yerel olarak çalıştırılabilir kabul edecektir.
 
 ---
 
-## Verification Plan
+## Doğrulama Planı
 
-### Automated Tests
-- Projenin başarıyla derlendiğinden emin olmak için lokal build komutunu çalıştıracağız:
+### Otomatik Testler (Derleme Kontrolü)
+- Projeyi derleyerek React bileşenlerinin sorunsuz yüklendiğini ve herhangi bir TypeScript/JavaScript derleme hatası olmadığını doğrulayacağız:
   ```powershell
   npm run build
   ```
 
-### Manual Verification
-- Değişiklikler yapıldıktan sonra yerel sunucuyu (`npm run dev`) başlatıp Chrome DevTools Network sekmesini açarak:
-  1. Sekme inaktif/arka plandayken hiçbir Kiosk veya POS/Garson ekranının ağ trafiği oluşturmadığını doğrulayacağız.
-  2. Yeni manuel yenileme butonlarının verileri başarıyla getirdiğini kontrol edeceğiz.
-  3. Kiosk boştayken oluşturulan QR oturumunun arka planda sonsuz döngüye girmediğini teyit edeceğiz.
+### Manuel Doğrulama
+- Kampanya Yönetimi panelinden "Kupon" koşuluna sahip bir kampanya oluşturulacaktır.
+- İlgili kupon serisi ve kodları tanımlandıktan sonra sepet ekranında bu kupon kodu girilerek kampanyanın yerel olarak tetiklendiği doğrulanacaktır.

@@ -796,12 +796,12 @@ function formatPeriodWindow(period, periodDays = 30) {
 
 function formatComparisonNatural(operator) {
   switch (operator) {
-    case 'gte': return 'en az'
-    case 'lte': return 'en fazla'
-    case 'gt': return 'daha fazla'
-    case 'lt': return 'daha az'
-    case 'eq': return 'tam olarak'
-    case 'divisible': return 'bolunebilir'
+    case 'gte': return 'eşit veya büyük'
+    case 'lte': return 'eşit veya küçük'
+    case 'gt': return 'büyük'
+    case 'lt': return 'küçük'
+    case 'eq': return 'eşit'
+    case 'divisible': return 'bölünebilir'
     default: return getOptionLabel(COMPARISON_OPTIONS, operator).toLowerCase()
   }
 }
@@ -2806,7 +2806,7 @@ export default function LoyaltyCampaignWizard() {
                 <button className="btn-o" type="button" onClick={() => onPatch(cfg => ({ ...cfg, windows: [...(cfg.windows || []), { id: createId('window'), start: '00:00', end: '00:00', days: [false, false, false, false, false, false, false] }] }))}>+ Pencere Ekle</button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'none', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FieldStack label="Saat dilimi kaynagi">
                 <div className="sel-wrap">
                   <select className="f-input" value={config.timezoneMode || 'default'} onChange={event => onPatch({ timezoneMode: event.target.value })}>
@@ -4679,7 +4679,7 @@ export default function LoyaltyCampaignWizard() {
       {ruleEditorState && activeRuleEditorRule && activeRuleEditorItem ? (
         <EditorModal
           title={ruleEditorState.mode === 'actions' ? 'Eylemi Düzenle' : 'Koşulu Düzenle'}
-          subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazli akisa bagli blog' : 'Siparis aninda calisan blog'}
+          subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazlı akışa bağlı blok' : 'Sipariş anında çalışan blok'}
           onClose={closeRuleEditor}
         >
           {ruleEditorState.mode === 'actions' ? (

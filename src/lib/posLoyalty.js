@@ -7,6 +7,7 @@ import {
   resolveLoyaltyProgramRedemptionModel,
   resolveLoyaltyWalletBalance,
 } from '@/lib/loyaltyWalletReadiness'
+import { db } from '@/lib/db'
 
 export const RUNTIME_LOYALTY_CACHE_TTL_MS = 15 * 60 * 1000
 const RUNTIME_LOYALTY_CACHE_KEY = 'suitable_runtime_loyalty_catalog_v1'
@@ -18,7 +19,11 @@ const LOCAL_RULE_CONDITION_KEYS = new Set([
   'period_total_order_amount',
   'period_order_count',
   'period_product_quantity',
-  'period_sold_product_quantity'
+  'period_sold_product_quantity',
+  'missing_products',
+  'happy_hour',
+  'campaign_triggered',
+  'coupon_present'
 ])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag'])
 const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products', 'points_earn_multiplier'])
@@ -318,6 +323,53 @@ function getConditionPreview(rule = {}) {
       return selectedChannels.length > 0
         ? `${selectedChannels.join(' / ')} kanalinda`
         : 'Satis kanali kosulu'
+    }
+    case 'missing_products': {
+      const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+      if (productMasks.length === 0) {
+        return 'Sepette eksik urun'
+      }
+      const names = productMasks.map(mask => mask.name || mask.itemId || 'Adsiz filtre').filter(Boolean)
+      return `Sepette ${names.join(', ')} yoksa`
+    }
+    case 'happy_hour': {
+      const windows = Array.isArray(config.windows) ? config.windows : []
+      if (windows.length === 0) {
+        return 'Happy hour'
+      }
+      const WEEKDAY_LABELS = ['Pzt', 'Sal', 'Car', 'Per', 'Cum', 'Cmt', 'Paz']
+      const windowPreviews = windows.map(win => {
+        const activeDays = (win.days || [])
+          .map((active, idx) => active ? WEEKDAY_LABELS[idx] : null)
+          .filter(Boolean)
+        let daysStr = ''
+        if (activeDays.length === 7) {
+          daysStr = 'Her gun'
+        } else if (activeDays.length > 0) {
+          daysStr = activeDays.join(',')
+        } else {
+          daysStr = 'Secili gun yok'
+        }
+        return `${daysStr} ${win.start || '00:00'}-${win.end || '00:00'}`
+      })
+      return `Happy hour (${windowPreviews.join(' | ')})`
+    }
+    case 'campaign_triggered': {
+      const relatedCampaignIds = Array.isArray(config.relatedCampaignIds) ? config.relatedCampaignIds : []
+      if (relatedCampaignIds.length === 0) {
+        return 'Kampanya tetiklendiginde'
+      }
+      return `Secili ${relatedCampaignIds.length} kampanyadan biri tetiklendiginde`
+    }
+    case 'coupon_present': {
+      if (config.anySeries) {
+        return 'Herhangi bir kupon serisi'
+      }
+      const seriesIds = Array.isArray(config.seriesIds) ? config.seriesIds : []
+      if (seriesIds.length === 0) {
+        return 'Kupon serisi kosulu'
+      }
+      return `Secili ${seriesIds.length} kupon serisinden biri`
     }
     default:
       return 'Ek kosul var'
@@ -776,7 +828,7 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
     case 'period_product_quantity':
     case 'period_sold_product_quantity': {
       const customerId = String(orderContext.customerId || '').trim()
-      if (!customerId) {
+      if (!customerId && condition.conditionKey !== 'period_sold_product_quantity') {
         return {
           matched: false,
           supported: true,
@@ -854,6 +906,202 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
         supported: true,
         reason: matched ? `${label} kosulu saglandi` : `${label} kosulu bekleniyor`,
         repeatMultiplier
+      }
+    }
+    case 'missing_products': {
+      const config = condition.conditionConfig || {}
+      const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+      if (productMasks.length === 0) {
+        return {
+          matched: true,
+          supported: true,
+          reason: 'Eksik urun kosulu saglandi (Filtre yok)',
+        }
+      }
+
+      const contribution = getMatchingCartLinesContribution(
+        orderContext.cartLines || [],
+        productMasks,
+        orderContext.saleTemplates || [],
+        { excludeFreeItems: false, allowSameItemRepeat: true }
+      )
+
+      const matched = !contribution.matched
+      const names = productMasks.map(mask => mask.name || mask.itemId || 'Adsiz filtre').join(', ')
+
+      return {
+        matched,
+        supported: true,
+        reason: matched
+          ? `Sepette eksik urun kosulu saglandi (${names} bulunmadi)`
+          : `Sepette eksik urun kosulu saglanmadi (${names} bulundu)`,
+      }
+    }
+    case 'happy_hour': {
+      const config = condition.conditionConfig || {}
+      const windows = Array.isArray(config.windows) ? config.windows : []
+      if (windows.length === 0) {
+        return {
+          matched: true,
+          supported: true,
+          reason: 'Happy hour kosulu saglandi (Zaman penceresi tanimlanmamis)',
+        }
+      }
+
+      const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
+        ? orderContext.now
+        : new Date()
+
+      const jsDay = referenceDate.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      const weekdayIndex = jsDay === 0 ? 6 : jsDay - 1
+
+      const hours = String(referenceDate.getHours()).padStart(2, '0')
+      const minutes = String(referenceDate.getMinutes()).padStart(2, '0')
+      const currentTimeStr = `${hours}:${minutes}`
+
+      const isMatched = windows.some(win => {
+        const isDayActive = Array.isArray(win.days) && Boolean(win.days[weekdayIndex])
+        if (!isDayActive) return false
+
+        const start = String(win.start || '00:00')
+        const end = String(win.end || '00:00')
+
+        if (start === end) {
+          return true
+        }
+
+        if (start <= end) {
+          return currentTimeStr >= start && currentTimeStr <= end
+        } else {
+          return currentTimeStr >= start || currentTimeStr <= end
+        }
+      })
+
+      return {
+        matched: isMatched,
+        supported: true,
+        reason: isMatched
+          ? 'Happy hour kosulu saglandi (Aktif zaman araliginda)'
+          : 'Happy hour kosulu bekliyor (Aktif zaman araligi disinda)',
+      }
+    }
+    case 'campaign_triggered': {
+      const config = condition.conditionConfig || {}
+      const relatedCampaignIds = Array.isArray(config.relatedCampaignIds) ? config.relatedCampaignIds : []
+      if (relatedCampaignIds.length === 0) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Kampanya tetiklendi kosulu bekliyor (Secili kampanya yok)',
+        }
+      }
+
+      const allCampaigns = orderContext.allCampaigns || []
+      const currentCampaignId = String(campaign.id || '').trim()
+      const evaluatingSet = new Set(orderContext.evaluatingCampaignIds || [])
+
+      if (currentCampaignId && evaluatingSet.has(currentCampaignId)) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Dongusel kampanya bagimliligi engellendi',
+        }
+      }
+      if (currentCampaignId) {
+        evaluatingSet.add(currentCampaignId)
+      }
+
+      const isMatched = relatedCampaignIds.some(targetId => {
+        const targetCampaign = allCampaigns.find(c => String(c.id) === String(targetId))
+        if (!targetCampaign) return false
+
+        // Evaluate target campaign's eligibility on the fly
+        const card = buildCampaignCard(targetCampaign, {
+          ...orderContext,
+          evaluatingCampaignIds: evaluatingSet,
+        })
+        return Boolean(card.orderEligible)
+      })
+
+      return {
+        matched: isMatched,
+        supported: true,
+        reason: isMatched
+          ? 'Kampanya tetiklendi kosulu saglandi (Bagli kampanya aktif)'
+          : 'Kampanya tetiklendi kosulu bekliyor (Bagli kampanya aktif degil)',
+      }
+    }
+    case 'coupon_present': {
+      const config = condition.conditionConfig || {}
+      const selectedCode = String(orderContext.selectedCouponCode || '').trim()
+      if (!selectedCode) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Kupon kodu girilmedi',
+        }
+      }
+
+      const coupon = orderContext.couponDetails
+      if (!coupon || String(coupon.code || '').trim().toLowerCase() !== selectedCode.toLowerCase()) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Gecerli kupon bulunamadi',
+        }
+      }
+
+      // Check if coupon is active
+      if (coupon.active === false) {
+        return {
+          matched: false,
+          supported: true,
+          reason: `Kupon aktif degil (${selectedCode})`,
+        }
+      }
+
+      // Check if coupon is used
+      const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
+      if (coupon.is_used || isUsedStatus) {
+        return {
+          matched: false,
+          supported: true,
+          reason: `Kupon daha once kullanilmis veya gecersiz (${selectedCode})`,
+        }
+      }
+
+      // Check expiration date
+      if (coupon.expires_at) {
+        const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
+          ? orderContext.now
+          : new Date()
+        if (new Date(coupon.expires_at) < referenceDate) {
+          return {
+            matched: false,
+            supported: true,
+            reason: `Kuponun suresi dolmus (${selectedCode})`,
+          }
+        }
+      }
+
+      // Check series match
+      if (!config.anySeries) {
+        const seriesIds = normalizeStringList(config.seriesIds || config.series_ids)
+        const couponSeriesId = String(coupon.series_id || '').trim().toLowerCase()
+        const matchedSeries = seriesIds.some(id => String(id).trim().toLowerCase() === couponSeriesId)
+        if (!matchedSeries) {
+          return {
+            matched: false,
+            supported: true,
+            reason: `Kupon serisi eslesmedi (${selectedCode})`,
+          }
+        }
+      }
+
+      return {
+        matched: true,
+        supported: true,
+        reason: `Kupon dogrulandi ve uygulandi (${selectedCode})`,
       }
     }
     default:
@@ -1191,6 +1439,8 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   cartLines = [],
   customerPeriodStats = {},
   saleTemplates = [],
+  selectedCouponCode = '',
+  couponDetails = null,
 } = {}) {
   const normalizedCartLines = normalizeCartLines(cartLines)
   const normalizedRuntimeChannel = normalizeRuntimeChannelKey(runtimeChannel)
@@ -1203,12 +1453,16 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
     .map(campaign => buildCampaignCard(campaign, {
       runtimeChannel: normalizedRuntimeChannel,
       orderTotal: roundMoney(orderTotal),
+      now,
       manualTriggeredCampaignIds: triggeredCampaignIds,
       runtimeWalletContext,
       cartLines: normalizedCartLines,
       customerPeriodStats,
       saleTemplates,
+      allCampaigns: activeCampaigns,
       ...normalizedCustomerContext,
+      selectedCouponCode,
+      couponDetails,
     }, normalizedSelectedId))
 
   const eligibleCampaigns = visibleCampaigns
@@ -1363,12 +1617,34 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
     walletType: 'points',
   })
 
+  const selectedCouponCode = String(
+    options.selectedCouponCode ||
+    options.customerContext?.selectedCouponCode ||
+    options.customerContext?.couponCode ||
+    ''
+  ).trim()
+
+  let couponDetails = null
+  if (selectedCouponCode) {
+    try {
+      const res = await db.from('loyalty_coupons')
+        .select('id,code,series_id,is_used,active,redemption_status,expires_at')
+        .eq('code', selectedCouponCode)
+        .maybeSingle()
+      if (res && res.data) {
+        couponDetails = res.data
+      }
+    } catch (err) {
+      console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch coupon details:', err)
+    }
+  }
+
   const customerId = options.customerContext?.customerId
   const periodQueries = []
   const customerPeriodStats = {}
 
   let saleTemplates = options.saleTemplates
-  if (!saleTemplates && customerId) {
+  if (!saleTemplates) {
     const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
     let hasSaleTemplateMask = false
     for (const campaign of activeCampaigns) {
@@ -1384,7 +1660,8 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
             cond.conditionKey === 'period_total_order_amount' ||
             cond.conditionKey === 'period_order_count' ||
             cond.conditionKey === 'period_product_quantity' ||
-            cond.conditionKey === 'period_sold_product_quantity'
+            cond.conditionKey === 'period_sold_product_quantity' ||
+            cond.conditionKey === 'missing_products'
           ) {
             const config = cond.conditionConfig || {}
             const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
@@ -1411,100 +1688,104 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
     saleTemplates = []
   }
 
-  if (customerId) {
-    const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
-    const seenQueries = new Set()
-    const audienceContext = options.customerContext || {}
+  const activeCampaigns = campaigns.filter(c => isCampaignActiveNow(c, options.now || new Date()))
+  const seenQueries = new Set()
+  const audienceContext = options.customerContext || {}
 
-    for (const campaign of activeCampaigns) {
-      if (!matchesRuntimeChannel(campaign, options.runtimeChannel)) continue
-      
-      const audience = buildAudienceStatus(campaign, audienceContext)
-      if (!audience.supported || !audience.matched) continue
+  for (const campaign of activeCampaigns) {
+    if (!matchesRuntimeChannel(campaign, options.runtimeChannel)) continue
+    
+    const audience = buildAudienceStatus(campaign, audienceContext)
+    if (!audience.supported || !audience.matched) continue
 
-      const rules = (campaign.applicableRules || []).filter(r => r.active !== false)
-      for (const rule of rules) {
-        const conditionEntries = getRuleConditionEntries(rule)
-        for (const cond of conditionEntries) {
-          if (
-            cond.conditionKey === 'period_total_order_amount' ||
-            cond.conditionKey === 'period_order_count' ||
-            cond.conditionKey === 'period_product_quantity' ||
-            cond.conditionKey === 'period_sold_product_quantity'
-          ) {
-            const config = cond.conditionConfig || {}
-            const period = String(config.period || 'rolling_days')
-            const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
-            const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
-            const excludeFreeItems = Boolean(config.excludeFreeItems)
-            const allowSameItemRepeat = config.allowSameItemRepeat !== false
-            const includeCurrentOrder = config.includeCurrentOrder !== false
-            
-            const sortedMasks = [...productMasks].sort((a, b) => {
-              const keyA = `${a.type || ''}:${a.itemId || ''}`
-              const keyB = `${b.type || ''}:${b.itemId || ''}`
-              return keyA.localeCompare(keyB)
+    const rules = (campaign.applicableRules || []).filter(r => r.active !== false)
+    for (const rule of rules) {
+      const conditionEntries = getRuleConditionEntries(rule)
+      for (const cond of conditionEntries) {
+        if (
+          cond.conditionKey === 'period_total_order_amount' ||
+          cond.conditionKey === 'period_order_count' ||
+          cond.conditionKey === 'period_product_quantity' ||
+          cond.conditionKey === 'period_sold_product_quantity'
+        ) {
+          if (!customerId && cond.conditionKey !== 'period_sold_product_quantity') {
+            continue
+          }
+
+          const config = cond.conditionConfig || {}
+          const period = String(config.period || 'rolling_days')
+          const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
+          const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+          const excludeFreeItems = Boolean(config.excludeFreeItems)
+          const allowSameItemRepeat = config.allowSameItemRepeat !== false
+          const includeCurrentOrder = config.includeCurrentOrder !== false
+          
+          const sortedMasks = [...productMasks].sort((a, b) => {
+            const keyA = `${a.type || ''}:${a.itemId || ''}`
+            const keyB = `${b.type || ''}:${b.itemId || ''}`
+            return keyA.localeCompare(keyB)
+          })
+          const queryKey = `${period}:${periodDays}:${excludeFreeItems}:${allowSameItemRepeat}:${JSON.stringify(sortedMasks)}`
+          
+          let currentProductIds = []
+          if (!allowSameItemRepeat && includeCurrentOrder && options.cartLines) {
+            const normalizedLines = normalizeCartLines(options.cartLines)
+            const contribution = getMatchingCartLinesContribution(
+              normalizedLines,
+              productMasks,
+              saleTemplates,
+              { excludeFreeItems, allowSameItemRepeat: false }
+            )
+            currentProductIds = contribution.productIds || []
+          }
+
+          if (!seenQueries.has(queryKey)) {
+            seenQueries.add(queryKey)
+            periodQueries.push({
+              period,
+              periodDays,
+              productMasks,
+              excludeFreeItems,
+              allowSameItemRepeat,
+              currentProductIds,
+              key: queryKey,
+              conditionKey: cond.conditionKey
             })
-            const queryKey = `${period}:${periodDays}:${excludeFreeItems}:${allowSameItemRepeat}:${JSON.stringify(sortedMasks)}`
-            
-            let currentProductIds = []
-            if (!allowSameItemRepeat && includeCurrentOrder && options.cartLines) {
-              const normalizedLines = normalizeCartLines(options.cartLines)
-              const contribution = getMatchingCartLinesContribution(
-                normalizedLines,
-                productMasks,
-                saleTemplates,
-                { excludeFreeItems, allowSameItemRepeat: false }
-              )
-              currentProductIds = contribution.productIds || []
-            }
-
-            if (!seenQueries.has(queryKey)) {
-              seenQueries.add(queryKey)
-              periodQueries.push({
-                period,
-                periodDays,
-                productMasks,
-                excludeFreeItems,
-                allowSameItemRepeat,
-                currentProductIds,
-                key: queryKey
-              })
-            }
           }
         }
       }
     }
+  }
 
-    if (periodQueries.length > 0) {
-      await Promise.all(
-        periodQueries.map(async (q) => {
-          try {
-            const res = await db.rpc('get_customer_period_stats', {
-              p_customer_id: customerId,
-              p_period: q.period,
-              p_period_days: q.periodDays,
-              p_product_masks: q.productMasks,
-              p_exclude_free_items: q.excludeFreeItems,
-              p_allow_same_item_repeat: q.allowSameItemRepeat,
-              p_current_product_ids: q.currentProductIds
-            })
-            if (res && res.data && res.data[0]) {
-              customerPeriodStats[q.key] = {
-                total_amount: Number(res.data[0].total_amount || 0),
-                order_count: Number(res.data[0].order_count || 0),
-                product_quantity: Number(res.data[0].product_quantity || 0)
-              }
-            } else {
-              customerPeriodStats[q.key] = { total_amount: 0, order_count: 0, product_quantity: 0 }
+  if (periodQueries.length > 0) {
+    await Promise.all(
+      periodQueries.map(async (q) => {
+        try {
+          const res = await db.rpc('get_customer_period_stats', {
+            p_customer_id: q.conditionKey === 'period_sold_product_quantity' ? null : customerId,
+            p_period: q.period,
+            p_period_days: q.periodDays,
+            p_product_masks: q.productMasks,
+            p_exclude_free_items: q.excludeFreeItems,
+            p_allow_same_item_repeat: q.allowSameItemRepeat,
+            p_current_product_ids: q.currentProductIds,
+            p_sales_channel: options.runtimeChannel || 'pos'
+          })
+          if (res && res.data && res.data[0]) {
+            customerPeriodStats[q.key] = {
+              total_amount: Number(res.data[0].total_amount || 0),
+              order_count: Number(res.data[0].order_count || 0),
+              product_quantity: Number(res.data[0].product_quantity || 0)
             }
-          } catch (err) {
-            console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch period stats:', q, err)
+          } else {
             customerPeriodStats[q.key] = { total_amount: 0, order_count: 0, product_quantity: 0 }
           }
-        })
-      )
-    }
+        } catch (err) {
+          console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch period stats:', q, err)
+          customerPeriodStats[q.key] = { total_amount: 0, order_count: 0, product_quantity: 0 }
+        }
+      })
+    )
   }
 
   return {
@@ -1514,6 +1795,8 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
       saleTemplates,
       runtimeWalletContext: walletReadiness,
       program: walletReadiness.program || options.program || null,
+      selectedCouponCode,
+      couponDetails,
     }),
     walletReadiness,
   }

@@ -1,9 +1,10 @@
-- [x] KDS.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması
-- [x] PickupScreen.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması
-- [x] QueueScreen.jsx otomatik yenileme ve realtime bağlantılarının kaldırılması, manuel Yenile butonu eklenmesi
-- [x] Garson.jsx otomatik yenileme (adisyon, istekler) kaldırılması, sol başlığa Yenile butonu eklenmesi
-- [x] MobileAppShells.jsx otomatik yenileme kaldırılması, Yenile butonu eklenmesi ve trigger state yönetimi
-- [x] POS.jsx otomatik yenileme (sipariş, loyalty kampanya) kaldırılması, loyalty QR polling hidden kontrolü eklenmesi
-- [x] KioskBig.jsx QR kod timeout 24 saate çıkarılması, sonsuz QR üretilmesinin kapatılması, config refresh 30s ve hidden kontrolü eklenmesi
-- [x] KioskTablet.jsx QR kod timeout 24 saate çıkarılması, sonsuz QR üretilmesinin kapatılması, config refresh 30s ve hidden kontrolü eklenmesi
-- [x] Lokal derleme kontrolü (npm run build)
+- [x] loyaltyRuntimeStatus.js dosyasında `coupon_present` kategorisini `'local'` olarak güncelle
+- [x] posLoyalty.js dosyasını güncelle
+  - [x] `import { db } from '@/lib/db'` satırını ekle
+  - [x] `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` ekle
+  - [x] `getConditionPreview` fonksiyonuna `case 'coupon_present'` ekle
+  - [x] `evaluateRuntimeOrderCampaignsAsync` fonksiyonunda kupon kodunu veritabanından asenkron olarak sorgula ve `couponDetails` nesnesini topla
+  - [x] `evaluateRuntimeOrderCampaigns` fonksiyonuna `selectedCouponCode` ve `couponDetails` parametrelerini aktar
+  - [x] `evaluateSingleCondition` fonksiyonunda `case 'coupon_present'` değerlendirme mantığını kodla
+- [x] Projeyi derle (`npm run build`) ve doğrulama yap
+- [x] Walkthrough.md dosyasını güncelle

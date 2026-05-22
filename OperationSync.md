@@ -4764,6 +4764,128 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Handoff Contract`:
   - Sonraki agent, `src/lib/posLoyalty.js` içerisindeki period aggregates ve multiplier entegrasyonu için Entry 094'ü okusun. Arayüz ve veri katmanı tamamen senkronize durumdadır.
 
+## Entry 095
+
+- `Timestamp`: `2026-05-22T14:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Loyalty Period Global Quantity and Operator Natural Label Alignment`
+- `Intent`: `Dönem içinde satılan ürün miktarı (period_sold_product_quantity) sadakat koşulunda p_customer_id'yi her zaman null geçerek tüm müşterileri kapsayan global hesaplama yapılmasını sağlamak ve formatComparisonNatural fonksiyonundaki karşılaştırma operatörlerinin doğal dil etiketlerini literal/teknik Türkçe etiketler ("eşit", "büyük", "eşit veya büyük", "küçük", "eşit veya küçük", "bölünebilir") ile eşitlemek.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `OperationSync.md`
+- `Decisions`:
+  - `posLoyalty.js` içerisindeki `get_customer_period_stats` RPC çağrısında `p_customer_id` filtresi `period_sold_product_quantity` koşulu için her zaman `null` geçilerek müşteri bağımsız global değerlendirilmesi sağlandı.
+  - `LoyaltyCampaignWizard.jsx` ve `LoyaltyManagement.jsx` içerisindeki `formatComparisonNatural` fonksiyonlarındaki operatör karşılıkları literal karşılıkları olacak şekilde güncellendi: `eq` -> "eşit", `gt` -> "büyük", `gte` -> "eşit veya büyük", `lt` -> "küçük", `lte` -> "eşit veya küçük", `divisible` -> "bölünebilir".
+- `Verification`:
+  - `npm run build` komutu çalıştırıldı ve başarıyla tamamlandı (exit code: 0, built in 52.00s).
+- `Next Step`:
+  - Değişiklikleri Railway staging ortamında canlıda doğrula.
+- `Handoff Contract`:
+  - Sonraki agent, global dönemlik ürün miktarı koşulu değerlendirmesi ve operatör doğal dil gösterimi güncellemeleri için Entry 095'i okusun.
+
+## Entry 096
+
+- `Timestamp`: `2026-05-22T14:23:45+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement missing_products condition in POS Loyalty Engine`
+- `Intent`: `"Ürün siparişte yoksa / Sepette eksik ürün" (missing_products) sadakat koşulunun posLoyalty.js yerel değerlendirme motoruna entegre edilmesi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `LOCAL_RULE_CONDITION_KEYS` kümesine `'missing_products'` eklenerek motorun bu koşulu yerel değerlendirmesi sağlandı.
+  - `getConditionPreview` fonksiyonuna `'missing_products'` eklenerek "Sepette [urunler] yoksa" şeklinde doğal dil önizlemesi sağlandı.
+  - `evaluateSingleCondition` fonksiyonuna `'missing_products'` case'i eklenerek sepet satırları kontrol edildi. `getMatchingCartLinesContribution` kullanılarak maskelenmiş ürünlerden herhangi birinin sepette olup olmadığı sorgulandı. Bulunmadıysa (`matched: true`), bulunduysa (`matched: false`) olarak döndürüldü.
+  - `evaluateRuntimeOrderCampaignsAsync` fonksiyonunda `hasSaleTemplateMask` tespiti yapılırken `missing_products` koşulu da dahil edildi ve `customerId` kısıtı kaldırılarak guest siparişlerde de satış şablonlarının yüklenebilmesi sağlandı.
+- `Verification`:
+  - Proje yerelde derlendi (`npm run build` başarılı oldu).
+- `Next Step`:
+  - Değişiklikleri Railway staging ortamında canlıda doğrula.
+- `Handoff Contract`:
+  - Sonraki agent, "Sepette eksik ürün" (missing_products) koşulunun yerel değerlendirmesi için Entry 096'yı okusun.
+
+## Entry 097
+
+- `Timestamp`: `2026-05-22T14:32:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement happy_hour condition in POS Loyalty Engine & Hide timezone fields in UI`
+- `Intent`: `"Happy hour" (happy_hour) sadakat koşulunun posLoyalty.js yerel değerlendirme motoruna entegre edilmesi ve bu ekranlarda gerekli olmayan saat dilimi alanlarının Campaign Wizard ve Loyalty Management bileşenlerinde gizlenmesi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `LOCAL_RULE_CONDITION_KEYS` kümesine `'happy_hour'` eklenerek motorun bu koşulu yerel değerlendirmesi sağlandı.
+  - `getConditionPreview` fonksiyonuna `'happy_hour'` eklenerek pencerelerin ve haftalık günlerin Türkçe doğal dil önizlemesi sağlandı (örn. "Happy hour (Pzt,Sal 12:00-14:00)").
+  - `evaluateSingleCondition` fonksiyonuna `'happy_hour'` eklenerek, kuralın planlandığı cihazın yerel sistem saati (`now` veya `new Date()`) üzerinden haftanın günü (Pazartesi=0 .. Pazar=6) ve zaman pencereleri (gece yarısını aşan pencereler dâhil olmak üzere) yerel olarak değerlendirildi.
+  - `evaluateRuntimeOrderCampaigns` fonksiyonunda kampanyalar haritalandırılırken, `buildCampaignCard` çağrısına `now` nesnesi `orderContext` parametresi olarak aktarıldı.
+  - `LoyaltyCampaignWizard.jsx` ve `LoyaltyManagement.jsx` içerisindeki saat dilimi seçim alanları (`timezoneMode` ve `timezone`) `display: 'none'` yapılarak arayüzden gizlendi.
+- `Verification`:
+  - Proje yerelde derleniyor.
+- `Next Step`:
+  - Kampanya Yönetim paneli üzerinden oluşturulan Happy Hour kampanyalarının POS ve diğer sipariş ekranlarında doğru şekilde tetiklendiğini doğrula.
+- `Handoff Contract`:
+  - Sonraki agent, Happy Hour (happy_hour) koşulunun yerel değerlendirmesi ve saat dilimi alanlarının gizlenmesi için Entry 097'yi okusun.
+
+## Entry 098
+
+- `Timestamp`: `2026-05-22T14:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement campaign_triggered condition in POS Loyalty Engine`
+- `Intent`: `"Kampanya aktifse / tetiklendi" (campaign_triggered) koşulunun posLoyalty.js yerel değerlendirme motoruna entegre edilmesi ve runtime status'unun local olarak güncellenmesi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `OperationSync.md`
+- `Decisions`:
+  - `LOCAL_RULE_CONDITION_KEYS` kümesine `'campaign_triggered'` eklenerek motorun bu koşulu yerel değerlendirmesi sağlandı.
+  - `getConditionPreview` fonksiyonuna `'campaign_triggered'` eklenerek "Secili X kampanyadan biri tetiklendiginde" şeklinde önizlemesi sağlandı.
+  - `evaluateSingleCondition` fonksiyonuna `'campaign_triggered'` eklenerek, kuralın planlandığı `config.relatedCampaignIds` listesindeki kampanyalar loop içerisinde dinamik olarak değerlendirildi.
+  - Döngüsel/sonsuz bağımlılıkları engellemek amacıyla `orderContext.evaluatingCampaignIds` Set yapısı entegre edilerek recursion engellendi.
+  - `evaluateRuntimeOrderCampaigns` fonksiyonunda kampanyalar haritalandırılırken, `activeCampaigns` listesi `allCampaigns` parametresi olarak `orderContext`'e aktarıldı.
+  - `loyaltyRuntimeStatus.js` içerisinde local olarak değerlendirilmeye başlanan `happy_hour`, `campaign_triggered` ve `missing_products` koşulları `server` / `model` kategorisinden `local` kategorisine taşındı.
+- `Verification`:
+  - Proje derleme kontrolü yapıldı.
+- `Next Step`:
+  - Kampanya Yönetim paneli üzerinden oluşturulan bağlı (campaign_triggered) kampanyaların POS sepetinde doğru tetiklendiğini doğrula.
+- `Handoff Contract`:
+  - Sonraki agent, bağlı kampanya tetikleme koşulu değerlendirmesi için Entry 098'i okusun.
+
+## Entry 099
+
+- `Timestamp`: `2026-05-22T15:40:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement coupon_present condition in POS Loyalty Engine and Fix Spelling Typos`
+- `Intent`: `"Kupon mevcut" (coupon_present) koşulunun posLoyalty.js yerel değerlendirme motoruna entegre edilmesi, runtime status'unun local olarak güncellenmesi ve arayüzdeki "blog" -> "blok" yazım hatalarının düzeltilmesi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `walkthrough.md`
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Decisions`:
+  - `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` eklenerek motorun bu koşulu yerel değerlendirmesi sağlandı.
+  - `getConditionPreview` fonksiyonuna `'coupon_present'` eklenerek kupon serisi önizleme formatlayıcısı ("Secili X kupon serisinden biri" veya "Herhangi bir kupon serisi") kodlandı.
+  - `evaluateRuntimeOrderCampaignsAsync` fonksiyonunda girilen kupon kodu (`selectedCouponCode`), veritabanının `loyalty_coupons` tablosundan asenkron olarak sorgulanıp `couponDetails` nesnesine aktarıldı.
+  - `evaluateSingleCondition` fonksiyonuna `'coupon_present'` eklenerek kuponun aktifliği, kullanılmamış olması (is_used, redemption_status), son kullanma tarihi ve seri kısıtı eşleşmeleri yerel olarak değerlendirildi.
+  - `loyaltyRuntimeStatus.js` içerisinde `coupon_present` kuralı kategorisi `'server'` durumundan `'local'` durumuna çekildi.
+  - Arayüzdeki "Siparis aninda calisan blog" ve "Zaman bazli akisa bagli blog" gibi tüm "blog" yazım hataları "blok" ("bloğu/blokları") olarak düzeltildi ve Türkçe karakter uyumları yapıldı.
+- `Verification`:
+  - `npm run build` ile derleme kontrolü yapıldı ve başarılı sonuçlandı.
+- `Next Step`:
+  - Kupon kodu kısıtlı kampanyaları POS sepetinde girilen kupon koduyla yerel olarak test et.
+- `Handoff Contract`:
+  - Sonraki agent, kupon mevcut (coupon_present) kuralı yerel değerlendirmesi ve yapılan arayüz yazım düzeltmeleri için Entry 099'u okusun.
+
+
+
 
 
 
