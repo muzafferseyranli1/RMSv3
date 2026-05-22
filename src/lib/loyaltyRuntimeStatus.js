@@ -70,8 +70,8 @@ export const CONDITION_KEY_STATUS = {
 
   // Müşteri bağlamı gerektirir - müşteri bağlıysa yerel çözülür,
   // aksi halde sunucu araması gerekir
-  customer_has_tag: { category: 'server', label: 'Müşteri etiketi' },
-  customer_lacks_tag: { category: 'server', label: 'Müşteri etiketi yok' },
+  customer_has_tag: { category: 'local', label: 'Müşteri etiketi' },
+  customer_lacks_tag: { category: 'local', label: 'Müşteri etiketi yok' },
 
   // Sunucu araması gerektirir - DB geçmişi veya zamanlama
   calendar_schedule: { category: 'server', label: 'Takvim zamanlaması' },
@@ -84,16 +84,17 @@ export const CONDITION_KEY_STATUS = {
   gift_card_series: { category: 'server', label: 'Hediye kartı serisi' },
   campaign_triggered: { category: 'local', label: 'Kampanya tetiklendi' },
   coupon_present: { category: 'local', label: 'Kupon mevcut' },
-  days_since_first_activity: { category: 'server', label: 'İlk aktiviteden beri gün' },
-  referral_source: { category: 'server', label: 'Referans kaynağı' },
-  last_visit_days: { category: 'server', label: 'Son ziyaretten beri gün' },
+  days_since_first_activity: { category: 'local', label: 'İlk aktiviteden beri gün' },
+  referred_customer: { category: 'server', label: 'Müşteri referansla geldi' },
+  gave_referral: { category: 'server', label: 'Referans verdi' },
+  last_visit_days: { category: 'local', label: 'Son ziyaretten beri gün' },
   coupon_code: { category: 'server', label: 'Kupon kodu' },
   campaign_id: { category: 'server', label: 'Kampanya ID' },
   customer_id: { category: 'server', label: 'Müşteri ID' },
   missing_products: { category: 'local', label: 'Eksik ürünler' },
 
   // Model only - henüz executor yok
-  order_item_quantity: { category: 'model', label: 'Sipariş ürün adedi' },
+  order_item_quantity: { category: 'local', label: 'Sipariş ürün adedi' },
   day_of_week: { category: 'model', label: 'Gün kuralı' },
   time_of_day: { category: 'model', label: 'Zaman kuralı' },
   visit_count: { category: 'model', label: 'Ziyaret sayısı' },

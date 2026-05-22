@@ -48,6 +48,7 @@
     "bootstrap:sale-showcase-60:verify": "node scripts/bootstrap-sale-showcase-60.mjs --verify-only",
     "bootstrap:loyalty-redemption-smoke": "node scripts/bootstrap-loyalty-redemption-smoke.mjs",
     "bootstrap:loyalty-redemption-smoke:verify": "node scripts/bootstrap-loyalty-redemption-smoke.mjs --verify-only",
+    "bootstrap:referrals-demo": "node scripts/bootstrap-referrals-demo.mjs",
     "run:loyalty-redemption-smoke": "node scripts/run-loyalty-redemption-smoke.mjs",
     "verify:loyalty-redemption-smoke": "node scripts/verify-loyalty-redemption-smoke.mjs",
     "enrich:sale-showcase-pricing": "node scripts/enrich-sale-showcase-pricing.mjs",

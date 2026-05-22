@@ -308,7 +308,8 @@ const CONDITION_CHOICES_MAP = {
   days_since_first_activity: { triggerType: 'first_purchase', scope: 'applicable' },
   customer_has_tag: { triggerType: 'order_completed', scope: 'applicable' },
   customer_lacks_tag: { triggerType: 'order_completed', scope: 'applicable' },
-  referral_source: { triggerType: 'order_completed', scope: 'applicable' },
+  referred_customer: { triggerType: 'order_completed', scope: 'applicable' },
+  gave_referral: { triggerType: 'order_completed', scope: 'applicable' },
   sales_channel: { triggerType: 'order_completed', scope: 'applicable' },
   order_item_quantity: { triggerType: 'order_completed', scope: 'applicable' },
   order_total: { triggerType: 'cart_total', scope: 'applicable' },
@@ -1500,6 +1501,7 @@ export default function LoyaltyCampaignWizard() {
   const [conflictGroups, setConflictGroups] = useState([])
   const [existingCampaigns, setExistingCampaigns] = useState([])
   const [customerCategories, setCustomerCategories] = useState([])
+  const [referralPrograms, setReferralPrograms] = useState([])
   const [salesChannels, setSalesChannels] = useState(CAMPAIGN_CHANNEL_OPTIONS.map(option => ({ value: option.value, label: option.label })))
   const [saleItems, setSaleItems] = useState([])
   const [saleCategories, setSaleCategories] = useState([])
@@ -1524,6 +1526,7 @@ export default function LoyaltyCampaignWizard() {
     campaigns: [],
     couponSeries: [],
     conflictGroups: [],
+    referralPrograms: [],
   })
 
   const activeCustomerCategories = useMemo(
@@ -1633,6 +1636,7 @@ export default function LoyaltyCampaignWizard() {
           campaigns: safeCampaigns,
           couponSeries: safeCouponSeries,
           conflictGroups: safeConflictGroups,
+          referralPrograms: workspaceResult?.referralPrograms || [],
         }
 
         setProgram(safeProgram)
@@ -1640,6 +1644,7 @@ export default function LoyaltyCampaignWizard() {
         setCouponSeries(safeCouponSeries)
         setConflictGroups(safeConflictGroups)
         setExistingCampaigns(safeCampaigns)
+        setReferralPrograms(workspaceResult?.referralPrograms || [])
         setCustomerCategories(categoryResult?.categories || [])
         setScopeInfo(workspaceResult?.scopeInfo || getLoyaltyScopeInfo(workspacePayload))
         setSchemaReady(Boolean(workspaceResult?.schemaReady))
@@ -2484,6 +2489,7 @@ export default function LoyaltyCampaignWizard() {
         tiers,
         couponSeries,
         campaigns: [...existingCampaignsWithoutCurrent, runtimeCampaign],
+        referralPrograms,
       }
 
       const result = await saveLoyaltyWorkspace({
@@ -2498,6 +2504,7 @@ export default function LoyaltyCampaignWizard() {
         couponSeries: Array.isArray(result?.couponSeries) ? result.couponSeries : couponSeries,
         conflictGroups,
         campaigns: [...existingCampaignsWithoutCurrent, runtimeCampaign],
+        referralPrograms,
       }
 
       toast('Kampanya wizard uzerinden kaydedildi', 'success')
@@ -2659,7 +2666,7 @@ export default function LoyaltyCampaignWizard() {
       case 'order_total':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: conditionKey === 'order_total' ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
               <FieldStack label="Tutar esigi">
                 <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.amount)} onChange={event => onPatch({ amount: event.target.value })} />
               </FieldStack>
@@ -2678,7 +2685,7 @@ export default function LoyaltyCampaignWizard() {
                     </select>
                   </div>
                 </FieldStack>
-              ) : <div />}
+              ) : null}
             </div>
             {conditionKey === 'period_total_order_amount' && (config.period || 'all_time') === 'rolling_days' ? (
               <FieldStack label="Kayan gün sayısı">
@@ -2732,7 +2739,7 @@ export default function LoyaltyCampaignWizard() {
       case 'order_item_quantity':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: conditionKey === 'order_item_quantity' ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
               <FieldStack label="Urun adedi">
                 <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.quantity)} onChange={event => onPatch({ quantity: event.target.value })} />
               </FieldStack>
@@ -2743,13 +2750,15 @@ export default function LoyaltyCampaignWizard() {
                   </select>
                 </div>
               </FieldStack>
-              <FieldStack label="Donem">
-                <div className="sel-wrap">
-                  <select className="f-input" value={config.period || 'all_time'} onChange={event => onPatch({ period: event.target.value })}>
-                    {PERIOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-              </FieldStack>
+              {conditionKey !== 'order_item_quantity' ? (
+                <FieldStack label="Donem">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={config.period || 'all_time'} onChange={event => onPatch({ period: event.target.value })}>
+                      {PERIOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </FieldStack>
+              ) : null}
             </div>
             {(conditionKey === 'period_product_quantity' || conditionKey === 'period_sold_product_quantity') && (config.period || 'all_time') === 'rolling_days' ? (
               <FieldStack label="Kayan gün sayısı">
@@ -2930,8 +2939,117 @@ export default function LoyaltyCampaignWizard() {
             </FieldStack>
           </div>
         )
-      case 'referral_source':
-        return <HelperNote title="Referans kaynağı">Bu koşul referans bağlantısı veya referral kodu ile gelen müşterileri hedefler.</HelperNote>
+      case 'referred_customer':
+        return (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <FieldStack label="Referans Programı Seçimi" hint="Bu koşulun geçerli olacağı referans programlarını seçin. Boş bırakılırsa tüm referans programları kabul edilir.">
+              <SearchableMultiSelect
+                options={referralPrograms.map(prog => ({
+                  value: prog.id,
+                  label: prog.name,
+                }))}
+                selectedValues={config.program_ids || []}
+                onChange={next => onPatch({ program_ids: next })}
+                placeholder="Program seçin (Tümü için boş bırakın)"
+              />
+            </FieldStack>
+
+            <FieldStack label="Tetikleyici Başarı Kriteri" hint="Kupon veya ödülün ne zaman verileceğini seçin.">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.trigger || 'registration'} 
+                  onChange={event => {
+                    const val = event.target.value
+                    onPatch({ 
+                      trigger: val,
+                      purchase_count: val === 'nth_purchase' ? (config.purchase_count || 1) : undefined
+                    })
+                  }}
+                >
+                  <option value="registration">Referansla kayıt olduğunda</option>
+                  <option value="nth_purchase">N. siparişi tamamlandığında</option>
+                </select>
+              </div>
+            </FieldStack>
+
+            {config.trigger === 'nth_purchase' && (
+              <FieldStack label="Gerekli Sipariş Sayısı (N)" hint="Kaçıncı alışverişinde bu eylemin tetikleneceği.">
+                <input 
+                  className="f-input" 
+                  type="number" 
+                  min={1} 
+                  value={config.purchase_count !== undefined ? config.purchase_count : 1} 
+                  onChange={event => onPatch({ purchase_count: Math.max(1, parseInt(event.target.value, 10) || 1) })} 
+                />
+              </FieldStack>
+            )}
+          </div>
+        )
+      case 'gave_referral':
+        return (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <FieldStack label="Referans Programı Seçimi" hint="Bu koşulun bağlı olacağı referans programını seçin.">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.program_id || ''} 
+                  onChange={event => onPatch({ program_id: event.target.value })}
+                >
+                  <option value="">Program seçin...</option>
+                  {referralPrograms.map(prog => (
+                    <option key={prog.id} value={prog.id}>{prog.name}</option>
+                  ))}
+                </select>
+              </div>
+            </FieldStack>
+
+            <FieldStack label="Ödüllendirme Tipi" hint="Her davet için mi, yoksa belirli bir davet barajı aşıldığında mı ödül verilecek?">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.reward_type || 'per_each'} 
+                  onChange={event => {
+                    const val = event.target.value
+                    onPatch({ 
+                      reward_type: val,
+                      threshold_count: val === 'threshold' ? (config.threshold_count || 3) : undefined
+                    })
+                  }}
+                >
+                  <option value="per_each">Her başarılı davet için (1:1)</option>
+                  <option value="threshold">Baraj bazlı davet için (N adet getirdiğinde 1 kez)</option>
+                </select>
+              </div>
+            </FieldStack>
+
+            {config.reward_type === 'threshold' && (
+              <FieldStack label="Gerekli Başarılı Davet Sayısı (Baraj)" hint="Müşterinin ödülü alabilmesi için getirmesi gereken minimum başarılı davet sayısı.">
+                <input 
+                  className="f-input" 
+                  type="number" 
+                  min={1} 
+                  value={config.threshold_count !== undefined ? config.threshold_count : 3} 
+                  onChange={event => onPatch({ threshold_count: Math.max(1, parseInt(event.target.value, 10) || 1) })} 
+                />
+              </FieldStack>
+            )}
+
+            <FieldStack label="Maksimum Ödül Sayısı Limiti (Opsiyonel)" hint="Bu koşuldan kazanılabilecek maksimum ödül sayısı limitidir. Boş bırakılırsa sınırsızdır.">
+              <input 
+                className="f-input" 
+                type="number" 
+                min={1} 
+                value={config.max_rewards_limit !== undefined ? config.max_rewards_limit : ''} 
+                onChange={event => {
+                  const val = event.target.value
+                  onPatch({ max_rewards_limit: val ? Math.max(1, parseInt(val, 10) || 1) : undefined })
+                }}
+                placeholder="Örn: 5 (Sınırsız için boş bırakın)"
+              />
+            </FieldStack>
+          </div>
+        )
       case 'sales_channel':
         return (
           <FieldStack label="Geçerli satış kanalları" hint="POS, Garson / Masa, kiosk, online veya mobil kanallarını seçin.">

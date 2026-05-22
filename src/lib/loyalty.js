@@ -130,8 +130,8 @@ export const CONDITION_LIBRARY = [
   { key: 'days_since_first_activity', label: 'Misafirin ilk aktivitesinden sonra geçen gün', description: 'İlk kayıt veya sipariş tarihinden bu yana geçen günü kontrol eder.' },
   { key: 'customer_has_tag', label: 'Müşteri kategorisindeyse', description: 'Müşterinin seçili kategori veya etiketlerden birine ait olmasını ister.' },
   { key: 'customer_lacks_tag', label: 'Müşteri kategorisinde değilse', description: 'Müşterinin seçili kategori veya etiketlerde olmamasını kontrol eder.' },
-  { key: 'referral_source', label: 'Müşteri referans üzerine geldi', description: 'Müşterinin referral kodu veya referans bağlantısı ile geldiğini kontrol eder.' },
-  { key: 'sales_channel', label: 'Satış kanalı', description: 'Kampanyanın POS, Garson / Masa, kiosk, online veya mobil kanal bazlı çalışmasını sağlar.' },
+  { key: 'referred_customer', label: 'Müşteri referansla geldi', description: 'Belirli referans programlarından biriyle gelen müşterilerde tetiklenir.' },
+  { key: 'gave_referral', label: 'Referans verdiyse', description: 'Başarılı referans veren müşterilerde, her kullanım veya eşik değerine göre tetiklenir.' },
   { key: 'order_item_quantity', label: 'Sipariş edilen ürün miktarı', description: 'Seçili ürünlerin bu siparişteki miktarını kontrol eder.' },
   { key: 'order_total', label: 'Sipariş tutarı', description: 'Sepet tutarının belirtilen eşiği geçmesini veya altında kalmasını kontrol eder.' },
   { key: 'last_visit_days', label: '... gündür gelmeyen', description: 'Müşterinin son siparişinden bu yana kaç gün geçtiğini kontrol eder; belirli süredir gelmeyen müşterileri hedeflemek için kullanılır.' },
@@ -365,6 +365,7 @@ function resolveConditionKey(value) {
   const raw = String(value || '').trim()
   if (raw === 'order_type') return 'sales_channel'
   if (raw === 'delivery_order') return 'sales_channel'
+  if (raw === 'sales_channel') return 'sales_channel'
   return CONDITION_LIBRARY.some(item => item.key === raw)
     ? raw
     : CONDITION_LIBRARY[0]?.key || 'birthday'
@@ -748,8 +749,10 @@ export function getDefaultConditionConfig(conditionKey) {
     case 'customer_has_tag':
     case 'customer_lacks_tag':
       return { target: 'order_customer', tags: [] }
-    case 'referral_source':
-      return { required: true }
+    case 'referred_customer':
+      return { program_ids: [], trigger: 'registration', trigger_purchase_count: 1 }
+    case 'gave_referral':
+      return { program_id: '', reward_type: 'per_each', threshold_count: 3, max_rewards: 10 }
     case 'sales_channel':
       return { channelValues: [] }
     case 'order_item_quantity':
@@ -843,6 +846,7 @@ function normalizeConditionConfig(conditionKey, rawConfig = {}) {
   if (Array.isArray(normalized.seriesIds)) normalized.seriesIds = normalizeStringList(normalized.seriesIds)
   if (Array.isArray(normalized.relatedCampaignIds)) normalized.relatedCampaignIds = normalizeStringList(normalized.relatedCampaignIds)
   if (Array.isArray(normalized.tags)) normalized.tags = normalizeStringList(normalized.tags)
+  if (Array.isArray(normalized.program_ids)) normalized.program_ids = normalizeStringList(normalized.program_ids)
   if (conditionKey === 'sales_channel') normalized.channelValues = getSalesChannelConditionValues(normalized)
   if (Array.isArray(normalized.additionalConditions)) normalized.additionalConditions = normalized.additionalConditions.map(normalizeAdditionalCondition)
 
@@ -1371,6 +1375,88 @@ async function loadCustomerSnapshots() {
   } catch (error) {
     return { baseCustomers: [], profileCustomers: [], customerSchemaReady: false }
   }
+}
+
+export function normalizeReferralProgram(program = {}) {
+  const mode = ['unique_multiple', 'single_reusable_date', 'single_reusable_limit'].includes(program.mode)
+    ? program.mode
+    : 'unique_multiple'
+  return {
+    id: String(program.id || uid('refprog')),
+    name: toText(program.name || 'Yeni Referans Programı'),
+    mode,
+    configJson: cloneJson(program.configJson || program.config_json, {}),
+    allowedReferrerCategories: Array.isArray(program.allowedReferrerCategories || program.allowed_referrer_categories)
+      ? (program.allowedReferrerCategories || program.allowed_referrer_categories)
+      : [],
+    successCriteria: ['registration', 'nth_purchase'].includes(program.successCriteria || program.success_criteria)
+      ? (program.successCriteria || program.success_criteria)
+      : 'registration',
+    successPurchaseCount: Math.max(1, toInt(program.successPurchaseCount ?? program.success_purchase_count, 1)),
+    active: program.active !== false,
+  }
+}
+
+function fromReferralProgramRow(row = {}) {
+  return normalizeReferralProgram({
+    id: row.id,
+    name: row.name,
+    mode: row.mode,
+    config_json: row.config_json,
+    allowed_referrer_categories: row.allowed_referrer_categories,
+    success_criteria: row.success_criteria,
+    success_purchase_count: row.success_purchase_count,
+    active: row.active,
+  })
+}
+
+function toReferralProgramRow(program = {}, scopeInfo) {
+  const normalized = normalizeReferralProgram(program)
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    mode: normalized.mode,
+    config_json: normalized.configJson,
+    allowed_referrer_categories: normalized.allowedReferrerCategories,
+    success_criteria: normalized.successCriteria,
+    success_purchase_count: normalized.successPurchaseCount,
+    active: normalized.active,
+    scope: scopeInfo.scopeType,
+    branch_id: scopeInfo.scopeType === 'branch' ? scopeInfo.branchId : null,
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+  }
+}
+
+function applyReferralProgramsScopeFilter(query, scopeInfo) {
+  if (scopeInfo.scopeType === 'branch') {
+    return query.eq('scope', 'branch').eq('branch_id', scopeInfo.branchId)
+  }
+  return query.eq('scope', 'global')
+}
+
+async function softDeleteMissingReferralPrograms(scopeInfo, activeIds = []) {
+  let query = db.from('loyalty_referral_programs').select('id').is('deleted_at', null)
+  query = applyReferralProgramsScopeFilter(query, scopeInfo)
+  const { data, error } = await query
+  if (error) throw error
+
+  const staleIds = (data || [])
+    .map(row => row.id)
+    .filter(id => !activeIds.includes(id))
+
+  if (staleIds.length === 0) return
+
+  const { error: updateError } = await db
+    .from('loyalty_referral_programs')
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      active: false,
+    })
+    .in('id', staleIds)
+
+  if (updateError) throw updateError
 }
 
 function fromProgramRow(row = {}) {
@@ -2082,7 +2168,7 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
   const schemaIssues = []
   const includeCoupons = workspace.includeCoupons === true
 
-  const [programRes, tierRes, campaignRes, couponSeriesRes] = await Promise.all([
+  const [programRes, tierRes, campaignRes, couponSeriesRes, referralProgramsRes] = await Promise.all([
     runScopeAwareSchemaSafeQuery(() => applyScopeFilter(
       db.from('loyalty_programs')
         .select('id,name,description,program_type,program_family,earn_model,redemption_model,redemption_rate,card_mode,frequency_goal,frequency_reset_period,frequency_reward_json,starts_at,ends_at,active,chain_wide_active,notify_balance_change,notification_channel,webhook_enabled,webhook_template')
@@ -2125,6 +2211,13 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
       .select('id,name,prefix,single_coupon,coupon_count,random_length,charset,use_after_checkout,active,metadata')
       .is('deleted_at', null)
       .order('created_at'), schemaIssues, 'loyalty_coupon_series'),
+    runScopeAwareSchemaSafeQuery(() => applyReferralProgramsScopeFilter(
+      db.from('loyalty_referral_programs')
+        .select('id,name,mode,config_json,allowed_referrer_categories,success_criteria,success_purchase_count,active')
+        .is('deleted_at', null)
+        .order('created_at'),
+      scopeInfo,
+    ), null, schemaIssues, 'loyalty_referral_programs'),
   ])
 
   const campaignIds = campaignRes.data.map(item => item.id)
@@ -2153,7 +2246,7 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
     couponMap.set(coupon.series_id, current)
   })
 
-  const coreReadAvailable = programRes.ok && tierRes.ok && campaignRes.ok && couponSeriesRes.ok && rulesRes.ok && couponsRes.ok
+  const coreReadAvailable = programRes.ok && tierRes.ok && campaignRes.ok && couponSeriesRes.ok && rulesRes.ok && couponsRes.ok && referralProgramsRes.ok
   const campaignReadBroken = !campaignRes.ok
   const couponSeriesReadBroken = !couponSeriesRes.ok
   const tierReadBroken = !tierRes.ok
@@ -2184,6 +2277,7 @@ export async function loadLoyaltyWorkspace(workspace = {}) {
           }
           return item
         }),
+    referralPrograms: referralProgramsRes.ok ? referralProgramsRes.data.map(fromReferralProgramRow) : [],
     customerInsights: buildCustomerInsights(customerSnapshot.baseCustomers, customerSnapshot.profileCustomers),
     customerSchemaReady: customerSnapshot.customerSchemaReady,
   }
@@ -2292,11 +2386,13 @@ export async function saveLoyaltyWorkspace(workspace = {}, payload = {}) {
   const tiers = (payload.tiers || []).map(normalizeTier)
   const campaigns = (payload.campaigns || []).map(campaign => normalizeCampaign({ ...campaign, programId: program.id }))
   const couponSeries = (payload.couponSeries || []).map(series => syncCouponSeriesCodes(series))
+  const referralPrograms = (payload.referralPrograms || []).map(normalizeReferralProgram)
   const rules = campaigns.flatMap(campaign => [...campaign.applicableRules, ...campaign.periodicRules].map(rule => toRuleRow(rule, campaign.id)))
   const tierIds = tiers.map(tier => tier.id)
   const campaignIds = campaigns.map(campaign => campaign.id)
   const ruleIds = rules.map(rule => rule.id)
   const seriesIds = couponSeries.map(series => series.id)
+  const referralProgramIds = referralPrograms.map(p => p.id)
 
   try {
     await upsertScopeAwareRows('loyalty_programs', [toProgramRow(program, scopeInfo)], 'id')
@@ -2315,6 +2411,13 @@ export async function saveLoyaltyWorkspace(workspace = {}, payload = {}) {
     if (rules.length > 0) {
       const { error: rulesError } = await db.from('loyalty_campaign_rules').upsert(rules, { onConflict: 'id' })
       if (rulesError) throw rulesError
+    }
+
+    await softDeleteMissingReferralPrograms(scopeInfo, referralProgramIds)
+    if (referralPrograms.length > 0) {
+      const rows = referralPrograms.map(p => toReferralProgramRow(p, scopeInfo))
+      const { error: refProgError } = await db.from('loyalty_referral_programs').upsert(rows, { onConflict: 'id' })
+      if (refProgError) throw refProgError
     }
 
     await softDeleteMissingScopedRows('loyalty_coupon_series', scopeInfo, seriesIds)
@@ -2352,6 +2455,7 @@ export async function saveLoyaltyWorkspace(workspace = {}, payload = {}) {
           schemaReady: true,
           usedLegacyFallback: false,
           couponSeries: couponPersistencePlan.couponSeries,
+          referralPrograms,
         }
       }
     }
@@ -2360,6 +2464,7 @@ export async function saveLoyaltyWorkspace(workspace = {}, payload = {}) {
       schemaReady: true,
       usedLegacyFallback: false,
       couponSeries,
+      referralPrograms,
     }
   } catch (error) {
     if (!isSchemaMissingError(error)) throw error

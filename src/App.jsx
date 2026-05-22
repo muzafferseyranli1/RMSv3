@@ -1,4 +1,4 @@
-﻿import React, { lazy, Suspense, useEffect, useRef } from 'react'
+import React, { lazy, Suspense, useEffect, useRef } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AuthGate from '@/components/auth/AuthGate'
 import Sidebar from '@/components/layout/Sidebar'
@@ -64,6 +64,7 @@ const LoyaltyManagement = lazy(() => import('@/components/pages/LoyaltyManagemen
 const LoyaltyCampaignWizardPreview = lazy(() => import('@/components/pages/LoyaltyCampaignWizardPreview'))
 const LoyaltyCustomerCategories = lazy(() => import('@/components/pages/LoyaltyCustomerCategories'))
 const LoyaltyCouponSets = lazy(() => import('@/components/pages/LoyaltyCouponSets'))
+const LoyaltyReferralPrograms = lazy(() => import('@/components/pages/LoyaltyReferralPrograms'))
 const MobileAppShells = lazy(() => import('@/components/pages/MobileAppShells'))
 const OrderFlows = lazy(() => import('@/components/pages/OrderFlows'))
 const CountFlows = lazy(() => import('@/components/pages/CountFlows'))
@@ -382,6 +383,7 @@ function AppShell() {
               <Route path="/sadakat/kampanya-sihirbazi-onizleme" element={<LoyaltyCampaignWizardPreview />} />
               <Route path="/sadakat/kategoriler" element={<LoyaltyCustomerCategories />} />
               <Route path="/sadakat/kuponlar" element={<LoyaltyCouponSets />} />
+              <Route path="/sadakat/referanslar" element={<LoyaltyReferralPrograms />} />
               <Route path="/forecast" element={<WorkspaceBranchScope><Forecast /></WorkspaceBranchScope>} />
               <Route path="/uretim" element={<WorkspaceBranchScope><Production /></WorkspaceBranchScope>} />
               <Route path="/sube-personel" element={<WorkspaceBranchScope><BranchPersonnel /></WorkspaceBranchScope>} />

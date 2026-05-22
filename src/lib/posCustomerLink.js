@@ -1,4 +1,4 @@
-﻿import { loadLoyaltyCustomerCategoryAssignments } from '@/lib/loyalty'
+import { loadLoyaltyCustomerCategoryAssignments } from '@/lib/loyalty'
 import { db } from '@/lib/db'
 
 const POS_LOYALTY_LINKS_KEY = 'pos_loyalty_link_sessions_v1'
@@ -48,6 +48,9 @@ function normalizeSession(session = {}) {
     customerName: normalizeText(session.customerName, ''),
     phone: normalizeText(session.phone, ''),
     customerCategoryIds: normalizeStringList(session.customerCategoryIds),
+    customerCreatedAt: normalizeText(session.customerCreatedAt || session.created_at, ''),
+    customerFirstOrderAt: normalizeText(session.customerFirstOrderAt || session.first_order_at, ''),
+    customerLastVisitAt: normalizeText(session.customerLastVisitAt || session.last_visit_at, ''),
     selectedCampaignId: normalizeText(session.selectedCampaignId, ''),
     selectedCampaignName: normalizeText(session.selectedCampaignName, ''),
     selectedCouponCode: normalizeText(session.selectedCouponCode, '').toUpperCase(),
@@ -168,6 +171,27 @@ export async function linkCustomerToPosLoyaltySession(token, customer, {
 
   const customerCategoryIds = await loadCustomerCategoryIdsForSession(currentSession, customer?.id)
 
+  let createdAt = customer?.created_at || customer?.customerCreatedAt || null
+  let firstOrderAt = customer?.first_order_at || customer?.customerFirstOrderAt || null
+  let lastVisitAt = customer?.last_visit_at || customer?.customerLastVisitAt || null
+
+  if (customer?.id && (!createdAt || !firstOrderAt || !lastVisitAt)) {
+    try {
+      const { data, error } = await db
+        .from('musteriler')
+        .select('created_at,first_order_at,last_visit_at')
+        .eq('id', customer.id)
+        .maybeSingle()
+      if (!error && data) {
+        if (!createdAt) createdAt = data.created_at || null
+        if (!firstOrderAt) firstOrderAt = data.first_order_at || null
+        if (!lastVisitAt) lastVisitAt = data.last_visit_at || null
+      }
+    } catch {
+      // Ignored fallback failure.
+    }
+  }
+
   const next = current.map(item => (
     item.token === safeToken
       ? normalizeSession({
@@ -176,6 +200,9 @@ export async function linkCustomerToPosLoyaltySession(token, customer, {
           customerName: customer?.ad_soyad || customer?.name || '',
           phone: customer?.telefon || '',
           customerCategoryIds,
+          customerCreatedAt: createdAt,
+          customerFirstOrderAt: firstOrderAt,
+          customerLastVisitAt: lastVisitAt,
           selectedCampaignId: selectedCampaignId || item.selectedCampaignId || '',
           selectedCampaignName: selectedCampaignName || item.selectedCampaignName || '',
           selectedCouponCode: String(selectedCouponCode || item.selectedCouponCode || '').toUpperCase(),

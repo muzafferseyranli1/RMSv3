@@ -4912,8 +4912,151 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Next Step`: `Deploy updated server/index.js to Railway staging/production.`
 - `Handoff Contract`: `The JSONB serialization registry in server/index.js handles all known JSONB columns. Future tables with JSONB columns must also be registered in jsonbColumns registry.`
 
+## Entry 101
 
+- `Timestamp`: `2026-05-23T02:08:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Program-Centric Referral System Refactoring & Module Import Fix`
+- `Intent`: `Refactor loyalty referrals to be program-centric, decoupling campaigns using referred_customer and gave_referral conditions, removing sales_channel from selectable list, creating a referral program CRUD UI, implementing prevention of duplicate rewards, and fixing module import typo causing screen crash.`
+- `Files Read`:
+  - `src/components/pages/LoyaltyReferralPrograms.jsx`
+  - `src/lib/loyalty.js`
+  - `src/lib/mobileCustomerApp.js`
+  - `scripts/test-referral-logic.mjs`
+  - `.antigravityrules.md`
+  - `skills/rmsv3-demo-builder/SKILL.md`
+- `Files Changed`:
+  - `src/components/pages/LoyaltyReferralPrograms.jsx`
+  - `src/lib/loyalty.js`
+  - `src/lib/mobileCustomerApp.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `server/index.js`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/PosLoyaltyLink.jsx`
+  - `src/components/pos/PosCustomerLinkModal.jsx`
+  - `src/lib/db.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/posLoyalty.js`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scripts/test-referral-logic.mjs`
+  - `npm run build:web`
+  - `git status`
+- `Findings`:
+  - `Replacing old campaign-dependent referrals with independent programs and referred_customer / gave_referral conditions works seamlessly and passes all 47 tests.`
+  - `The page LoyaltyReferralPrograms.jsx crashed initially due to importing loadLoyaltyCustomerCustomerCategories (typo of loadLoyaltyCustomerCategories) which was actually unused since customer categories are loaded using db.from('loyalty_customer_categories').`
+  - `Removing this import solved the Vite build compilation issue completely.`
+- `Decisions`:
+  - `Referral campaigns are decoupled using new campaign conditions referred_customer and gave_referral.`
+  - `Referral programs CRUD is managed via the new /sadakat/referanslar route.`
+  - `The invalid import was removed.`
+- `Open Risks`: None.
+- `Next Step`: Verify live deployment and check if demo data needs to be populated according to the `rmsv3-demo-builder` skill rules.
+- `Handoff Contract`: `Sonraki agent referans sistemiyle ilgili calisirken ornek program tanimlari veya testler icin scripts/test-referral-logic.mjs ve src/components/pages/LoyaltyReferralPrograms.jsx dosyalarini referans alabilir. Modül derleme/yükleme sorunu çozulmustur.`
 
+## Entry 102
+
+- `Timestamp`: `2026-05-23T02:12:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Populate Referral Module Demo Data & Remove node-fetch Dependency`
+- `Intent`: `Seed realistic Turkish-market program-centric referral data on Railway Postgres following rmsv3-demo-builder rules, and resolve package import error in the bootstrapper.`
+- `Files Read`:
+  - `scripts/bootstrap-referrals-demo.mjs`
+  - `.antigravityrules.md`
+  - `skills/rmsv3-demo-builder/SKILL.md`
+- `Files Changed`:
+  - `scripts/bootstrap-referrals-demo.mjs`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run bootstrap:referrals-demo -- --dry-run`
+  - `npm run bootstrap:referrals-demo`
+  - `git status`
+- `Findings`:
+  - `scripts/bootstrap-referrals-demo.mjs imported node-fetch, which is not present in package.json devDependencies, causing execution failure on Node 24.14.0.`
+  - `Node 24.14.0 supports native global fetch, so explicit node-fetch imports are completely redundant.`
+  - `After removing the node-fetch import, the script runs successfully.`
+  - `Dry run verifies that the schema exists on Railway Postgres and 100 demo customers are present.`
+  - `Actual seeding completed successfully: 3 programs, 4 codes, and 3 tracking records were inserted and verified.`
+- `Decisions`:
+  - `Removed node-fetch fallback imports and replaced them with direct calls to native global fetch.`
+  - `Seeded Turkish names ('Arkadaşını Getir Programı', 'Yaz Şenliği Referans Programı', etc.) to adhere to Turkish Market Rules.`
+  - `No AWS or Supabase endpoints were queried, obeying absolute database authority on Railway.`
+- `Open Risks`: None.
+- `Next Step`: Verify the seeded programs on the referral management page (/sadakat/referanslar) and simulation app UI.
+- `Handoff Contract`: `Sonraki agent referans sistemi testleri veya demo arayüz incelemesinde, seeded program ID'lerini (demo-prog-arkadasini-getir, demo-prog-yaz-senligi, demo-prog-sinirli-paylasim) ve tracking verilerini kullanabilir. Tümü Railway veritabanına yazılmıştır.`
+
+## Entry 103
+
+- `Timestamp`: `2026-05-23T02:26:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement order_item_quantity local evaluator & Clean up condition forms layout`
+- `Intent`: `Make 'order_item_quantity' (Sipariş edilen ürün miktarı) fully functional in the POS Loyalty Engine (posLoyalty.js), remove the dysfunctional Period ('Dönem') selection field from this condition's UI forms, and ensure 'order_total' supports product mask filters locally.`
+- `Files Read`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test-local-conditions.js`
+  - `npm run build:web`
+  - `git status`
+- `Findings`:
+  - `'order_item_quantity' (Sipariş edilen ürün miktarı) was marked as 'model' category in loyaltyRuntimeStatus.js, meaning it lacked a runtime executor in posLoyalty.js.`
+  - `The 'Dönem' field in the UI forms for this condition was dysfunctional since the condition only checks the current order's lines.`
+  - `Implemented the local evaluator for 'order_item_quantity' utilizing the existing 'getMatchingCartLinesContribution' helper, supporting product/category/template filters, allowSameItemRepeat, and excludeFreeItems.`
+  - `Upgraded the 'order_total' (Sipariş tutarı) evaluator to count only matching filtered products/templates if productMasks are provided.`
+  - `Removed the 'Dönem' field and adjusted grid columns to 2-columns for 'order_item_quantity' in LoyaltyManagement.jsx and LoyaltyCampaignWizard.jsx, and cleaned up 'order_total' columns in LoyaltyCampaignWizard.jsx to match.`
+  - `Wrote and ran offline unit tests in scratch/test-local-conditions.js, verifying 12 evaluation combinations, all of which passed.`
+- `Decisions`:
+  - `Exported evaluateSingleCondition in posLoyalty.js for direct testability.`
+  - `Re-categorized 'order_item_quantity' from 'model' to 'local' in loyaltyRuntimeStatus.js.`
+- `Open Risks`: None.
+- `Next Step`: Verify the UI layout of the edited condition modals in the Loyalty Management backoffice.
+- `Handoff Contract`: `Sonraki agent, sipariş ürün miktarı ve sepet tutarı kurallarının POS Loyalty Engine tarafında yerel (local) olarak çözüldüğünü ve maske filtrelerini desteklediğini varsayabilir. test-local-conditions.js üzerinden doğrulama yapılmıştır.`
+
+## Entry 104
+
+- `Timestamp`: `2026-05-23T02:32:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Implement last_visit_days local evaluator in POS Loyalty Engine`
+- `Intent`: `Resolve user query and implementation of 'last_visit_days' (Son ziyaretten beri gün) so it can be calculated locally and trigger campaign actions during customer checkout.`
+- `Files Read`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `scratch/test-days-since-activity.js`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `scratch/test-days-since-activity.js` (inside artifacts scratch directory)
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test-days-since-activity.js`
+  - `npm run build:web`
+- `Findings`:
+  - `The 'last_visit_days' condition key (Son ziyaretten beri gün) was previously not implemented in the POS Loyalty execution engine, causing campaigns using it to fallback to live lookup / manual review.`
+  - `Modified posCustomerLink.js to load and store customer's 'last_visit_at' date into customerLastVisitAt within the POS customer checkout session.`
+  - `Modified posLoyalty.js to normalise 'customerLastVisitAt' in normaliseRuntimeCustomerContext, promote 'last_visit_days' to CUSTOMER_CONTEXT_RULE_CONDITION_KEYS, and implement calendar-day difference calculation inside evaluateSingleCondition.`
+  - `Promoted 'last_visit_days' from 'server' to 'local' category in loyaltyRuntimeStatus.js.`
+  - `Added 5 new unit tests to scratch/test-days-since-activity.js covering GTE, LTE, EQ, missing date, and empty context cases. All 20 tests passed successfully.`
+- `Decisions`:
+  - `Calculated calendar-day differences in UTC to avoid timezone/DST shifts, matching the first order/signup date comparison logic.`
+- `Open Risks`: None.
+- `Next Step`: Verify live customer linking in POS screen and test campaigns targeting inactive customer winback scenarios.
+- `Handoff Contract`: `Sonraki agent, 'last_visit_days' koşulunun POS sadakat motorunda yerel olarak çözümlendiğini ve test-days-since-activity.js testi ile doğrulandığını varsayabilir.`
 
 
 

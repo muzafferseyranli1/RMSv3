@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -83,6 +83,7 @@ const NAV = [
           { label: 'Kampanyalar', path: '/sadakat', icon: 'fa-bullhorn', color: '#f472b6', bg: 'rgba(244,114,182,.18)' },
           { label: 'Kupon Setleri', path: '/sadakat/kuponlar', icon: 'fa-ticket', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'MÃ¼ÅŸteri Kategorileri', path: '/sadakat/kategoriler', icon: 'fa-tags', color: '#fb7185', bg: 'rgba(251,113,133,.18)' },
+          { label: 'Referans Programları', path: '/sadakat/referanslar', icon: 'fa-people-arrows', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
         ],
       },
       {

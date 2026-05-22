@@ -2458,6 +2458,7 @@ export default function LoyaltyManagement() {
   const [program, setProgram] = useState(normalizeProgram(DEFAULT_LOYALTY_PROGRAM))
   const [tiers, setTiers] = useState([])
   const [campaigns, setCampaigns] = useState([])
+  const [referralPrograms, setReferralPrograms] = useState([])
   const [customerCategories, setCustomerCategories] = useState([])
   const [categoryAudienceAssignments, setCategoryAudienceAssignments] = useState([])
   const [categoryAudienceCounts, setCategoryAudienceCounts] = useState({})
@@ -2620,6 +2621,7 @@ export default function LoyaltyManagement() {
           categoryAudienceAssignments: safeCategoryAudienceResult.assignments || [],
           categoryAudienceCounts: safeCategoryAudienceResult.countsByCategoryId || {},
           couponSeries: couponSeriesHydration.results,
+          referralPrograms: result.referralPrograms || [],
           customerInsights: result.customerInsights,
         }
         const degradedWorkspaceRead = !nextSnapshot.schemaReady || nextSnapshot.databaseUnavailable
@@ -2646,6 +2648,7 @@ export default function LoyaltyManagement() {
         setProgram(activeSnapshot.program)
         setTiers(activeSnapshot.tiers)
         setCampaigns(activeSnapshot.campaigns)
+        setReferralPrograms(activeSnapshot.referralPrograms || [])
         setCustomerCategories(activeSnapshot.customerCategories)
         setCategoryAudienceAssignments(activeSnapshot.categoryAudienceAssignments)
         setCategoryAudienceCounts(activeSnapshot.categoryAudienceCounts)
@@ -3969,7 +3972,7 @@ export default function LoyaltyManagement() {
                 Bu kosul musteri bazli degil, secili urun, kategori ve satis mali sablonlarinin donem icindeki toplam satis adedine bakar. Ayni bloğa hem `xxx` urunu hem de `yyy` urun kategorisini ya da bir satis mali sablonunu ekleyebilirsiniz; sistem secili filtrelerdeki toplam adedi izler.
               </HelperNote>
             ) : null}
-            <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 0.9fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: conditionKey === 'order_item_quantity' ? '1fr 1fr' : '0.8fr 0.9fr 1fr', gap: 10 }}>
               <FieldStack label="Urun adedi">
                 <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.quantity)} onChange={event => patchCondition({ quantity: event.target.value })} placeholder="Orn. 2" />
               </FieldStack>
@@ -3980,13 +3983,15 @@ export default function LoyaltyManagement() {
                   </select>
                 </div>
               </FieldStack>
-              <FieldStack label="Donem">
-                <div className="sel-wrap">
-                  <select className="f-input" value={config.period || 'all_time'} onChange={event => patchCondition({ period: event.target.value })}>
-                    {PERIOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-              </FieldStack>
+              {conditionKey !== 'order_item_quantity' ? (
+                <FieldStack label="Donem">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={config.period || 'all_time'} onChange={event => patchCondition({ period: event.target.value })}>
+                      {PERIOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </FieldStack>
+              ) : null}
             </div>
             {(conditionKey === 'period_product_quantity' || conditionKey === 'period_sold_product_quantity') && (config.period || 'all_time') === 'rolling_days' ? (
               <FieldStack label="Kayan gun sayisi">
@@ -4215,8 +4220,120 @@ export default function LoyaltyManagement() {
           </div>
         )
         break
-      case 'referral_source':
-        content = <div style={{ fontSize: '.8rem', color: '#64748b' }}>Musterinin basvuru formunda referans bilgisinin bulunmasi beklenir.</div>
+      case 'referred_customer':
+        content = (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <FieldStack label="Referans Programı Seçimi" hint="Bu koşulun geçerli olacağı referans programlarını seçin. Boş bırakılırsa tüm referans programları kabul edilir.">
+              <SearchableMultiSelect
+                options={referralPrograms.map(prog => ({
+                  value: prog.id,
+                  label: prog.name,
+                }))}
+                selectedValues={config.program_ids || []}
+                onChange={next => patchCondition({ program_ids: next })}
+                placeholder="Program seçin (Tümü için boş bırakın)"
+                searchPlaceholder="Program ara..."
+                emptyText="Aktif referans programı bulunamadı."
+              />
+            </FieldStack>
+
+            <FieldStack label="Tetikleyici Başarı Kriteri" hint="Kupon veya ödülün ne zaman verileceğini seçin.">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.trigger || 'registration'} 
+                  onChange={event => {
+                    const val = event.target.value
+                    patchCondition({ 
+                      trigger: val,
+                      purchase_count: val === 'nth_purchase' ? (config.purchase_count || 1) : undefined
+                    })
+                  }}
+                >
+                  <option value="registration">Referansla kayıt olduğunda</option>
+                  <option value="nth_purchase">N. siparişi tamamlandığında</option>
+                </select>
+              </div>
+            </FieldStack>
+
+            {config.trigger === 'nth_purchase' && (
+              <FieldStack label="Gerekli Sipariş Sayısı (N)" hint="Kaçıncı alışverişinde bu eylemin tetikleneceği.">
+                <input 
+                  className="f-input" 
+                  type="number" 
+                  min={1} 
+                  value={config.purchase_count !== undefined ? config.purchase_count : 1} 
+                  onChange={event => patchCondition({ purchase_count: Math.max(1, parseInt(event.target.value, 10) || 1) })} 
+                />
+              </FieldStack>
+            )}
+          </div>
+        )
+        break
+      case 'gave_referral':
+        content = (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <FieldStack label="Referans Programı Seçimi" hint="Bu koşulun bağlı olacağı referans programını seçin.">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.program_id || ''} 
+                  onChange={event => patchCondition({ program_id: event.target.value })}
+                >
+                  <option value="">Program seçin...</option>
+                  {referralPrograms.map(prog => (
+                    <option key={prog.id} value={prog.id}>{prog.name}</option>
+                  ))}
+                </select>
+              </div>
+            </FieldStack>
+
+            <FieldStack label="Ödüllendirme Tipi" hint="Her davet için mi, yoksa belirli bir davet barajı aşıldığında mı ödül verilecek?">
+              <div className="sel-wrap">
+                <select 
+                  className="f-input" 
+                  value={config.reward_type || 'per_each'} 
+                  onChange={event => {
+                    const val = event.target.value
+                    patchCondition({ 
+                      reward_type: val,
+                      threshold_count: val === 'threshold' ? (config.threshold_count || 3) : undefined
+                    })
+                  }}
+                >
+                  <option value="per_each">Her başarılı davet için (1:1)</option>
+                  <option value="threshold">Baraj bazlı davet için (N adet getirdiğinde 1 kez)</option>
+                </select>
+              </div>
+            </FieldStack>
+
+            {config.reward_type === 'threshold' && (
+              <FieldStack label="Gerekli Başarılı Davet Sayısı (Baraj)" hint="Müşterinin ödülü alabilmesi için getirmesi gereken minimum başarılı davet sayısı.">
+                <input 
+                  className="f-input" 
+                  type="number" 
+                  min={1} 
+                  value={config.threshold_count !== undefined ? config.threshold_count : 3} 
+                  onChange={event => patchCondition({ threshold_count: Math.max(1, parseInt(event.target.value, 10) || 1) })} 
+                />
+              </FieldStack>
+            )}
+
+            <FieldStack label="Maksimum Ödül Sayısı Limiti (Opsiyonel)" hint="Bu koşuldan kazanılabilecek maksimum ödül sayısı limitidir. Boş bırakılırsa sınırsızdır.">
+              <input 
+                className="f-input" 
+                type="number" 
+                min={1} 
+                value={config.max_rewards_limit !== undefined ? config.max_rewards_limit : ''} 
+                onChange={event => {
+                  const val = event.target.value
+                  patchCondition({ max_rewards_limit: val ? Math.max(1, parseInt(val, 10) || 1) : undefined })
+                }}
+                placeholder="Örn: 5 (Sınırsız için boş bırakın)"
+              />
+            </FieldStack>
+          </div>
+        )
         break
       case 'sales_channel':
         content = (
@@ -4947,6 +5064,7 @@ export default function LoyaltyManagement() {
         tiers: safeTiers,
         campaigns: safeCampaigns,
         couponSeries: safeCouponSeries,
+        referralPrograms,
       })
 
       const persistedCouponSeries = Array.isArray(result.couponSeries)
@@ -4974,6 +5092,7 @@ export default function LoyaltyManagement() {
         categoryAudienceAssignments,
         categoryAudienceCounts,
         couponSeries: persistedCouponSeries,
+        referralPrograms,
         customerInsights,
       })
       writeWorkspaceSessionSnapshot(workspaceCacheKey, {
@@ -4989,6 +5108,7 @@ export default function LoyaltyManagement() {
         categoryAudienceAssignments,
         categoryAudienceCounts,
         couponSeries: persistedCouponSeries,
+        referralPrograms,
         customerInsights,
       })
       toast('Sadakat altyapisi production tablolara kaydedildi', 'success')

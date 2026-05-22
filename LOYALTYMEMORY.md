@@ -1781,3 +1781,26 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Bu sayede ön yüzden gelen JavaScript nesneleri, SQL sorgusu çalıştırılmadan önce otomatik olarak JSON stringine dönüştürülür ve veritabanı seviyesinde `invalid input syntax for type json` hatası alınması tamamen engellenir.
 - `Next Loyalty Step`:
   - Değişiklikleri Railway staging ortamında canlıda test et ve kupon serisi / kampanya kaydının başarıyla yapıldığını doğrula.
+
+## Entry 044
+
+- `Timestamp`: `2026-05-23T02:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Sipariş Ürün Miktarı ve Son Ziyaretten Beri Gün Koşullarının POS Sadakat Motorunda Yerel Çözümlenmesi (Local Evaluator Implementation)`
+- `Trigger`: `Kullanıcının sepet ürün miktarı ile son ziyaretten beri geçen gün koşullarının değerlendirilip eylem tetikleyip tetikleyemeyeceği sorusu ve yerel motor desteği talebi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `scratch/test-days-since-activity.js` (artifacts scratch klasörü)
+  - `OperationSync.md`
+  - `LOYALTYMEMORY.md`
+- `Current Capability`:
+  - `order_item_quantity` (Sipariş edilen ürün miktarı) kuralı yerel motor tarafından `getMatchingCartLinesContribution` yardımıyla çözülüyor, ürün/kategori/şablon filtrelerini destekliyor.
+  - `last_visit_days` (Son ziyaretten beri gün) koşulunun çözülebilmesi için POS müşteri bağlama işleminde (`posCustomerLink.js`) müşterinin `last_visit_at` veritabanı kolonu okunarak oturum bağlamındaki `customerLastVisitAt` alanına yazıldı.
+  - `last_visit_days` koşulu `posLoyalty.js` içinde `CUSTOMER_CONTEXT_RULE_CONDITION_KEYS` kümesine eklenerek yerel çözülebilir duruma getirildi. `evaluateSingleCondition` içinde gün farkını UTC gün sınırlarında hesaplayıp karşılaştıran kural mantığı kodlandı.
+  - `loyaltyRuntimeStatus.js` içinde `last_visit_days` kategorisi `'server'`dan `'local'`a yükseltildi.
+  - `test-days-since-activity.js` içerisine 5 yeni unit test eklenerek tüm gün farkı karşılaştırma sınırları, boş değer ve müşteri tanımlanmama durumları doğrulandı (20/20 test başarılı).
+- `Next Loyalty Step`:
+  - Canlı POS ekranında son ziyarete göre winback (geri kazanım) kampanyalarının sepet tutarı ve kupon koşullarıyla birleştirilerek yerel olarak tetiklendiğini doğrula.
+

@@ -167,6 +167,10 @@ setInterval(() => {
 }, 60_000)
 
 function rateLimiter(req, res, next) {
+  if (process.env.NODE_ENV === 'test') {
+    next()
+    return
+  }
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown'
   const now = Date.now()
   
@@ -413,7 +417,7 @@ app.all('/api/query', rateLimiter, async (req, res) => {
   const isReadOnly = rpc || operation === 'select'
   const key = cacheKey(body)
 
-  if (isReadOnly) {
+  if (isReadOnly && process.env.NODE_ENV !== 'test') {
     const cached = cacheGet(key)
     if (cached) return res.json(cached)
 
@@ -571,7 +575,9 @@ app.all('/api/query', rateLimiter, async (req, res) => {
     try {
       const result = await promise
       const cleanedResult = cleanApiResponse(result)
-      cacheSet(key, cleanedResult)
+      if (process.env.NODE_ENV !== 'test') {
+        cacheSet(key, cleanedResult)
+      }
       return res.json(cleanedResult)
     } catch (err) {
       console.error('[api/query]', err.message)

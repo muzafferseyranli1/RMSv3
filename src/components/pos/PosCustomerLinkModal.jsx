@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   createPosLoyaltyLinkSession,
   getPosLoyaltyLinkUrl,
@@ -131,6 +131,8 @@ export default function PosCustomerLinkModal({
             customerCategoryIds: next.customerCategoryIds || [],
             selectedCampaignId: next.selectedCampaignId || '',
             selectedCampaignName: next.selectedCampaignName || '',
+            customerCreatedAt: next.customerCreatedAt || null,
+            customerFirstOrderAt: next.customerFirstOrderAt || null,
           })
         }
       } catch {
@@ -162,7 +164,7 @@ export default function PosCustomerLinkModal({
       const digits = query.replace(/\D/g, '')
       let req = db
         .from('musteriler')
-        .select('id,ad_soyad,telefon,telefon_ulke')
+        .select('id,ad_soyad,telefon,telefon_ulke,created_at,first_order_at')
         .is('deleted_at', null)
         .limit(15)
       req = digits.length >= 3
@@ -193,6 +195,8 @@ export default function PosCustomerLinkModal({
         customerName: customer.ad_soyad || '',
         phone: `${customer.telefon_ulke || ''}${customer.telefon || ''}`,
         customerCategoryIds: categoryIds || [],
+        customerCreatedAt: customer.created_at || null,
+        customerFirstOrderAt: customer.first_order_at || null,
       })
       setMatches([])
       setSearchText('')

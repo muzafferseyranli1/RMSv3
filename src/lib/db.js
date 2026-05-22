@@ -34,7 +34,11 @@ function writeCachedApiBaseUrl(value) {
 }
 
 function collectApiBaseUrls() {
-  const explicitApiUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_URL)
+  const explicitApiUrl = normalizeApiBaseUrl(
+    (typeof process !== 'undefined' && process.env && process.env.VITE_API_URL) ||
+    (import.meta.env && import.meta.env.VITE_API_URL) ||
+    ''
+  )
   const cachedApiUrl = normalizeApiBaseUrl(resolvedApiBaseUrl || readCachedApiBaseUrl())
   const fallbackUrls = []
 
@@ -87,7 +91,10 @@ async function queryApi(body) {
 }
 
 export function getApiBaseUrl() {
-  return collectApiBaseUrls()[0] || normalizeApiBaseUrl(import.meta.env.VITE_API_URL || DEFAULT_API_URL)
+  const explicitApiUrl = (typeof process !== 'undefined' && process.env && process.env.VITE_API_URL) ||
+    (import.meta.env && import.meta.env.VITE_API_URL) ||
+    '';
+  return collectApiBaseUrls()[0] || normalizeApiBaseUrl(explicitApiUrl || DEFAULT_API_URL)
 }
 
 export function buildApiUrl(path = '') {

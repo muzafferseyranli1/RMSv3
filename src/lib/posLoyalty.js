@@ -14,6 +14,7 @@ const RUNTIME_LOYALTY_CACHE_KEY = 'suitable_runtime_loyalty_catalog_v1'
 const LOCAL_RULE_CONDITION_KEYS = new Set([
   'always',
   'order_total',
+  'order_item_quantity',
   'sales_channel',
   'manual_approval',
   'period_total_order_amount',
@@ -25,7 +26,7 @@ const LOCAL_RULE_CONDITION_KEYS = new Set([
   'campaign_triggered',
   'coupon_present'
 ])
-const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag'])
+const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag', 'days_since_first_activity', 'last_visit_days'])
 const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products', 'points_earn_multiplier'])
 const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
@@ -422,6 +423,9 @@ function normalizeRuntimeCustomerContext(customerContext = {}) {
     customerId: String(customerContext.customerId || '').trim(),
     customerName: String(customerContext.customerName || '').trim(),
     customerCategoryIds: normalizeStringList(customerContext.customerCategoryIds),
+    customerCreatedAt: customerContext.customerCreatedAt || customerContext.created_at || null,
+    customerFirstOrderAt: customerContext.customerFirstOrderAt || customerContext.first_order_at || null,
+    customerLastVisitAt: customerContext.customerLastVisitAt || customerContext.last_visit_at || null,
     tierPointsMultiplier: Number(customerContext.tierPointsMultiplier || customerContext.pointsMultiplier || customerContext.points_multiplier || 1) || 1,
   }
 }
@@ -734,7 +738,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
   }
 }
 
-function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {}) {
+export function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {}) {
   switch (condition.conditionKey) {
     case 'always':
       return { matched: true, supported: true, reason: 'Her sipariste gecerli' }
@@ -754,15 +758,52 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
     }
     case 'order_total': {
       const config = condition.conditionConfig || {}
-      const amount = Number(config.amount || 0)
+      const targetAmount = Number(config.amount || 0)
       const operator = String(config.operator || 'gte')
-      const matched = compareValues(operator, orderContext.orderTotal, amount)
+      const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+
+      const contribution = getMatchingCartLinesContribution(
+        orderContext.cartLines,
+        productMasks,
+        orderContext.saleTemplates || [],
+        { excludeFreeItems: false, allowSameItemRepeat: true }
+      )
+
+      const actualAmount = productMasks.length > 0 ? contribution.amount : orderContext.orderTotal
+      const matched = compareValues(operator, actualAmount, targetAmount)
+
       return {
         matched,
         supported: true,
         reason: matched
-          ? `Siparis toplami kosulu saglandi (${formatAmount(orderContext.orderTotal)})`
-          : `Siparis toplami kosulu bekliyor (${formatAmount(amount)})`,
+          ? `Siparis toplami kosulu saglandi (${formatAmount(actualAmount)})`
+          : `Siparis toplami kosulu bekliyor (${formatAmount(targetAmount)})`,
+      }
+    }
+    case 'order_item_quantity': {
+      const config = condition.conditionConfig || {}
+      const targetQty = Number(config.quantity || 1)
+      const operator = String(config.operator || 'gte')
+      const excludeFreeItems = Boolean(config.excludeFreeItems)
+      const allowSameItemRepeat = config.allowSameItemRepeat !== false
+      const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+
+      const contribution = getMatchingCartLinesContribution(
+        orderContext.cartLines,
+        productMasks,
+        orderContext.saleTemplates || [],
+        { excludeFreeItems, allowSameItemRepeat }
+      )
+
+      const actualQty = contribution.qty
+      const matched = compareValues(operator, actualQty, targetQty)
+
+      return {
+        matched,
+        supported: true,
+        reason: matched
+          ? `Urun adedi kosulu saglandi (Mevcut: ${actualQty}, Hedef: ${operator} ${targetQty})`
+          : `Urun adedi kosulu bekliyor (Mevcut: ${actualQty}, Hedef: ${operator} ${targetQty})`,
       }
     }
     case 'sales_channel': {
@@ -800,7 +841,7 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
 
       const config = condition.conditionConfig || {}
       const requiredCategoryIds = normalizeStringList(
-        config.categoryIds || config.customerCategoryIds || config.tagIds,
+        config.categoryIds || config.customerCategoryIds || config.tagIds || config.tags,
       )
       const customerCategoryIds = normalizeStringList(orderContext.customerCategoryIds)
       const hasAnyCategory = customerCategoryIds.length > 0
@@ -821,6 +862,112 @@ function evaluateSingleCondition(condition = {}, orderContext = {}, campaign = {
           : (condition.conditionKey === 'customer_lacks_tag'
             ? 'Musteri secili kategorilerde'
             : 'Musteri kategori kosulu bekliyor'),
+      }
+    }
+    case 'days_since_first_activity': {
+      const customerId = String(orderContext.customerId || '').trim()
+      if (!customerId) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Musteri tanimlanmadi',
+        }
+      }
+
+      const config = condition.conditionConfig || {}
+      const eventType = String(config.eventType || 'signup')
+      const expectedDays = Number(config.days || 0)
+      const operator = String(config.operator || 'gte')
+
+      const targetDateRaw = eventType === 'signup'
+        ? orderContext.customerCreatedAt
+        : orderContext.customerFirstOrderAt
+
+      if (!targetDateRaw) {
+        return {
+          matched: false,
+          supported: true,
+          reason: `Musteri ${eventType === 'signup' ? 'kayit' : 'ilk siparis'} tarihi bulunamadi`,
+        }
+      }
+
+      const targetDate = new Date(targetDateRaw)
+      if (isNaN(targetDate.getTime())) {
+        return {
+          matched: false,
+          supported: true,
+          reason: `Gecersiz musteri ${eventType === 'signup' ? 'kayit' : 'ilk siparis'} tarihi`,
+        }
+      }
+
+      const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
+        ? orderContext.now
+        : new Date()
+
+      const refUtcStart = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate())
+      const targetUtcStart = Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate())
+
+      const diffDays = Math.floor((refUtcStart - targetUtcStart) / (1000 * 60 * 60 * 24))
+      const matched = compareValues(operator, diffDays, expectedDays)
+      const eventLabel = eventType === 'signup' ? 'kayit' : 'ilk siparis'
+
+      return {
+        matched,
+        supported: true,
+        reason: matched
+          ? `Ilk ${eventLabel} aktivitesinden sonra gecen gun: ${diffDays} (${operator} ${expectedDays}) saglandi`
+          : `Ilk ${eventLabel} aktivitesinden sonra gecen gun: ${diffDays} (${operator} ${expectedDays}) bekleniyor`,
+      }
+    }
+    case 'last_visit_days': {
+      const customerId = String(orderContext.customerId || '').trim()
+      if (!customerId) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Musteri tanimlanmadi',
+        }
+      }
+
+      const config = condition.conditionConfig || {}
+      const expectedDays = Number(config.days || 0)
+      const operator = String(config.operator || 'gte')
+
+      const targetDateRaw = orderContext.customerLastVisitAt
+
+      if (!targetDateRaw) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Musteri son ziyaret tarihi bulunamadi',
+        }
+      }
+
+      const targetDate = new Date(targetDateRaw)
+      if (isNaN(targetDate.getTime())) {
+        return {
+          matched: false,
+          supported: true,
+          reason: 'Gecersiz musteri son ziyaret tarihi',
+        }
+      }
+
+      const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
+        ? orderContext.now
+        : new Date()
+
+      const refUtcStart = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate())
+      const targetUtcStart = Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate())
+
+      const diffDays = Math.floor((refUtcStart - targetUtcStart) / (1000 * 60 * 60 * 24))
+      const matched = compareValues(operator, diffDays, expectedDays)
+
+      return {
+        matched,
+        supported: true,
+        reason: matched
+          ? `Son ziyaretten beri gecen gun: ${diffDays} (${operator} ${expectedDays}) saglandi`
+          : `Son ziyaretten beri gecen gun: ${diffDays} (${operator} ${expectedDays}) bekleniyor`,
       }
     }
     case 'period_total_order_amount':

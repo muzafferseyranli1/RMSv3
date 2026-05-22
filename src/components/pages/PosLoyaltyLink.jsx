@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   extractPosLoyaltyToken,
@@ -22,6 +22,8 @@ function normalizeStoredCustomer(value) {
     telefon: String(value.telefon || ''),
     telefon_ulke: String(value.telefon_ulke || ''),
     email: String(value.email || ''),
+    created_at: value.created_at || value.customerCreatedAt || null,
+    first_order_at: value.first_order_at || value.customerFirstOrderAt || null,
   }
 }
 
@@ -119,6 +121,8 @@ export default function PosLoyaltyLink() {
           customerId: String(activeCustomer.id),
           customerName: activeCustomer.ad_soyad || '',
           customerCategoryIds: categoryIds || [],
+          customerCreatedAt: activeCustomer.created_at || null,
+          customerFirstOrderAt: activeCustomer.first_order_at || null,
         },
       })
       // Sadece müşteriye özel (hedef kitleli) kampanyaları göster — audienceType: 'all' değil
@@ -144,7 +148,7 @@ export default function PosLoyaltyLink() {
     setErrorText('')
     try {
       const digits = query.replace(/\D/g, '')
-      let req = db.from('musteriler').select('id,ad_soyad,telefon,telefon_ulke,email').is('deleted_at', null).limit(12)
+      let req = db.from('musteriler').select('id,ad_soyad,telefon,telefon_ulke,email,created_at,first_order_at').is('deleted_at', null).limit(12)
       req = digits.length >= 3 ? req.like('telefon', `%${digits}%`) : req.ilike('ad_soyad', `%${query}%`)
       const { data, error } = await req
       if (error) throw error

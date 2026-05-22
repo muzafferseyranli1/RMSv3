@@ -1535,6 +1535,8 @@ function OdemeModalFlow({
             customerId: linkedLoyaltyCustomer.customerId,
             customerName: linkedLoyaltyCustomer.customerName,
             customerCategoryIds: linkedLoyaltyCustomer.customerCategoryIds || [],
+            customerCreatedAt: linkedLoyaltyCustomer.customerCreatedAt || linkedLoyaltyCustomer.created_at || null,
+            customerFirstOrderAt: linkedLoyaltyCustomer.customerFirstOrderAt || linkedLoyaltyCustomer.first_order_at || null,
             tierPointsMultiplier: linkedLoyaltyCustomer.tierPointsMultiplier || linkedLoyaltyCustomer.pointsMultiplier || linkedLoyaltyCustomer.points_multiplier || 1,
           }
         : {},
@@ -3920,6 +3922,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           customerId: preOrderLinkedCustomer.customerId,
           customerName: preOrderLinkedCustomer.customerName,
           customerCategoryIds: preOrderLinkedCustomer.customerCategoryIds || [],
+          customerCreatedAt: preOrderLinkedCustomer.customerCreatedAt || preOrderLinkedCustomer.created_at || null,
+          customerFirstOrderAt: preOrderLinkedCustomer.customerFirstOrderAt || preOrderLinkedCustomer.first_order_at || null,
           tierPointsMultiplier: preOrderLinkedCustomer.tierPointsMultiplier || preOrderLinkedCustomer.pointsMultiplier || preOrderLinkedCustomer.points_multiplier || 1,
         }
       : {}

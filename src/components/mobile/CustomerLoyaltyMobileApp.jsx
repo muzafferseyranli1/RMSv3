@@ -9,6 +9,13 @@ import {
   loadCustomerMobileSnapshot,
   loadCustomerRoster,
   pickDefaultCustomer,
+  getActiveReferralPrograms,
+  checkReferralEligibility,
+  generateReferralCode,
+  validateReferralCode,
+  applyReferralCode,
+  getReferrerCodes,
+  registerCustomer,
 } from '@/lib/mobileCustomerApp'
 import {
   clearStoredMobileCustomer,
@@ -680,7 +687,75 @@ function CampaignsScreen({ model }) {
   )
 }
 
-function AccountScreen({ model, accountView, onChange }) {
+function AccountScreen({
+  model,
+  accountView,
+  onChange,
+  activePrograms = [],
+  referralCodesByProgram = {},
+  onTriggerReload,
+}) {
+  const [copiedCode, setCopiedCode] = useState('')
+  const [retroCode, setRetroCode] = useState('')
+  const [retroLoading, setRetroLoading] = useState(false)
+  const [retroError, setRetroError] = useState('')
+  const [retroSuccess, setRetroSuccess] = useState('')
+  const [genLoading, setGenLoading] = useState({})
+  const [genError, setGenError] = useState({})
+
+  const handleCopy = (code) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(code)
+      setTimeout(() => setCopiedCode(''), 2000)
+    })
+  }
+
+  const handleApplyRetroCode = async () => {
+    setRetroError('')
+    setRetroSuccess('')
+    if (!retroCode.trim()) {
+      setRetroError('Lütfen bir davet kodu girin.')
+      return
+    }
+    setRetroLoading(true)
+    try {
+      const valRes = await validateReferralCode(model.customer.id, retroCode)
+      if (valRes.isValid) {
+        await applyReferralCode(model.customer.id, valRes)
+        setRetroSuccess(`Referans başarıyla uygulandı! ${valRes.referrerName} tarafından davet edildiniz.`)
+        setRetroCode('')
+        if (onTriggerReload) {
+          onTriggerReload()
+        }
+      }
+    } catch (err) {
+      setRetroError(err.message || 'Doğrulama veya uygulama sırasında hata oluştu.')
+    } finally {
+      setRetroLoading(false)
+    }
+  }
+
+  const handleGenerateCode = async (programId) => {
+    setGenError(prev => ({ ...prev, [programId]: '' }))
+    setGenLoading(prev => ({ ...prev, [programId]: true }))
+    try {
+      await generateReferralCode(model.customer.id, programId)
+      if (onTriggerReload) {
+        onTriggerReload()
+      }
+    } catch (err) {
+      setGenError(prev => ({ ...prev, [programId]: err.message || 'Kod üretilirken bir hata oluştu.' }))
+    } finally {
+      setGenLoading(prev => ({ ...prev, [programId]: false }))
+    }
+  }
+
+  // Retrospective eligibility logic
+  const orderCount = Number(model.customer.total_order_count ?? model.customer.siparis_sayisi ?? 0)
+  const createdAt = model.customer.created_at ? new Date(model.customer.created_at) : new Date()
+  const daysDiff = (new Date().getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+  const isRetrospectiveEligible = !model.customer.referred_by_customer_id && orderCount === 0 && daysDiff <= 7
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
@@ -765,6 +840,258 @@ function AccountScreen({ model, accountView, onChange }) {
 
       {accountView === 'profile' ? (
         <div style={{ display: 'grid', gap: 10 }}>
+          {/* Retrospective Referral Entry */}
+          {isRetrospectiveEligible && (
+            <div style={{ ...cardStyle('linear-gradient(135deg, #fffbeb, #fef3c7)', '#fde68a'), padding: 16, display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: '1.2rem', color: '#d97706' }}><i className="fa-solid fa-gift" /></span>
+                <div style={{ fontWeight: 900, color: '#92400e', fontSize: '.86rem' }}>Beni Kim Davet Etti?</div>
+              </div>
+              <div style={{ color: '#b45309', fontSize: '.76rem', lineHeight: 1.45 }}>
+                Sizi davet eden bir arkadaşınızın referans kodunu girerek hoş geldin ödül puanınızı hemen kazanabilirsiniz.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={retroCode}
+                  onChange={e => setRetroCode(e.target.value)}
+                  placeholder="Ornek: REF-XXXXXX"
+                  disabled={retroLoading}
+                  style={{
+                    flex: 1,
+                    minHeight: 38,
+                    borderRadius: 10,
+                    border: '1px solid #fcd34d',
+                    background: '#fff',
+                    color: '#0f172a',
+                    padding: '0 10px',
+                    fontSize: '.8rem',
+                    fontWeight: 700,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyRetroCode}
+                  disabled={retroLoading}
+                  style={{
+                    minWidth: 80,
+                    borderRadius: 10,
+                    border: 'none',
+                    background: '#d97706',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: '.76rem',
+                    cursor: 'pointer',
+                    opacity: retroLoading ? 0.7 : 1,
+                  }}
+                >
+                  {retroLoading ? 'Uygulanıyor' : 'Uygula'}
+                </button>
+              </div>
+              {retroError && <div style={{ color: '#b91c1c', fontSize: '.74rem', fontWeight: 700 }}>{retroError}</div>}
+              {retroSuccess && <div style={{ color: '#15803d', fontSize: '.74rem', fontWeight: 700 }}>{retroSuccess}</div>}
+            </div>
+          )}
+
+          {/* Active Referral Programs Invitations & Codes */}
+          {activePrograms.map(program => {
+            const eligibility = checkReferralEligibility(model.customer, program)
+            if (!eligibility.eligible) return null
+
+            const programCodes = referralCodesByProgram[program.id] || []
+            const config = program.config_json || {}
+            const isUniqueMultiple = program.mode === 'unique_multiple'
+            const isLimitMode = program.mode === 'single_reusable_limit'
+            const isDateMode = program.mode === 'single_reusable_date'
+            const pError = genError[program.id]
+            const pLoading = genLoading[program.id]
+
+            return (
+              <div key={program.id} style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: '1.2rem', color: '#be185d' }}><i className="fa-solid fa-users" /></span>
+                    <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.86rem' }}>{program.name || 'Arkadaşlarını Davet Et'}</div>
+                  </div>
+                  <span style={badgeStyle('rgba(190,24,93,.12)', '#be185d')}>Aktif</span>
+                </div>
+
+                <div style={{ fontSize: '.74rem', color: '#64748b', background: '#f8fafc', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.08)' }}>
+                  <i className="fa-solid fa-info-circle" style={{ marginRight: 6, color: '#8b5cf6' }} />
+                  Kazanım Kriteri: {program.success_criteria === 'registration' ? 'Arkadaşınız üye olduğunda' : `Arkadaşınız üye olup en az ${program.success_purchase_count || 1} sipariş verdiğinde`}
+                </div>
+
+                {isUniqueMultiple ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ color: '#475569', fontSize: '.76rem', lineHeight: 1.45 }}>
+                      Arkadaşlarınızla paylaşabileceğiniz tek kullanımlık benzersiz davet kodları oluşturun.
+                    </div>
+                    
+                    {programCodes.length > 0 && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {programCodes.map(row => {
+                          const isCopied = copiedCode === row.referral_code
+                          return (
+                            <div
+                              key={row.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '8px 12px',
+                                borderRadius: 12,
+                                background: '#f8fafc',
+                                border: '1px solid rgba(148,163,184,.12)',
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '.84rem', color: '#0f172a' }}>
+                                  {row.referral_code}
+                                </div>
+                                <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 2 }}>
+                                  {row.is_used ? (
+                                    <span>Kullanıldı ({formatMobileDate(row.used_at, { day: '2-digit', month: 'short' })})</span>
+                                  ) : (
+                                    <span>Kullanıma hazır</span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {!row.is_used && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopy(row.referral_code)}
+                                  style={{
+                                    padding: '5px 10px',
+                                    borderRadius: 8,
+                                    border: 'none',
+                                    background: isCopied ? '#10b981' : '#e2e8f0',
+                                    color: isCopied ? '#fff' : '#475569',
+                                    fontWeight: 800,
+                                    fontSize: '.7rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {isCopied ? 'Kopyalandı!' : 'Kopyala'}
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {programCodes.length < (config.max_unique_codes || 4) ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCode(program.id)}
+                          disabled={pLoading}
+                          style={{
+                            minHeight: 38,
+                            borderRadius: 12,
+                            border: 'none',
+                            background: 'linear-gradient(135deg, #be185d, #db2777)',
+                            color: '#fff',
+                            fontWeight: 950,
+                            fontSize: '.78rem',
+                            cursor: 'pointer',
+                            opacity: pLoading ? 0.7 : 1,
+                          }}
+                        >
+                          {pLoading ? 'Kod Üretiliyor...' : 'Yeni Davet Kodu Üret'}
+                        </button>
+                        <div style={{ color: '#64748b', fontSize: '.7rem', textAlign: 'center' }}>
+                          Limit: {programCodes.length} / {config.max_unique_codes || 4} kod üretildi.
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#ef4444', fontSize: '.72rem', fontWeight: 800 }}>
+                        Maksimum davet kodu üretme limitine ulaştınız.
+                      </div>
+                    )}
+                    {pError && <div style={{ color: '#b91c1c', fontSize: '.74rem', fontWeight: 700, textAlign: 'center' }}>{pError}</div>}
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ color: '#475569', fontSize: '.76rem', lineHeight: 1.45 }}>
+                      Aşağıdaki davet kodunu arkadaşlarınızla sınırsızca paylaşabilirsiniz.
+                    </div>
+
+                    {model.customer.referral_code ? (
+                      <div
+                        style={{
+                          padding: 14,
+                          borderRadius: 16,
+                          background: 'linear-gradient(145deg, #f8fafc, #f1f5f9)',
+                          border: '1px solid rgba(148,163,184,.14)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>Davet Kodunuz</div>
+                          <div style={{ marginTop: 4, fontFamily: 'monospace', fontWeight: 900, fontSize: '1.25rem', color: '#be185d' }}>{model.customer.referral_code}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(model.customer.referral_code)}
+                          style={{
+                            minHeight: 36,
+                            padding: '0 14px',
+                            borderRadius: 10,
+                            border: 'none',
+                            background: copiedCode === model.customer.referral_code ? '#10b981' : '#be185d',
+                            color: '#fff',
+                            fontWeight: 900,
+                            fontSize: '.74rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {copiedCode === model.customer.referral_code ? 'Kopyalandı' : 'Kopyala'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ color: '#64748b', fontSize: '.78rem', fontStyle: 'italic', textAlign: 'center' }}>
+                        Davet kodunuz hazırlanıyor...
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        borderRadius: 12,
+                        background: '#fcf6f8',
+                        border: '1px solid rgba(190,24,93,.08)',
+                        fontSize: '.76rem',
+                      }}
+                    >
+                      <span style={{ color: '#475569', fontWeight: 800 }}>Başarılı Davet Sayısı:</span>
+                      <span style={{ color: '#be185d', fontWeight: 900, fontSize: '.84rem' }}>
+                        {model.referredCount}
+                        {isLimitMode && (
+                          <span style={{ color: '#64748b', fontWeight: 700, fontSize: '.76rem' }}>
+                            {' '}
+                            / {config.max_redemptions_per_referrer || 4}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    {isDateMode && (
+                      <div style={{ fontSize: '.7rem', color: '#64748b', textAlign: 'center' }}>
+                        Geçerlilik: {config.valid_from ? formatMobileDate(config.valid_from, { day: '2-digit', month: 'short' }) : 'Başlangıç yok'} - {config.valid_until ? formatMobileDate(config.valid_until, { day: '2-digit', month: 'short' }) : 'Bitiş yok'}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
           <div style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 10 }}>
             <div style={{ fontWeight: 900, color: '#0f172a' }}>Musteri bilgileri</div>
             <div style={{ color: '#475569', fontSize: '.8rem' }}>Ad Soyad: {model.customer.ad_soyad || '-'}</div>
@@ -804,6 +1131,35 @@ function LoginScreen({
   errorText,
   onSelectCustomer,
 }) {
+  const [isSignup, setIsSignup] = useState(false)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [refCode, setRefCode] = useState('')
+  const [signupLoading, setSignupLoading] = useState(false)
+  const [signupError, setSignupError] = useState('')
+
+  async function handleRegister() {
+    setSignupError('')
+    if (!name.trim()) {
+      setSignupError('Ad Soyad alanı zorunludur.')
+      return
+    }
+    if (!phone.trim()) {
+      setSignupError('Telefon alanı zorunludur.')
+      return
+    }
+    setSignupLoading(true)
+    try {
+      const newCust = await registerCustomer(name, phone, email, refCode)
+      onSelectCustomer(newCust)
+    } catch (err) {
+      setSignupError(err.message || 'Kayıt sırasında bir hata oluştu.')
+    } finally {
+      setSignupLoading(false)
+    }
+  }
+
   return (
     <div style={{ minHeight: '100svh', background: 'linear-gradient(180deg, #fff7f5 0%, #ffffff 16%, #f8fafc 100%)', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
       <div style={{ padding: '24px 18px 14px', display: 'grid', gap: 12 }}>
@@ -813,7 +1169,7 @@ function LoginScreen({
               SuitableRMS Loyalty
             </div>
             <div style={{ marginTop: 4, fontSize: '1.12rem', color: '#0f172a', fontWeight: 900 }}>
-              Musteri girisi
+              {isSignup ? 'Yeni Uye Ol' : 'Musteri girisi'}
             </div>
           </div>
           <span style={badgeStyle('rgba(251,113,133,.12)', '#be185d')}>
@@ -826,68 +1182,181 @@ function LoginScreen({
           <div style={{ fontSize: '.76rem', fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.72)' }}>
             Bu cihazdaki aktif hesap
           </div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>Sadakat hesabinla devam et</div>
-          <div style={{ fontSize: '.82rem', lineHeight: 1.6, color: 'rgba(255,255,255,.82)' }}>
-            Telefon hesabini hatirlar. Sonraki QR okutmalarinda kiosk ve POS seni ayni musteri olarak taniyabilir.
+          <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>
+            {isSignup ? 'Hemen kayit ol ve kazan' : 'Sadakat hesabinla devam et'}
           </div>
+          <div style={{ fontSize: '.82rem', lineHeight: 1.6, color: 'rgba(255,255,255,.82)' }}>
+            {isSignup
+              ? 'Sadakat programına katılarak özel fırsatlar, kuponlar ve sürpriz hediyeler kazanmaya hemen başlayabilirsiniz.'
+              : 'Telefon hesabini hatirlar. Sonraki QR okutmalarinda kiosk ve POS seni ayni musteri olarak taniyabilir.'}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, padding: '0 4px', marginTop: 4 }}>
+          <button
+            type="button"
+            onClick={() => setIsSignup(false)}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: 12,
+              border: 'none',
+              background: !isSignup ? 'linear-gradient(145deg, #0f172a, #1e293b)' : 'transparent',
+              color: !isSignup ? '#fff' : '#64748b',
+              fontWeight: 800,
+              fontSize: '.82rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            Giris Yap
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSignup(true)}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: 12,
+              border: 'none',
+              background: isSignup ? 'linear-gradient(145deg, #be185d, #db2777)' : 'transparent',
+              color: isSignup ? '#fff' : '#64748b',
+              fontWeight: 800,
+              fontSize: '.82rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            Yeni Kayit
+          </button>
         </div>
       </div>
 
       <div style={{ overflowY: 'auto', padding: '0 18px 18px', display: 'grid', gap: 14, alignContent: 'start' }}>
-        <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 10 }}>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>Telefon, uye no veya ad soyad ile bul</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={searchText}
-              onChange={event => onSearchTextChange(event.target.value)}
-              onKeyDown={event => { if (event.key === 'Enter') onSearch() }}
-              placeholder="Ornek: 0532..., RMS-1042, Ayse Yilmaz"
-              style={{ flex: 1, minHeight: 46, borderRadius: 14, border: '1px solid rgba(148,163,184,.16)', background: '#fff', color: '#0f172a', padding: '0 14px' }}
-            />
-            <button
-              type="button"
-              onClick={onSearch}
-              disabled={loading}
-              style={{ minWidth: 92, minHeight: 46, borderRadius: 14, border: 'none', background: '#0f172a', color: '#fff', fontWeight: 900, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}
-            >
-              {loading ? 'Araniyor' : 'Bul'}
-            </button>
-          </div>
-          {statusText ? <div style={{ color: '#0369a1', fontSize: '.78rem' }}>{statusText}</div> : null}
-          {errorText ? <div style={{ color: '#b91c1c', fontSize: '.78rem' }}>{errorText}</div> : null}
-          {matches.length ? matches.map(customer => (
-            <button
-              key={customer.id}
-              type="button"
-              onClick={() => onSelectCustomer(customer)}
-              style={{ ...cardStyle('#fff7f5', 'rgba(251,113,133,.18)'), padding: 14, display: 'grid', gap: 4, textAlign: 'left', cursor: 'pointer' }}
-            >
-              <div style={{ fontWeight: 900, color: '#0f172a' }}>{customer.ad_soyad || 'Isimsiz Musteri'}</div>
-              <div style={{ color: '#64748b', fontSize: '.76rem' }}>
-                {customer.loyalty_member_no || ((customer.telefon_ulke || '') + (customer.telefon || '')) || '-'}
+        {!isSignup ? (
+          <>
+            <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 10 }}>
+              <div style={{ fontWeight: 900, color: '#0f172a' }}>Telefon, uye no veya ad soyad ile bul</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={searchText}
+                  onChange={event => onSearchTextChange(event.target.value)}
+                  onKeyDown={event => { if (event.key === 'Enter') onSearch() }}
+                  placeholder="Ornek: 0532..., RMS-1042, Ayse Yilmaz"
+                  style={{ flex: 1, minHeight: 46, borderRadius: 14, border: '1px solid rgba(148,163,184,.16)', background: '#fff', color: '#0f172a', padding: '0 14px' }}
+                />
+                <button
+                  type="button"
+                  onClick={onSearch}
+                  disabled={loading}
+                  style={{ minWidth: 92, minHeight: 46, borderRadius: 14, border: 'none', background: '#0f172a', color: '#fff', fontWeight: 900, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}
+                >
+                  {loading ? 'Araniyor' : 'Bul'}
+                </button>
               </div>
-            </button>
-          )) : null}
-        </div>
+              {statusText ? <div style={{ color: '#0369a1', fontSize: '.78rem' }}>{statusText}</div> : null}
+              {errorText ? <div style={{ color: '#b91c1c', fontSize: '.78rem' }}>{errorText}</div> : null}
+              {matches.length ? matches.map(customer => (
+                <button
+                  key={customer.id}
+                  type="button"
+                  onClick={() => onSelectCustomer(customer)}
+                  style={{ ...cardStyle('#fff7f5', 'rgba(251,113,133,.18)'), padding: 14, display: 'grid', gap: 4, textAlign: 'left', cursor: 'pointer' }}
+                >
+                  <div style={{ fontWeight: 900, color: '#0f172a' }}>{customer.ad_soyad || 'Isimsiz Musteri'}</div>
+                  <div style={{ color: '#64748b', fontSize: '.76rem' }}>
+                    {customer.loyalty_member_no || ((customer.telefon_ulke || '') + (customer.telefon || '')) || '-'}
+                  </div>
+                </button>
+              )) : null}
+            </div>
 
-        {quickCustomers.length ? (
-          <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 10 }}>
-            <div style={{ fontWeight: 900, color: '#0f172a' }}>Hizli secim</div>
-            {quickCustomers.map(customer => (
-              <button
-                key={customer.id}
-                type="button"
-                onClick={() => onSelectCustomer(customer)}
-                style={{ borderRadius: 16, border: '1px solid rgba(148,163,184,.14)', background: '#fff', color: '#0f172a', padding: '12px 14px', textAlign: 'left', cursor: 'pointer' }}
-              >
-                <div style={{ fontWeight: 800 }}>{customer.ad_soyad || 'Isimsiz Musteri'}</div>
-                <div style={{ marginTop: 4, color: '#64748b', fontSize: '.76rem' }}>
-                  {customer.loyalty_member_no || ((customer.telefon_ulke || '') + (customer.telefon || '')) || 'Uye'}
-                </div>
-              </button>
-            ))}
+            {quickCustomers.length ? (
+              <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 10 }}>
+                <div style={{ fontWeight: 900, color: '#0f172a' }}>Hizli secim</div>
+                {quickCustomers.map(customer => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => onSelectCustomer(customer)}
+                    style={{ borderRadius: 16, border: '1px solid rgba(148,163,184,.14)', background: '#fff', color: '#0f172a', padding: '12px 14px', textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    <div style={{ fontWeight: 800 }}>{customer.ad_soyad || 'Isimsiz Musteri'}</div>
+                    <div style={{ marginTop: 4, color: '#64748b', fontSize: '.76rem' }}>
+                      {customer.loyalty_member_no || ((customer.telefon_ulke || '') + (customer.telefon || '')) || 'Uye'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 12 }}>
+            <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '1rem' }}>Uyelik Formu</div>
+            
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: '.74rem', color: '#475569', fontWeight: 800 }}>Ad Soyad *</label>
+              <input
+                value={name}
+                onChange={event => setName(event.target.value)}
+                placeholder="Ornek: Ahmet Yilmaz"
+                style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(148,163,184,.2)', background: '#fff', color: '#0f172a', padding: '0 12px', fontSize: '.84rem' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: '.74rem', color: '#475569', fontWeight: 800 }}>Telefon Numarasi *</label>
+              <input
+                value={phone}
+                onChange={event => setPhone(event.target.value)}
+                placeholder="Ornek: 05321234567"
+                style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(148,163,184,.2)', background: '#fff', color: '#0f172a', padding: '0 12px', fontSize: '.84rem' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: '.74rem', color: '#475569', fontWeight: 800 }}>E-posta Adresi (Istege Bagli)</label>
+              <input
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder="Ornek: ahmet@mail.com"
+                style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(148,163,184,.2)', background: '#fff', color: '#0f172a', padding: '0 12px', fontSize: '.84rem' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: '.74rem', color: '#be185d', fontWeight: 900 }}>Davet / Referans Kodu (Istege Bagli)</label>
+              <input
+                value={refCode}
+                onChange={event => setRefCode(event.target.value)}
+                placeholder="Ornek: REF-XXXXXX"
+                style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(251,113,133,.4)', background: '#fff', color: '#0f172a', padding: '0 12px', fontSize: '.84rem', fontWeight: 700 }}
+              />
+            </div>
+
+            {signupError ? <div style={{ color: '#b91c1c', fontSize: '.78rem', fontWeight: 700 }}>{signupError}</div> : null}
+
+            <button
+              type="button"
+              onClick={handleRegister}
+              disabled={signupLoading}
+              style={{
+                marginTop: 6,
+                minHeight: 46,
+                borderRadius: 14,
+                border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                color: '#fff',
+                fontWeight: 900,
+                cursor: signupLoading ? 'wait' : 'pointer',
+                opacity: signupLoading ? 0.7 : 1,
+                boxShadow: '0 4px 12px rgba(16,185,129,.2)'
+              }}
+            >
+              {signupLoading ? 'Uye Kaydi Yapiliyor...' : 'Kaydet ve Aramiza Katil'}
+            </button>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   )
@@ -951,6 +1420,9 @@ function AppViewport({
   onConnectLink,
   onAddCoupon,
   standalone = false,
+  activePrograms = [],
+  referralCodesByProgram = {},
+  onTriggerReload,
 }) {
   return (
     <div style={{
@@ -1037,7 +1509,16 @@ function AppViewport({
         {activeTab === 'card' ? <CardScreen model={model} /> : null}
         {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} /> : null}
         {activeTab === 'campaigns' ? <CampaignsScreen model={model} /> : null}
-        {activeTab === 'account' ? <AccountScreen model={model} accountView={accountView} onChange={onAccountViewChange} /> : null}
+        {activeTab === 'account' ? (
+          <AccountScreen
+            model={model}
+            accountView={accountView}
+            onChange={onAccountViewChange}
+            activePrograms={activePrograms}
+            referralCodesByProgram={referralCodesByProgram}
+            onTriggerReload={onTriggerReload}
+          />
+        ) : null}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, padding: '10px 10px 12px', borderTop: '1px solid rgba(148,163,184,.18)', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)' }}>
@@ -1078,6 +1559,9 @@ export default function CustomerLoyaltyMobileApp({
   const [customers, setCustomers] = useState([])
   const [selectedCustomerId, setSelectedCustomerId] = useState(() => readStoredMobileCustomer()?.id || '')
   const [snapshot, setSnapshot] = useState(null)
+  const [activePrograms, setActivePrograms] = useState([])
+  const [referralCodesByProgram, setReferralCodesByProgram] = useState({})
+  const [reloadTrigger, setReloadTrigger] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadingText, setLoadingText] = useState('Musteri profili hazirlaniyor...')
   const [errorText, setErrorText] = useState('')
@@ -1201,6 +1685,38 @@ export default function CustomerLoyaltyMobileApp({
         if (!active) return
         setSnapshot(result)
         writeStoredMobileCustomer(normalizeStoredMobileCustomer(result.customer))
+
+        // Load referral data
+        try {
+          const programs = await getActiveReferralPrograms()
+          if (active) {
+            setActivePrograms(programs)
+          }
+          const nextCodesByProgram = {}
+          for (const program of programs) {
+            const eligibility = checkReferralEligibility(result.customer, program)
+            if (eligibility.eligible) {
+              if (program.mode === 'unique_multiple') {
+                const codes = await getReferrerCodes(selectedCustomerId, program.id)
+                nextCodesByProgram[program.id] = codes
+              } else if (!result.customer.referral_code) {
+                // Auto generate single reusable code
+                await generateReferralCode(selectedCustomerId, program.id)
+                const updatedResult = await loadCustomerMobileSnapshot(selectedCustomerId)
+                if (active) {
+                  result.customer = updatedResult.customer
+                  setSnapshot(updatedResult)
+                  writeStoredMobileCustomer(normalizeStoredMobileCustomer(updatedResult.customer))
+                }
+              }
+            }
+          }
+          if (active) {
+            setReferralCodesByProgram(nextCodesByProgram)
+          }
+        } catch (refError) {
+          console.error('Error loading referral info:', refError)
+        }
       } catch (error) {
         if (!active) return
         if (isStandalone) {
@@ -1218,7 +1734,7 @@ export default function CustomerLoyaltyMobileApp({
 
     loadSnapshot()
     return () => { active = false }
-  }, [isStandalone, selectedCustomerId])
+  }, [isStandalone, selectedCustomerId, reloadTrigger])
 
   const model = useMemo(() => (
     snapshot ? buildCustomerMobileViewModel(snapshot) : null
@@ -1488,6 +2004,9 @@ export default function CustomerLoyaltyMobileApp({
         onConnectLink={() => { void connectLinkSession() }}
         onAddCoupon={handleAddCoupon}
         standalone={isStandalone}
+        activePrograms={activePrograms}
+        referralCodesByProgram={referralCodesByProgram}
+        onTriggerReload={() => setReloadTrigger(prev => prev + 1)}
       />
     )
   }
