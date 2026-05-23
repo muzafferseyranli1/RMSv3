@@ -1638,14 +1638,16 @@ function AppViewport({
       gridTemplateRows: 'auto auto 1fr auto',
       overflow: 'hidden',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#0f172a', fontSize: '.82rem', fontWeight: 800, padding: '26px 18px 10px' }}>
-        <span>{new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#64748b' }}>
-          <i className="fa-solid fa-signal" />
-          <i className="fa-solid fa-wifi" />
-          <i className="fa-solid fa-battery-three-quarters" />
+      {!standalone && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#0f172a', fontSize: '.82rem', fontWeight: 800, padding: '26px 18px 10px' }}>
+          <span>{new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#64748b' }}>
+            <i className="fa-solid fa-signal" />
+            <i className="fa-solid fa-wifi" />
+            <i className="fa-solid fa-battery-three-quarters" />
+          </div>
         </div>
-      </div>
+      )}
 
       {standalone ? (
         <div style={{ padding: '0 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -5102,3 +5102,44 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `Boss ve Personel uygulamalari da ayni donusum gecirecek (kullanici talebi); bunlar sonraki gorevde yapilacak.`
 - `Next Step`: `migrations/customer-app-config.sql dosyasini Railway Postgres'te calistirmak. Ardindan Boss ve Personel uygulamalarina ayni standalone donusumu uygulamak.`
 - `Handoff Contract`: `Sonraki agent, /musteri-app yolunun artik standalone web app olarak calistigini ve branding/konfigurasyon ayarlarinin DB'deki customer_app_config tablosundan geldigini varsayabilir. Ayarlari duzenlemek icin admin arayuzundeki Musteri ekrani (MobileAppShells) kullanilmalidir. Migration dosyasi migrations/customer-app-config.sql henuz Railway'de calistirilmadiysa once onu uygulasin.`
+
+## Entry 106
+
+- `Timestamp`: `2026-05-23T14:15:00+03:00`
+- `Agent`: `Antigravity (Claude Opus 4.6)`
+- `Task`: `Musteri Mobil App - Bagimsiz Web App Donusumu Tamamlama ve Duzeltmeler`
+- `Intent`: `Onceki oturumda baslanan musteri mobil app donusumunu tamamlamak, gorsel yukleme altyapisini base64'ten Railway volume'a gecirmek, sahte status bar kaldirmak, JSONB yazim hatasini cozmek ve migration'i canli DB'de calistirmak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `implementation_plan mobil.md`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/CustomerMobileAppPage.jsx`
+  - `src/lib/customerMobileAppConfig.js`
+  - `migrations/customer-app-config.sql`
+  - `server/index.js`
+  - `server/.env`
+  - `.env`
+- `Files Changed`:
+  - `src/components/pages/MobileAppShells.jsx` - (1) CustomerAppConfigPanel admin yuzeyi eklendi (branding + 4 buton config), (2) Gorsel yukleme base64'ten Railway volume upload'a gecti (POST /api/upload endpoint kullanimi), (3) Yukleme durumu gostergesi eklendi
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - Sahte telefon status bar'i (saat, sinyal, wifi, pil ikonu) standalone modda gizlendi; gercek telefonda kendi status bar'i gorunecek
+  - `server/index.js` - normalizeWriteValue fonksiyonuna customer_app_config tablosunun JSONB kolonlari (branding, home_buttons) eklendi; bu olmadan config kaydetme 'invalid input syntax for type json' hatasi veriyor
+  - `OperationSync.md` - Header restore edildi (onceki oturumdaki replace_file_content CRLF/LF karisiminda madde 1-3 kaybolmustu, backup dosyasindan PowerShell ile onarildi)
+- `Commands Run`:
+  - `npx vite build` (4 kez, hepsi basarili, son: 18.22s)
+  - `node -e "..." (Railway Postgres'e migration calistirma)` - customer_app_config tablosu olusturuldu ve default satir eklendi (id: 09df162e-557a-4a14-baf6-5291848ffa59)
+  - `PowerShell - OperationSync header restore` (backup conflicted copy'den)
+- `Findings`:
+  - `server/index.js'te zaten multer + /api/upload + /api/files/:filename altyapisi mevcuttu (satir 52-412). UPLOAD_DIR=/app/uploads Railway volume'a isaret ediyor. Gorsel yukleme icin yeni endpoint gerekmedi.`
+  - `customer_app_config tablosu Railway Postgres'te basariyla olusturuldu ve default satir eklendi.`
+  - `server/index.js'teki normalizeWriteValue fonksiyonu customer_app_config JSONB kolonlarini tanimiyordu; bu yuzden branding/home_buttons yaziminda JSON syntax hatasi aliniyordu.`
+  - `Sahte status bar standalone modda gereksizdi cunku uygulama gercek telefonda acilacak.`
+- `Decisions`:
+  - `Gorseller base64 yerine Railway rms-api-volume uzerinde saklanacak; DB'de sadece dosya yolu (/api/files/...) tutulacak. Bu yaklasimdaki avantaj: DB sismesi onlenir, volume redeploy'larda korunur.`
+  - `Gorsel boyut limiti server tarafiyla uyumlu: 10MB (resim).`
+  - `OperationSync header'i PowerShell ile backup dosyasindan onarildi cunku replace_file_content araci CRLF/LF karisiminda tutarsiz davraniyordu.`
+- `Open Risks`:
+  - `server/index.js degisikligi (JSONB fix) HENUZ Railway'e DEPLOY EDILMEDI. Deploy olmadan canli ortamda config kaydetme JSON hatasi verir. Bu KRITIK ve ilk is olarak yapilmali.`
+  - `Boss ve Personel uygulamalari henuz ayni donusume tabi tutulmadi (kullanici talebi mevcut).`
+- `Next Step`: `(1) server/index.js'i Railway'e deploy et (GitHubguncelle.bat veya railway up). (2) Deploy sonrasi /musteri-app'ten config kaydetmeyi test et. (3) Boss ve Personel uygulamalarina ayni standalone donusumu uygula.`
+- `Handoff Contract`: `Sonraki agent KRITIK DEPLOY GEREKLILIGI: server/index.js degisikligi (normalizeWriteValue'da customer_app_config eklenmesi, satir 273) Railway'e deploy edilmeden customer_app_config tablosuna JSONB yazimi calismaz. Deploy ilk is olmali. Tum frontend kodu build edilmis ve hazir durumda. /musteri-app standalone modda calisiyor, sahte status bar kaldirildi, gorsel yukleme Railway volume'a yapiyor. Migration calistirildi, tablo ve default satir mevcut. Sonraki buyuk gorev Boss ve Personel uygulamalarinin ayni standalone donusume tabi tutulmasidir.`

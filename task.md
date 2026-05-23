@@ -1,10 +1,22 @@
-- [x] loyaltyRuntimeStatus.js dosyasında `coupon_present` kategorisini `'local'` olarak güncelle
-- [x] posLoyalty.js dosyasını güncelle
-  - [x] `import { db } from '@/lib/db'` satırını ekle
-  - [x] `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` ekle
-  - [x] `getConditionPreview` fonksiyonuna `case 'coupon_present'` ekle
-  - [x] `evaluateRuntimeOrderCampaignsAsync` fonksiyonunda kupon kodunu veritabanından asenkron olarak sorgula ve `couponDetails` nesnesini topla
-  - [x] `evaluateRuntimeOrderCampaigns` fonksiyonuna `selectedCouponCode` ve `couponDetails` parametrelerini aktar
-  - [x] `evaluateSingleCondition` fonksiyonunda `case 'coupon_present'` değerlendirme mantığını kodla
-- [x] Projeyi derle (`npm run build`) ve doğrulama yap
-- [x] Walkthrough.md dosyasını güncelle
+# Müşteri Mobil App — Bağımsız Web App Dönüşümü
+
+## Tamamlanan ✅
+- [x] SQL migration: `customer_app_config` tablosu (Railway'de çalıştırıldı)
+- [x] `src/lib/customerMobileAppConfig.js` — DB CRUD fonksiyonları
+- [x] `CustomerLoyaltyMobileApp.jsx` — PhoneChrome kaldır, tam ekran standalone
+- [x] `CustomerLoyaltyMobileApp.jsx` — MobileHomeDashboard bileşeni
+- [x] `CustomerLoyaltyMobileApp.jsx` — OrderTypeModal (adrese teslim + masadan sipariş)
+- [x] `CustomerLoyaltyMobileApp.jsx` — Sahte status bar standalone modda gizlendi
+- [x] `CustomerLoyaltyMobileApp.jsx` — Config entegrasyonu (DB'den branding/buton okuma)
+- [x] `CustomerMobileAppPage.jsx` — PWA meta tag'ları
+- [x] `MobileAppShells.jsx` — Admin config paneli (branding + butonlar)
+- [x] `MobileAppShells.jsx` — Görsel yükleme Railway volume üzerinden
+- [x] `server/index.js` — JSONB normalizeWriteValue fix (customer_app_config)
+- [x] Build başarılı (0 hata)
+
+## Bekleyen ⏳
+- [ ] ⚠️ **KRİTİK**: `server/index.js` Railway'e deploy et
+- [ ] Deploy sonrası config kaydetme testi
+- [ ] Boss uygulamasına aynı standalone dönüşüm
+- [ ] Personel uygulamasına aynı standalone dönüşüm
+- [ ] OperationSync.md güncelle (Entry 106 eklendi)

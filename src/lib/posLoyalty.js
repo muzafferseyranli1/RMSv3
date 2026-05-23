@@ -27,7 +27,7 @@ const LOCAL_RULE_CONDITION_KEYS = new Set([
   'coupon_present'
 ])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag', 'days_since_first_activity', 'last_visit_days'])
-const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'free_products', 'points_earn_multiplier'])
+const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'special_discount', 'free_products', 'points_earn_multiplier', 'write_customer_note'])
 const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
 function normalizeText(value) {
@@ -610,9 +610,11 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
       }
     }
 
+    case 'special_discount':
     case 'order_discount_amount': {
       const amount = Number(config.amount || 0) * mult
       if (amount <= 0) return null
+      const isSpecial = rule.actionType === 'special_discount'
       return {
         campaignId: campaign.id,
         campaignName: campaign.name || 'Kampanya',
@@ -620,7 +622,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         discountType: 'amount',
         discountValue: amount,
         discountAmount: Math.min(roundMoney(orderTotal), roundMoney(amount)),
-        offerLabel: `${formatAmount(amount)} siparis indirimi`,
+        offerLabel: isSpecial ? `${formatAmount(amount)} özel indirim` : `${formatAmount(amount)} siparis indirimi`,
         conditionLabel: getConditionPreview(rule),
         runtimeStatus: 'eligible',
         actionType: rule.actionType,
