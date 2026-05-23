@@ -5143,3 +5143,34 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `Boss ve Personel uygulamalari henuz ayni donusume tabi tutulmadi (kullanici talebi mevcut).`
 - `Next Step`: `(1) server/index.js'i Railway'e deploy et (GitHubguncelle.bat veya railway up). (2) Deploy sonrasi /musteri-app'ten config kaydetmeyi test et. (3) Boss ve Personel uygulamalarina ayni standalone donusumu uygula.`
 - `Handoff Contract`: `Sonraki agent KRITIK DEPLOY GEREKLILIGI: server/index.js degisikligi (normalizeWriteValue'da customer_app_config eklenmesi, satir 273) Railway'e deploy edilmeden customer_app_config tablosuna JSONB yazimi calismaz. Deploy ilk is olmali. Tum frontend kodu build edilmis ve hazir durumda. /musteri-app standalone modda calisiyor, sahte status bar kaldirildi, gorsel yukleme Railway volume'a yapiyor. Migration calistirildi, tablo ve default satir mevcut. Sonraki buyuk gorev Boss ve Personel uygulamalarinin ayni standalone donusume tabi tutulmasidir.`
+
+
+## Entry 107
+
+- `Timestamp`: `2026-05-23T16:47:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Sadakat Eylemleri Birleştirme ve Segment Kontrolü Arayüz Entegrasyonu`
+- `Intent`: `Kullanıcının sadakat modülünde bulunan 4 adet ek ücret ve indirim eylemini (tutar ve yüzde varyasyonları) 2 adet birleştirilmiş eyleme indirgemek ("Siparişte ek ücret" ve "Siparişte indirim") ve hesaplama türü (Tutar / Yüzde) seçimini modal içerisine segment kontrol olarak eklemek.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Files Changed`:
+  - `src/lib/loyalty.js` - `ACTION_TYPE_OPTIONS` güncellenerek 4 eski eylem kaldırıldı, yerine `order_extra_charge` ve `order_discount` eylemleri eklendi. `getDefaultActionConfig` ve `normalizeActionConfig` fonksiyonlarına `valueType` ve `includeAlreadyDiscounted` alanları için varsayılanlar/normalizasyonlar eklendi.
+  - `src/lib/loyaltyRuntimeStatus.js` - `ACTION_TYPE_STATUS` haritasına yeni birleşik eylemler `order_discount` (local, ledger: true) ve `order_extra_charge` (model, ledger: false) olarak tanımlandı.
+  - `src/lib/posLoyalty.js` - `LOCAL_RULE_ACTION_TYPES` kümesine `order_discount` eklendi. `buildOfferFromRule` içerisinde `order_discount` eylemi için `valueType` değerine göre (percent ise `discount_percent` tipinde, amount ise `order_discount_amount` tipinde) yerel teklif/indirim oluşturma ve POS motoru entegrasyonu sağlandı. Geriye dönük uyumluluk adına eski action tipleri de değerlendirilmeye devam ediyor.
+  - `src/components/pages/LoyaltyManagement.jsx` - Editör modalı içerisindeki `renderActionDetails` fonksiyonuna "Tutar / Yüzde" seçimi sunan modern Segment Kontrol (segmented-control / tab yapısı) eklendi.
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` - Kampanya sihirbazı şablonları (`GOAL_PRESETS` ve `RECOMMENDED_ACTIONS`), eylem özet metinleri ve editör bileşenleri yeni birleşik eylemler ve segment kontrolü ile uyumlu hale getirildi.
+- `Commands Run`:
+  - `npm run build` (Başarıyla derlendi, 18.55s)
+- `Findings`:
+  - Eski kuralların ve kampanyaların POS motoru tarafında sorunsuz çalışması için eski eylem tipleri (`order_extra_charge_amount`, `order_extra_charge_percent`, `order_discount_amount`, `total_order_discount_percent`) değerlendirme mantığında tutulmuştur. Böylece veri tabanında kayıtlı eski kampanyalar kırılmadan çalışmaya devam eder.
+- `Decisions`:
+  - Arayüzde "Tutar / Yüzde" segment seçimi için mevcut TailwindCSS kullanılmayan vanilya CSS yapısına uygun, RMSv3 buton tasarım diliyle (active/inactive state butonları) entegre bir yapı tercih edilmiştir.
+- `Open Risks`:
+  - Eski veri tabanı kayıtlarında `valueType` kolonu bulunmayan kampanyalar için `posLoyalty.js` varsayılan olarak `amount` veya `percent` eşleştirmesini eski eylem tiplerine bakarak yapmaktadır. Ancak yeni kurgulanan kampanyaların veritabanında `valueType` alanı içermesi gerekmektedir.
+- `Next Step`: `Yönetim panelinden yeni birleşik indirim ve ek ücret eylemleriyle kampanya oluşturarak POS sepetinde kuralların beklendiği gibi (tutar veya yüzde) uygulandığını doğrulamak.`
+- `Handoff Contract`: `Sadakat eylem kütüphanesi 4 eylemden 2 eyleme birleştirildi. Yeni eylemler 'order_discount' ve 'order_extra_charge' olarak isimlendirildi. Editör modalında tutar/yüzde segment seçimi mevcuttur. Eski kampanyalarla geriye dönük uyumluluk POS motorunda (posLoyalty.js) korunmuştur.`

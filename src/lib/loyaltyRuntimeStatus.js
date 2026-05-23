@@ -109,6 +109,7 @@ export const ACTION_TYPE_STATUS = {
   discount_percent: { category: 'local', ledger: true, label: '% İndirim' },
   total_order_discount_percent: { category: 'local', ledger: true, label: 'Toplam % İndirim' },
   order_discount_amount: { category: 'local', ledger: true, label: 'Tutar İndirimi' },
+  order_discount: { category: 'local', ledger: true, label: 'Siparişte indirim' },
   free_products: { category: 'local', ledger: true, label: 'Bedava ürünler' },
 
   // Puan kazanma - POS'ta çalışır, müşteri bağlıysa cüzdan yazımı olur
@@ -144,6 +145,7 @@ export const ACTION_TYPE_STATUS = {
   special_discount: { category: 'model', ledger: false, label: 'Özel indirim' },
   order_extra_charge_amount: { category: 'model', ledger: false, label: 'Ek ücret' },
   order_extra_charge_percent: { category: 'model', ledger: false, label: 'Ek ücret %' },
+  order_extra_charge: { category: 'model', ledger: false, label: 'Siparişte ek ücret' },
   suggest_products: { category: 'model', ledger: false, label: 'Ürün öner' },
 }
 

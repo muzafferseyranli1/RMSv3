@@ -1804,3 +1804,26 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Next Loyalty Step`:
   - Canlı POS ekranında son ziyarete göre winback (geri kazanım) kampanyalarının sepet tutarı ve kupon koşullarıyla birleştirilerek yerel olarak tetiklendiğini doğrula.
 
+
+
+## Entry 045
+
+- `Timestamp`: `2026-05-23T16:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Sadakat Eylemleri Kütüphanesinin Birleştirilmesi ve Editör Segment Kontrolü`
+- `Trigger`: `Sadakat modülündeki 4 adet ek ücret ve indirim eyleminin ("Siparişte ek ücret tutarı", "Siparişte ek ücret yüzdesi", "Siparişteki indirim tutarı", "Tüm siparişte indirim %") 2 birleşik eylemde birleştirilmesi ve Tutar / Yüzde seçiminin düzenleme modalına taşınması talebi.`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/lib/posLoyalty.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - `ACTION_TYPE_OPTIONS` listesinde 4 eski eylem yerine `order_extra_charge` ("Siparişte ek ücret") ve `order_discount` ("Siparişte indirim") olmak üzere 2 birleşik eylem listeleniyor.
+  - `getDefaultActionConfig` ve `normalizeActionConfig` fonksiyonları, bu birleşik eylemlerin konfigürasyon nesnesinde `valueType` ('amount' veya 'percent'), `amount`, `percent` ve `includeAlreadyDiscounted` alanlarını doğru şekilde oluşturuyor ve temizliyor.
+  - `posLoyalty.js` içerisindeki POS kampanya değerlendirme motoru, yeni `order_discount` ve `order_extra_charge` eylemlerini tanıyor. Eğer `config.valueType === 'percent'` ise yüzdeye göre indirim/ek ücret uyguluyor, aksi takdirde tutara göre uyguluyor.
+  - POS motoru geriye dönük uyumluluğu korumak için eski eylem tiplerini (`order_extra_charge_amount`, `order_extra_charge_percent`, `order_discount_amount`, `total_order_discount_percent`) de değerlendirmeye devam ediyor.
+  - `LoyaltyManagement.jsx` editör ekranında, bu birleşik eylemler seçildiğinde modal içinde modern ve estetik bir segment kontrolü (Tutar vs. Yüzde butonları) görünür. Tutar seçildiğinde miktar girişi, Yüzde seçildiğinde oran girişi (ve indirimler için "Daha önce indirim uygulanmış ürünleri dahil et" seçeneği) dinamik olarak gösterilir.
+  - `LoyaltyCampaignWizard.jsx` sihirbazında hedeflenen kampanya şablonları, hızlı eylemler, eylem açıklamaları ve editör pencereleri yeni birleşik eylem modeliyle uyumlu hale getirildi.
+- `Next Loyalty Step`:
+  - Yönetim panelinden yeni birleşik indirim ve ek ücret eylemleri kullanarak kampanya oluşturup, POS üzerinde sepet hesaplamasında doğru uygulandığını doğrula.

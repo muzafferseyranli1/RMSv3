@@ -27,7 +27,7 @@ const LOCAL_RULE_CONDITION_KEYS = new Set([
   'coupon_present'
 ])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag', 'days_since_first_activity', 'last_visit_days'])
-const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'special_discount', 'free_products', 'points_earn_multiplier', 'write_customer_note'])
+const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'order_discount', 'special_discount', 'free_products', 'points_earn_multiplier', 'write_customer_note'])
 const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
 function normalizeText(value) {
@@ -514,6 +514,15 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
     } else if (rule.actionType === 'order_discount_amount') {
       const amount = Number(config.amount || 0) * mult
       actions.push({ type: 'order_discount_amount', value: amount, label: `${formatAmount(amount)} indirim` })
+    } else if (rule.actionType === 'order_discount') {
+      const valueType = config.valueType || 'amount'
+      if (valueType === 'percent') {
+        const percent = Number(config.percent || 0)
+        actions.push({ type: 'discount_percent', value: percent, label: `%${percent} indirim` })
+      } else {
+        const amount = Number(config.amount || 0) * mult
+        actions.push({ type: 'order_discount_amount', value: amount, label: `${formatAmount(amount)} indirim` })
+      }
     } else if (rule.actionType === 'free_products') {
       const rawItems = Array.isArray(config.items) ? config.items : []
       if (rawItems.length > 0) {
@@ -592,7 +601,7 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
       if (percent <= 0) return null
       return {
         campaignId: campaign.id,
-        campaignName: campaign.name || 'Kampanya',
+        campaignName: campaign.name || 'Campaign',
         priority: Number(campaign.priority || 0),
         discountType: 'percent',
         discountValue: percent,
@@ -607,6 +616,53 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         selectedCouponCode: orderContext.selectedCouponCode || null,
         appliedActionsSummary: getAppliedActionsSummary(),
         decisionContext: getDecisionContext(),
+      }
+    }
+
+    case 'order_discount': {
+      const valueType = config.valueType || 'amount'
+      if (valueType === 'percent') {
+        const percent = Number(config.percent || 0)
+        if (percent <= 0) return null
+        return {
+          campaignId: campaign.id,
+          campaignName: campaign.name || 'Kampanya',
+          priority: Number(campaign.priority || 0),
+          discountType: 'percent',
+          discountValue: percent,
+          discountAmount: roundMoney(orderTotal * percent / 100),
+          offerLabel: `%${percent} siparis indirimi`,
+          conditionLabel: getConditionPreview(rule),
+          runtimeStatus: 'eligible',
+          actionType: rule.actionType,
+          sourceRuleId: rule.id,
+          applicationMode,
+          applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+          selectedCouponCode: orderContext.selectedCouponCode || null,
+          appliedActionsSummary: getAppliedActionsSummary(),
+          decisionContext: getDecisionContext(),
+        }
+      } else {
+        const amount = Number(config.amount || 0) * mult
+        if (amount <= 0) return null
+        return {
+          campaignId: campaign.id,
+          campaignName: campaign.name || 'Kampanya',
+          priority: Number(campaign.priority || 0),
+          discountType: 'amount',
+          discountValue: amount,
+          discountAmount: Math.min(roundMoney(orderTotal), roundMoney(amount)),
+          offerLabel: `${formatAmount(amount)} siparis indirimi`,
+          conditionLabel: getConditionPreview(rule),
+          runtimeStatus: 'eligible',
+          actionType: rule.actionType,
+          sourceRuleId: rule.id,
+          applicationMode,
+          applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+          selectedCouponCode: orderContext.selectedCouponCode || null,
+          appliedActionsSummary: getAppliedActionsSummary(),
+          decisionContext: getDecisionContext(),
+        }
       }
     }
 

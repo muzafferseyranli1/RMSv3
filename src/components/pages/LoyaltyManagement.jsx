@@ -1846,6 +1846,16 @@ function buildActionSummary(rule, context = {}) {
       return `%${config.percent || 0} indirim uygula`
     case 'total_order_discount_percent':
       return `%${config.percent || 0} toplam siparis indirimi uygula`
+    case 'order_discount':
+      if (config.valueType === 'percent') {
+        return `%${config.percent || 0} toplam siparis indirimi uygula`
+      }
+      return `${formatAmount(config.amount || 0)} siparis indirimi uygula`
+    case 'order_extra_charge':
+      if (config.valueType === 'percent') {
+        return `%${config.percent || 0} ek ucret uygula`
+      }
+      return `${formatAmount(config.amount || 0)} ek ucret uygula`
     case 'warning_message':
       return formatMessageSnippet(config.message, actionLabel)
     case 'bonus_points':
@@ -5135,6 +5145,124 @@ export default function LoyaltyManagement() {
               <input type="checkbox" checked={Boolean(config.includeAlreadyDiscounted)} onChange={event => patchAction({ includeAlreadyDiscounted: event.target.checked })} />
               Diger kampanyalara katilan urunlere uygula
             </label>
+          </div>
+        )
+      case 'order_extra_charge':
+        return (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <FieldStack label="Hesaplama Türü">
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => patchAction({ valueType: 'amount' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: (config.valueType || 'amount') === 'amount' ? '#fff' : 'transparent',
+                    color: (config.valueType || 'amount') === 'amount' ? '#0f172a' : '#64748b',
+                    fontWeight: (config.valueType || 'amount') === 'amount' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: (config.valueType || 'amount') === 'amount' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Tutar (TL)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patchAction({ valueType: 'percent' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: config.valueType === 'percent' ? '#fff' : 'transparent',
+                    color: config.valueType === 'percent' ? '#0f172a' : '#64748b',
+                    fontWeight: config.valueType === 'percent' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: config.valueType === 'percent' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Yüzde (%)
+                </button>
+              </div>
+            </FieldStack>
+            {(config.valueType || 'amount') === 'amount' ? (
+              <FieldStack label="Tutar">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.amount)} onChange={event => patchAction({ amount: event.target.value })} placeholder="Orn. 50" />
+              </FieldStack>
+            ) : (
+              <FieldStack label="Yüzde">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => patchAction({ percent: event.target.value })} placeholder="Orn. 20" />
+              </FieldStack>
+            )}
+          </div>
+        )
+      case 'order_discount':
+        return (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <FieldStack label="Hesaplama Türü">
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => patchAction({ valueType: 'amount' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: (config.valueType || 'amount') === 'amount' ? '#fff' : 'transparent',
+                    color: (config.valueType || 'amount') === 'amount' ? '#0f172a' : '#64748b',
+                    fontWeight: (config.valueType || 'amount') === 'amount' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: (config.valueType || 'amount') === 'amount' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Tutar (TL)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patchAction({ valueType: 'percent' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: config.valueType === 'percent' ? '#fff' : 'transparent',
+                    color: config.valueType === 'percent' ? '#0f172a' : '#64748b',
+                    fontWeight: config.valueType === 'percent' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: config.valueType === 'percent' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Yüzde (%)
+                </button>
+              </div>
+            </FieldStack>
+            {(config.valueType || 'amount') === 'amount' ? (
+              <FieldStack label="Tutar">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.amount)} onChange={event => patchAction({ amount: event.target.value })} placeholder="Orn. 50" />
+              </FieldStack>
+            ) : (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <FieldStack label="Yüzde">
+                  <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => patchAction({ percent: event.target.value })} placeholder="Orn. 20" />
+                </FieldStack>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                  <input type="checkbox" checked={Boolean(config.includeAlreadyDiscounted)} onChange={event => patchAction({ includeAlreadyDiscounted: event.target.checked })} />
+                  Diger kampanyalara katilan urunlere uygula
+                </label>
+              </div>
+            )}
           </div>
         )
       case 'warning_message':

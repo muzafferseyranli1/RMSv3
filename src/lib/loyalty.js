@@ -93,10 +93,8 @@ export const ACTION_TYPE_OPTIONS = [
   { value: 'remove_customer_tag', label: 'Müşteri kategorisini yönet (Ekle/Çıkar)' },
   { value: 'add_customer_tag', label: 'Müşteri kategorisini yönet (Ekle/Çıkar)' },
   { value: 'special_discount', label: 'Özel indirim' },
-  { value: 'order_extra_charge_amount', label: 'Siparişte ek ücret tutarı' },
-  { value: 'order_extra_charge_percent', label: 'Siparişte ek ücret yüzdesi' },
-  { value: 'order_discount_amount', label: 'Siparişteki indirim tutarı' },
-  { value: 'total_order_discount_percent', label: 'Tüm siparişte indirim %' },
+  { value: 'order_extra_charge', label: 'Siparişte ek ücret' },
+  { value: 'order_discount', label: 'Siparişte indirim' },
   { value: 'warning_message', label: 'Uyarı' },
   { value: 'suggest_products', label: 'Ekstra ürün teklif et' },
   { value: 'bonus_points', label: 'Puan yükle' },
@@ -803,6 +801,10 @@ export function getDefaultActionConfig(actionType) {
     case 'total_order_discount_percent':
     case 'discount_percent':
       return { percent: 0, includeAlreadyDiscounted: false }
+    case 'order_discount':
+      return { valueType: 'percent', percent: 0, amount: 0, includeAlreadyDiscounted: false }
+    case 'order_extra_charge':
+      return { valueType: 'amount', percent: 0, amount: 0 }
     case 'warning_message':
       return { message: '', customerOffer: '' }
     case 'bonus_points':
@@ -941,6 +943,8 @@ function normalizeActionConfig(actionType, rawConfig = {}) {
 
   if ('amount' in normalized) normalized.amount = toNumber(normalized.amount, 0)
   if ('percent' in normalized) normalized.percent = toNumber(normalized.percent, 0)
+  if ('valueType' in normalized) normalized.valueType = ['amount', 'percent'].includes(normalized.valueType) ? normalized.valueType : 'amount'
+  if ('includeAlreadyDiscounted' in normalized) normalized.includeAlreadyDiscounted = toBoolean(normalized.includeAlreadyDiscounted, false)
   if ('points' in normalized) normalized.points = toNumber(normalized.points, 0)
   if ('multiplier' in normalized) normalized.multiplier = toNumber(normalized.multiplier, 1)
   if ('priceValue' in normalized) normalized.priceValue = toNumber(normalized.priceValue, 0)

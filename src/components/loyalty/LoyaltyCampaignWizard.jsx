@@ -165,7 +165,7 @@ const GOAL_PRESETS = [
       applicable: [
         {
           conditionKey: 'order_total',
-          actionType: 'total_order_discount_percent',
+          actionType: 'order_discount',
         },
       ],
       periodic: [],
@@ -207,8 +207,8 @@ const RECOMMENDED_CONDITIONS = {
 }
 
 const RECOMMENDED_ACTIONS = {
-  new_customer: ['issue_coupon', 'bonus_points', 'total_order_discount_percent'],
-  basket: ['free_products', 'total_order_discount_percent', 'order_discount_amount'],
+  new_customer: ['issue_coupon', 'bonus_points', 'order_discount'],
+  basket: ['free_products', 'order_discount'],
   frequency: ['points_earn_multiplier', 'issue_coupon', 'bonus_points']
 }
 
@@ -246,15 +246,10 @@ const CONDITION_HELP_METADATA = {
 }
 
 const ACTION_HELP_METADATA = {
-  total_order_discount_percent: {
-    title: 'Siparişe Yüzde İndirim Eylemi',
-    desc: 'Müşterinin siparişindeki tüm uygun ürünlerin toplamı üzerinden belirtilen yüzde oranında indirim düşer.',
-    usage: 'Örneğin: "Tüm adisyona %15 indirim uygula" eylemi için bunu seçin ve değerini editörden %15 olarak ayarlayın.'
-  },
-  order_discount_amount: {
-    title: 'Siparişe Tutar İndirimi Eylemi',
-    desc: 'Müşterinin toplam adisyon tutarından net bir TL indirim tutarı düşülmesini sağlar.',
-    usage: 'Örneğin: "Siparişte net 100 TL indirim uygulansın" eylemleri için bu eylemi kampanyaya ekleyin.'
+  order_discount: {
+    title: 'Siparişe İndirim Eylemi',
+    desc: 'Müşterinin siparişine yüzde (%) veya tutar (TL) bazında indirim uygular.',
+    usage: 'Örneğin: "Tüm adisyona %15 indirim uygula" veya "100 TL indirim uygula" eylemleri için bunu seçip modal içinden türünü belirleyin.'
   },
   free_products: {
     title: 'Bedava Ürün İkramı Eylemi',
@@ -326,10 +321,8 @@ const ACTION_CHOICES_MAP = {
   remove_customer_tag: 'bonus_points',
   add_customer_tag: 'bonus_points',
   special_discount: 'discount_percent',
-  order_extra_charge_amount: 'discount_amount',
-  order_extra_charge_percent: 'discount_percent',
-  order_discount_amount: 'discount_amount',
-  total_order_discount_percent: 'discount_percent',
+  order_extra_charge: 'discount_amount',
+  order_discount: 'discount_percent',
   warning_message: 'bonus_points',
   suggest_products: 'product_offer',
   bonus_points: 'bonus_points',
@@ -999,6 +992,16 @@ function buildActionSummary(rule, context = {}) {
       return `%${config.percent || 0} indirim uygula`
     case 'total_order_discount_percent':
       return `%${config.percent || 0} toplam sipariş indirimi uygula`
+    case 'order_discount':
+      if (config.valueType === 'percent') {
+        return `%${config.percent || 0} toplam sipariş indirimi uygula`
+      }
+      return `${formatAmount(config.amount || 0)} sipariş indirimi uygula`
+    case 'order_extra_charge':
+      if (config.valueType === 'percent') {
+        return `%${config.percent || 0} ek ucret uygula`
+      }
+      return `${formatAmount(config.amount || 0)} ek ucret uygula`
     case 'warning_message':
       return String(config.message || '').trim() || actionLabel
     case 'bonus_points':
@@ -3634,6 +3637,124 @@ export default function LoyaltyCampaignWizard() {
               <input type="checkbox" checked={Boolean(config.includeAlreadyDiscounted)} onChange={event => onPatch({ includeAlreadyDiscounted: event.target.checked })} />
               Diger kampanyalara katilan urunlere uygula
             </label>
+          </div>
+        )
+      case 'order_extra_charge':
+        return (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <FieldStack label="Hesaplama Türü">
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ valueType: 'amount' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: (config.valueType || 'amount') === 'amount' ? '#fff' : 'transparent',
+                    color: (config.valueType || 'amount') === 'amount' ? '#0f172a' : '#64748b',
+                    fontWeight: (config.valueType || 'amount') === 'amount' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: (config.valueType || 'amount') === 'amount' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Tutar (TL)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ valueType: 'percent' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: config.valueType === 'percent' ? '#fff' : 'transparent',
+                    color: config.valueType === 'percent' ? '#0f172a' : '#64748b',
+                    fontWeight: config.valueType === 'percent' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: config.valueType === 'percent' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Yüzde (%)
+                </button>
+              </div>
+            </FieldStack>
+            {(config.valueType || 'amount') === 'amount' ? (
+              <FieldStack label="Tutar">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.amount)} onChange={event => onPatch({ amount: event.target.value })} />
+              </FieldStack>
+            ) : (
+              <FieldStack label="Yüzde">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => onPatch({ percent: event.target.value })} />
+              </FieldStack>
+            )}
+          </div>
+        )
+      case 'order_discount':
+        return (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <FieldStack label="Hesaplama Türü">
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ valueType: 'amount' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: (config.valueType || 'amount') === 'amount' ? '#fff' : 'transparent',
+                    color: (config.valueType || 'amount') === 'amount' ? '#0f172a' : '#64748b',
+                    fontWeight: (config.valueType || 'amount') === 'amount' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: (config.valueType || 'amount') === 'amount' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Tutar (TL)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ valueType: 'percent' })}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: config.valueType === 'percent' ? '#fff' : 'transparent',
+                    color: config.valueType === 'percent' ? '#0f172a' : '#64748b',
+                    fontWeight: config.valueType === 'percent' ? 700 : 500,
+                    fontSize: '12px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: config.valueType === 'percent' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Yüzde (%)
+                </button>
+              </div>
+            </FieldStack>
+            {(config.valueType || 'amount') === 'amount' ? (
+              <FieldStack label="Tutar">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.amount)} onChange={event => onPatch({ amount: event.target.value })} />
+              </FieldStack>
+            ) : (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <FieldStack label="Yüzde">
+                  <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => onPatch({ percent: event.target.value })} />
+                </FieldStack>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                  <input type="checkbox" checked={Boolean(config.includeAlreadyDiscounted)} onChange={event => onPatch({ includeAlreadyDiscounted: event.target.checked })} />
+                  Diger kampanyalara katilan urunlere uygula
+                </label>
+              </div>
+            )}
           </div>
         )
       case 'warning_message':
