@@ -1675,6 +1675,7 @@ function OdemeModalFlow({
   const [loyaltyLinkError, setLoyaltyLinkError] = useState('')
   const [loyaltyLinkStatus, setLoyaltyLinkStatus] = useState('')
   const [giftPaymentItemIds, setGiftPaymentItemIds] = useState([])
+  const [acknowledgedWarningCampaignIds, setAcknowledgedWarningCampaignIds] = useState(new Set())
 
   useEffect(() => {
     const nextExpanded = expandCartForPayment(cart)
@@ -1765,6 +1766,18 @@ function OdemeModalFlow({
     [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds, targetItems, saleTemplates]
   )
   const applicableLoyaltyOffers = loyaltyEvaluation.applicableOffers
+  const activeWarningOffer = useMemo(() => {
+    return (applicableLoyaltyOffers || []).find(
+      offer => offer.actionType === 'warning_message' &&
+      (offer.applicationMode === 'auto' || offer.campaignId === appliedLoyaltyCampaignId) &&
+      !acknowledgedWarningCampaignIds.has(String(offer.campaignId))
+    )
+  }, [applicableLoyaltyOffers, appliedLoyaltyCampaignId, acknowledgedWarningCampaignIds])
+
+  useEffect(() => {
+    setAcknowledgedWarningCampaignIds(new Set())
+  }, [linkedLoyaltyCustomer?.id, targetItems.length === 0])
+
   const autoApplicableLoyaltyCampaign = applicableLoyaltyOffers.find(
     offer => offer.applicationMode === 'auto' && loyaltyDecisionMap[offer.campaignId] !== 'skipped'
   ) || null
@@ -5519,6 +5532,29 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
           selectedIds={Array.from(effectiveFavoriteIds)}
           onToggle={toggleFavoriteProduct}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {activeWarningOffer && (
+        <InfoModalSafe
+          title={activeWarningOffer.campaignName || "Kampanya Uyarısı"}
+          message={
+            <div>
+              <div style={{ marginBottom: 12 }}>{activeWarningOffer.warningMessage}</div>
+              {activeWarningOffer.customerOffer && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, color: '#f59e0b', fontWeight: 'bold' }}>
+                  <strong>Müşteriye Sunulacak Teklif:</strong> {activeWarningOffer.customerOffer}
+                </div>
+              )}
+            </div>
+          }
+          onClose={() => {
+            setAcknowledgedWarningCampaignIds(prev => {
+              const next = new Set(prev)
+              next.add(String(activeWarningOffer.campaignId))
+              return next
+            })
+          }}
         />
       )}
 

@@ -27,7 +27,7 @@ const LOCAL_RULE_CONDITION_KEYS = new Set([
   'coupon_present'
 ])
 const CUSTOMER_CONTEXT_RULE_CONDITION_KEYS = new Set(['customer_has_tag', 'customer_lacks_tag', 'days_since_first_activity', 'last_visit_days'])
-const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'order_discount', 'special_discount', 'free_products', 'points_earn_multiplier', 'write_customer_note'])
+const LOCAL_RULE_ACTION_TYPES = new Set(['discount_percent', 'total_order_discount_percent', 'order_discount_amount', 'order_discount', 'special_discount', 'free_products', 'points_earn_multiplier', 'write_customer_note', 'warning_message'])
 const ASYNC_REDEMPTION_ACTION_TYPES = new Set(['points_redeem_multiplier'])
 
 function normalizeText(value) {
@@ -942,6 +942,73 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         appliedActionsSummary: getAppliedActionsSummary(),
         decisionContext: getDecisionContext(),
         customerNote: interpolatedNote,
+      }
+    }
+    case 'warning_message': {
+      const walletContext = orderContext.runtimeWalletContext || null
+      const pointsBalance = Number(walletContext?.pointsBalance || 0)
+
+      const audienceContext = {
+        customerId: orderContext.customerId,
+        customerName: orderContext.customerName,
+        customerCategoryIds: orderContext.customerCategoryIds,
+        customerCreatedAt: orderContext.customerCreatedAt,
+        customerFirstOrderAt: orderContext.customerFirstOrderAt,
+        customerLastVisitAt: orderContext.customerLastVisitAt,
+        tierPointsMultiplier: orderContext.tierPointsMultiplier,
+      }
+
+      const customerMatchedCampaigns = (orderContext.allCampaigns || []).filter(c => {
+        const aud = buildAudienceStatus(c, audienceContext)
+        return aud.supported && aud.matched
+      })
+      const activeCampaignsStr = customerMatchedCampaigns.map(c => c.name).join(', ') || 'aktif kampanya bulunmuyor'
+
+      const categoryIds = orderContext.customerCategoryIds || []
+      const categoryNames = categoryIds.map(id => {
+        const cat = (orderContext.customerCategories || []).find(c => String(c.id) === String(id))
+        return cat ? cat.name : id
+      }).filter(Boolean)
+      const customerCategoryStr = categoryNames.join(', ') || 'Standart'
+
+      let interpolatedMessage = String(config.message || '').trim()
+      let interpolatedOffer = String(config.customerOffer || '').trim()
+
+      const replaceTokens = (text) => {
+        if (!text) return ''
+        return text
+          .replace(/\{\{\s*loyalty_points\s*\}\}/g, String(pointsBalance))
+          .replace(/\{\{\s*active_campaigns\s*\}\}/g, activeCampaignsStr)
+          .replace(/\{\{\s*customer_category\s*\}\}/g, customerCategoryStr)
+          .replace(/\{\{\s*customer_name\s*\}\}/g, orderContext.customerName || 'Müşteri')
+          .replace(/\{\{\s*campaign_name\s*\}\}/g, campaign.name || '')
+          .replace(/\{\{\s*order_total\s*\}\}/g, String(orderTotal))
+          .replace(/\{\{\s*current_date\s*\}\}/g, new Date().toLocaleDateString('tr-TR'))
+          .replace(/\{\{\s*current_time\s*\}\}/g, new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))
+      }
+
+      interpolatedMessage = replaceTokens(interpolatedMessage)
+      interpolatedOffer = replaceTokens(interpolatedOffer)
+
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name || 'Kampanya',
+        priority: Number(campaign.priority || 0),
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        offerLabel: 'Uyarı mesajı',
+        conditionLabel: getConditionPreview(rule),
+        runtimeStatus: 'eligible',
+        actionType: rule.actionType,
+        sourceRuleId: rule.id,
+        applicationMode,
+        applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+        selectedCouponCode: orderContext.selectedCouponCode || null,
+        appliedActionsSummary: getAppliedActionsSummary(),
+        decisionContext: getDecisionContext(),
+        warningMessage: interpolatedMessage,
+        customerOffer: interpolatedOffer,
       }
     }
     default:

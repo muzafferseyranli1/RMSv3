@@ -2084,6 +2084,70 @@ function CustomerAppConfigPanel() {
               </div>
             </div>
           </div>
+
+          {/* Gövde Arka Planı */}
+          <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+            <label style={labelStyle}>Gövde Arka Planı (Butonlar + Özet Alanı)</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={{ ...labelStyle, fontSize: '.72rem' }}>Zemin Rengi</label>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={config.branding.bodyBackgroundColor || '#f8fafc'}
+                    onChange={e => handleBrandingChange('bodyBackgroundColor', e.target.value)}
+                    style={{ width: 44, height: 38, padding: 2, borderRadius: 8, border: '1px solid #cbd5e1', cursor: 'pointer' }}
+                  />
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    value={config.branding.bodyBackgroundColor || '#f8fafc'}
+                    onChange={e => handleBrandingChange('bodyBackgroundColor', e.target.value)}
+                    placeholder="#f8fafc"
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ ...labelStyle, fontSize: '.72rem' }}>veya Zemin Görseli</label>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {config.branding.bodyBackgroundImageUrl ? (
+                    <div style={{ position: 'relative', borderRadius: 8, border: '1px solid #e2e8f0', overflow: 'hidden', width: 80, height: 38, flexShrink: 0 }}>
+                      <img src={config.branding.bodyBackgroundImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <button
+                        type="button"
+                        onClick={() => handleBrandingChange('bodyBackgroundImageUrl', '')}
+                        style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,.5)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: '.55rem' }}
+                      >✕</button>
+                    </div>
+                  ) : null}
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px', borderRadius: 8,
+                    border: '1px dashed #94a3b8', background: '#f8fafc',
+                    color: '#475569', fontWeight: 800, fontSize: '.76rem',
+                    cursor: 'pointer',
+                  }}>
+                    <i className="fa-solid fa-image" />
+                    {config.branding.bodyBackgroundImageUrl ? 'Değiştir' : 'Yükle'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      style={{ display: 'none' }}
+                      disabled={!!uploading}
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        if (file.size > 10 * 1024 * 1024) { setError('Zemin görseli 10MB\'dan küçük olmalı.'); return }
+                        uploadFile(file, 'bodyBackgroundImageUrl')
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  {uploading === 'bodyBackgroundImageUrl' && <span style={{ fontSize: '.72rem', color: '#f5a623', fontWeight: 800 }}><i className="fa-solid fa-spinner fa-spin" /> Yükleniyor...</span>}
+                </div>
+                <span style={{ fontSize: '.68rem', color: '#94a3b8', marginTop: 4, display: 'block' }}>Görsel varsa renk yerine görsel kullanılır</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

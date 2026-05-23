@@ -7,6 +7,8 @@ const DEFAULT_BRANDING = {
   primaryColor: '#be185d',
   headerGradient: ['#111827', '#312e81', '#f97316'],
   welcomeText: 'Hoş Geldiniz',
+  bodyBackgroundColor: '#f8fafc',
+  bodyBackgroundImageUrl: '',
 }
 
 const DEFAULT_HOME_BUTTONS = [
@@ -49,6 +51,8 @@ function normalizeBranding(raw) {
     primaryColor: String(raw.primaryColor ?? DEFAULT_BRANDING.primaryColor),
     headerGradient: Array.isArray(raw.headerGradient) ? raw.headerGradient : DEFAULT_BRANDING.headerGradient,
     welcomeText: String(raw.welcomeText ?? DEFAULT_BRANDING.welcomeText),
+    bodyBackgroundColor: String(raw.bodyBackgroundColor ?? DEFAULT_BRANDING.bodyBackgroundColor),
+    bodyBackgroundImageUrl: String(raw.bodyBackgroundImageUrl ?? DEFAULT_BRANDING.bodyBackgroundImageUrl),
   }
 }
 

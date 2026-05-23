@@ -392,6 +392,8 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
   const bgImage = branding.backgroundImageUrl
   const logo = branding.logoUrl
   const primaryColor = branding.primaryColor || '#be185d'
+  const bodyBgColor = branding.bodyBackgroundColor || '#f8fafc'
+  const bodyBgImage = branding.bodyBackgroundImageUrl
 
   function handleButtonPress(btn) {
     switch (btn.type) {
@@ -475,57 +477,65 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
         </div>
       </div>
 
-      {/* 4 Action Buttons - 2x2 grid */}
-      <div style={{ padding: '20px 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        {(homeButtons || []).slice(0, 4).map(btn => (
-          <button
-            key={btn.id}
-            type="button"
-            onClick={() => handleButtonPress(btn)}
-            style={{
-              minHeight: 120,
-              borderRadius: 20,
-              border: '1px solid rgba(148,163,184,.12)',
-              background: 'linear-gradient(145deg, #1a1a2e, #16213e)',
-              color: '#fff',
-              display: 'grid',
-              gap: 10,
-              justifyItems: 'center',
-              alignContent: 'center',
-              padding: 16,
-              cursor: 'pointer',
-              boxShadow: '0 8px 24px rgba(0,0,0,.18)',
-              transition: 'transform .15s ease, box-shadow .15s ease',
-            }}
-          >
-            <span style={{
-              width: 46, height: 46, borderRadius: 14,
-              background: 'rgba(255,255,255,.1)',
-              display: 'grid', placeItems: 'center',
-              fontSize: '1.15rem',
-            }}>
-              <i className={`fa-solid ${btn.icon || 'fa-circle'}`} />
-            </span>
-            <span style={{ fontSize: '.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-              {btn.label}
-            </span>
-          </button>
-        ))}
-      </div>
+      {/* Body area with customizable background */}
+      <div style={{
+        background: bodyBgImage
+          ? `url(${bodyBgImage}) center/cover no-repeat fixed`
+          : bodyBgColor,
+        minHeight: 'calc(100svh - 260px)',
+      }}>
+        {/* 4 Action Buttons - 2x2 grid */}
+        <div style={{ padding: '20px 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          {(homeButtons || []).slice(0, 4).map(btn => (
+            <button
+              key={btn.id}
+              type="button"
+              onClick={() => handleButtonPress(btn)}
+              style={{
+                minHeight: 120,
+                borderRadius: 20,
+                border: '1px solid rgba(148,163,184,.12)',
+                background: 'linear-gradient(145deg, #1a1a2e, #16213e)',
+                color: '#fff',
+                display: 'grid',
+                gap: 10,
+                justifyItems: 'center',
+                alignContent: 'center',
+                padding: 16,
+                cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+                transition: 'transform .15s ease, box-shadow .15s ease',
+              }}
+            >
+              <span style={{
+                width: 46, height: 46, borderRadius: 14,
+                background: 'rgba(255,255,255,.1)',
+                display: 'grid', placeItems: 'center',
+                fontSize: '1.15rem',
+              }}>
+                <i className={`fa-solid ${btn.icon || 'fa-circle'}`} />
+              </span>
+              <span style={{ fontSize: '.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                {btn.label}
+              </span>
+            </button>
+          ))}
+        </div>
 
-      {/* Quick summary tiles */}
-      <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
-          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Puan</div>
-          <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.pointBalance > 0 ? model.pointBalance : '0'}</div>
-        </div>
-        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
-          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Kupon</div>
-          <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.activeCoupons.length}</div>
-        </div>
-        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
-          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Seviye</div>
-          <div style={{ marginTop: 4, fontSize: '.78rem', fontWeight: 900, color: '#7c3aed' }}>{model.tierSnapshot.currentTier?.name || 'Üyelik'}</div>
+        {/* Quick summary tiles */}
+        <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+            <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Puan</div>
+            <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.pointBalance > 0 ? model.pointBalance : '0'}</div>
+          </div>
+          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+            <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Kupon</div>
+            <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.activeCoupons.length}</div>
+          </div>
+          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+            <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Seviye</div>
+            <div style={{ marginTop: 4, fontSize: '.78rem', fontWeight: 900, color: '#7c3aed' }}>{model.tierSnapshot.currentTier?.name || 'Üyelik'}</div>
+          </div>
         </div>
       </div>
     </div>

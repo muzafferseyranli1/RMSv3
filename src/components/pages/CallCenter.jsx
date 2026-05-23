@@ -462,6 +462,19 @@ export default function OrderHub() {
     applicableOffers: [],
     walletReadiness: null,
   })
+  const [acknowledgedWarningCampaignIds, setAcknowledgedWarningCampaignIds] = useState(new Set())
+  const activeWarningOffer = useMemo(() => {
+    const offers = evaluatedRuntimeCampaigns.applicableOffers || []
+    return offers.find(
+      offer => offer.actionType === 'warning_message' &&
+      (offer.applicationMode === 'auto' || offer.campaignId === selectedLoyaltyCampaignId) &&
+      !acknowledgedWarningCampaignIds.has(String(offer.campaignId))
+    )
+  }, [evaluatedRuntimeCampaigns.applicableOffers, selectedLoyaltyCampaignId, acknowledgedWarningCampaignIds])
+
+  useEffect(() => {
+    setAcknowledgedWarningCampaignIds(new Set())
+  }, [selectedCustomer?.id, cart.length === 0])
 
   const selectedBranch = branches.find(branch => String(branch.id) === String(selectedBranchId)) || null
 
@@ -2863,6 +2876,58 @@ export default function OrderHub() {
           </div>
         </div>
       )}
+      {activeWarningOffer && (
+        <InfoModalSafe
+          title={activeWarningOffer.campaignName || "Kampanya Uyarısı"}
+          message={
+            <div>
+              <div style={{ marginBottom: 12 }}>{activeWarningOffer.warningMessage}</div>
+              {activeWarningOffer.customerOffer && (
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, color: '#2563eb', fontWeight: 'bold' }}>
+                  <strong>Müşteriye Sunulacak Teklif:</strong> {activeWarningOffer.customerOffer}
+                </div>
+              )}
+            </div>
+          }
+          onClose={() => {
+            setAcknowledgedWarningCampaignIds(prev => {
+              const next = new Set(prev)
+              next.add(String(activeWarningOffer.campaignId))
+              return next
+            })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function InfoModalSafe({ title, message, onClose }) {
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)',
+      zIndex:110, display:'flex', alignItems:'center', justifyContent:'center'
+    }}>
+      <div className="card" style={{
+        background:'#ffffff', border:'1px solid #e2e8f0', borderRadius:16,
+        width:420, maxWidth:'94vw', boxShadow:'0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+      }}>
+        <div style={{padding:'22px'}}>
+          <div style={{fontSize:'1.05rem', fontWeight:900, color:'#0f172a', marginBottom:10}}>{title}</div>
+          <div style={{fontSize:'.92rem', color:'#475569', lineHeight:1.5}}>{message}</div>
+        </div>
+        <div style={{
+          padding:'14px 22px', borderTop:'1px solid #e2e8f0', background:'#f8fafc',
+          borderRadius:'0 0 16px 16px', display:'flex', justifyContent:'flex-end'
+        }}>
+          <button className="btn-p" onClick={onClose} style={{
+            background:'#2563eb', color:'#ffffff',
+            border:'none', borderRadius:8, padding:'8px 18px', fontWeight:800, cursor:'pointer'
+          }}>
+            Tamam
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
