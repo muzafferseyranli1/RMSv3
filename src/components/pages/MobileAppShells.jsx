@@ -2,6 +2,7 @@ import Header from '@/components/layout/Header'
 import CustomerLoyaltyMobileApp from '@/components/mobile/CustomerLoyaltyMobileApp'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { loadCustomerAppConfig, saveCustomerAppConfig, getDefaultAppConfig } from '@/lib/customerMobileAppConfig'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
 import { postSaleLoyaltyValueLedger } from '@/lib/loyaltyValueLedger'
@@ -1885,6 +1886,278 @@ function QrMenuPhone() {
   )
 }
 
+function CustomerAppConfigPanel() {
+  const [config, setConfig] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('branding')
+  const [uploading, setUploading] = useState('')
+
+  const apiBase = import.meta.env.VITE_API_URL || ''
+
+  async function uploadFile(file, fieldKey) {
+    setUploading(fieldKey)
+    setError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
+      const result = await response.json()
+      if (result.error) throw new Error(result.error.message || 'Yükleme başarısız')
+      const fileUrl = `${apiBase}${result.data.file_url}`
+      handleBrandingChange(fieldKey, fileUrl)
+    } catch (err) {
+      setError(err.message || 'Dosya yüklenirken hata oluştu')
+    } finally {
+      setUploading('')
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    loadCustomerAppConfig().then(c => { if (active) setConfig(c) })
+    return () => { active = false }
+  }, [])
+
+  if (!config) return null
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError('')
+    setSuccess(false)
+    try {
+      await saveCustomerAppConfig(config)
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+      window.location.reload() // Reload to reflect changes in the phone preview
+    } catch (err) {
+      setError(err.message || 'Konfigürasyon kaydedilemedi')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleBrandingChange = (key, value) => {
+    setConfig(prev => ({ ...prev, branding: { ...prev.branding, [key]: value } }))
+  }
+
+  const handleButtonChange = (btnId, field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      homeButtons: prev.homeButtons.map(btn => 
+        btn.id === btnId ? { ...btn, [field]: value } : btn
+      )
+    }))
+  }
+
+  const handleButtonConfigChange = (btnId, key, value) => {
+    setConfig(prev => ({
+      ...prev,
+      homeButtons: prev.homeButtons.map(btn => 
+        btn.id === btnId ? { ...btn, config: { ...btn.config, [key]: value } } : btn
+      )
+    }))
+  }
+
+  const inputStyle = { width: '100%', minHeight: 38, padding: '0 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: '.88rem' }
+  const labelStyle = { display: 'block', marginBottom: 4, fontSize: '.78rem', fontWeight: 800, color: '#475569' }
+
+  return (
+    <div className="card" style={{ padding: 24, display: 'grid', gap: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>Müşteri Mobil Uygulama Ayarları</div>
+          <div style={{ marginTop: 4, color: '#64748b', fontSize: '.9rem' }}>Standalone mobil uygulama görünümünü ve buton işlevlerini yapılandırın.</div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          style={{ minWidth: 120, minHeight: 40, borderRadius: 12, border: 'none', background: '#f5a623', color: '#fff', fontWeight: 900, cursor: saving ? 'wait' : 'pointer' }}
+        >
+          {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+        </button>
+      </div>
+
+      {success && <div style={{ padding: '10px 14px', background: '#ecfdf5', color: '#065f46', borderRadius: 10, fontWeight: 800 }}>Başarıyla kaydedildi ve güncellendi.</div>}
+      {error && <div style={{ padding: '10px 14px', background: '#fef2f2', color: '#991b1b', borderRadius: 10, fontWeight: 800 }}>Hata: {error}</div>}
+
+      <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
+        <button type="button" onClick={() => setActiveTab('branding')} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: activeTab === 'branding' ? '#0f172a' : 'transparent', color: activeTab === 'branding' ? '#fff' : '#64748b', fontWeight: 800, cursor: 'pointer' }}>Marka & Görünüm</button>
+        <button type="button" onClick={() => setActiveTab('buttons')} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: activeTab === 'buttons' ? '#0f172a' : 'transparent', color: activeTab === 'buttons' ? '#fff' : '#64748b', fontWeight: 800, cursor: 'pointer' }}>Ana Sayfa Butonları</button>
+      </div>
+
+      {activeTab === 'branding' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div>
+            <label style={labelStyle}>Şirket/Uygulama Adı</label>
+            <input style={inputStyle} value={config.branding.companyName || ''} onChange={e => handleBrandingChange('companyName', e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Hoş Geldiniz Metni</label>
+            <input style={inputStyle} value={config.branding.welcomeText || ''} onChange={e => handleBrandingChange('welcomeText', e.target.value)} />
+          </div>
+
+          {/* Logo Yükleme */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Logo Görseli</label>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {config.branding.logoUrl ? (
+                <div style={{ position: 'relative', borderRadius: 12, border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc' }}>
+                  <img src={config.branding.logoUrl} alt="Logo" style={{ maxHeight: 72, maxWidth: 180, objectFit: 'contain', display: 'block' }} />
+                  <button
+                    type="button"
+                    onClick={() => handleBrandingChange('logoUrl', '')}
+                    style={{ position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: 999, border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: '.7rem', fontWeight: 900 }}
+                  >✕</button>
+                </div>
+              ) : null}
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '10px 18px', borderRadius: 10,
+                border: '1px dashed #94a3b8', background: '#f8fafc',
+                color: '#475569', fontWeight: 800, fontSize: '.82rem',
+                cursor: 'pointer',
+              }}>
+                <i className="fa-solid fa-cloud-arrow-up" />
+                {config.branding.logoUrl ? 'Değiştir' : 'Logo Yükle'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  style={{ display: 'none' }}
+                  disabled={!!uploading}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    if (file.size > 10 * 1024 * 1024) { setError('Logo dosyası 10MB\'dan küçük olmalı.'); return }
+                    uploadFile(file, 'logoUrl')
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {uploading === 'logoUrl' && <span style={{ fontSize: '.78rem', color: '#f5a623', fontWeight: 800, alignSelf: 'center' }}><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Yükleniyor...</span>}
+              <span style={{ fontSize: '.72rem', color: '#94a3b8', alignSelf: 'center' }}>PNG, JPG, SVG, WebP — Railway volume'a yüklenir</span>
+            </div>
+          </div>
+
+          {/* Arka Plan Görseli Yükleme */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Arka Plan Görseli</label>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {config.branding.backgroundImageUrl ? (
+                <div style={{ position: 'relative', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', maxWidth: 420 }}>
+                  <img src={config.branding.backgroundImageUrl} alt="Arka plan" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+                  <button
+                    type="button"
+                    onClick={() => handleBrandingChange('backgroundImageUrl', '')}
+                    style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,.5)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: '.72rem', fontWeight: 900 }}
+                  >✕</button>
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '10px 18px', borderRadius: 10,
+                  border: '1px dashed #94a3b8', background: '#f8fafc',
+                  color: '#475569', fontWeight: 800, fontSize: '.82rem',
+                  cursor: 'pointer',
+                }}>
+                  <i className="fa-solid fa-image" />
+                  {config.branding.backgroundImageUrl ? 'Değiştir' : 'Arka Plan Yükle'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ display: 'none' }}
+                    disabled={!!uploading}
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      if (file.size > 10 * 1024 * 1024) { setError('Arka plan görseli 10MB\'dan küçük olmalı.'); return }
+                      uploadFile(file, 'backgroundImageUrl')
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+                {uploading === 'backgroundImageUrl' && <span style={{ fontSize: '.78rem', color: '#f5a623', fontWeight: 800 }}><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Yükleniyor...</span>}
+                <span style={{ fontSize: '.72rem', color: '#94a3b8' }}>PNG, JPG, WebP — Railway volume'a yüklenir</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'buttons' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          {config.homeButtons.map((btn, i) => (
+            <div key={btn.id} style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 12, display: 'grid', gap: 14 }}>
+              <div style={{ fontWeight: 900, color: '#334155' }}>Buton {i + 1}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Etiket</label>
+                  <input style={inputStyle} value={btn.label} onChange={e => handleButtonChange(btn.id, 'label', e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>İkon (FontAwesome)</label>
+                  <input style={inputStyle} value={btn.icon} onChange={e => handleButtonChange(btn.id, 'icon', e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Aksiyon Tipi</label>
+                  <select style={inputStyle} value={btn.type} onChange={e => handleButtonChange(btn.id, 'type', e.target.value)}>
+                    <option value="order">Sipariş Ver Modalı</option>
+                    <option value="phone">Telefon Et</option>
+                    <option value="weblink">Web Sitesi Aç</option>
+                    <option value="app_page">Uygulama İçi Sayfa</option>
+                  </select>
+                </div>
+              </div>
+
+              {btn.type === 'phone' && (
+                <div>
+                  <label style={labelStyle}>Telefon Numarası</label>
+                  <input style={inputStyle} value={btn.config.phoneNumber || ''} onChange={e => handleButtonConfigChange(btn.id, 'phoneNumber', e.target.value)} placeholder="+905551234567" />
+                </div>
+              )}
+              {btn.type === 'weblink' && (
+                <div>
+                  <label style={labelStyle}>Yönlendirilecek URL</label>
+                  <input style={inputStyle} value={btn.config.url || ''} onChange={e => handleButtonConfigChange(btn.id, 'url', e.target.value)} placeholder="https://..." />
+                </div>
+              )}
+              {btn.type === 'app_page' && (
+                <div>
+                  <label style={labelStyle}>Açılacak Sekme</label>
+                  <select style={inputStyle} value={btn.config.pageKey || ''} onChange={e => handleButtonConfigChange(btn.id, 'pageKey', e.target.value)}>
+                    <option value="campaigns">Kampanyalar</option>
+                    <option value="coupons">Kuponlar</option>
+                    <option value="card">Sadakat Kartım</option>
+                    <option value="account">Hesabım</option>
+                  </select>
+                </div>
+              )}
+              {btn.type === 'order' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Adrese Teslim URL (Boşsa gizlenir)</label>
+                    <input style={inputStyle} value={btn.config.deliveryUrl || ''} onChange={e => handleButtonConfigChange(btn.id, 'deliveryUrl', e.target.value)} placeholder="Getir/Yemeksepeti vb." />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Masadan Sipariş QR İzni</label>
+                    <select style={inputStyle} value={btn.config.enableTableOrder !== false ? 'yes' : 'no'} onChange={e => handleButtonConfigChange(btn.id, 'enableTableOrder', e.target.value === 'yes')}>
+                      <option value="yes">Aktif</option>
+                      <option value="no">Kapalı</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MobileAppShells({ screenKey = 'personnel' }) {
   const screen = SCREEN_MAP[screenKey] || SCREEN_MAP.personnel
   const isCustomerScreen = screenKey === 'customer'
@@ -1933,6 +2206,8 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
             </div>
           </div>
         )}
+
+        {isCustomerScreen && <CustomerAppConfigPanel />}
 
         {isCustomerScreen
           ? <CustomerLoyaltyMobileApp />

@@ -270,6 +270,7 @@ function normalizeWriteValue(table, column, value) {
     order_flows: new Set(['branches', 'order_days', 'aylik_gunler', 'selected_stocks']),
     pos_sales: new Set(['items']),
     price_changes: new Set(['changes']),
+    customer_app_config: new Set(['branding', 'home_buttons']),
   }
 
   // These columns accept nested arrays/objects. Stringifying here keeps the generic

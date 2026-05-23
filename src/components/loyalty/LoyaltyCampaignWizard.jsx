@@ -351,7 +351,7 @@ const SIMPLE_CONDITION_CHOICES = CONDITION_LIBRARY.map(item => {
   }
 })
 
-const SIMPLE_ACTION_CHOICES = ACTION_TYPE_OPTIONS.map(item => {
+const SIMPLE_ACTION_CHOICES = ACTION_TYPE_OPTIONS.filter(item => item.value !== 'remove_customer_tag').map(item => {
   const campaignType = ACTION_CHOICES_MAP[item.value] || 'bonus_points'
   return {
     value: item.value,
@@ -961,10 +961,17 @@ function buildActionSummary(rule, context = {}) {
   const seriesLabels = formatCompactList(getMappedLabels(config.seriesIds, summaryContext.couponSeriesMap))
 
   switch (rule.actionType) {
-    case 'free_products':
+    case 'free_products': {
+      const itemNames = formatCompactList((config.items || []).map(item => {
+        const name = item.name || summaryContext.saleItemMap.get(String(item.itemId || '')) || item.itemId
+        const qty = item.qty || 1
+        return qty > 1 ? `${qty}x ${name}` : name
+      }))
+      return itemNames ? `${itemNames} urunlerini hediye et` : actionLabel
+    }
     case 'suggest_products': {
       const itemNames = formatCompactList((config.items || []).map(item => item.name || summaryContext.saleItemMap.get(String(item.itemId || '')) || item.itemId))
-      return itemNames ? `${itemNames} urunlerini ${rule.actionType === 'free_products' ? 'hediye et' : 'oner'}` : actionLabel
+      return itemNames ? `${itemNames} urunlerini oner` : actionLabel
     }
     case 'product_pricing':
       return (config.items || []).length > 0 ? formatCompactList((config.items || []).map(item => item.name || 'Fiyat kuralı'), actionLabel) : actionLabel
@@ -977,9 +984,9 @@ function buildActionSummary(rule, context = {}) {
     case 'send_webhook':
       return config.endpoint ? `Webhook gonder: ${config.endpoint}` : actionLabel
     case 'remove_customer_tag':
-      return categoryLabel ? `${targetLabel} icin ${categoryLabel} kategorisini kaldir` : actionLabel
+      return categoryLabel ? `${categoryLabel} kategorisinden cikar` : actionLabel
     case 'add_customer_tag':
-      return categoryLabel ? `${targetLabel} icin ${categoryLabel} kategorisini ekle` : actionLabel
+      return categoryLabel ? `${categoryLabel} kategorisine ekle` : actionLabel
     case 'special_discount':
       return `${formatAmount(config.amount || 0)} ozel indirim uygula`
     case 'order_discount_amount':
@@ -1014,17 +1021,26 @@ function createMaskCatalogOptions({ saleItems, saleCategories, saleTemplates }) 
     ...(saleTemplates || []).map(template => ({
       value: `sale_template:${template.id}`,
       label: template.name || '',
-      description: template.description || 'Satis mali sablonu',
+      description: template.description || '',
+      group: 'Satış malı şablonları',
+      icon: 'fa-tags',
+      meta: `${Array.isArray(template.saleIds || template.sale_ids) ? (template.saleIds || template.sale_ids).length : 0} ürün`,
     })),
     ...(saleCategories || []).map(category => ({
       value: `category:${category.id}`,
       label: category.name || '',
-      description: 'Urun kategorisi',
+      description: 'Ürün kategorisi / ürün grubu',
+      group: 'Kategoriler',
+      icon: 'fa-layer-group',
+      meta: 'Kategori',
     })),
     ...(saleItems || []).map(item => ({
       value: `product:${item.id}`,
       label: item.name || '',
-      description: item.sku || 'Urun',
+      description: item.sku || '',
+      group: 'Ürünler',
+      icon: 'fa-burger',
+      meta: 'Ürün',
     })),
   ]
 }
@@ -1044,7 +1060,7 @@ function createProductMask() {
 }
 
 function createOfferItem() {
-  return { id: createId('offer'), itemId: '', name: '', type: 'product', size: '' }
+  return { id: createId('offer'), itemId: '', name: '', type: 'product', size: '', qty: 1 }
 }
 
 function createPricingItem() {
@@ -1520,6 +1536,7 @@ export default function LoyaltyCampaignWizard() {
   const [conflictGroupModalOpen, setConflictGroupModalOpen] = useState(false)
   const [conflictGroupDraft, setConflictGroupDraft] = useState({ name: '', description: '' })
   const [conflictGroupSaving, setConflictGroupSaving] = useState(false)
+  const [showNewTemplateModal, setShowNewTemplateModal] = useState(false)
   const workspaceSnapshotRef = useRef({
     program: normalizeProgram(DEFAULT_LOYALTY_PROGRAM),
     tiers: [],
@@ -2535,30 +2552,50 @@ export default function LoyaltyCampaignWizard() {
         <FieldStack label={label} hint="Bu alandan ürün, kategori veya satış malı şablonu seçilebilir.">
           <div style={{ display: 'grid', gap: 8 }}>
             {masks.map(mask => {
+              const isTemplate = mask.type === 'sale_template' || mask.type === 'mask' || mask.type === 'template'
+              const templateObj = isTemplate ? saleTemplates.find(st => String(st.id) === String(mask.itemId)) : null
+              const matchedProducts = templateObj
+                ? (templateObj.saleIds || templateObj.sale_ids || []).map(id => saleItems.find(p => String(p.id) === String(id))).filter(Boolean)
+                : []
               const selectedValue = mask.itemId ? `${mask.type || 'product'}:${mask.itemId}` : ''
+
               return (
-                <div key={mask.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'end' }}>
-                  {renderMaskSelect(selectedValue, rawValue => {
-                    const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
-                    onPatch(current => ({
-                      ...current,
-                      productMasks: (current.productMasks || []).map(item => item.id === mask.id ? { ...item, ...parsed } : item),
-                    }))
-                  })}
-                  <button
-                    className="btn-danger"
-                    type="button"
-                    onClick={() => onPatch(current => ({
-                      ...current,
-                      productMasks: (current.productMasks || []).filter(item => item.id !== mask.id),
-                    }))}
-                  >
-                    Sil
-                  </button>
+                <div key={mask.id} style={{ display: 'grid', gap: 4, padding: 8, border: '1px solid #f1f5f9', borderRadius: 12, background: '#fafbfc' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'end' }}>
+                    <div style={{ flex: 1 }}>
+                      {renderMaskSelect(selectedValue, rawValue => {
+                        const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
+                        onPatch(current => ({
+                          ...current,
+                          productMasks: (current.productMasks || []).map(item => item.id === mask.id ? { ...item, ...parsed } : item),
+                        }))
+                      })}
+                    </div>
+                    <button
+                      className="btn-danger"
+                      type="button"
+                      onClick={() => onPatch(current => ({
+                        ...current,
+                        productMasks: (current.productMasks || []).filter(item => item.id !== mask.id),
+                      }))}
+                    >
+                      Sil
+                    </button>
+                  </div>
+                  {matchedProducts.length > 0 && (
+                    <div style={{ fontSize: '.74rem', color: '#64748b', background: '#f8fafc', padding: '6px 12px', borderRadius: 10, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800 }}>Şablon İçeriği:</span>
+                      {matchedProducts.map(p => (
+                        <span key={p.id} style={{ background: '#e2e8f0', color: '#475569', padding: '2px 8px', borderRadius: 6, fontSize: '.68rem' }}>
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
-            <div>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 className="btn-o"
                 type="button"
@@ -2568,6 +2605,9 @@ export default function LoyaltyCampaignWizard() {
                 }))}
               >
                 + Filtre Ekle
+              </button>
+              <button className="btn-o" type="button" style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff' }} onClick={() => setShowNewTemplateModal(true)}>
+                <i className="fa-solid fa-plus" style={{ marginRight: 6 }} /> Yeni Şablon Oluştur
               </button>
             </div>
           </div>
@@ -3081,7 +3121,7 @@ export default function LoyaltyCampaignWizard() {
     }
   }
 
-  function renderActionDetails(rule, scope, onPatchOverride = null) {
+  function renderActionDetails(rule, scope, onPatchOverride = null, onChangeActionType = null) {
     const config = rule.actionConfig || {}
     const onPatch = onPatchOverride || (patch => patchRuleActionConfig(scope, rule.id, patch))
 
@@ -3096,31 +3136,85 @@ export default function LoyaltyCampaignWizard() {
       const items = Array.isArray(config.items) ? config.items : []
       return (
         <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: '.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            Bu listede hediye edilecek veya onerilecek urunleri tanimlarsiniz.
+          </div>
           <div style={{ display: 'grid', gap: 8 }}>
             {items.map(item => {
+              const isTemplate = item.type === 'sale_template' || item.type === 'mask' || item.type === 'template'
+              const templateObj = isTemplate ? saleTemplates.find(st => String(st.id) === String(item.itemId)) : null
+              const matchedProducts = templateObj
+                ? (templateObj.saleIds || templateObj.sale_ids || []).map(id => saleItems.find(p => String(p.id) === String(id))).filter(Boolean)
+                : []
               const selectedValue = item.itemId ? `${item.type || 'product'}:${item.itemId}` : ''
+
               return (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'end' }}>
-                  {renderMaskSelect(selectedValue, rawValue => {
-                    const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
-                    patchOfferItem(item.id, parsed)
-                  })}
-                  <button className="btn-danger" type="button" onClick={() => onPatch(current => ({ ...current, items: (current.items || []).filter(entry => entry.id !== item.id) }))}>
-                    Sil
-                  </button>
+                <div key={item.id} style={{ display: 'grid', gap: 4, padding: 8, border: '1px solid #f1f5f9', borderRadius: 12, background: '#fafbfc' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 100px auto', gap: 8, alignItems: 'end' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b', marginBottom: 6 }}>Ürün / kategori / şablon</div>
+                      {renderMaskSelect(selectedValue, rawValue => {
+                        const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
+                        patchOfferItem(item.id, parsed)
+                      })}
+                    </div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Adet</div>
+                      <input
+                        className="f-input"
+                        type="number"
+                        min={1}
+                        value={item.qty || 1}
+                        onChange={event => {
+                          const val = Math.max(1, parseInt(event.target.value, 10) || 1)
+                          patchOfferItem(item.id, { qty: val })
+                        }}
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <button className="btn-danger" type="button" onClick={() => onPatch(current => ({ ...current, items: (current.items || []).filter(entry => entry.id !== item.id) }))}>
+                      Sil
+                    </button>
+                  </div>
+                  {matchedProducts.length > 0 && (
+                    <div style={{ fontSize: '.74rem', color: '#64748b', background: '#f8fafc', padding: '6px 12px', borderRadius: 10, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800 }}>Şablon İçeriği:</span>
+                      {matchedProducts.map(p => (
+                        <span key={p.id} style={{ background: '#e2e8f0', color: '#475569', padding: '2px 8px', borderRadius: 6, fontSize: '.68rem' }}>
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
-            <div>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn-o" type="button" onClick={() => onPatch(current => ({ ...current, items: [...(current.items || []), createOfferItem()] }))}>
                 + Oge Ekle
               </button>
+              <button className="btn-o" type="button" style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff' }} onClick={() => setShowNewTemplateModal(true)}>
+                <i className="fa-solid fa-plus" style={{ marginRight: 6 }} /> Yeni Şablon Oluştur
+              </button>
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
-            <input type="checkbox" checked={Boolean(config.applyToPricedOptions)} onChange={event => onPatch({ applyToPricedOptions: event.target.checked })} />
-            Fiyatli opsiyonlara uygula
-          </label>
+          {rule.actionType === 'free_products' ? (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                <input type="checkbox" checked={config.freeOptions !== false} onChange={event => onPatch({ freeOptions: event.target.checked })} />
+                Seçenekleri de hediye et
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                <input type="checkbox" checked={config.freeSizes !== false} onChange={event => onPatch({ freeSizes: event.target.checked })} />
+                Boyutları de hediye et
+              </label>
+            </div>
+          ) : (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+              <input type="checkbox" checked={Boolean(config.applyToPricedOptions)} onChange={event => onPatch({ applyToPricedOptions: event.target.checked })} />
+              Fiyatli opsiyonlara uygula
+            </label>
+          )}
         </div>
       )
     }
@@ -3129,39 +3223,121 @@ export default function LoyaltyCampaignWizard() {
       const items = Array.isArray(config.items) ? config.items : []
       return (
         <div style={{ display: 'grid', gap: 10 }}>
-          {items.map(item => {
-            const selectedValue = item.itemId ? `${item.maskType || 'product'}:${item.itemId}` : ''
-            return (
-              <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr .8fr auto', gap: 8 }}>
-                {renderMaskSelect(selectedValue, rawValue => {
-                  const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
-                  onPatch(current => ({
-                    ...current,
-                    items: (current.items || []).map(entry => entry.id === item.id ? {
-                      ...entry,
-                      itemId: parsed.itemId,
-                      name: parsed.name,
-                      maskType: parsed.type,
-                    } : entry),
-                  }))
-                })}
-                <div className="sel-wrap">
-                  <select className="f-input" value={item.applyTo} onChange={event => onPatch(current => ({ ...current, items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, applyTo: event.target.value } : entry) }))}>
-                    {PRICING_APPLY_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div className="sel-wrap">
-                  <select className="f-input" value={item.pricingType} onChange={event => onPatch(current => ({ ...current, items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, pricingType: event.target.value } : entry) }))}>
-                    {PRICING_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(item.value)} disabled={item.pricingType === 'none'} onChange={event => onPatch(current => ({ ...current, items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, value: event.target.value } : entry) }))} />
-                <button className="btn-danger" type="button" onClick={() => onPatch(current => ({ ...current, items: (current.items || []).filter(entry => entry.id !== item.id) }))}>Sil</button>
+          <div style={{ fontSize: '.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            Hedefi Ürün, Şablon veya Kategori olarak seçip indirimi şablona göre tüm ürünlere, en ucuz ürüne veya en pahalı ürüne uygulayabilirsiniz.
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {items.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 1fr 0.7fr auto', gap: 8, fontSize: '.72rem', color: '#64748b', fontWeight: 800, paddingInline: 8 }}>
+                <div>Urun / kategori / sablon</div>
+                <div>Uygula</div>
+                <div>Tur</div>
+                <div>Deger</div>
+                <div />
               </div>
-            )
-          })}
-          <div>
-            <button className="btn-o" type="button" onClick={() => onPatch(current => ({ ...current, items: [...(current.items || []), createPricingItem()] }))}>+ Fiyat Kurali Ekle</button>
+            ) : null}
+            {items.map(item => {
+              const isTemplate = item.maskType === 'sale_template' || item.maskType === 'mask' || item.maskType === 'template'
+              const templateObj = isTemplate ? saleTemplates.find(st => String(st.id) === String(item.itemId)) : null
+              const matchedProducts = templateObj
+                ? (templateObj.saleIds || templateObj.sale_ids || []).map(id => saleItems.find(p => String(p.id) === String(id))).filter(Boolean)
+                : []
+              const isSingleProduct = item.maskType === 'product'
+              const selectedValue = item.itemId ? `${item.maskType || 'product'}:${item.itemId}` : ''
+
+              return (
+                <div key={item.id} style={{ display: 'grid', gap: 4, padding: 8, border: '1px solid #f1f5f9', borderRadius: 12, background: '#fafbfc' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 1fr 0.7fr auto', gap: 8, alignItems: 'end' }}>
+                    {renderMaskSelect(selectedValue, rawValue => {
+                      const parsed = parseCatalogSelection(rawValue, maskCatalogMap)
+                      onPatch(current => ({
+                        ...current,
+                        items: (current.items || []).map(entry => entry.id === item.id ? {
+                          ...entry,
+                          itemId: parsed.itemId,
+                          name: parsed.name,
+                          maskType: parsed.type,
+                          applyTo: parsed.type === 'product' ? 'all_matches' : entry.applyTo
+                        } : entry),
+                      }))
+                    })}
+                    <div className="sel-wrap">
+                      <select
+                        className="f-input"
+                        value={item.applyTo}
+                        disabled={isSingleProduct}
+                        onChange={event => onPatch(current => ({
+                          ...current,
+                          items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, applyTo: event.target.value } : entry),
+                        }))}
+                      >
+                        {PRICING_APPLY_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="sel-wrap">
+                      <select
+                        className="f-input"
+                        value={item.pricingType}
+                        onChange={event => onPatch(current => ({
+                          ...current,
+                          items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, pricingType: event.target.value } : entry),
+                        }))}
+                      >
+                        {PRICING_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </div>
+                    <input
+                      className="f-input"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formatNumberInputValue(item.value)}
+                      onChange={event => onPatch(current => ({
+                        ...current,
+                        items: (current.items || []).map(entry => entry.id === item.id ? { ...entry, value: event.target.value } : entry),
+                      }))}
+                      placeholder={item.pricingType === 'none' ? '-' : 'Deger'}
+                      disabled={item.pricingType === 'none'}
+                    />
+                    <button
+                      className="btn-danger"
+                      type="button"
+                      onClick={() => onPatch(current => ({
+                        ...current,
+                        items: (current.items || []).filter(entry => entry.id !== item.id),
+                      }))}
+                    >
+                      Sil
+                    </button>
+                  </div>
+                  {matchedProducts.length > 0 && (
+                    <div style={{ fontSize: '.74rem', color: '#64748b', background: '#f8fafc', padding: '6px 12px', borderRadius: 10, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800 }}>Şablon İçeriği:</span>
+                      {matchedProducts.map(p => (
+                        <span key={p.id} style={{ background: '#e2e8f0', color: '#475569', padding: '2px 8px', borderRadius: 6, fontSize: '.68rem' }}>
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn-o"
+                type="button"
+                onClick={() => onPatch(current => ({
+                  ...current,
+                  items: [...(current.items || []), createPricingItem()],
+                }))}
+              >
+                + Fiyat Kurali Ekle
+              </button>
+              <button className="btn-o" type="button" style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff' }} onClick={() => setShowNewTemplateModal(true)}>
+                <i className="fa-solid fa-plus" style={{ marginRight: 6 }} /> Yeni Şablon Oluştur
+              </button>
+            </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
             <input type="checkbox" checked={Boolean(config.applyToPricedOptions)} onChange={event => onPatch({ applyToPricedOptions: event.target.checked })} />
@@ -3251,15 +3427,93 @@ export default function LoyaltyCampaignWizard() {
         return renderPricingEditor()
       case 'combo_bundle':
         return renderComboEditor()
+
       case 'write_customer_note':
         return (
-          <div style={{ display: 'grid', gap: 10 }}>
-            <FieldStack label="Müşteri varsa yazılacak not">
-              <textarea className="f-input" rows={3} value={config.customerTemplate || ''} onChange={event => onPatch({ customerTemplate: event.target.value })} />
+          <div style={{ display: 'grid', gap: 12 }}>
+            <FieldStack label="Müşteri adisyonuna, paket servise sipariş formuna yazılacak not">
+              <textarea 
+                className="f-input" 
+                rows={3} 
+                value={config.customerTemplate || ''} 
+                onChange={event => onPatch({ customerTemplate: event.target.value, anonymousTemplate: event.target.value })} 
+                placeholder="Örn. VIP müşteri indirimi uygulandı."
+              />
             </FieldStack>
-            <FieldStack label="Müşteri yoksa yazılacak not">
-              <textarea className="f-input" rows={3} value={config.anonymousTemplate || ''} onChange={event => onPatch({ anonymousTemplate: event.target.value })} />
-            </FieldStack>
+
+            <div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#4b5563', marginBottom: 6 }}>Değişkenler (Tıklayarak ekleyin):</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button 
+                  type="button" 
+                  className="btn-o btn-xs" 
+                  style={{ borderRadius: 16, padding: '4px 10px', fontSize: '0.78rem', border: '1px solid #c084fc', color: '#a855f7', background: 'rgba(168,85,247,0.04)', cursor: 'pointer' }}
+                  onClick={() => {
+                    const val = config.customerTemplate || '';
+                    const newVal = val ? val + ' {{loyalty_points}}' : '{{loyalty_points}}';
+                    onPatch({ customerTemplate: newVal, anonymousTemplate: newVal });
+                  }}
+                >
+                  ✨ Sadakat Puanı ({{loyalty_points}})
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-o btn-xs" 
+                  style={{ borderRadius: 16, padding: '4px 10px', fontSize: '0.78rem', border: '1px solid #60a5fa', color: '#3b82f6', background: 'rgba(59,130,246,0.04)', cursor: 'pointer' }}
+                  onClick={() => {
+                    const val = config.customerTemplate || '';
+                    const newVal = val ? val + ' {{active_campaigns}}' : '{{active_campaigns}}';
+                    onPatch({ customerTemplate: newVal, anonymousTemplate: newVal });
+                  }}
+                >
+                  🎁 Aktif Kampanyaları ({{active_campaigns}})
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-o btn-xs" 
+                  style={{ borderRadius: 16, padding: '4px 10px', fontSize: '0.78rem', border: '1px solid #34d399', color: '#10b981', background: 'rgba(16,185,129,0.04)', cursor: 'pointer' }}
+                  onClick={() => {
+                    const val = config.customerTemplate || '';
+                    const newVal = val ? val + ' {{customer_category}}' : '{{customer_category}}';
+                    onPatch({ customerTemplate: newVal, anonymousTemplate: newVal });
+                  }}
+                >
+                  🏷️ Müşteri Kategorisi ({{customer_category}})
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: 12, background: 'rgba(15,23,42,0.02)', border: '1px dashed #cbd5e1', borderRadius: 8 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>Hazır Şablon Cümleler:</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {[
+                  "Sonraki siparişinizde kullanabileceğiniz {{loyalty_points}} puanınız bulunmaktadır, afiyet olsun.",
+                  "Kullanımınız için {{active_campaigns}} kampanyaları bulunmaktadır.",
+                  "Müşteri Kategorisi: {{customer_category}}"
+                ].map((sentence, idx) => (
+                  <div 
+                    key={idx}
+                    style={{ 
+                      padding: '8px 12px', 
+                      background: '#ffffff', 
+                      border: '1px solid #e5e7eb', 
+                      borderRadius: 6, 
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      color: '#4b5563',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                    onClick={() => onPatch({ customerTemplate: sentence, anonymousTemplate: sentence })}
+                  >
+                    <span>{sentence}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#6366f1', fontWeight: 600 }}>[Seç]</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <FieldStack label="Musteriye teklif">
               <input className="f-input" value={config.customerOffer || ''} onChange={event => onPatch({ customerOffer: event.target.value })} />
             </FieldStack>
@@ -3294,19 +3548,61 @@ export default function LoyaltyCampaignWizard() {
       case 'add_customer_tag':
         return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+              <FieldStack label="İşlem tipi">
+                <div style={{
+                  display: 'flex',
+                  background: '#f1f5f9',
+                  padding: '3px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  width: '100%',
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => onChangeActionType && onChangeActionType('add_customer_tag')}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      background: rule.actionType === 'add_customer_tag' ? '#ffffff' : 'transparent',
+                      color: rule.actionType === 'add_customer_tag' ? '#0f172a' : '#64748b',
+                      fontWeight: rule.actionType === 'add_customer_tag' ? 700 : 500,
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      boxShadow: rule.actionType === 'add_customer_tag' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Kategoriye Ekle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeActionType && onChangeActionType('remove_customer_tag')}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      background: rule.actionType === 'remove_customer_tag' ? '#ffffff' : 'transparent',
+                      color: rule.actionType === 'remove_customer_tag' ? '#0f172a' : '#64748b',
+                      fontWeight: rule.actionType === 'remove_customer_tag' ? 700 : 500,
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      boxShadow: rule.actionType === 'remove_customer_tag' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Kategoriden Çıkar
+                  </button>
+                </div>
+              </FieldStack>
               <FieldStack label="Kategori">
                 <div className="sel-wrap">
                   <select className="f-input" value={config.category || ''} onChange={event => onPatch({ category: event.target.value })}>
                     <option value="">Kategori seçin</option>
                     {activeCustomerCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                </div>
-              </FieldStack>
-              <FieldStack label="Hedef musteri">
-                <div className="sel-wrap">
-                  <select className="f-input" value={config.target || 'order_customer'} onChange={event => onPatch({ target: event.target.value })}>
-                    {CUSTOMER_TARGET_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
               </FieldStack>
@@ -4794,6 +5090,23 @@ export default function LoyaltyCampaignWizard() {
         </EditorModal>
       ) : null}
 
+      {showNewTemplateModal ? (
+        <NewTemplateModal
+          saleItems={saleItems}
+          onClose={() => setShowNewTemplateModal(false)}
+          onSave={(newTemplate) => {
+            const newNormalized = {
+              id: String(newTemplate.id),
+              name: newTemplate.name || '',
+              description: newTemplate.description || '',
+              saleIds: Array.isArray(newTemplate.sale_ids) ? newTemplate.sale_ids.map(String) : [],
+            }
+            setSaleTemplates(current => [...current, newNormalized])
+            setShowNewTemplateModal(false)
+          }}
+        />
+      ) : null}
+
       {ruleEditorState && activeRuleEditorRule && activeRuleEditorItem ? (
         <EditorModal
           title={ruleEditorState.mode === 'actions' ? 'Eylemi Düzenle' : 'Koşulu Düzenle'}
@@ -4807,10 +5120,10 @@ export default function LoyaltyCampaignWizard() {
                   <div className="sel-wrap">
                     <select
                       className="f-input"
-                      value={activeRuleEditorItem.actionType}
+                      value={activeRuleEditorItem.actionType === 'remove_customer_tag' ? 'add_customer_tag' : activeRuleEditorItem.actionType}
                       onChange={event => updateActionItem(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', event.target.value)}
                     >
-                      {ACTION_TYPE_OPTIONS.map(option => {
+                      {ACTION_TYPE_OPTIONS.filter(option => option.value !== 'remove_customer_tag').map(option => {
                         return <option key={option.value} value={option.value}>{option.label}</option>
                       })}
                     </select>
@@ -4845,7 +5158,7 @@ export default function LoyaltyCampaignWizard() {
                   actionType: activeRuleEditorItem.actionType,
                   actionSummary: activeRuleEditorItem.actionSummary,
                   actionConfig: activeRuleEditorItem.actionConfig,
-                }, ruleEditorState.scope, patch => patchActionItemConfig(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, patch))}
+                }, ruleEditorState.scope, patch => patchActionItemConfig(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, patch), newType => updateActionItem(ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', newType))}
               </div>
             </div>
           ) : (
@@ -4930,6 +5243,93 @@ export default function LoyaltyCampaignWizard() {
                 : <><i className="fa-solid fa-floppy-disk" style={{ marginRight: 6 }} />Kaydet ve Editöre Git</>}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NewTemplateModal({ saleItems, onClose, onSave }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [saving, setSaving] = useState(false)
+
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return saleItems
+    return saleItems.filter(item => (item.name || '').toLowerCase().includes(query))
+  }, [saleItems, search])
+
+  const toggleSelect = id => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      alert('Lütfen şablon adı girin')
+      return
+    }
+    setSaving(true)
+    try {
+      const { data, error } = await db.from('sale_templates').insert({
+        name: name.trim(),
+        description: description.trim(),
+        sale_ids: Array.from(selectedIds),
+      }).select('*').single()
+
+      if (error) throw error
+      onSave(data)
+    } catch (err) {
+      alert(err.message || 'Şablon kaydedilemedi')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="card" style={{ width: 'min(640px, 100%)', maxHeight: 'calc(100vh - 48px)', overflow: 'hidden', padding: 0, boxShadow: '0 24px 60px rgba(15,23,42,.24)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 900, color: '#0f172a' }}>Yeni Satış Şablonu Oluştur</div>
+            <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 2 }}>Bu şablonu kampanyalarda filtre olarak kullanabilirsiniz</div>
+          </div>
+          <button className="btn-o" type="button" onClick={onClose}>Kapat</button>
+        </div>
+        <div style={{ padding: 18, overflowY: 'auto', flex: 1, display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Şablon Adı *</div>
+            <input className="f-input" value={name} onChange={e => setName(e.target.value)} placeholder="Örn. Bowl Şablonu" style={{ width: '100%' }} />
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Açıklama</div>
+            <input className="f-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Şablon hakkında kısa bilgi" style={{ width: '100%' }} />
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#64748b' }}>Şablon İçeriği (Ürünler)</div>
+            <input className="f-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Ürün ara..." style={{ width: '100%', marginBottom: 8 }} />
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, maxHeight: 200, overflowY: 'auto', padding: 6, display: 'grid', gap: 4 }}>
+              {filteredItems.map(item => (
+                <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: selectedIds.has(item.id) ? '#f5f3ff' : 'transparent', transition: 'background 0.1s' }}>
+                  <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                  <span style={{ fontSize: '.82rem', fontWeight: 600, color: selectedIds.has(item.id) ? '#7c3aed' : '#334155' }}>{item.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button className="btn-o" type="button" onClick={onClose} disabled={saving}>Vazgeç</button>
+          <button className="btn" type="button" style={{ background: '#7c3aed', color: '#fff' }} onClick={handleSave} disabled={saving}>
+            {saving ? 'Kaydediliyor...' : 'Kaydet'}
+          </button>
         </div>
       </div>
     </div>

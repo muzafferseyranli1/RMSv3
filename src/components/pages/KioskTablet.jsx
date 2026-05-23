@@ -2615,6 +2615,8 @@ export default function KioskTablet() {
           isGift: false,
           giftCampaignId: '',
           giftCampaignName: '',
+          options: item.options || [],
+          portionId: item.portionId || null,
         })
       }
     })
@@ -2632,6 +2634,18 @@ export default function KioskTablet() {
             && unit.name
             && String(unit.name).trim().toLocaleLowerCase('tr-TR') === String(giftItem.name).trim().toLocaleLowerCase('tr-TR')
           if (!matchById && !matchByName) continue
+
+          const optionTotal = (unit.options || []).reduce((sum, option) => sum + (parseFloat(option.price) || 0), 0)
+          const prod = (products || []).find(p => String(p.id) === String(unit.prodId))
+          const portions = prod ? pJ(prod.portions, []) : []
+          const portion = portions.find(p => p.id === unit.portionId) || null
+          const portionOffset = parseFloat(portion?.price_offset) || 0
+
+          const freeOptions = appliedLoyaltyOffer.freeOptions !== false
+          const freeSizes = appliedLoyaltyOffer.freeSizes !== false
+          const unpaidPart = (freeOptions ? 0 : optionTotal) + (freeSizes ? 0 : portionOffset)
+          const unitDiscount = Math.max(0, unit.unitPrice - unpaidPart)
+
           unit.isGift = true
           unit.giftCampaignId = String(appliedLoyaltyOffer.campaignId || '')
           unit.giftCampaignName = appliedLoyaltyOffer.campaignName || ''
@@ -2641,6 +2655,7 @@ export default function KioskTablet() {
             summary.giftUnitIndexes.push(unit.unitIndex)
             summary.giftCampaignId = unit.giftCampaignId
             summary.giftCampaignName = unit.giftCampaignName
+            summary.giftDiscount = (summary.giftDiscount || 0) + unitDiscount
           }
           remaining -= 1
         }
@@ -2655,9 +2670,10 @@ export default function KioskTablet() {
         giftUnitIndexes: [],
         giftCampaignId: '',
         giftCampaignName: '',
+        giftDiscount: 0,
       }
       const lineBaseTotal = roundMoney(unitPrice * qty)
-      const lineGiftDiscount = roundMoney(unitPrice * summary.giftQty)
+      const lineGiftDiscount = roundMoney(summary.giftDiscount || 0)
       const lineEffectiveTotal = roundMoney(Math.max(0, lineBaseTotal - lineGiftDiscount))
       return {
         ...item,
@@ -2674,7 +2690,7 @@ export default function KioskTablet() {
         hasGift: summary.giftQty > 0,
       }
     })
-  }, [cart, appliedLoyaltyOffer])
+  }, [cart, appliedLoyaltyOffer, products])
   const loyaltyGiftDiscountAmount = useMemo(
     () => roundMoney(pricedCart.reduce((sum, item) => sum + (item.lineGiftDiscount || 0), 0)),
     [pricedCart],

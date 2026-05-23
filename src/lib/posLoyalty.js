@@ -538,6 +538,8 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         discountAmount: context?.discountAmount || context?.computedDiscount || 0,
         label: `${multiplier}x puan harcama`,
       })
+    } else if (rule.actionType === 'write_customer_note') {
+      actions.push({ type: 'write_customer_note', label: 'Müşteri notu yazdır' })
     }
     return actions.length > 0 ? actions : null
   }
@@ -634,24 +636,113 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
     case 'free_products': {
       const rawItems = Array.isArray(config.items) ? config.items : []
       if (rawItems.length === 0) return null
-      const giftItems = rawItems.map(item => ({
-        productId: String(
-          item.product_id
-          || item.productId
-          || item.itemId
-          || item.product_item_id
-          || item.productItemId
-          || item.sale_item_id
-          || item.saleItemId
-          || item.target_product_id
-          || item.targetProductId
-          || item.id
-          || '',
-        ),
-        name: String(item.product_name || item.productName || item.name || 'Hediye Urun'),
-        qty: Math.max(1, parseInt(item.qty, 10) || 1) * mult,
-      })).filter(item => item.productId || item.name)
+
+      // Keep track of available quantities for cart lines
+      const cartLines = Array.isArray(orderContext.cartLines) ? orderContext.cartLines : []
+      const lineStates = cartLines.map((line, idx) => {
+        const productId = String(
+          line.productId ||
+          line.product_id ||
+          line.id ||
+          line.prod?.id ||
+          line.prod?.productId ||
+          line.product?.id ||
+          ''
+        ).trim()
+
+        const qty = Number(line.qty !== undefined ? line.qty : (line.quantity !== undefined ? line.quantity : (line.prod?.qty || 1))) || 0
+        const unitPrice = Number(
+          line.unitPrice !== undefined ? line.unitPrice :
+          (line.price !== undefined ? line.price :
+          (line.prod?.price !== undefined ? line.prod.price : 
+          (qty ? (line.lineGrossAfterDiscount || 0) / qty : 0)))
+        ) || 0
+
+        const topCategoryId = String(
+          line.topCategoryId ||
+          line.top_category_id ||
+          line.topCategory ||
+          line.prod?.topCategoryId ||
+          line.prod?.top_category_id ||
+          line.prod?.category_id ||
+          line.categoryId ||
+          ''
+        ).trim()
+
+        const subCategoryId = String(
+          line.subCategoryId ||
+          line.sub_category_id ||
+          line.subCategory ||
+          line.prod?.subCategoryId ||
+          line.prod?.sub_category_id ||
+          ''
+        ).trim()
+
+        const name = String(line.name || line.productName || line.prod?.name || line.product?.name || 'Hediye Urun')
+
+        return {
+          originalLine: line,
+          productId,
+          qty,
+          unitPrice,
+          topCategoryId,
+          subCategoryId,
+          name,
+          availableQty: qty
+        }
+      }).filter(ls => ls.productId)
+
+      const giftItems = []
+
+      for (const giftRuleItem of rawItems) {
+        const type = String(giftRuleItem.type || giftRuleItem.maskType || 'product').toLowerCase().trim()
+        const itemId = String(giftRuleItem.itemId || giftRuleItem.productId || giftRuleItem.id || '').trim()
+        const targetQty = Math.max(1, parseInt(giftRuleItem.qty, 10) || 1) * mult
+
+        // Find candidate lines
+        const candidates = lineStates.filter(ls => {
+          if (ls.availableQty <= 0) return false
+          
+          if (type === 'product') {
+            return ls.productId === itemId
+          } else if (type === 'category') {
+            return ls.topCategoryId === itemId || ls.subCategoryId === itemId
+          } else if (type === 'sale_template') {
+            const template = (orderContext.saleTemplates || []).find(st => String(st.id) === itemId)
+            if (template) {
+              const saleIds = Array.isArray(template.sale_ids) ? template.sale_ids : parseJsonValue(template.sale_ids, [])
+              return Array.isArray(saleIds) && saleIds.map(String).includes(ls.productId)
+            }
+          }
+          return false
+        })
+
+        // Sort candidates by price ascending (cheapest first)
+        candidates.sort((a, b) => a.unitPrice - b.unitPrice)
+
+        let remainingGiftQty = targetQty
+        for (const candidate of candidates) {
+          if (remainingGiftQty <= 0) break
+          const takeQty = Math.min(remainingGiftQty, candidate.availableQty)
+          candidate.availableQty -= takeQty
+          remainingGiftQty -= takeQty
+
+          const existingGift = giftItems.find(g => g.productId === candidate.productId)
+          if (existingGift) {
+            existingGift.qty += takeQty
+          } else {
+            giftItems.push({
+              productId: candidate.productId,
+              name: candidate.name,
+              qty: takeQty
+            })
+          }
+        }
+      }
+
+      // If no gift items matched/resolved, we return null so the campaign isn't considered eligible or applied empty
       if (giftItems.length === 0) return null
+
       const itemLabel = giftItems.map(item => `${item.qty}x ${item.name}`).join(', ')
       return {
         campaignId: campaign.id,
@@ -661,6 +752,8 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         discountValue: 0,
         discountAmount: 0,
         giftItems,
+        freeOptions: config.freeOptions !== false,
+        freeSizes: config.freeSizes !== false,
         offerLabel: `Hediye: ${itemLabel}`,
         conditionLabel: getConditionPreview(rule),
         runtimeStatus: 'eligible',
@@ -731,6 +824,66 @@ function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatM
         redemptionContext,
         appliedActionsSummary: getAppliedActionsSummary(),
         decisionContext: getDecisionContext(),
+      }
+    }
+    case 'write_customer_note': {
+      const walletContext = orderContext.runtimeWalletContext || null
+      const pointsBalance = Number(walletContext?.pointsBalance || 0)
+
+      const audienceContext = {
+        customerId: orderContext.customerId,
+        customerName: orderContext.customerName,
+        customerCategoryIds: orderContext.customerCategoryIds,
+        customerCreatedAt: orderContext.customerCreatedAt,
+        customerFirstOrderAt: orderContext.customerFirstOrderAt,
+        customerLastVisitAt: orderContext.customerLastVisitAt,
+        tierPointsMultiplier: orderContext.tierPointsMultiplier,
+      }
+
+      const customerMatchedCampaigns = (orderContext.allCampaigns || []).filter(c => {
+        const aud = buildAudienceStatus(c, audienceContext)
+        return aud.supported && aud.matched
+      })
+      const activeCampaignsStr = customerMatchedCampaigns.map(c => c.name).join(', ') || 'aktif kampanya bulunmuyor'
+
+      const categoryIds = orderContext.customerCategoryIds || []
+      const categoryNames = categoryIds.map(id => {
+        const cat = (orderContext.customerCategories || []).find(c => String(c.id) === String(id))
+        return cat ? cat.name : id
+      }).filter(Boolean)
+      const customerCategoryStr = categoryNames.join(', ') || 'Standart'
+
+      let interpolatedNote = String(config.customerTemplate || '').trim()
+      if (interpolatedNote) {
+        interpolatedNote = interpolatedNote
+          .replace(/\{\{\s*loyalty_points\s*\}\}/g, String(pointsBalance))
+          .replace(/\{\{\s*active_campaigns\s*\}\}/g, activeCampaignsStr)
+          .replace(/\{\{\s*customer_category\s*\}\}/g, customerCategoryStr)
+          .replace(/\{\{\s*customer_name\s*\}\}/g, orderContext.customerName || 'Müşteri')
+          .replace(/\{\{\s*campaign_name\s*\}\}/g, campaign.name || '')
+          .replace(/\{\{\s*order_total\s*\}\}/g, String(orderTotal))
+          .replace(/\{\{\s*current_date\s*\}\}/g, new Date().toLocaleDateString('tr-TR'))
+          .replace(/\{\{\s*current_time\s*\}\}/g, new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))
+      }
+
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name || 'Kampanya',
+        priority: Number(campaign.priority || 0),
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        offerLabel: 'Müşteri notu yazdır',
+        conditionLabel: getConditionPreview(rule),
+        runtimeStatus: 'eligible',
+        actionType: rule.actionType,
+        sourceRuleId: rule.id,
+        applicationMode,
+        applicationModeLabel: getLoyaltyApplicationModeLabel(applicationMode),
+        selectedCouponCode: orderContext.selectedCouponCode || null,
+        appliedActionsSummary: getAppliedActionsSummary(),
+        decisionContext: getDecisionContext(),
+        customerNote: interpolatedNote,
       }
     }
     default:
@@ -1787,6 +1940,20 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
   }
 
   const customerId = options.customerContext?.customerId
+  let customerCategories = options.customerCategories
+  const categoryIdsToFetch = options.customerContext?.customerCategoryIds || []
+  if (!customerCategories && Array.isArray(categoryIdsToFetch) && categoryIdsToFetch.length > 0) {
+    try {
+      const res = await db.from('loyalty_customer_categories')
+        .select('id,name')
+        .in('id', categoryIdsToFetch)
+      if (res && res.data) {
+        customerCategories = res.data
+      }
+    } catch (err) {
+      console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch customer categories:', err)
+    }
+  }
   const periodQueries = []
   const customerPeriodStats = {}
 
@@ -1940,6 +2107,7 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
       ...options,
       customerPeriodStats,
       saleTemplates,
+      customerCategories,
       runtimeWalletContext: walletReadiness,
       program: walletReadiness.program || options.program || null,
       selectedCouponCode,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { loadCustomerAppConfig, getDefaultAppConfig } from '@/lib/customerMobileAppConfig'
 import {
   buildCustomerMobileViewModel,
   bindCouponToCustomer,
@@ -382,6 +383,207 @@ function LinkBanner({
           {sessionState.linking ? 'Hesap tanitiliyor...' : (isKiosk ? 'Kioska hesabimi tanit' : 'Kasaya hesabimi tanit')}
         </button>
       ) : null}
+    </div>
+  )
+}
+
+function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
+  const { branding, homeButtons } = appConfig
+  const bgImage = branding.backgroundImageUrl
+  const logo = branding.logoUrl
+  const primaryColor = branding.primaryColor || '#be185d'
+
+  function handleButtonPress(btn) {
+    switch (btn.type) {
+      case 'phone':
+        if (btn.config?.phoneNumber) window.open(`tel:${btn.config.phoneNumber}`, '_self')
+        break
+      case 'weblink':
+        if (btn.config?.url) window.open(btn.config.url, '_blank')
+        break
+      case 'order':
+        onOrderAction(btn)
+        break
+      case 'app_page':
+        if (btn.config?.pageKey) onNavigate(btn.config.pageKey)
+        break
+      default:
+        break
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 0 }}>
+      {/* Hero area with background image, logo, welcome */}
+      <div style={{
+        position: 'relative',
+        minHeight: 260,
+        background: bgImage
+          ? `linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,.65) 100%), url(${bgImage}) center/cover no-repeat`
+          : `linear-gradient(150deg, ${branding.headerGradient?.[0] || '#111827'} 0%, ${branding.headerGradient?.[1] || '#312e81'} 45%, ${branding.headerGradient?.[2] || '#f97316'} 100%)`,
+        borderRadius: '0 0 28px 28px',
+        padding: '20px 20px 24px',
+        display: 'grid',
+        gap: 12,
+        alignContent: 'end',
+        color: '#fff',
+      }}>
+        {/* Top row: points badge + QR icon */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'absolute', top: 16, left: 20, right: 20 }}>
+          <div style={{
+            display: 'flex', gap: 8, alignItems: 'center',
+          }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 999,
+              background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(8px)',
+              color: '#fff', fontSize: '.74rem', fontWeight: 800,
+            }}>
+              <i className="fa-solid fa-star" style={{ color: '#fbbf24' }} />
+              {model.pointBalance > 0 ? `${model.pointBalance} Puan` : 'Sadakat'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button type="button" style={{ width: 38, height: 38, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              <i className="fa-solid fa-qrcode" />
+            </button>
+          </div>
+        </div>
+
+        {/* Logo */}
+        {logo ? (
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
+            <img src={logo} alt={branding.companyName || ''} style={{ maxHeight: 72, maxWidth: 180, objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.3))' }} />
+          </div>
+        ) : branding.companyName ? (
+          <div style={{ textAlign: 'center', paddingTop: 32, fontSize: '1.6rem', fontWeight: 900, textShadow: '0 2px 8px rgba(0,0,0,.4)' }}>
+            {branding.companyName}
+          </div>
+        ) : null}
+
+        {/* Welcome banner */}
+        <div style={{
+          borderRadius: 14,
+          background: primaryColor,
+          padding: '10px 18px',
+          textAlign: 'center',
+          fontWeight: 800,
+          fontSize: '.88rem',
+          boxShadow: '0 4px 16px rgba(0,0,0,.25)',
+        }}>
+          {branding.welcomeText || 'Hoş Geldiniz'}, {model.displayName}
+        </div>
+      </div>
+
+      {/* 4 Action Buttons - 2x2 grid */}
+      <div style={{ padding: '20px 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {(homeButtons || []).slice(0, 4).map(btn => (
+          <button
+            key={btn.id}
+            type="button"
+            onClick={() => handleButtonPress(btn)}
+            style={{
+              minHeight: 120,
+              borderRadius: 20,
+              border: '1px solid rgba(148,163,184,.12)',
+              background: 'linear-gradient(145deg, #1a1a2e, #16213e)',
+              color: '#fff',
+              display: 'grid',
+              gap: 10,
+              justifyItems: 'center',
+              alignContent: 'center',
+              padding: 16,
+              cursor: 'pointer',
+              boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+              transition: 'transform .15s ease, box-shadow .15s ease',
+            }}
+          >
+            <span style={{
+              width: 46, height: 46, borderRadius: 14,
+              background: 'rgba(255,255,255,.1)',
+              display: 'grid', placeItems: 'center',
+              fontSize: '1.15rem',
+            }}>
+              <i className={`fa-solid ${btn.icon || 'fa-circle'}`} />
+            </span>
+            <span style={{ fontSize: '.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+              {btn.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Quick summary tiles */}
+      <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Puan</div>
+          <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.pointBalance > 0 ? model.pointBalance : '0'}</div>
+        </div>
+        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Kupon</div>
+          <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.activeCoupons.length}</div>
+        </div>
+        <div style={{ borderRadius: 16, background: '#fff', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+          <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Seviye</div>
+          <div style={{ marginTop: 4, fontSize: '.78rem', fontWeight: 900, color: '#7c3aed' }}>{model.tierSnapshot.currentTier?.name || 'Üyelik'}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OrderTypeModal({ visible, onClose, orderButtonConfig }) {
+  if (!visible) return null
+  const deliveryUrl = orderButtonConfig?.config?.deliveryUrl || ''
+  const enableTableOrder = orderButtonConfig?.config?.enableTableOrder !== false
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.5)', display: 'grid', alignItems: 'end' }}>
+      <div style={{ borderRadius: '24px 24px 0 0', background: '#fff', padding: '24px 20px 32px', display: 'grid', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#0f172a' }}>Sipariş Türü</div>
+          <button type="button" onClick={onClose} style={{ width: 36, height: 36, borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+        <div style={{ color: '#64748b', fontSize: '.82rem', lineHeight: 1.6 }}>
+          Siparişinizi nasıl almak istersiniz?
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {deliveryUrl ? (
+            <button
+              type="button"
+              onClick={() => { window.open(deliveryUrl, '_blank'); onClose() }}
+              style={{
+                minHeight: 64, borderRadius: 18, border: '1px solid rgba(148,163,184,.14)',
+                background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                color: '#fff', fontWeight: 900, fontSize: '.88rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                boxShadow: '0 4px 16px rgba(249,115,22,.25)',
+              }}
+            >
+              <i className="fa-solid fa-motorcycle" style={{ fontSize: '1.1rem' }} />
+              Adrese Teslim
+            </button>
+          ) : null}
+          {enableTableOrder ? (
+            <button
+              type="button"
+              onClick={() => onClose('table_order')}
+              style={{
+                minHeight: 64, borderRadius: 18, border: '1px solid rgba(148,163,184,.14)',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                color: '#fff', fontWeight: 900, fontSize: '.88rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                boxShadow: '0 4px 16px rgba(15,23,42,.2)',
+              }}
+            >
+              <i className="fa-solid fa-qrcode" style={{ fontSize: '1.1rem' }} />
+              Masadan Sipariş
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1423,6 +1625,8 @@ function AppViewport({
   activePrograms = [],
   referralCodesByProgram = {},
   onTriggerReload,
+  appConfig,
+  onOrderAction,
 }) {
   return (
     <div style={{
@@ -1443,69 +1647,102 @@ function AppViewport({
         </div>
       </div>
 
-      <div style={{ padding: '0 18px 12px', display: 'grid', gap: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '.72rem', color: '#fb7185', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-              SuitableRMS Loyalty
-            </div>
-            <div style={{ marginTop: 4, fontSize: '1.08rem', color: '#0f172a', fontWeight: 900 }}>
-              {TAB_ITEMS.find(item => item.key === activeTab)?.label || 'Musteri'}
-            </div>
+      {standalone ? (
+        <div style={{ padding: '0 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>
+            {TAB_ITEMS.find(item => item.key === activeTab)?.label || 'Ana Sayfa'}
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={badgeStyle('rgba(251,113,133,.12)', '#be185d')}>
-              <i className="fa-solid fa-qrcode" />
-              Kasada goster
-            </span>
-            <button
-              type="button"
-              onClick={onLogout}
-              style={{
-                minHeight: 34,
-                padding: '0 12px',
-                borderRadius: 999,
-                border: '1px solid rgba(148,163,184,.18)',
-                background: '#fff',
-                color: '#475569',
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              Cikis
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            style={{
+              minHeight: 34, padding: '0 12px', borderRadius: 999,
+              border: '1px solid rgba(148,163,184,.18)', background: '#fff',
+              color: '#475569', fontWeight: 800, cursor: 'pointer',
+            }}
+          >
+            <i className="fa-solid fa-right-from-bracket" style={{ marginRight: 6 }} />
+            Çıkış
+          </button>
         </div>
-
-        <LinkBanner
-          sessionState={sessionState}
-          selectionState={selectionState}
-          onSelectCampaign={onSelectCampaign}
-          onSelectCoupon={onSelectCoupon}
-          onConnect={onConnectLink}
-        />
-
-        {!model.schemaReady || model.errorText ? (
-          <div style={{ ...cardStyle('rgba(255,247,237,.96)', 'rgba(251,146,60,.28)'), padding: 12, fontSize: '.74rem', color: '#9a3412', lineHeight: 1.55 }}>
-            {!model.schemaReady ? `Canli loyalty tablosu eksik: ${model.missingTables.join(', ') || 'bilinmiyor'}.` : null}
-            {model.errorText ? ` ${model.errorText}` : ''}
+      ) : (
+        <div style={{ padding: '0 18px 12px', display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '.72rem', color: '#fb7185', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                SuitableRMS Loyalty
+              </div>
+              <div style={{ marginTop: 4, fontSize: '1.08rem', color: '#0f172a', fontWeight: 900 }}>
+                {TAB_ITEMS.find(item => item.key === activeTab)?.label || 'Musteri'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={badgeStyle('rgba(251,113,133,.12)', '#be185d')}>
+                <i className="fa-solid fa-qrcode" />
+                Kasada goster
+              </span>
+              <button
+                type="button"
+                onClick={onLogout}
+                style={{
+                  minHeight: 34,
+                  padding: '0 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148,163,184,.18)',
+                  background: '#fff',
+                  color: '#475569',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Cikis
+              </button>
+            </div>
           </div>
-        ) : null}
-      </div>
+
+          <LinkBanner
+            sessionState={sessionState}
+            selectionState={selectionState}
+            onSelectCampaign={onSelectCampaign}
+            onSelectCoupon={onSelectCoupon}
+            onConnect={onConnectLink}
+          />
+
+          {!model.schemaReady || model.errorText ? (
+            <div style={{ ...cardStyle('rgba(255,247,237,.96)', 'rgba(251,146,60,.28)'), padding: 12, fontSize: '.74rem', color: '#9a3412', lineHeight: 1.55 }}>
+              {!model.schemaReady ? `Canli loyalty tablosu eksik: ${model.missingTables.join(', ') || 'bilinmiyor'}.` : null}
+              {model.errorText ? ` ${model.errorText}` : ''}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       <div style={{ overflowY: 'auto', padding: '0 18px 18px', display: 'grid', gap: 14, alignContent: 'start' }}>
-        {activeTab === 'home' ? <HomeScreen model={model} onOpen={target => {
-          if (target === 'card') onTabChange('card')
-          if (target === 'coupons') onTabChange('coupons')
-          if (target === 'activity') {
-            onTabChange('account')
-            onAccountViewChange('activity')
-          }
-          if (target === 'tier') {
-            onTabChange('account')
-            onAccountViewChange('tier')
-          }
-        }} /> : null}
+        {activeTab === 'home' ? (
+          standalone
+            ? <MobileHomeDashboard
+                model={model}
+                appConfig={appConfig}
+                onNavigate={target => {
+                  if (['campaigns', 'coupons', 'card', 'account'].includes(target)) {
+                    onTabChange(target === 'card' ? 'card' : target === 'coupons' ? 'coupons' : target === 'campaigns' ? 'campaigns' : 'account')
+                  }
+                }}
+                onOrderAction={onOrderAction}
+              />
+            : <HomeScreen model={model} onOpen={target => {
+                if (target === 'card') onTabChange('card')
+                if (target === 'coupons') onTabChange('coupons')
+                if (target === 'activity') {
+                  onTabChange('account')
+                  onAccountViewChange('activity')
+                }
+                if (target === 'tier') {
+                  onTabChange('account')
+                  onAccountViewChange('tier')
+                }
+              }} />
+        ) : null}
         {activeTab === 'card' ? <CardScreen model={model} /> : null}
         {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} /> : null}
         {activeTab === 'campaigns' ? <CampaignsScreen model={model} /> : null}
@@ -1583,6 +1820,11 @@ export default function CustomerLoyaltyMobileApp({
   const [lastLinkKey, setLastLinkKey] = useState('')
   const [selectedLinkCampaignId, setSelectedLinkCampaignId] = useState('')
   const [selectedLinkCouponId, setSelectedLinkCouponId] = useState('')
+  const [appConfig, setAppConfig] = useState(getDefaultAppConfig())
+  const [showOrderModal, setShowOrderModal] = useState(false)
+  const [activeOrderButton, setActiveOrderButton] = useState(null)
+  const [showTableOrderEntry, setShowTableOrderEntry] = useState(false)
+  const [tableNumberInput, setTableNumberInput] = useState('')
 
   useEffect(() => {
     let active = true
@@ -1612,6 +1854,14 @@ export default function CustomerLoyaltyMobileApp({
     loadCustomers()
     return () => { active = false }
   }, [isStandalone])
+
+  useEffect(() => {
+    let active = true
+    loadCustomerAppConfig().then(config => {
+      if (active) setAppConfig(config)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (!linkSession?.token) {
@@ -2007,14 +2257,34 @@ export default function CustomerLoyaltyMobileApp({
         activePrograms={activePrograms}
         referralCodesByProgram={referralCodesByProgram}
         onTriggerReload={() => setReloadTrigger(prev => prev + 1)}
+        appConfig={appConfig}
+        onOrderAction={(btn) => {
+          setActiveOrderButton(btn)
+          setShowOrderModal(true)
+        }}
       />
     )
   }
 
   if (isStandalone) {
     return (
-      <div style={{ minHeight: '100svh', background: 'radial-gradient(circle at top, rgba(251,113,133,.16), transparent 26%), linear-gradient(180deg, #fff7f5 0%, #f8fafc 100%)', display: 'flex', justifyContent: 'center' }}>
-        <PhoneChrome standalone>{renderBody()}</PhoneChrome>
+      <div style={{
+        minHeight: '100svh',
+        width: '100%',
+        maxWidth: 430,
+        margin: '0 auto',
+        background: '#f8fafc',
+        position: 'relative',
+      }}>
+        {renderBody()}
+        <OrderTypeModal
+          visible={showOrderModal}
+          onClose={(action) => {
+            setShowOrderModal(false)
+            if (action === 'table_order') setShowTableOrderEntry(true)
+          }}
+          orderButtonConfig={activeOrderButton}
+        />
       </div>
     )
   }

@@ -1794,13 +1794,19 @@ function OdemeModalFlow({
           const matchByName = !matchById && giftItem.name && item.prod?.name
             && String(item.prod.name).trim().toLowerCase() === String(giftItem.name).trim().toLowerCase()
           if (matchById || matchByName) {
+            const optionTotal = getOptionTotal(item.options)
+            const portionOffset = getPortionOffset(item.prod, item.portion?.id)
+            const freeOptions = offer.freeOptions !== false
+            const freeSizes = offer.freeSizes !== false
+            const unpaidUnitPrice = (freeOptions ? 0 : optionTotal) + (freeSizes ? 0 : portionOffset)
+
             newUnpaid[i] = {
               ...item,
               isGift: true,
               giftCampaignId: offer.campaignId,
               giftCampaignName: offer.campaignName,
               originalUnitPrice: item.unitPrice,
-              unitPrice: 0,
+              unitPrice: unpaidUnitPrice,
             }
             newGiftIds.push(item.id)
             remaining--
@@ -2132,6 +2138,15 @@ function OdemeModalFlow({
     || splitPaymentLocked
     || (splitPlan ? splitSelectionMissing || draftPaidAmount <= 0.009 : totalRemainingAmount > 0.009)
 
+  const campaignNotes = (applicableLoyaltyOffers || [])
+    .filter(offer => {
+      const isApplied = (offer.applicationMode === 'auto' && loyaltyDecisionMap[offer.campaignId] !== 'skipped') ||
+                        (offer.campaignId === appliedLoyaltyCampaignId);
+      return isApplied && offer.actionType === 'write_customer_note' && offer.customerNote;
+    })
+    .map(offer => offer.customerNote);
+  const displayOrderNote = [orderNote, ...campaignNotes].filter(Boolean).join(' | ');
+
   return (
     <>
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', backdropFilter:'blur(4px)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:18 }}>
@@ -2140,7 +2155,7 @@ function OdemeModalFlow({
             <div>
               <div style={{ fontSize:'1.2rem', fontWeight:900, color:'#fff' }}>{UI_TEXT.paymentTitle}</div>
               <div style={{ fontSize:'.8rem', color:'#93c5fd', marginTop:6 }}>{orderLabel}</div>
-              {orderNote && <div style={{ fontSize:' .76rem', color:'#cbd5e1', marginTop:8 }}>{'Sipari\u015f Notu: '}{orderNote}</div>}
+              {displayOrderNote && <div style={{ fontSize:' .76rem', color:'#cbd5e1', marginTop:8 }}>{'Sipari\u015f Notu: '}{displayOrderNote}</div>}
             </div>
             <button onClick={onClose} style={{ width:36, height:36, borderRadius:99, border:'none', background:'rgba(255,255,255,.08)', color:'#fff', cursor:'pointer', fontSize:'1.2rem' }}>{UI_TEXT.close}</button>
           </div>
@@ -4182,7 +4197,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     ))
   }
 
-  function buildNormalizedSalePayload({ localId, items, payments, discountType, discountValue, discountAmount, total, customer = null }) {
+  function buildNormalizedSalePayload({ localId, items, payments, discountType, discountValue, discountAmount, total, customer = null, orderNote = null }) {
     const saleDate = new Date().toISOString()
     const paymentTotal = roundMoney(payments.reduce((sum, payment) => sum + (parseFloat(payment?.amount) || 0), 0))
     const expandedItems = flattenCartItems(items)
@@ -4283,7 +4298,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
         female_guest_count: safeGuestCounts.women,
         male_guest_count: safeGuestCounts.men,
         child_guest_count: safeGuestCounts.children,
-        order_note: activeOrderNote || null,
+        order_note: orderNote !== null ? orderNote : (activeOrderNote || null),
         currency_code: 'TRY',
         gross_total_before_discount: grossBefore,
         discount_type: discountType || null,
@@ -4370,6 +4385,16 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     const localId = dbUuid()
     const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaign)
     const saleLoyaltyFields = buildSaleLoyaltyFields(saleLoyaltySnapshot, discountAmount)
+
+    const campaignNotes = (applicableLoyaltyOffers || [])
+      .filter(offer => {
+        const isApplied = (offer.applicationMode === 'auto' && loyaltyDecisionMap[offer.campaignId] !== 'skipped') ||
+                          (offer.campaignId === appliedLoyaltyCampaignId);
+        return isApplied && offer.actionType === 'write_customer_note' && offer.customerNote;
+      })
+      .map(offer => offer.customerNote);
+    const finalOrderNote = [activeOrderNote, ...campaignNotes].filter(Boolean).join('\n');
+
     const normalizedSale = buildNormalizedSalePayload({
       localId,
       items,
@@ -4379,12 +4404,13 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
       discountAmount,
       total,
       customer,
+      orderNote: finalOrderNote,
     })
     const legacyItems = buildLegacySalesItemsSnapshot(
       expandCartItemsForPayload(items),
       discountAmount,
       saleLoyaltySnapshot,
-      activeOrderNote,
+      finalOrderNote,
     )
     const persistedSalesHeader = attachLoyaltyToSaleHeader(normalizedSale.header, saleLoyaltySnapshot, discountAmount)
     const persistedSalesLines = attachLoyaltyToSaleLines(normalizedSale.lines, saleLoyaltySnapshot, discountAmount)

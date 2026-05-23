@@ -138,7 +138,19 @@ export default function SearchableSelect({
           textOverflow: 'ellipsis',
         }}
       >
-        {selectedOption ? selectedOption.selectedLabel || selectedOption.label : placeholder}
+        {selectedOption ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedOption.icon ? <i className={`fa-solid ${selectedOption.icon}`} style={{ color: '#d97706', fontSize: '.75rem', flexShrink: 0 }} /> : null}
+            <span style={{ fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selectedOption.selectedLabel || selectedOption.label}
+            </span>
+            {selectedOption.meta ? (
+              <span style={{ fontSize: '.68rem', color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '1px 6px', borderRadius: 999, flexShrink: 0 }}>
+                {selectedOption.meta}
+              </span>
+            ) : null}
+          </div>
+        ) : placeholder}
         <i
           className="fa-solid fa-chevron-down"
           style={{

@@ -749,7 +749,54 @@ export default function OrderHub() {
       ? 'Program secimi gerekli'
       : `${Math.round(pointsBalance)} puan`)
 
-  const loyaltyDiscountAmount = safeNumber(appliedLoyaltyCampaign?.discountAmount)
+  const loyaltyDiscountAmount = useMemo(() => {
+    if (!appliedLoyaltyCampaign) return 0
+    if (appliedLoyaltyCampaign.discountType === 'free_products') {
+      const giftItems = Array.isArray(appliedLoyaltyCampaign.giftItems) ? appliedLoyaltyCampaign.giftItems : []
+      let totalDiscount = 0
+      const cartStates = cart.map(item => ({
+        productId: String(item.product?.id || '').trim(),
+        name: String(item.product?.name || '').trim(),
+        qty: safeNumber(item.qty),
+        unitPrice: safeNumber(item.unitPrice),
+        options: item.options || [],
+        portionId: item.portionId || null,
+        productObj: item.product,
+      }))
+
+      for (const giftItem of giftItems) {
+        let remainingQty = safeNumber(giftItem.qty)
+        for (const state of cartStates) {
+          if (remainingQty <= 0) break
+          if (state.qty <= 0) continue
+
+          const matchById = giftItem.productId && state.productId && String(state.productId) === String(giftItem.productId)
+          const matchByName = !matchById && giftItem.name && state.name
+            && String(state.name).toLowerCase() === String(giftItem.name).toLowerCase()
+
+          if (matchById || matchByName) {
+            const take = Math.min(remainingQty, state.qty)
+            state.qty -= take
+            remainingQty -= take
+
+            const optionTotal = (state.options || []).reduce((sum, opt) => sum + (safeNumber(opt.price) || 0), 0)
+            const portions = Array.isArray(state.productObj?.portions) ? state.productObj.portions : []
+            const portion = portions.find(p => p.id === state.portionId) || null
+            const portionOffset = safeNumber(portion?.price_offset)
+
+            const freeOptions = appliedLoyaltyCampaign.freeOptions !== false
+            const freeSizes = appliedLoyaltyCampaign.freeSizes !== false
+            const unpaidPart = (freeOptions ? 0 : optionTotal) + (freeSizes ? 0 : portionOffset)
+
+            const unitDiscount = Math.max(0, state.unitPrice - unpaidPart)
+            totalDiscount += unitDiscount * take
+          }
+        }
+      }
+      return totalDiscount
+    }
+    return safeNumber(appliedLoyaltyCampaign.discountAmount)
+  }, [appliedLoyaltyCampaign, cart])
   const payableTotal = Math.max(0, safeNumber(total) - loyaltyDiscountAmount)
   const loyaltyDiscountMap = useMemo(() => (
     buildProportionalDiscountMap(cart, {
@@ -1441,13 +1488,21 @@ export default function OrderHub() {
         }
       } : null);
       const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaignPayload)
-      const orderNote = buildCallCenterOrderNote({
+      const campaignNotes = (evaluatedRuntimeCampaigns.applicableOffers || [])
+        .filter(offer => {
+          const isApplied = String(offer.campaignId || '') === String(appliedLoyaltyCampaign?.campaignId || '') ||
+                            (offer.applicationMode === 'auto' && String(offer.campaignId || '') === String(selectedLoyaltyCampaignId || ''));
+          return isApplied && offer.actionType === 'write_customer_note' && offer.customerNote;
+        })
+        .map(offer => offer.customerNote);
+      const baseOrderNote = buildCallCenterOrderNote({
         fulfillmentType,
         promisedAt: safePromisedDate,
         addressText: addressLabel(address),
         branchName: selectedBranch?.name || '',
         loyaltyName: appliedLoyaltyCampaign?.campaignName || '',
       })
+      const orderNote = [baseOrderNote, ...campaignNotes].filter(Boolean).join('\n')
       const header = {
         local_id: uid(),
         sale_datetime: saleDate,
