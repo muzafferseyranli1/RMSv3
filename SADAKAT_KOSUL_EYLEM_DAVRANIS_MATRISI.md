@@ -85,7 +85,6 @@ Bu islem tek basina puan veya cuzdan hareketi yaratmaz.
 | `order_discount_amount` | Var | `LOCAL_READY` | Siparis toplamindan sabit indirim duser. | Value ledger/redemption kaydi eksik. |
 | `total_order_discount_percent` | Var | `LOCAL_READY` | Siparis toplamindan yuzdesel indirim duser. | Value ledger/redemption kaydi eksik. |
 | `warning_message` | Var | `PRESENTATION_ONLY` | Personel/musteriye uyari gosterir. | UX placement ve dismiss/audit karari. |
-| `suggest_products` | Var | `MODEL_ONLY` | Ek urun onerir. | Cart suggestion executor/UI placement. |
 | `bonus_points` | Var | `VALUE_LEDGER_REQUIRED` | Musteriye sabit puan yukler. | `loyalty_wallets` upsert + `loyalty_transactions` earn/campaign_bonus. |
 | `points_percent_of_order` | Var | `VALUE_LEDGER_REQUIRED` | Siparis tutarina gore puan kazandirir. | Points formula + wallet transaction. |
 | `points_earn_multiplier` | Var | `VALUE_LEDGER_REQUIRED` | Kazanilacak puani katsayilar. | Base earn model + multiplier pipeline. |

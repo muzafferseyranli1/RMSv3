@@ -96,9 +96,8 @@ export const ACTION_TYPE_OPTIONS = [
   { value: 'order_extra_charge', label: 'Siparişte ek ücret' },
   { value: 'order_discount', label: 'Siparişte indirim' },
   { value: 'warning_message', label: 'Uyarı' },
-  { value: 'suggest_products', label: 'Ekstra ürün teklif et' },
-  { value: 'bonus_points', label: 'Puan yükle' },
-  { value: 'points_percent_of_order', label: 'Sipariş tutarının %X kadar puan kazandır' },
+  { value: 'bonus_points', label: 'Puan yükle (Sabit / % Tutar)' },
+  { value: 'points_percent_of_order', label: 'Puan yükle (Sabit / % Tutar)' },
   { value: 'points_earn_multiplier', label: 'Puan kazanma katsayısı uygula' },
   { value: 'points_redeem_multiplier', label: 'Puan harcama katsayısı uygula' },
   { value: 'issue_coupon', label: 'Kupon yarat' },
@@ -767,7 +766,6 @@ export function getDefaultConditionConfig(conditionKey) {
 export function getDefaultActionConfig(actionType) {
   switch (actionType) {
     case 'free_products':
-    case 'suggest_products':
       return { items: [], applyToPricedOptions: false }
     case 'product_pricing':
       return { items: [], applyToPricedOptions: false }

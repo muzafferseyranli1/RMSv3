@@ -1795,10 +1795,6 @@ function buildActionSummary(rule, context = {}) {
       }))
       return itemNames ? `${itemNames} urunlerini hediye et` : actionLabel
     }
-    case 'suggest_products': {
-      const itemNames = formatCompactList((config.items || []).map(item => item.name || summaryContext.saleItemMap.get(String(item.itemId || '')) || item.itemId))
-      return itemNames ? `${itemNames} urunlerini oner` : actionLabel
-    }
     case 'product_pricing': {
           const pricingSummaries = (config.items || [])
         .map(item => {
@@ -4910,7 +4906,6 @@ export default function LoyaltyManagement() {
 
     switch (rule.actionType) {
       case 'free_products':
-      case 'suggest_products':
         return renderOfferItemsEditor()
       case 'product_pricing':
         return renderPricingEditor()
@@ -5288,21 +5283,73 @@ export default function LoyaltyManagement() {
             </FieldStack>
           </div>
         )
+      case 'points_percent_of_order':
       case 'bonus_points':
         return (
-          <FieldStack label="Yuklenecek puan">
-            <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.points)} onChange={event => patchAction({ points: event.target.value })} placeholder="Orn. 250" />
-          </FieldStack>
-        )
-      case 'points_percent_of_order':
-        return (
           <div style={{ display: 'grid', gap: 10 }}>
-            <HelperNote title="Harcama bazli puan">
-              Bu eylem siparis tutarinin belirli bir yuzdesi kadar puan kazandirir. Ornek `%10` ise `500 TL` sipariste `50` puan verilir.
+            <HelperNote title="Puan Kazandırma Eylemi">
+              Müşterinin sadakat kartı hesabına sabit veya sipariş tutarının belirli bir yüzdesi oranında puan yükleyin.
             </HelperNote>
-            <FieldStack label="Puan orani (%)">
-              <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => patchAction({ percent: event.target.value })} placeholder="Orn. 10" />
-            </FieldStack>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+              <FieldStack label="Puan yükleme şekli">
+                <div style={{
+                  display: 'flex',
+                  background: '#f1f5f9',
+                  padding: '3px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  width: '100%',
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => onChangeActionType && onChangeActionType('bonus_points')}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      background: rule.actionType === 'bonus_points' ? '#ffffff' : 'transparent',
+                      color: rule.actionType === 'bonus_points' ? '#0f172a' : '#64748b',
+                      fontWeight: rule.actionType === 'bonus_points' ? 700 : 500,
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      boxShadow: rule.actionType === 'bonus_points' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Sabit Puan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeActionType && onChangeActionType('points_percent_of_order')}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      background: rule.actionType === 'points_percent_of_order' ? '#ffffff' : 'transparent',
+                      color: rule.actionType === 'points_percent_of_order' ? '#0f172a' : '#64748b',
+                      fontWeight: rule.actionType === 'points_percent_of_order' ? 700 : 500,
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      boxShadow: rule.actionType === 'points_percent_of_order' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Yüzde Oranı (%)
+                  </button>
+                </div>
+              </FieldStack>
+              {rule.actionType === 'bonus_points' ? (
+                <FieldStack label="Yüklenecek puan">
+                  <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.points)} onChange={event => patchAction({ points: event.target.value })} placeholder="Orn. 250" />
+                </FieldStack>
+              ) : (
+                <FieldStack label="Puan oranı (%)">
+                  <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(config.percent)} onChange={event => patchAction({ percent: event.target.value })} placeholder="Orn. 10" />
+                </FieldStack>
+              )}
+            </div>
           </div>
         )
       case 'points_earn_multiplier':
@@ -6148,10 +6195,16 @@ export default function LoyaltyManagement() {
                             <div className="sel-wrap">
                               <select
                                 className="f-input"
-                                value={activeRuleEditorItem.actionType === 'remove_customer_tag' ? 'add_customer_tag' : activeRuleEditorItem.actionType}
+                                value={
+                                  activeRuleEditorItem.actionType === 'remove_customer_tag'
+                                    ? 'add_customer_tag'
+                                    : activeRuleEditorItem.actionType === 'points_percent_of_order'
+                                    ? 'bonus_points'
+                                    : activeRuleEditorItem.actionType
+                                }
                                 onChange={event => updateActionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', event.target.value)}
                               >
-                                {ACTION_TYPE_OPTIONS.filter(option => option.value !== 'remove_customer_tag').map(option => {
+                                {ACTION_TYPE_OPTIONS.filter(option => option.value !== 'remove_customer_tag' && option.value !== 'points_percent_of_order').map(option => {
                                   return <option key={option.value} value={option.value}>{option.label}</option>
                                 })}
                               </select>

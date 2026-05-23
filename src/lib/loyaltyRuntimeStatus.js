@@ -146,7 +146,6 @@ export const ACTION_TYPE_STATUS = {
   order_extra_charge_amount: { category: 'model', ledger: false, label: 'Ek ücret' },
   order_extra_charge_percent: { category: 'model', ledger: false, label: 'Ek ücret %' },
   order_extra_charge: { category: 'model', ledger: false, label: 'Siparişte ek ücret' },
-  suggest_products: { category: 'model', ledger: false, label: 'Ürün öner' },
 }
 
 // ---------------------------------------------------------------------------
