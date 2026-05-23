@@ -5174,3 +5174,36 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - Eski veri tabanı kayıtlarında `valueType` kolonu bulunmayan kampanyalar için `posLoyalty.js` varsayılan olarak `amount` veya `percent` eşleştirmesini eski eylem tiplerine bakarak yapmaktadır. Ancak yeni kurgulanan kampanyaların veritabanında `valueType` alanı içermesi gerekmektedir.
 - `Next Step`: `Yönetim panelinden yeni birleşik indirim ve ek ücret eylemleriyle kampanya oluşturarak POS sepetinde kuralların beklendiği gibi (tutar veya yüzde) uygulandığını doğrulamak.`
 - `Handoff Contract`: `Sadakat eylem kütüphanesi 4 eylemden 2 eyleme birleştirildi. Yeni eylemler 'order_discount' ve 'order_extra_charge' olarak isimlendirildi. Editör modalında tutar/yüzde segment seçimi mevcuttur. Eski kampanyalarla geriye dönük uyumluluk POS motorunda (posLoyalty.js) korunmuştur.`
+
+## Entry 107
+
+- `Timestamp`: `2026-05-24T02:03:00+03:00`
+- `Agent`: `Antigravity (Claude Opus 4.6)`
+- `Task`: `Govde arka plan customizasyonu ve duzeltmeler`
+- `Intent`: `Musteri mobil app'te butonlar + ozet tiles alani icin arka plan rengini veya gorselini admin panelinden ayarlanabilir hale getirmek.`
+- `Files Read`:
+  - `src/lib/customerMobileAppConfig.js`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `server/index.js`
+- `Files Changed`:
+  - `src/lib/customerMobileAppConfig.js` - DEFAULT_BRANDING'e bodyBackgroundColor (#f8fafc) ve bodyBackgroundImageUrl eklendi; normalizeBranding guncellendi
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - MobileHomeDashboard'da butonlar+tiles'i saran div'e bodyBackground uygulandı (gorsel varsa gorsel, yoksa renk); summary tiles'a backdrop-filter blur eklendi (gorsel arka planda okunabilirlik icin)
+  - `src/components/pages/MobileAppShells.jsx` - Admin branding sekmesine 'Govde Arka Plani' bolumu eklendi: renk secici (color picker + hex input) ve gorsel yukleme (Railway volume)
+  - `server/index.js` - normalizeWriteValue'da customer_app_config JSONB kolonlari (branding, home_buttons) eklendi (Entry 106'da yapildi, bu oturumda teyit edildi)
+- `Commands Run`:
+  - `npx vite build` (basarili, 18.39s)
+  - `node index.js` (local server port 3001 baslatildi, test icin)
+  - `Railway Postgres migration` (customer_app_config tablosu ve default satir olusturuldu - Entry 106'da yapildi)
+- `Findings`:
+  - `Kullanici gorselde isaret ettigi alan butonlar ve ozet kartlarin bulundugu govde kismi; arka plani sabit #f8fafc'ydi, artik config'den geliyor.`
+  - `Gorsel arka plan secildiginde summary tiles'in okunabilir kalmasi icin rgba(255,255,255,.85) + backdrop-filter blur(8px) uygulandı.`
+- `Decisions`:
+  - `bodyBackgroundImageUrl varsa gorsel, yoksa bodyBackgroundColor kullanilir (gorsel oncelikli).`
+  - `Admin panelinde renk secici + hex input + gorsel yukleme yan yana gosteriliyor; 'Gorsel varsa renk yerine gorsel kullanilir' notu eklendi.`
+- `Open Risks`:
+  - `server/index.js JSONB fix (customer_app_config) HALA Railway'e DEPLOY EDILMEDI. Bu KRITIK.`
+  - `Boss ve Personel uygulamalari henuz ayni donusume tabi tutulmadi.`
+  - `.env'deki VITE_API_URL Railway'i gosteriyor; local test icin localhost:3001 yapilmali.`
+- `Next Step`: `(1) server/index.js'i Railway'e deploy et. (2) Deploy sonrasi admin panelinden config kaydetmeyi test et. (3) Gorsel yukleme + govde arka plan testini yap. (4) Boss ve Personel uygulamalarini donustur.`
+- `Handoff Contract`: `Sonraki agent KRITIK: server/index.js (normalizeWriteValue satir 273: customer_app_config JSONB fix) Railway'e deploy edilmeli - bu olmadan admin panelinden config kaydetme calismaz. Tum frontend kodu build edilmis ve hazir. /musteri-app standalone modda calisiyor. Sahte status bar kaldirildi. Gorsel yukleme Railway volume'a yapiyor. Govde arka plani renk veya gorsel ile customizable. Migration calistirildi, tablo ve default satir mevcut. Bekleyen is: deploy + Boss/Personel donusumu.`
