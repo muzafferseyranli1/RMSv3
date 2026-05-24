@@ -5207,3 +5207,131 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `.env'deki VITE_API_URL Railway'i gosteriyor; local test icin localhost:3001 yapilmali.`
 - `Next Step`: `(1) server/index.js'i Railway'e deploy et. (2) Deploy sonrasi admin panelinden config kaydetmeyi test et. (3) Gorsel yukleme + govde arka plan testini yap. (4) Boss ve Personel uygulamalarini donustur.`
 - `Handoff Contract`: `Sonraki agent KRITIK: server/index.js (normalizeWriteValue satir 273: customer_app_config JSONB fix) Railway'e deploy edilmeli - bu olmadan admin panelinden config kaydetme calismaz. Tum frontend kodu build edilmis ve hazir. /musteri-app standalone modda calisiyor. Sahte status bar kaldirildi. Gorsel yukleme Railway volume'a yapiyor. Govde arka plani renk veya gorsel ile customizable. Migration calistirildi, tablo ve default satir mevcut. Bekleyen is: deploy + Boss/Personel donusumu.`
+
+
+## Entry 108
+
+- `Timestamp`: `2026-05-24T02:04:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Sadakat Puan Yukleme Eylemlerinin Birlestirilmesi ve suggest_products Kaldirilmasi`
+- `Intent`: `Puan yukleme eylemlerini ("bonus_points" ve "points_percent_of_order") arayuzde tek bir eylemde birlesik olarak sunmak ("Puan yukle (Sabit / % Tutar)") ve editorde "Sabit Puan" vs "Yuzde Orani" segment kontrolunu sunmak. Kullanilmayan "suggest_products" eylemini kütüphaneden ve matristen temizlemek.`
+- `Files Read`:
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `SADAKAT_KOSUL_EYLEM_DAVRANIS_MATRISI.md`
+- `Files Changed`:
+  - `src/lib/loyalty.js` - `ACTION_TYPE_OPTIONS` listesinde `bonus_points` ve `points_percent_of_order` etiketleri "Puan yükle (Sabit / % Tutar)" olarak guncellendi. `suggest_products` kütüphaneden silindi.
+  - `src/lib/loyaltyRuntimeStatus.js` - `ACTION_TYPE_STATUS` haritasından `suggest_products` silindi.
+  - `src/components/pages/LoyaltyManagement.jsx` - Eylem secici select dropdown'ında `points_percent_of_order` gizlendi. Editör alanında bu iki eylem seçildiğinde "Puan yükleme şekli" segment kontrolü sunuldu. Butonlara basıldığında `actionType` `bonus_points` veya `points_percent_of_order` olarak guncelleniyor. `suggest_products` ile ilgili ozet olusturma ve editor kodları silindi.
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` - Sihirbaz presets ve editor bilesenleri yeni yapıya uyarlandı.
+  - `SADAKAT_KOSUL_EYLEM_DAVRANIS_MATRISI.md` - `suggest_products` eylemi matris tablosundan kaldırıldı.
+- `Commands Run`:
+  - `npx vite build` (basarili, 18.39s)
+- `Findings`:
+  - `Arayuzde iki eylem tek bir eylem adı altında birlesik gosterilse de, veri tabanındaki veri modelinin kararlılığı icin kural kaydedilirken secilen segment tipine gore arka planda 'bonus_points' veya 'points_percent_of_order' eylemleri kaydedilmektedir. Bu sayede POS ve faturalandırma motorunda herhangi bir geriye donuk uyumluluk sorunu olusmaz.`
+- `Decisions`:
+  - `suggest_products eylemi kullanılmadığı ve model seviyesinde kaldığı icin kural kütüphanesini sadelestirmek adına tamamen temizlenmistir.`
+- `Open Risks`:
+  - Yok.
+- `Next Step`: `Yonetim panelinden yeni puan yukleme kuralları tanımlayarak sepet kurallarıyla birlikte dogru sekilde calıstıgını test etmek.`
+- `Handoff Contract`: `bonus_points ve points_percent_of_order eylemleri arayuzde tek bir segment kontrol altında birlestirildi. Arka planda DB modelleri korunuyor. suggest_products eylemi tamamen kaldırıldı.`
+
+## Entry 109
+
+- `Timestamp`: `2026-05-24T03:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Müşteri Mobil Uygulaması Alt Navigasyon Barının Yapışkan Hale Getirilmesi`
+- `Intent`: `Kullanıcının, müşteri mobil uygulamasında sayfa aşağıya doğru uzasa bile alt navigasyon barının (footer/tab bar) ekranın altında sabit (sticky/fixed) kalması talebini gerçekleştirmek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `PhoneChrome` yüksekliği 780px'e sabitlendi ve iç yapısı `flex` yönelimli hale getirildi. `AppViewport` yüksekliği `height: '100%'` olarak ayarlanarak standalone modda (`100svh`) ve embedded modda parent çerçevesine tam oturması sağlandı. Grid yapısı sayesinde 3. sıradaki içerik alanı (`1fr` yüksekliğinde, `overflowY: 'auto'`) içten kaydırılabilir (scrollable) hale getirildi. `LoginScreen` ve diğer `renderBody()` görünüm durumları da `height: '100%', maxHeight: '100%', overflow: 'hidden'` yapılarak dış çerçevenin taşması engellendi. Bağımsız modda (`isStandalone`) mobil uygulamanın dış sarmalayıcısı `height: '100svh', overflow: 'hidden'` yapılarak tarayıcı gövdesinin kaydırılması önlendi ve alt navigasyon barı ekranın en altında sabitlendi.
+- `Commands Run`:
+  - `npm run build` (başarılı, 16.77s)
+- `Findings`:
+  - `minHeight` kullanıldığında, içerik yüksekliği viewport'u aştığında tüm sayfa uzayıp scroll oluyordu, bu da alt barın kaybolmasına neden oluyordu. `height` sabitlendiğinde ve ara katmanlar `overflowY: 'auto'` ile sınırlandığında alt bar yapışkan (fixed) hale geldi.
+- `Decisions`:
+  - Mobil simülatör çerçevesinin ve standalone moddaki dış div'lerin yüksekliklerini katı şekilde `100svh` ve `780px` olarak sınırlamak.
+- `Open Risks`:
+  - `server/index.js` JSONB normalizasyon fix değişikliği hâlâ Railway'e deploy edilmedi.
+- `Next Step`:
+  - `server/index.js` değişikliğini Railway'e deploy etmek ve ardından Boss ile Personel mobil uygulamalarında da benzer alt bar yapışkanlaştırma adımlarını planlamak.
+- `Handoff Contract`: `Müşteri mobil uygulamasındaki alt tab bar artık sayfa uzasa da en altta yapışkan (fixed) kalıyor. İlgili CSS/stil ve grid değişiklikleri src/components/mobile/CustomerLoyaltyMobileApp.jsx dosyasına uygulandı ve build başarıyla alındı.`
+
+## Entry 110
+
+- `Timestamp`: `2026-05-24T04:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kupon Kartlarının Tasarım Şablonlarıyla Özelleştirilmesi ve Genel Arka Plan Görselinin Yayılması`
+- `Intent`: `Sayfa arka plan görselini tüm mobil uygulamaya yaymak ve kuponları 10 farklı tasarım şablonuyla (koçanlı, yırtmaçlı bilet ve barkod tasarımlarıyla) dinamik olarak listelemek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `COUPON_TEMPLATES` (10 şablon) eklendi. `CouponCard` koçanlı, yırtmaçlı bilet şeklinde yeniden tasarlandı, barkod ve kampanya görsel desteği eklendi. `CouponsScreen`, `LoginScreen` ve `AppViewport` arka plan görselini devralacak şekilde güncellendi.
+- `Commands Run`:
+  - `npm run build` (başarılı, 10.40s)
+- `Findings`:
+  - `AppViewport` ve `LoginScreen` gibi ana sarmalayıcılara `appConfig.branding` üzerinden gelen `bodyBackgroundImageUrl` veya `bodyBackgroundColor` verilerek sayfa genelinde görsel bütünlük sağlandı.
+  - Kuponlar için index bazlı (`index % 10`) ardışık şablon seçimi yapıldı. Sol koçan kısmındaki indirim oranları (örn: `%30`) veya tutarları (`100 TL`) benefitText'ten regex ile ayıklanarak büyük yazı boyutunda sunuldu.
+- `Decisions`:
+  - Bilet yırtmaç görsellerini `bodyBgColor` renkli mutlak konumlandırılmış dairelerle simüle etmek.
+- `Open Risks`:
+  - `server/index.js` JSONB normalizasyon fix değişikliği Railway'e hâlâ deploy edilmedi.
+- `Next Step`:
+  - `server/index.js` değişikliğini Railway'e deploy etmek ve Boss/Personel uygulamaları için benzer şablonları hazırlamak.
+- `Handoff Contract`: `Alt tab sekmeleri ve genel mobil ekranlar artık ana sayfada tanımlanan arka plan görselini gösteriyor. Kuponlar sekmesi, 10 farklı renk/desen şablonunda koçanlı bilet tasarımıyla ve barkod/kampanya resmiyle listeleniyor.`
+
+
+## Entry 109
+
+- `Timestamp`: `2026-05-24T03:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Puan Kazanma Katsayı Mantığının Düzeltilmesi ve Çift Bakiye Gösterimi`
+- `Intent`: `Puan kazanma katsayısının (points_earn_multiplier) tek başına sipariş tutarı üzerinden puan üretmesini engellemek; sadece tetiklenen baz puan kampanyalarını (sabit veya yüzde) katlamasını sağlamak. Ayrıca puan harcama katsayısı (points_redeem_multiplier) aktifken ön yüzde (Call Center ve Mobil Uygulama) kullanılabilir puanı normal bakiye ve "Bugüne Özel" çarpanlı bakiye olarak çift bakiye şeklinde göstermek.`
+- `Files Read`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/mobileCustomerApp.js`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js` - `points_earn_multiplier` sepet değerlendirme adımı, sepetteki diğer `bonus_points` veya `points_percent_of_order` baz puan eylemlerinin toplamını (`basePointsEarned`) toplayarak katsayıya göre çarpan fark puanı (`bonusPoints = basePointsEarned * (multiplier - 1)`) üretecek şekilde güncellendi. Baz puan eylemi yoksa 0 puan üretecek.
+  - `src/lib/loyaltyValueLedger.js` - `resolvePointsDelta` ve `postSaleLoyaltyValueLedger` fonksiyonları güncellendi. Katsayı hesaplamasından önce baz puanların toplamı (`basePoints`) bulunarak çarpan eylemine geçirildi. Puan kazanım katsayısı artık doğrudan sepet tutarı yerine bu baz puanların çarpan farkını hesaplar.
+  - `src/lib/mobileCustomerApp.js` - `buildCustomerMobileViewModel` fonksiyonu güncellenerek aktif kampanyalar içerisindeki `points_redeem_multiplier` katsayısı taranıp `combinedRedeemMultiplier` olarak view model'a eklendi.
+  - `src/components/pages/CallCenter.jsx` - Müşteri puan bakiyesinin ve TL karşılığı gösteriminin yanına eğer harcama katsayısı aktif ise parantez içinde *"Bugüne özel çarpanlı puan"* bilgisi eklendi.
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - Müşteri mobil uygulaması ana ekranında, QR rozetinde, kart ve profil detaylarında puan gösterimi çarpan aktifken *"Normal Puan (Bugün Çarpanlı Puan)"* olarak çift bakiye şeklinde güncellendi.
+- `Commands Run`:
+  - `npm run build` (Başarıyla derlendi, 11.67s)
+- `Findings`:
+  - `points_earn_multiplier` eyleminin tek başına puan üretmesi veritabanında asenkron yazım anında (`loyaltyValueLedger.js`) ve POS sepet hesaplamasında engellenmiştir. Puan kazanımı sadece baz puan eylemi varlığında çarpan farkı olarak eklenmektedir.
+- `Decisions`:
+  - Puan harcamada karmaşık geçici bakiye güncellemeleri yerine veritabanı tutarlılığını korumak adına matematiksel olarak aynı sonuca çıkan birim değer katlama mantığı korunmuş, arayüzde ise müşterinin puanı katsayıyla çarpılarak (Örn: 100 Puan - Bugüne Özel 200 Puan) kafa karışıklığı giderilmiştir.
+- `Open Risks`:
+  - Yok.
+- `Next Step`: `Yönetim panelinden puan kazanma ve harcama çarpan kampanyaları tanımlayarak POS ve Mobil arayüzde çift bakiye gösterimini ve puan kazanım hesaplarını doğrulamak.`
+- `Handoff Contract`: `Kazanım katsayısı (points_earn_multiplier) sadece baz puan kazanımlarını katlar hale getirildi. Harcama katsayısı aktifken POS/CallCenter ve Mobil uygulamada çift bakiye gösterimi entegre edildi. Proje başarıyla build edildi.`
+
+
+## Entry 111
+
+- `Timestamp`: `2026-05-24T04:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Alt Menü Butonlarının Kompakt Hale Getirilmesi ve Türkçe Karakter Düzeltmeleri`
+- `Intent`: `Sabit alt menü butonlarının dikey yüksekliğini azaltmak, Türkçe karakter sorunlarını çözmek ve kelimelerin taşarak buton yüksekliğini artırmasını engellemek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `TAB_ITEMS` etiketleri güncellendi, buton stilleri grid yerine flex'e geçirildi, paddings ve font size'lar daha küçük, sıkı değerlere çekildi.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 16.45s)
+- `Findings`:
+  - `display: grid` modunda butonlar üst/alt limitleri belirlenmediğinde dikeyde uzuyordu. `display: flex` ve `white-space: nowrap` kombinasyonu ile buton boyutları kontrol altına alındı.
+- `Decisions`:
+  - Buton yazılarını `white-space: nowrap` ile sınırlayarak kelimelerin (örneğin "Kampanyalar") alt satıra geçip buton yüksekliğini ikiye katlamasını önlemek.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Müşteri mobil uygulamasının alt menü butonlarının yeni kompakt görünümünü canlıda veya simülatörde test etmek.
+- `Handoff Contract`: `Alt menü butonları artık daha kısa, kompakt ve Türkçe karakterleri düzgün. Proje başarıyla build edildi.`

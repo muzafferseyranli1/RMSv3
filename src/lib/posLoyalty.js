@@ -1953,6 +1953,37 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   const combinedEarnMultiplier = calculateCombinedEarnMultiplier(applicableOffers, normalizedCustomerContext.tierPointsMultiplier, finalStrategy)
   const combinedRedeemMultiplier = calculateCombinedRedeemMultiplier(applicableOffers, finalStrategy)
 
+  // Calculate total base points earned in this order
+  const basePointsEarned = applicableOffers
+    .filter(offer => offer.actionType === 'bonus_points' || offer.actionType === 'points_percent_of_order')
+    .reduce((sum, offer) => sum + Number(offer.discountValue || 0), 0)
+
+  // Update points_earn_multiplier offer values based on base points
+  const updateEarnMultiplierOffer = (offer) => {
+    if (offer && offer.actionType === 'points_earn_multiplier') {
+      const multiplier = Number(offer.multiplier || 1)
+      if (basePointsEarned > 0 && multiplier > 1) {
+        const bonusPoints = roundPoints(basePointsEarned * (multiplier - 1))
+        offer.discountValue = bonusPoints
+        offer.discountAmount = 0
+        offer.points = bonusPoints
+        offer.offerLabel = `+${bonusPoints.toLocaleString('tr-TR')} ek puan kazanımı`
+      } else {
+        offer.discountValue = 0
+        offer.discountAmount = 0
+        offer.points = 0
+        offer.offerLabel = `Aktif puan kazanımı bulunmuyor`
+      }
+    }
+  }
+
+  applicableOffers.forEach(offer => updateEarnMultiplierOffer(offer))
+  finalVisibleCampaigns.forEach(c => {
+    if (c.offer) {
+      updateEarnMultiplierOffer(c.offer)
+    }
+  })
+
   // Recalculate redeem multiplier offer values if combinedRedeemMultiplier !== 1
   if (combinedRedeemMultiplier !== 1) {
     const updateRedeemOffer = (offer) => {

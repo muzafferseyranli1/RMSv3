@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
@@ -756,11 +756,14 @@ export default function OrderHub() {
     saleTemplates,
   ])
 
+  const combinedRedeemMultiplier = evaluatedRuntimeCampaigns?.combinedRedeemMultiplier || 1
   const walletBalanceLabel = walletLoading
     ? '...'
     : (walletReadiness?.status === 'ambiguous_program_context'
       ? 'Program secimi gerekli'
-      : `${Math.round(pointsBalance)} puan`)
+      : (combinedRedeemMultiplier > 1
+        ? `${Math.round(pointsBalance)} puan (Bugüne özel ${Math.round(pointsBalance * combinedRedeemMultiplier)} puan)`
+        : `${Math.round(pointsBalance)} puan`))
 
   const loyaltyDiscountAmount = useMemo(() => {
     if (!appliedLoyaltyCampaign) return 0
@@ -2546,7 +2549,15 @@ export default function OrderHub() {
                             />
                           </label>
                           <div style={{ fontSize: '.76rem', color: '#94a3b8', fontWeight: 800 }}>
-                            Puan bakiyesi yaklaşık olarak ₺{money(pointsBalance)} karşılığı kabul ediliyor.
+                            {combinedRedeemMultiplier > 1 ? (
+                              <span>
+                                Puan bakiyesi yaklaşık olarak ₺{money(pointsBalance)} (Bugüne özel ₺{money(pointsBalance * combinedRedeemMultiplier)}) karşılığı kabul ediliyor.
+                              </span>
+                            ) : (
+                              <span>
+                                Puan bakiyesi yaklaşık olarak ₺{money(pointsBalance)} karşılığı kabul ediliyor.
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}

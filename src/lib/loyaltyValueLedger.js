@@ -101,7 +101,7 @@ function buildActionEntries(rule = null, loyaltyCampaign = {}) {
   return entries
 }
 
-function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}, decisionContext = null) {
+function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}, decisionContext = null, basePoints = 0) {
   const config = action.actionConfig || {}
   switch (action.actionType) {
     case 'bonus_points':
@@ -110,7 +110,8 @@ function resolvePointsDelta(action = {}, saleAmount = 0, campaign = {}, decision
       return roundPoints(saleAmount * Number(config.percent || campaign.reward_value || campaign.rewardValue || 0) / 100)
     case 'points_earn_multiplier': {
       const combinedEarnMultiplier = Number(decisionContext?.combinedEarnMultiplier || config.multiplier || 1)
-      return roundPoints(saleAmount * combinedEarnMultiplier)
+      if (basePoints <= 0) return 0
+      return roundPoints(basePoints * (combinedEarnMultiplier - 1))
     }
     case 'points_redeem_multiplier': {
       const combinedRedeemMultiplier = Number(decisionContext?.combinedRedeemMultiplier || config.multiplier || config.redemptionContext?.multiplier || 1)
@@ -706,15 +707,32 @@ export async function postSaleLoyaltyValueLedger({
     }
   }
 
-  const resolvedPointActions = actionEntries
-    .filter(action => POINTS_ACTIONS.has(action.actionType))
+  const basePointActions = actionEntries
+    .filter(action => action.actionType === 'bonus_points' || action.actionType === 'points_percent_of_order')
     .map(action => ({
       action,
-      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}, decisionContext),
+      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}, decisionContext, 0),
     }))
+  const basePoints = basePointActions.reduce((sum, entry) => sum + entry.pointsDelta, 0)
+
+  const multiplierActions = actionEntries
+    .filter(action => action.actionType === 'points_earn_multiplier')
+    .map(action => ({
+      action,
+      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}, decisionContext, basePoints),
+    }))
+
+  const otherPointActions = actionEntries
+    .filter(action => action.actionType !== 'bonus_points' && action.actionType !== 'points_percent_of_order' && action.actionType !== 'points_earn_multiplier' && POINTS_ACTIONS.has(action.actionType))
+    .map(action => ({
+      action,
+      pointsDelta: resolvePointsDelta(action, saleAmount, campaign || {}, decisionContext, 0),
+    }))
+
+  const resolvedPointActions = [...basePointActions, ...multiplierActions, ...otherPointActions]
+  const pointsDelta = resolvedPointActions.reduce((sum, entry) => sum + entry.pointsDelta, 0)
   const resolvedPointAction = resolvedPointActions.find(entry => entry.pointsDelta !== 0) || resolvedPointActions[0] || null
   const pointsAction = resolvedPointAction?.action || null
-  const pointsDelta = resolvedPointAction?.pointsDelta || 0
   const couponCode = getSelectedCouponCode(selectedCouponCode, customer || {})
   const redeemedValue = roundPoints(
     loyaltyCampaign?.discountAmount

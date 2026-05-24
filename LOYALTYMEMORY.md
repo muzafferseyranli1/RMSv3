@@ -1827,3 +1827,117 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `LoyaltyCampaignWizard.jsx` sihirbazında hedeflenen kampanya şablonları, hızlı eylemler, eylem açıklamaları ve editör pencereleri yeni birleşik eylem modeliyle uyumlu hale getirildi.
 - `Next Loyalty Step`:
   - Yönetim panelinden yeni birleşik indirim ve ek ücret eylemleri kullanarak kampanya oluşturup, POS üzerinde sepet hesaplamasında doğru uygulandığını doğrula.
+
+
+## Entry 046
+
+- `Timestamp`: `2026-05-24T02:04:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Sadakat Puan Yükleme Eylemlerinin Birleştirilmesi ve suggest_products Kaldırılması`
+- `Trigger`: `Kullanıcının sadakat kurallarındaki puan yükleme varyasyonlarını ("Sabit Puan" vs "Sipariş Yüzdesi kadar puan") tek bir birleşik eylemde toplama ve arayüzdeki "Ekstra ürün teklif et" (suggest_products) eylemini kaldırma talebi.`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+  - `src/lib/loyaltyRuntimeStatus.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `SADAKAT_KOSUL_EYLEM_DAVRANIS_MATRISI.md`
+- `Current Capability`:
+  - `ACTION_TYPE_OPTIONS` listesinde `bonus_points` ve `points_percent_of_order` etiketleri "Puan yükle (Sabit / % Tutar)" olarak güncellendi.
+  - `LoyaltyManagement.jsx` editöründe eylem seçici select alanında `points_percent_of_order` eylemi gizlendi; her iki eylem tipi seçildiğinde "Puan yükleme şekli" başlığı altında "Sabit Puan" ve "Yüzde Oranı (%)" butonlarından oluşan bir segment kontrolü sunulmaktadır.
+  - Segment butonları tıklandığında `actionType` `bonus_points` veya `points_percent_of_order` olarak değiştirilir, böylece POS motoru ve veritabanı şeması tarafında geriye dönük tam uyumluluk korunmuş olur.
+  - `suggest_products` eylemi kütüphaneden (`loyalty.js`), statü haritasından (`loyaltyRuntimeStatus.js`), matris belgesinden ve editör arayüzünden tamamen kaldırılmıştır.
+- `Next Loyalty Step`:
+  - Yeni birleşik puan yükleme kurgularını arayüzden kaydedip POS tarafında doğru puan hesaplamasının yapıldığını doğrula.
+
+## Entry 047
+
+- `Timestamp`: `2026-05-24T02:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Müşteri Mobil Uygulaması Gövde Arka Plan Özelleştirmesi (Custom bodyBackground)`
+- `Trigger`: `Müşteri mobil uygulamasındaki butonlar ve özet kartların yer aldığı gövde alanının arka plan renginin veya görselinin admin panelinden dinamik olarak yönetilebilir hale getirilmesi talebi.`
+- `Files Changed`:
+  - `src/lib/customerMobileAppConfig.js`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/MobileAppShells.jsx`
+  - `server/index.js`
+- `Current Capability`:
+  - `customerMobileAppConfig.js`'deki `DEFAULT_BRANDING` şemasına `bodyBackgroundColor` (varsayılan: `#f8fafc`) ve `bodyBackgroundImageUrl` alanları eklendi.
+  - `CustomerLoyaltyMobileApp.jsx` ana ekranında (`MobileHomeDashboard`) butonlar ve kartların bulunduğu gövde alanına bu dinamik arka plan rengi veya resmi (`bodyBackground` stili) uygulandı. Arka planda görsel seçilmesi durumunda kartların okunabilirliğini artırmak için kartlara `backdrop-filter: blur(8px)` eklendi.
+  - `MobileAppShells.jsx` yönetim panelindeki branding sekmesine dinamik renk seçici (color picker + hex input) ve görsel yükleme arayüzleri ("Gövde Arka Planı") entegre edildi.
+  - `server/index.js` içerisindeki JSONB veritabanı yazım hatasını önleyen normalizasyon bloğunda `customer_app_config` tablosunun `branding` ve `home_buttons` kolonları sisteme eklendi (Entry 106'da yapılıp teyit edildi).
+- `Next Loyalty Step`:
+  - `server/index.js` değişikliğini Railway'e deploy ettikten sonra yönetim panelinden gövde arka planı rengi ve resmi yükleyerek müşteri mobil uygulamasında doğru yansıdığını test et.
+
+## Entry 048
+
+- `Timestamp`: `2026-05-24T03:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Müşteri Mobil Uygulaması Alt Navigasyon Barının Yapışkan Hale Getirilmesi`
+- `Trigger`: `Kullanıcının, müşteri mobil uygulamasında sayfa aşağıya doğru uzasa bile alt navigasyon barının (footer/tab bar) ekranın altında sabit (sticky/fixed) kalması talebi.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Current Capability`:
+  - `PhoneChrome` (embedded modu) yüksekliği 780px'e sabitlendi ve iç yapısı `flex` yönelimli hale getirildi (`height: 780, display: 'flex', flexDirection: 'column', overflow: 'hidden'`).
+  - `AppViewport` (tab barı taşıyan ana iskele) yüksekliği `height: '100%'` olarak ayarlanarak hem standalone modda (`100svh`) hem de embedded modda parent çerçevesine tam oturması sağlandı. Grid yapısı (`gridTemplateRows: 'auto auto 1fr auto'`) sayesinde 3. sıradaki içerik alanı (`1fr` yüksekliğinde, `overflowY: 'auto'`) içten kaydırılabilir (scrollable) hale getirildi.
+  - `LoginScreen` ve diğer `renderBody()` görünüm durumları da `height: '100%', maxHeight: '100%', overflow: 'hidden'` yapılarak dış çerçevenin taşması engellendi.
+  - Bağımsız modda (`isStandalone`) mobil uygulamanın dış sarmalayıcısı `height: '100svh', overflow: 'hidden'` yapılarak tarayıcı gövdesinin kaydırılması önlendi ve alt navigasyon barı (`TAB_ITEMS`) ekranın en altında sabitlendi.
+- `Next Loyalty Step`:
+  - Mobil uygulamayı `/musteri-app` rotası üzerinden veya admin paneli simulasyonundan açıp, sayfa yüksekliği uzadığında alt menünün sabit kaldığını ve içerik alanının kendi içinde kaydığını doğrula.
+
+
+## Entry 049
+
+- `Timestamp`: `2026-05-24T04:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kupon Kartlarının Tasarım Şablonlarıyla Özelleştirilmesi ve Genel Arka Plan Görselinin Yayılması`
+- `Trigger`: `Kullanıcının, müşteri mobil uygulamasında tanımlanmış gövde arka plan görselinin tüm sekmelerde gösterilmesi ve kuponların 10 farklı yüksek kaliteli kart şablonuyla listelenmesi talebi.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Current Capability`:
+  - `AppViewport` sarmalayıcısı `appConfig.branding.bodyBackgroundImageUrl` veya `bodyBackgroundColor` değerlerini devralacak şekilde güncellendi. Böylece Ana Sayfa haricindeki Kartım, Kuponlarım, Kampanyalar ve Hesabım sekmelerinin tümü aynı marka arka planını göstermektedir.
+  - `LoginScreen`, `loading` ve `errorText` ekranları da aynı arka plan resmini/rengini gösterecek şekilde düzenlendi.
+  - `COUPON_TEMPLATES` adıyla 10 adet benzersiz arka plan renk geçişi (gradient), desen overlay'i, ikon ve metin rengi barındıran kupon şablon dizisi eklendi.
+  - `CouponCard` bileşeni, bu 10 şablonu kupon listesindeki dizin sırasına (`index % 10`) göre ardışık (sırayla) uygulayacak şekilde yeniden tasarlandı.
+  - Kupon kartı tasarımı sol bilet koçanı (kesik çizgili kenarlıklar, dairesel yırtmaçlar, büyük indirim/hediye değeri, barkod) ve sağ içerik paneli (şirket ismi, kupon kodu, kampanya adı/açıklaması ve varsa kampanya görseli) şeklinde yüksek kaliteli bir kart görünümüne kavuşturuldu.
+- `Next Loyalty Step`:
+  - Mobil simülatör veya `/musteri-app` üzerinden kuponlar sekmesini açarak, arka planın doğru geldiğini ve kuponların farklı şablonlarda ve barkodlu/yırtmaçlı bilet tasarımlarıyla görüntülendiğini doğrula.
+
+
+## Entry 048
+
+- `Timestamp`: `2026-05-24T03:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Puan Kazanma Katsayı Mantığının Düzeltilmesi ve Çift Bakiye Gösterimi`
+- `Trigger`: `Kazanım katsayısı eyleminin (points_earn_multiplier) sipariş bazında tek başına puan kazandırmaması, sadece aktif baz puan kazanımlarını katlaması talebi ile harcama katsayısı aktifken ön yüzde (Call Center ve Mobil) normal puanın yanında "Bugüne Özel" çarpanlı puanın gösterilmesi talebi.`
+- `Files Changed`:
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/mobileCustomerApp.js`
+  - `src/components/pages/CallCenter.jsx`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Current Capability`:
+  - `posLoyalty.js` ve `loyaltyValueLedger.js` puan motorları güncellendi. Artık `points_earn_multiplier` tek başına sipariş tutarı üzerinden puan kazanımı üretmez. Sepette tetiklenen diğer baz puan kazanımları (`bonus_points` veya `points_percent_of_order`) toplanır ve eğer kazanım katsayı aktifse bu baz puan toplamı katsayı ile çarpılarak aradaki çarpan fark puanı kazanım hanesine eklenir. Baz puan kazanımı yoksa katsayı 2x olsa bile kazanılan ek puan 0 olur.
+  - `buildCustomerMobileViewModel` (mobileCustomerApp.js) fonksiyonu snapshot içindeki aktif kampanyalardan harcama katsayısını (`points_redeem_multiplier`) okuyarak `combinedRedeemMultiplier` değerini view model'a taşır.
+  - `CallCenter.jsx` ekranında ve müşteri kartı ödeme alanlarında bakiye gösterimi eğer harcama katsayısı aktif ise *100 Puan (Bugüne Özel 200 Puan)* şeklinde çift gösterim olarak güncellendi. Puanın TL karşılığı da katsayıyla çarpılarak personelin doğru bilgiyi görmesi sağlandı.
+  - `CustomerLoyaltyMobileApp.jsx` mobil uygulamasında ana sayfa star rozeti, quick summary kartları, kart detayları ve tier/profil ekranları katsayı aktifken çift bakiye gösterecek şekilde güncellendi.
+- `Next Loyalty Step`:
+  - Yönetim panelinden yeni katsayılı kazanım ve harcama kuralları tanımlayarak POS ve Mobil arayüzde doğru çalıştığını uçtan uca doğrula.
+
+
+## Entry 050
+
+- `Timestamp`: `2026-05-24T04:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Alt Menü Butonlarının Kompakt Hale Getirilmesi ve Türkçe Karakter Düzeltmeleri`
+- `Trigger`: `Kullanıcının, sabit alt menü butonlarının dikeyde çok uzun (yüksek) durduğunu belirtmesi ve bu butonların daha kompakt tasarlanmasını istemesi.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Current Capability`:
+  - `TAB_ITEMS` dizisindeki etiketlerin Türkçe karakter yazımları düzeltildi (`Kartim` -> `Kartım`, `Hesabim` -> `Hesabım`) ve `Kuponlarim` etiketi "Kuponlar" olarak kısaltılarak taşma/satır kesilmesi engellendi.
+  - Alt bar buton sarmalayıcısı (`div`) padding'i `10px 10px 12px`'den `6px 6px 8px`'e, gap değeri `6`'dan `4`'e düşürüldü.
+  - Butonların (`button`) stili `display: grid` yerine `display: flex` and dikey yönelimli (`flexDirection: column`) hale getirilerek dikeyde esneme/uzama yapması engellendi.
+  - Buton padding'i `8px 4px`'ten `6px 2px`'ye indirildi, border-radius `12` yapıldı.
+  - İkon boyutu `1.05rem` olarak netleştirildi, yazı boyutu `.62rem` yapılıp `whiteSpace: 'nowrap'` ile tek satıra zorlandı.
+  - Aktif tab arka plan gradyanı daha hafif ve zarif bir görünüme kavuşturuldu (`rgba(251,113,133,.12)` ve `rgba(249,115,22,.1)`).
+- `Next Loyalty Step`:
+  - Mobil simülatörde veya `/musteri-app` sayfasında alt menünün kısalmış, daha kompakt ve premium halini görsel olarak doğrula.

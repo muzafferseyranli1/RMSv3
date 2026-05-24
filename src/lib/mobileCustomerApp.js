@@ -311,6 +311,29 @@ export function buildCustomerMobileViewModel(snapshot) {
   const pointBalance = pointsWallets.reduce((sum, wallet) => sum + asNumber(wallet.current_points_balance, 0), 0)
   const storedValueBalance = storedValueWallets.reduce((sum, wallet) => sum + asNumber(wallet.current_points_balance, 0), 0)
   const rewardBalance = rewardWallets.reduce((sum, wallet) => sum + asNumber(wallet.current_points_balance, 0), 0)
+
+  // Find active points_redeem_multiplier campaigns in the snapshot
+  let combinedRedeemMultiplier = 1
+  if (Array.isArray(campaigns)) {
+    const multipliers = []
+    campaigns.forEach(campaign => {
+      const active = campaign.active !== false
+      if (!active) return
+      
+      const rules = Array.isArray(campaign.rules) ? campaign.rules : []
+      rules.forEach(rule => {
+        if (rule.action_type === 'points_redeem_multiplier' || rule.actionType === 'points_redeem_multiplier') {
+          const config = rule.action_json || rule.actionConfig || {}
+          const m = Number(config.multiplier || campaign.reward_value || campaign.rewardValue || 1)
+          multipliers.push(m)
+        }
+      })
+    })
+    if (multipliers.length > 0) {
+      combinedRedeemMultiplier = Math.max(...multipliers, 1)
+    }
+  }
+
   const availableEntitlements = entitlements.filter(item => item.entitlement_status === 'available')
   const tierSnapshot = deriveTierSnapshot(customer, snapshot.tiers || [], wallets)
 
@@ -369,6 +392,7 @@ export function buildCustomerMobileViewModel(snapshot) {
     displayName: deriveCustomerDisplayName(customer),
     memberCode: deriveMemberCode(customer),
     pointBalance,
+    combinedRedeemMultiplier,
     storedValueBalance,
     rewardBalance,
     walletCount: wallets.length,

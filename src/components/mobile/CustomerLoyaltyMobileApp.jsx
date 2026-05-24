@@ -39,10 +39,103 @@ import {
 
 const TAB_ITEMS = [
   { key: 'home', label: 'Ana Sayfa', icon: 'fa-house' },
-  { key: 'card', label: 'Kartim', icon: 'fa-id-card' },
-  { key: 'coupons', label: 'Kuponlarim', icon: 'fa-ticket' },
+  { key: 'card', label: 'Kartım', icon: 'fa-id-card' },
+  { key: 'coupons', label: 'Kuponlar', icon: 'fa-ticket' },
   { key: 'campaigns', label: 'Kampanyalar', icon: 'fa-bullhorn' },
-  { key: 'account', label: 'Hesabim', icon: 'fa-user' },
+  { key: 'account', label: 'Hesabım', icon: 'fa-user' },
+]
+
+const COUPON_TEMPLATES = [
+  {
+    gradient: 'linear-gradient(135deg, #fbcfe8 0%, #f472b6 100%)',
+    textColor: '#4c0519',
+    subColor: '#9d174d',
+    stubBg: 'rgba(255,255,255,0.25)',
+    accentColor: '#be185d',
+    icon: 'fa-spa',
+    pattern: 'radial-gradient(circle at 20% 30%, rgba(253, 244, 245, 0.4) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(253, 244, 245, 0.3) 0%, transparent 50%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #fef08a 0%, #d97706 100%)',
+    textColor: '#451a03',
+    subColor: '#78350f',
+    stubBg: 'rgba(255,255,255,0.25)',
+    accentColor: '#b45309',
+    icon: 'fa-crown',
+    pattern: 'radial-gradient(circle at 10% 20%, rgba(254, 253, 237, 0.4) 0%, transparent 60%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #a7f3d0 0%, #059669 100%)',
+    textColor: '#064e3b',
+    subColor: '#065f46',
+    stubBg: 'rgba(255,255,255,0.25)',
+    accentColor: '#047857',
+    icon: 'fa-leaf',
+    pattern: 'radial-gradient(circle at 50% 50%, rgba(209, 250, 229, 0.15) 0%, transparent 70%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #ec4899 0%, #3b82f6 100%)',
+    textColor: '#ffffff',
+    subColor: '#f1f5f9',
+    stubBg: 'rgba(255,255,255,0.18)',
+    accentColor: '#fdf2f8',
+    icon: 'fa-bolt',
+    pattern: 'radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.25) 0%, transparent 40%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+    textColor: '#ffffff',
+    subColor: '#f1f5f9',
+    stubBg: 'rgba(255,255,255,0.18)',
+    accentColor: '#ecfdf5',
+    icon: 'fa-gem',
+    pattern: 'radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.2) 0%, transparent 50%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+    textColor: '#fef08a',
+    subColor: '#e2e8f0',
+    stubBg: 'rgba(255,255,255,0.08)',
+    accentColor: '#ca8a04',
+    icon: 'fa-star',
+    pattern: 'radial-gradient(circle at 50% 50%, rgba(254, 240, 138, 0.05) 0%, transparent 70%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #93c5fd 0%, #1d4ed8 100%)',
+    textColor: '#ffffff',
+    subColor: '#f1f5f9',
+    stubBg: 'rgba(255,255,255,0.18)',
+    accentColor: '#eff6ff',
+    icon: 'fa-gift',
+    pattern: 'radial-gradient(circle at 10% 90%, rgba(255, 255, 255, 0.15) 0%, transparent 40%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #fde047 0%, #dc2626 100%)',
+    textColor: '#ffffff',
+    subColor: '#fef2f2',
+    stubBg: 'rgba(255,255,255,0.2)',
+    accentColor: '#fef3c7',
+    icon: 'fa-fire',
+    pattern: 'radial-gradient(circle at 30% 80%, rgba(254, 243, 199, 0.3) 0%, transparent 55%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f43f5e 100%)',
+    textColor: '#ffffff',
+    subColor: '#fdf2f8',
+    stubBg: 'rgba(255,255,255,0.15)',
+    accentColor: '#fae8ff',
+    icon: 'fa-wand-magic-sparkles',
+    pattern: 'radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.2) 0%, transparent 40%)'
+  },
+  {
+    gradient: 'linear-gradient(135deg, #e2e8f0 0%, #64748b 100%)',
+    textColor: '#0f172a',
+    subColor: '#334155',
+    stubBg: 'rgba(255,255,255,0.3)',
+    accentColor: '#1e293b',
+    icon: 'fa-ticket',
+    pattern: 'linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 10px 10px'
+  }
 ]
 
 const ACCOUNT_VIEWS = [
@@ -148,22 +241,242 @@ function SummaryTile({ label, value, hint, color = '#0f172a' }) {
   )
 }
 
-function CouponCard({ coupon }) {
+function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   const statusMeta = getCouponStatusMeta(coupon.status)
+
+  // Find associated campaign to get name, description and image
+  const associatedCampaign = useMemo(() => {
+    if (!Array.isArray(campaigns)) return null
+    return campaigns.find(camp => {
+      const rules = Array.isArray(camp.rules) ? camp.rules : []
+      return rules.some(rule => {
+        const config = rule.action_json || rule.actionConfig || {}
+        return String(config.couponSeriesId) === String(coupon.series_id) || String(config.seriesId) === String(coupon.series_id);
+      })
+    }) || campaigns.find(camp => {
+      const meta = camp.metadata || {}
+      return String(meta.couponSeriesId) === String(coupon.series_id) || String(camp.id) === String(coupon.series_id)
+    })
+  }, [campaigns, coupon.series_id])
+
+  const campaignImage = associatedCampaign?.metadata?.imageUrl || associatedCampaign?.metadata?.backgroundImageUrl || associatedCampaign?.metadata?.logoUrl || null
+  const campaignName = associatedCampaign?.name || coupon.seriesName || 'Sadakat Kuponu'
+  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada veya kioskta okutarak kullanabilirsiniz.'
+
+  // Pre-defined templates (10 different coupon styles)
+  const template = COUPON_TEMPLATES[index % COUPON_TEMPLATES.length]
+  const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
+
+  // Parse benefit text to display value prominently on left stub
+  const text = coupon.benefitText || ''
+  let benefitValue = ''
+  let benefitLabel = 'İNDİRİM'
+  if (text.includes('%')) {
+    benefitValue = text.match(/%\d+|\d+%/)?.[0] || '%'
+    benefitLabel = 'İNDİRİM'
+  } else if (text.toLowerCase().includes('tl')) {
+    benefitValue = text.match(/\d+\s*TL|\d+/)?.[0] || 'TL'
+    benefitLabel = 'İNDİRİM'
+  } else {
+    benefitValue = text.slice(0, 10)
+    benefitLabel = 'HEDİYE'
+  }
+
+  const Barcode = () => (
+    <div style={{ display: 'flex', gap: 1.5, height: 28, margin: '6px 0', opacity: 0.45, color: template.textColor }}>
+      {[2, 1, 3, 1, 2, 4, 1, 2, 1, 3, 1, 2, 1].map((w, i) => (
+        <span key={i} style={{ display: 'inline-block', width: w, height: '100%', backgroundColor: 'currentColor' }} />
+      ))}
+    </div>
+  )
+
+  const isPassive = !['available', 'reserved'].includes(coupon.status)
+
   return (
-    <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>{coupon.seriesName}</div>
-          <div style={{ marginTop: 4, color: '#f97316', fontWeight: 800, fontSize: '.82rem' }}>{coupon.benefitText}</div>
+    <div style={{
+      borderRadius: 20,
+      background: isPassive ? 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%)' : template.gradient,
+      color: isPassive ? '#475569' : template.textColor,
+      boxShadow: '0 12px 28px rgba(15,23,42,.08)',
+      display: 'flex',
+      minHeight: 130,
+      position: 'relative',
+      overflow: 'hidden',
+      border: '1px solid rgba(148,163,184,.12)',
+    }}>
+      {/* Decorative pattern overlays */}
+      {!isPassive && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: template.pattern,
+          opacity: 0.15,
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {/* Ticket Cutout Notches */}
+      <div style={{
+        position: 'absolute',
+        top: -8,
+        left: 77, // 85px (stub width) - 8px (half of 16px notch width)
+        width: 16,
+        height: 16,
+        borderRadius: '50%',
+        background: bodyBgColor,
+        boxShadow: 'inset 0 -3px 5px rgba(0,0,0,.04)',
+        zIndex: 2,
+      }} />
+      <div style={{
+        position: 'absolute',
+        bottom: -8,
+        left: 77,
+        width: 16,
+        height: 16,
+        borderRadius: '50%',
+        background: bodyBgColor,
+        boxShadow: 'inset 0 3px 5px rgba(0,0,0,.04)',
+        zIndex: 2,
+      }} />
+
+      {/* Left Stub (Barcode and Value) */}
+      <div style={{
+        width: 85,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRight: isPassive ? '2px dashed rgba(71,85,105,.2)' : '2px dashed rgba(255,255,255,.3)',
+        padding: '10px 4px',
+        background: isPassive ? 'rgba(0,0,0,0.03)' : template.stubBg,
+        position: 'relative',
+        flexShrink: 0,
+      }}>
+        {/* Ticket icon */}
+        <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+          <i className={`fa-solid ${isPassive ? 'fa-ticket' : template.icon}`} />
+        </span>
+        
+        {/* Large Value */}
+        <div style={{
+          fontSize: benefitValue.length > 5 ? '0.9rem' : '1.25rem',
+          fontWeight: 900,
+          margin: '2px 0',
+          textAlign: 'center',
+          lineHeight: 1.1,
+          letterSpacing: '-0.02em',
+        }}>
+          {benefitValue}
         </div>
-        <span style={badgeStyle(statusMeta.background, statusMeta.color)}>{statusMeta.label}</span>
+
+        {/* Small label */}
+        <div style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.05em', opacity: 0.8 }}>
+          {benefitLabel}
+        </div>
+
+        {/* Mini Barcode */}
+        <Barcode />
       </div>
-      <div style={{ color: '#475569', fontSize: '.78rem', lineHeight: 1.6 }}>{coupon.ruleText}</div>
-      <div style={{ display: 'grid', gap: 4, color: '#64748b', fontSize: '.76rem' }}>
-        <div>Kanal: {coupon.channelLabel}</div>
-        <div>Tarih: {formatMobileDate(coupon.issuedAt, { day: '2-digit', month: 'short' })}</div>
-        <div>Son kullanim: {formatMobileDate(coupon.expiresAt, { day: '2-digit', month: 'short' })}</div>
+
+      {/* Right Main Panel */}
+      <div style={{
+        flex: 1,
+        padding: '12px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        position: 'relative',
+        zIndex: 1,
+        minWidth: 0,
+      }}>
+        {/* Top line: Header & Code */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+          <span style={{
+            fontSize: '0.62rem',
+            fontWeight: 800,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            opacity: 0.75,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: '120px'
+          }}>
+            {appConfig?.branding?.companyName || 'RMS LOYALTY'}
+          </span>
+          <span style={{
+            fontFamily: 'monospace',
+            fontWeight: 900,
+            fontSize: '0.78rem',
+            background: isPassive ? 'rgba(71,85,105,0.08)' : 'rgba(255,255,255,0.22)',
+            padding: '2px 6px',
+            borderRadius: 6,
+            letterSpacing: '0.04em'
+          }}>
+            {coupon.code}
+          </span>
+        </div>
+
+        {/* Middle line: Campaign details & Image */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '4px 0', flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Campaign Name */}
+            <div style={{
+              fontWeight: 900,
+              fontSize: '0.92rem',
+              lineHeight: 1.25,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
+              {campaignName}
+            </div>
+            {/* Description */}
+            <div style={{
+              marginTop: 3,
+              fontSize: '0.74rem',
+              lineHeight: 1.35,
+              opacity: 0.85,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}>
+              {campaignDescription}
+            </div>
+          </div>
+
+          {/* Optional Campaign Image */}
+          {campaignImage && (
+            <img
+              src={campaignImage}
+              alt="Kampanya"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 8,
+                objectFit: 'cover',
+                border: isPassive ? '1.5px solid rgba(71,85,105,0.2)' : '1.5px solid rgba(255,255,255,0.3)',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
+                flexShrink: 0,
+              }}
+            />
+          )}
+        </div>
+
+        {/* Bottom line: Expiry, channel & status */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.66rem', opacity: 0.8, borderTop: isPassive ? '1px solid rgba(71,85,105,0.08)' : '1px solid rgba(255,255,255,0.15)', paddingTop: 6, marginTop: 4 }}>
+          <span>
+            {coupon.expiresAt ? (
+              <>Son kullanım: {formatMobileDate(coupon.expiresAt, { day: '2-digit', month: 'short' })}</>
+            ) : (
+              <>Süresiz kupon</>
+            )}
+          </span>
+          <span style={{ fontWeight: 800 }}>
+            {isPassive ? statusMeta.label : coupon.channelLabel}
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -442,7 +755,13 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
               color: '#fff', fontSize: '.74rem', fontWeight: 800,
             }}>
               <i className="fa-solid fa-star" style={{ color: '#fbbf24' }} />
-              {model.pointBalance > 0 ? `${model.pointBalance} Puan` : 'Sadakat'}
+              {model.pointBalance > 0 ? (
+                model.combinedRedeemMultiplier > 1 ? (
+                  `${model.pointBalance} Puan (Bugün ${model.pointBalance * model.combinedRedeemMultiplier})`
+                ) : (
+                  `${model.pointBalance} Puan`
+                )
+              ) : 'Sadakat'}
             </span>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -526,7 +845,15 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
         <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
           <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
             <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Puan</div>
-            <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.pointBalance > 0 ? model.pointBalance : '0'}</div>
+            <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>
+              {model.pointBalance > 0 ? (
+                model.combinedRedeemMultiplier > 1 ? (
+                  <span>{model.pointBalance} <span style={{ fontSize: '.74rem', color: '#f97316', fontWeight: 900 }}>({model.pointBalance * model.combinedRedeemMultiplier})</span></span>
+                ) : (
+                  model.pointBalance
+                )
+              ) : '0'}
+            </div>
           </div>
           <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
             <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Kupon</div>
@@ -622,7 +949,13 @@ function HomeScreen({ model, onOpen }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
           <div>
             <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.68)' }}>Puan</div>
-            <div style={{ marginTop: 4, fontWeight: 900 }}>{formatMobileNumber(model.pointBalance)}</div>
+            <div style={{ marginTop: 4, fontWeight: 900 }}>
+              {model.combinedRedeemMultiplier > 1 ? (
+                <span>{formatMobileNumber(model.pointBalance)} <span style={{ fontSize: '.74rem', color: '#fdba74', fontWeight: 900 }}>({formatMobileNumber(model.pointBalance * model.combinedRedeemMultiplier)})</span></span>
+              ) : (
+                formatMobileNumber(model.pointBalance)
+              )}
+            </div>
           </div>
           <div>
             <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.68)' }}>Bakiye</div>
@@ -725,7 +1058,13 @@ function CardScreen({ model }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
             <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.7)' }}>Puan bakiyesi</div>
-            <div style={{ marginTop: 4, fontWeight: 900 }}>{formatMobileNumber(model.pointBalance)} puan</div>
+            <div style={{ marginTop: 4, fontWeight: 900 }}>
+              {model.combinedRedeemMultiplier > 1 ? (
+                <span>{formatMobileNumber(model.pointBalance)} puan <span style={{ fontSize: '.74rem', color: '#fdba74', fontWeight: 900 }}>({formatMobileNumber(model.pointBalance * model.combinedRedeemMultiplier)} Bugün)</span></span>
+              ) : (
+                `${formatMobileNumber(model.pointBalance)} puan`
+              )}
+            </div>
           </div>
           <div>
             <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.7)' }}>Cuzdan</div>
@@ -741,7 +1080,7 @@ function CardScreen({ model }) {
   )
 }
 
-function CouponsScreen({ model, onAddCoupon }) {
+function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
   const [couponCode, setCouponCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
@@ -845,21 +1184,45 @@ function CouponsScreen({ model, onAddCoupon }) {
       {model.activeCoupons.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900, color: '#0f172a' }}>Aktif kuponlar</div>
-          {model.activeCoupons.map(coupon => <CouponCard key={coupon.id} coupon={coupon} />)}
+          {model.activeCoupons.map((coupon, idx) => (
+            <CouponCard
+              key={coupon.id}
+              coupon={coupon}
+              index={idx}
+              campaigns={model.campaigns}
+              appConfig={appConfig}
+            />
+          ))}
         </div>
       ) : null}
 
       {model.expiringCoupons.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900, color: '#0f172a' }}>Yakinda bitecekler</div>
-          {model.expiringCoupons.map(coupon => <CouponCard key={`exp-${coupon.id}`} coupon={coupon} />)}
+          {model.expiringCoupons.map((coupon, idx) => (
+            <CouponCard
+              key={`exp-${coupon.id}`}
+              coupon={coupon}
+              index={idx + model.activeCoupons.length}
+              campaigns={model.campaigns}
+              appConfig={appConfig}
+            />
+          ))}
         </div>
       ) : null}
 
       {model.passiveCoupons.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900, color: '#0f172a' }}>Gecmis ve pasif kuponlar</div>
-          {model.passiveCoupons.map(coupon => <CouponCard key={`pass-${coupon.id}`} coupon={coupon} />)}
+          {model.passiveCoupons.map((coupon, idx) => (
+            <CouponCard
+              key={`pass-${coupon.id}`}
+              coupon={coupon}
+              index={idx + model.activeCoupons.length + model.expiringCoupons.length}
+              campaigns={model.campaigns}
+              appConfig={appConfig}
+            />
+          ))}
         </div>
       ) : (
         <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
@@ -1342,6 +1705,7 @@ function LoginScreen({
   statusText,
   errorText,
   onSelectCustomer,
+  appConfig = null,
 }) {
   const [isSignup, setIsSignup] = useState(false)
   const [name, setName] = useState('')
@@ -1372,8 +1736,20 @@ function LoginScreen({
     }
   }
 
+  const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
+  const bodyBgImage = appConfig?.branding?.bodyBackgroundImageUrl
+
   return (
-    <div style={{ minHeight: '100svh', background: 'linear-gradient(180deg, #fff7f5 0%, #ffffff 16%, #f8fafc 100%)', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+    <div style={{
+      height: '100%',
+      maxHeight: '100%',
+      background: bodyBgImage
+        ? `url(${bodyBgImage}) center/cover no-repeat fixed`
+        : bodyBgColor,
+      display: 'grid',
+      gridTemplateRows: 'auto 1fr',
+      overflow: 'hidden'
+    }}>
       <div style={{ padding: '24px 18px 14px', display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
           <div>
@@ -1580,7 +1956,7 @@ function PhoneChrome({
 }) {
   if (standalone) {
     return (
-      <div style={{ width: 'min(100%, 430px)', minHeight: '100svh', background: '#fff' }}>
+      <div style={{ width: 'min(100%, 430px)', height: '100svh', overflow: 'hidden', background: '#fff' }}>
         {children}
       </div>
     )
@@ -1590,7 +1966,7 @@ function PhoneChrome({
     <div
       style={{
         width: 'min(100%, 390px)',
-        minHeight: 780,
+        height: 780,
         borderRadius: 36,
         background: 'linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,252,.98)), radial-gradient(circle at top right, rgba(251,113,133,.22), transparent 30%)',
         border: '1px solid rgba(148,163,184,.28)',
@@ -1598,6 +1974,8 @@ function PhoneChrome({
         padding: 18,
         position: 'relative',
         overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <div
@@ -1638,11 +2016,17 @@ function AppViewport({
   appConfig,
   onOrderAction,
 }) {
+  const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
+  const bodyBgImage = appConfig?.branding?.bodyBackgroundImageUrl
+
   return (
     <div style={{
-      minHeight: standalone ? '100svh' : '100%',
+      height: '100%',
+      maxHeight: '100%',
       borderRadius: standalone ? 0 : 26,
-      background: 'linear-gradient(180deg, #fff7f5 0%, #ffffff 16%, #f8fafc 100%)',
+      background: bodyBgImage
+        ? `url(${bodyBgImage}) center/cover no-repeat fixed`
+        : bodyBgColor,
       border: standalone ? 'none' : '1px solid rgba(226,232,240,.9)',
       display: 'grid',
       gridTemplateRows: 'auto auto 1fr auto',
@@ -1756,7 +2140,7 @@ function AppViewport({
               }} />
         ) : null}
         {activeTab === 'card' ? <CardScreen model={model} /> : null}
-        {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} /> : null}
+        {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} appConfig={appConfig} /> : null}
         {activeTab === 'campaigns' ? <CampaignsScreen model={model} /> : null}
         {activeTab === 'account' ? (
           <AccountScreen
@@ -1770,7 +2154,15 @@ function AppViewport({
         ) : null}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, padding: '10px 10px 12px', borderTop: '1px solid rgba(148,163,184,.18)', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+        gap: 4,
+        padding: '6px 6px 8px',
+        borderTop: '1px solid rgba(148,163,184,.15)',
+        background: 'rgba(255,255,255,.94)',
+        backdropFilter: 'blur(10px)'
+      }}>
         {TAB_ITEMS.map(item => {
           const active = item.key === activeTab
           return (
@@ -1779,19 +2171,24 @@ function AppViewport({
               type="button"
               onClick={() => onTabChange(item.key)}
               style={{
-                borderRadius: 16,
+                borderRadius: 12,
                 border: 'none',
-                background: active ? 'linear-gradient(145deg, rgba(251,113,133,.16), rgba(249,115,22,.14))' : 'transparent',
+                background: active ? 'linear-gradient(145deg, rgba(251,113,133,.12), rgba(249,115,22,.1))' : 'transparent',
                 color: active ? '#be185d' : '#64748b',
-                padding: '8px 4px',
-                display: 'grid',
-                gap: 6,
-                justifyItems: 'center',
+                padding: '6px 2px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
                 cursor: 'pointer',
+                transition: 'all 0.2s ease',
               }}
             >
-              <i className={`fa-solid ${item.icon}`} />
-              <span style={{ fontSize: '.66rem', fontWeight: 800 }}>{item.label}</span>
+              <i className={`fa-solid ${item.icon}`} style={{ fontSize: '1.05rem' }} />
+              <span style={{ fontSize: '.62rem', fontWeight: 800, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+                {item.label}
+              </span>
             </button>
           )
         })}
@@ -2188,9 +2585,11 @@ export default function CustomerLoyaltyMobileApp({
     if (loading) {
       return (
         <div style={{
-          minHeight: isStandalone ? '100svh' : '100%',
+          height: '100%',
           borderRadius: isStandalone ? 0 : 26,
-          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          background: appConfig?.branding?.bodyBackgroundImageUrl
+            ? `url(${appConfig.branding.bodyBackgroundImageUrl}) center/cover no-repeat fixed`
+            : (appConfig?.branding?.bodyBackgroundColor || '#ffffff'),
           border: isStandalone ? 'none' : '1px solid rgba(226,232,240,.9)',
           display: 'grid',
           placeItems: 'center',
@@ -2220,6 +2619,7 @@ export default function CustomerLoyaltyMobileApp({
           statusText={searchStatusText}
           errorText={searchErrorText}
           onSelectCustomer={activateCustomer}
+          appConfig={appConfig}
         />
       )
     }
@@ -2227,9 +2627,11 @@ export default function CustomerLoyaltyMobileApp({
     if (errorText) {
       return (
         <div style={{
-          minHeight: isStandalone ? '100svh' : '100%',
+          height: '100%',
           borderRadius: isStandalone ? 0 : 26,
-          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          background: appConfig?.branding?.bodyBackgroundImageUrl
+            ? `url(${appConfig.branding.bodyBackgroundImageUrl}) center/cover no-repeat fixed`
+            : (appConfig?.branding?.bodyBackgroundColor || '#ffffff'),
           border: isStandalone ? 'none' : '1px solid rgba(226,232,240,.9)',
           padding: 24,
           display: 'grid',
@@ -2281,12 +2683,17 @@ export default function CustomerLoyaltyMobileApp({
   if (isStandalone) {
     return (
       <div style={{
-        minHeight: '100svh',
+        height: '100svh',
         width: '100%',
         maxWidth: 430,
         margin: '0 auto',
-        background: '#f8fafc',
+        background: appConfig?.branding?.bodyBackgroundImageUrl
+          ? `url(${appConfig.branding.bodyBackgroundImageUrl}) center/cover no-repeat fixed`
+          : (appConfig?.branding?.bodyBackgroundColor || '#f8fafc'),
         position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
       }}>
         {renderBody()}
         <OrderTypeModal
