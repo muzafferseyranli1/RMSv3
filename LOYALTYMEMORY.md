@@ -1979,3 +1979,194 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - `LoyaltyCampaignWizard.jsx` sihirbazı `mode` propuna göre tek sayfa Gör ve Düzenle tasarımlarını (isim, açıklama ve görsel en üstte olmak üzere) yukarıdan aşağıya sunacak şekilde yapılandırıldı. Düzenle modundaki değişikliklerin veritabanına kaydedilmesi sağlandı.
 - `Next Loyalty Step`:
   - Yönetim panelinden yeni bir kampanya ekleme, var olanları kopyalama, silme ve düzenleme akışlarının veri tabanı kayıtlarıyla tam entegre çalıştığını yerel ortamda test edin.
+
+
+## Entry 053
+
+- `Timestamp`: `2026-05-24T18:22:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kampanyayı Gör Sayfası getCampaignApplicationModeHint Hatası Düzeltilmesi`
+- `Trigger`: `Kampanyayı gör butonuna basıldığında getCampaignApplicationModeHint is not defined hatası alınması.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - `getCampaignApplicationModeHint` fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlanarak hata giderildi.
+- `Next Loyalty Step`:
+  - Kampanyayı gör butonunun artık sorunsuzca detay sayfasını yüklediğini arayüzde doğrulayın.
+
+
+## Entry 054
+
+- `Timestamp`: `2026-05-24T18:25:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kampanya Gör ve Düzenle Ekranlarında Kart Sıralaması Güncellemesi`
+- `Trigger`: `Kampanya gör ve düzenle sayfalarında Kampanya Kimliği kartının wizard sırasına uygun şekilde en alta taşınması talebi.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde `renderViewMode` ve `renderEditMode` görünüm sıralaması güncellendi; Kampanya Kimliği kartı (isim, kod, açıklama, görsel, özet tanım) en sona alındı.
+- `Next Loyalty Step`:
+  - Gör ve düzenle sayfalarını açıp kartların sırasının (Hedef -> Kapsam -> Kurallar -> Operasyon -> Kimlik) doğru şekilde yüklendiğini arayüzde doğrulayın.
+
+
+## Entry 055
+
+- `Timestamp`: `2026-05-24T18:32:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `formatSummaryDate Hatası Düzeltilmesi`
+- `Trigger`: `Kampanya gör sayfasında formatSummaryDate is not defined hatası alınması.`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - `formatSummaryDate` fonksiyonu tanımlanarak tarih gösterimi hatasızlaştırıldı.
+- `Next Loyalty Step`:
+  - Kampanya gör sayfasının artık hatasız yüklendiğini arayüzde doğrulayın.
+
+
+## Entry 056
+
+- `Timestamp`: `2026-05-24T18:40:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Müşteri Mobil Uygulaması Kupon Tasarımı Güncellemesi`
+- `Trigger`: `Kullanıcı kupon kartı tasarımlarının tırtıklı kenarlar, dikey konturlu fayda metni, dikey kesikli çizgi ve ortalanmış bilet gövdesiyle görsel pariteye getirilmesini istedi.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - Kupon kartları sol koçanda outline rotated fayda değeri (%50, 50 TL, HEDİYE), ortalanmış Impact kampanya başlığı ve Türkçe geçerlilik süresiyle listelenir.
+  - Semicircle cutout (notch) yırtmaçları dikeyde sol ve sağ kenarlara ortalandı.
+  - Kuponlar arasındaki ayırıcı çizgi 2px dotted çizgi ve makas ikonu ile güncellendi.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Coupon card styling parity completed`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Kuponlar Sekmesi`
+- `Readiness`:
+  - `Coupon card styling parity`: `Ready`
+- `Decision`:
+  - Görsel referanstaki tasarıma tam uyum sağlandı. Dikey konturlu outline yazı ve düz arka plan renkleri ile bilet yırtmaçları güncellendi.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Yeni tasarımları canlı mobil arayüzde nihai olarak gözlemlemek.
+
+
+## Entry 057
+
+- `Timestamp`: `2026-05-24T18:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kupon Tasarımının Önceki Premium Haline Geri Döndürülmesi`
+- `Trigger`: `Kullanıcı geri bildirimi doğrultusunda kupon tasarımlarının önceki gradyan şablonlu, barkodlu ve dikey yırtmaçlı orijinal premium haline geri döndürülmesi istendi.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - Kupon kartları ve kupon listeleme ekranları, 10 farklı gradyan şablonu, barkod görselleri ve üst/alt yırtmaç detayları ile eski zengin ve premium yapısına geri döndürüldü.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Coupon card styling roll-back completed`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Kuponlar Sekmesi`
+- `Readiness`:
+  - `Coupon card styling`: `Ready`
+- `Decision`:
+  - Son eklenen white-stub / side-cutout tasarımının kontrast ve görsel uyum sorunları nedeniyle bir önceki zengin gradyan bilet tasarımlarına geri dönüş yapıldı.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Arayüzü yeniden inceleyerek tasarımsal uyumu doğrulamak.
+
+
+## Entry 057
+
+- `Timestamp`: `2026-05-24T18:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Görsel Yükleme Adımının Mecra Bazlı 7 Ayrı Slot ve Görsel Arşivi ile Güncellenmesi`
+- `Trigger`: `Sadakat kampanya yönetimi kapsamında tek görsel alanının 7 kanala özel görsellere bölünmesi ve görsel arşivinin getirilmesi.`
+- `Files Read`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Files Changed`:
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - `IMAGE_SLOTS` tanımı ile Mobil Kupon, Mobil Kampanya, KioskBig, Kiosk Tablet, Sosyal Medya, POS/Garson, QR Menü için 7 ayrı slot hazırlandı.
+  - Her slot için yerel dosyadan görsel yükleme, harici URL yapıştırma ve görsel arşivinden doğrudan atama işlevleri eklendi.
+  - Görsel arşivi üzerinden tek tıkla mecra atama ve öne çıkarma (primary image) mantığı kuruldu.
+  - Öne çıkan görsel fallback mantığıyla desteklenerek detay ekranları zenginleştirildi.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Mecra-based visual assets & archive management completed`
+- `Affected Surfaces`:
+  - `Sadakat Kampanya Sihirbazı (Ekleme / Düzenleme Ekranı)`
+  - `Sadakat Kampanya Detay Ekranı (Gör Sayfası)`
+- `Readiness`:
+  - `Campaign multi-channel visual assets`: `Ready`
+- `Decision`:
+  - Tasarımlar mecra boyutları baz alınarak premium ve glassmorphic kartlar halinde yerleştirildi.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Detay ve düzenleme ekranlarında görsel yönetim işlemlerinin doğruluğunu kontrol etmek.
+
+
+## Entry 058
+
+- `Timestamp`: `2026-05-24T19:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Damga Kartı Koşulu İsim Güncellemesi`
+- `Trigger`: `Kullanıcı koşul kütüphanesindeki damga kartı koşulunun listede bulunamaması üzerine geri bildirim verdi.`
+- `Files Read`:
+  - `src/lib/loyalty.js`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+- `Current Capability`:
+  - `period_product_quantity` anahtarının CONDITION_LIBRARY üzerindeki etiket değeri "Dönem içindeki ürün miktarı" yerine "Damga Kartı / Ürün Adedi Koşulu" olarak güncellendi.
+  - Değişiklik sayesinde, basit moddaki koşul kütüphanesi seçim kutusunda ve gelişmiş moddaki koşul tipi seçim listesinde koşul doğrudan "Damga Kartı / Ürün Adedi Koşulu" olarak listelenmektedir.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Condition label update completed`
+- `Affected Surfaces`:
+  - `Kampanya Sihirbazı Koşul Ekleme Bölümü (Basit Mod & Gelişmiş Mod)`
+- `Readiness`:
+  - `Stamp card condition selection visibility`: `Ready`
+- `Decision`:
+  - Kütüphane genelindeki isimlendirmenin kullanıcı dostu olması için zenginleştirilmesi sağlandı.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Kampanya sihirbazında koşul listesini kontrol ederek "Damga Kartı / Ürün Adedi Koşulu" olarak göründüğünü teyit etmek.
+
+## Entry 059
+
+- `Timestamp`: `2026-05-24T19:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `CouponsScreen Sade Arayüzüne Geri Dönüş ve Mükerrer Kod Temizliği`
+- `Trigger`: `Kullanıcı geri bildirimi doğrultusunda CouponsScreen üzerindeki özet tile kartları, yakında bitecek ve pasif kupon başlıkları gibi fazlalıkların kaldırılması ve kupon kartlarının bilet tasarımının (CouponCard) aynen korunarak sade görünüme geçilmesi.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - Kupon ekranı artık sadece kupon kodu ekleme formu ve aktif kuponların listelendiği sade, temiz arayüze sahiptir.
+  - Kupon kartları referans görseldeki gibi beyaz sol koçan (outline dikey yazı), kesikli dikey çizgi, bilet yırtmaçları ve düz arka plan renkli gövde tasarımıyla listelenmektedir.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Clean CouponsScreen simple layout restore`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Kuponlar Sekmesi`
+- `Readiness`:
+  - `Coupons screen cleanliness`: `Ready`
+  - `Coupon card visual design`: `Ready`
+- `Decision`:
+  - Kod içindeki mükerrer `CouponsScreen` tanımı (line 1214) silinerek ilk sade tanımın ezilmesi engellendi ve görsel şablonların bilet tasarımları korunarak arayüz sadeliği sağlandı.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Mobil uygulamayı yerel ortamda açıp kuponlar sekmesini sade haliyle ve kupon kartlarının doğru bilet görünümüyle render edildiğini son kez doğrulamak.

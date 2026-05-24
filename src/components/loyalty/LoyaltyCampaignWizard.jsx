@@ -60,6 +60,27 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function getCampaignApplicationModeHint(value) {
+  return value === 'auto'
+    ? 'Koşul sağlanır sağlanmaz POS / Garson kampanyayı kendisi bağlar.'
+    : 'Kasiyer işlem kapanmadan önce kampanyayı uygulayıp uygulamayacağına karar verir.'
+}
+
+function formatSummaryDate(value) {
+  if (!value) return ''
+  try {
+    return new Intl.DateTimeFormat('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
 async function loadLoyaltyWorkspaceWithRetry(workspacePayload, attempts = 3) {
   const scopeInfo = getLoyaltyScopeInfo(workspacePayload)
   let lastResult = null
@@ -1494,6 +1515,21 @@ function getCampaignSummaryText(campaign, selectedGoal, customerCategories, sale
   return sentences.join(' ');
 }
 
+export const IMAGE_SLOTS = [
+  { key: 'mobileCouponImage', label: 'Mobil Uygulama Kupon Görseli', recommended: '600x300px' },
+  { key: 'mobileCampaignImage', label: 'Mobil Uygulama Kampanya Görseli', recommended: '800x400px' },
+  { key: 'kioskBigBanner', label: 'KioskBig Banner', recommended: '1920x1080px' },
+  { key: 'kioskTabletBanner', label: 'Kiosk Tablet Banner', recommended: '1280x800px' },
+  { key: 'socialMediaImage', label: 'Sosyal Medya Görseli', recommended: '1200x630px' },
+  { key: 'posGarsonScreenImage', label: 'POS/Garson Kampanya Ekranı Görseli', recommended: '400x300px' },
+  { key: 'qrMenuImage', label: 'QR Menü Kampanya Görseli', recommended: '600x600px' },
+]
+
+export function getSlotLabel(key) {
+  const slot = IMAGE_SLOTS.find(s => s.key === key)
+  return slot ? slot.label : key
+}
+
 export default function LoyaltyCampaignWizard({ mode }) {
   const toast = useToast()
   const navigate = useNavigate()
@@ -1538,6 +1574,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
   const [ruleEditorState, setRuleEditorState] = useState(null)
   const [stackingHelpKey, setStackingHelpKey] = useState(null)
   const [campaignImageUploading, setCampaignImageUploading] = useState(false)
+  const [slotUploading, setSlotUploading] = useState({})
   const [conflictGroupModalOpen, setConflictGroupModalOpen] = useState(false)
   const [conflictGroupDraft, setConflictGroupDraft] = useState({ name: '', description: '' })
   const [conflictGroupSaving, setConflictGroupSaving] = useState(false)
@@ -1871,6 +1908,172 @@ export default function LoyaltyCampaignWizard({ mode }) {
     } finally {
       setCampaignImageUploading(false)
     }
+  }
+
+  async function uploadSlotImage(file, slotKey) {
+    if (!file) return
+    if (!file.type?.startsWith('image/')) {
+      toast('Lütfen geçerli bir resim dosyası seçin.', 'error')
+      return
+    }
+    setSlotUploading(current => ({ ...current, [slotKey]: true }))
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'loyalty-campaigns')
+      formData.append('entity', 'loyalty_campaign')
+      const uploaded = await uploadApiFile(formData)
+      const url = uploaded?.url || uploaded?.publicUrl || uploaded?.public_url || uploaded?.path || uploaded?.fileUrl || uploaded?.file_url || ''
+      if (!url) throw new Error('Yükleme başarılı oldu ancak dosya URL bilgisi dönmedi.')
+      
+      const fileName = uploaded?.fileName || uploaded?.filename || file.name
+      const fileRecord = {
+        url,
+        fileName,
+        uploadedAt: new Date().toISOString()
+      }
+      
+      if (slotKey === 'archive') {
+        const imageId = createId('campaign-image')
+        const imageRecord = {
+          id: imageId,
+          storage: 'railway',
+          url,
+          fileName,
+          title: fileName,
+          mimeType: uploaded?.mimeType || uploaded?.mimetype || file.type,
+          size: uploaded?.size || file.size,
+          uploadedAt: new Date().toISOString(),
+        }
+        updateCampaign(current => ({
+          metadata: (() => {
+            const metadata = current.metadata || {}
+            const library = normalizeCampaignImageLibrary(metadata)
+            const nextImages = [...library.images.map(image => ({ ...image, isPrimary: false })), imageRecord]
+            const primaryId = library.primaryId || imageId
+            return {
+              ...metadata,
+              campaignImages: nextImages.map(image => ({ ...image, isPrimary: image.id === primaryId })),
+              primaryCampaignImageId: primaryId,
+              campaignImage: { ...(nextImages.find(image => image.id === primaryId) || imageRecord), isPrimary: true },
+            }
+          })()
+        }))
+        toast('Görsel arşive yüklendi.', 'success')
+      } else {
+        const imageId = createId('campaign-image')
+        const imageRecord = {
+          id: imageId,
+          storage: 'railway',
+          url,
+          fileName,
+          title: `${getSlotLabel(slotKey)} - ${fileName}`,
+          mimeType: uploaded?.mimeType || uploaded?.mimetype || file.type,
+          size: uploaded?.size || file.size,
+          uploadedAt: new Date().toISOString(),
+        }
+        updateCampaign(current => ({
+          metadata: (() => {
+            const metadata = current.metadata || {}
+            const library = normalizeCampaignImageLibrary(metadata)
+            const nextImages = [...library.images, imageRecord]
+            return {
+              ...metadata,
+              [slotKey]: fileRecord,
+              campaignImages: nextImages,
+            }
+          })()
+        }))
+        toast(`${getSlotLabel(slotKey)} yüklendi ve arşive eklendi.`, 'success')
+      }
+    } catch (error) {
+      toast(`Görsel yüklenemedi: ${error.message}`, 'error')
+    } finally {
+      setSlotUploading(current => ({ ...current, [slotKey]: false }))
+    }
+  }
+
+  function setSlotImageUrl(slotKey, url) {
+    const cleanUrl = String(url || '').trim()
+    if (!cleanUrl) return
+    const fileRecord = {
+      url: cleanUrl,
+      fileName: 'Harici URL',
+      uploadedAt: new Date().toISOString()
+    }
+    if (slotKey === 'archive') {
+      const imageId = createId('campaign-image-url')
+      const imageRecord = {
+        id: imageId,
+        storage: 'railway',
+        url: cleanUrl,
+        title: 'Harici Görsel',
+        uploadedAt: new Date().toISOString(),
+      }
+      updateCampaign(current => ({
+        metadata: (() => {
+          const metadata = current.metadata || {}
+          const library = normalizeCampaignImageLibrary(metadata)
+          const nextImages = [...library.images, imageRecord]
+          return {
+            ...metadata,
+            campaignImages: nextImages,
+          }
+        })()
+      }))
+      toast('Harici görsel arşive eklendi.', 'success')
+    } else {
+      const imageId = createId('campaign-image-url')
+      const imageRecord = {
+        id: imageId,
+        storage: 'railway',
+        url: cleanUrl,
+        title: `${getSlotLabel(slotKey)} (URL)`,
+        uploadedAt: new Date().toISOString(),
+      }
+      updateCampaign(current => ({
+        metadata: (() => {
+          const metadata = current.metadata || {}
+          const library = normalizeCampaignImageLibrary(metadata)
+          const nextImages = [...library.images, imageRecord]
+          return {
+            ...metadata,
+            [slotKey]: fileRecord,
+            campaignImages: nextImages,
+          }
+        })()
+      }))
+      toast(`${getSlotLabel(slotKey)} URL adresi atandı ve arşive eklendi.`, 'success')
+    }
+  }
+
+  function removeSlotImage(slotKey) {
+    updateCampaign(current => {
+      const metadata = { ...(current.metadata || {}) }
+      delete metadata[slotKey]
+      return {
+        ...current,
+        metadata
+      }
+    })
+    toast(`${getSlotLabel(slotKey)} kaldırıldı.`, 'info')
+  }
+
+  function useArchiveImageForSlot(archiveImage, slotKey) {
+    if (!archiveImage?.url) return
+    const fileRecord = {
+      url: archiveImage.url,
+      fileName: archiveImage.fileName || archiveImage.title || 'Arşiv Görseli',
+      uploadedAt: new Date().toISOString()
+    }
+    updateCampaign(current => ({
+      ...current,
+      metadata: {
+        ...(current.metadata || {}),
+        [slotKey]: fileRecord
+      }
+    }))
+    toast(`Arşiv görseli ${getSlotLabel(slotKey)} alanına atandı.`, 'success')
   }
 
   function addCampaignImageUrl(url) {
@@ -4012,7 +4215,20 @@ export default function LoyaltyCampaignWizard({ mode }) {
   )
   const campaignImages = campaignImageLibrary.images
   const primaryCampaignImage = campaignImageLibrary.primaryImage
-  const campaignImageUrl = String(primaryCampaignImage?.url || '').trim()
+  const campaignImageUrl = useMemo(() => {
+    if (primaryCampaignImage?.url) return String(primaryCampaignImage.url).trim()
+    if (campaignImages && campaignImages.length > 0) {
+      const firstImg = campaignImages[0]?.url
+      if (firstImg) return String(firstImg).trim()
+    }
+    const meta = wizardCampaign.metadata || {}
+    for (const slot of IMAGE_SLOTS) {
+      if (meta[slot.key]?.url) {
+        return String(meta[slot.key].url).trim()
+      }
+    }
+    return ''
+  }, [primaryCampaignImage, campaignImages, wizardCampaign.metadata])
 
   const getHeader = () => {
     if (activeMode === 'view') {
@@ -4076,50 +4292,6 @@ export default function LoyaltyCampaignWizard({ mode }) {
   function renderViewMode() {
     return (
       <div style={{ display: 'grid', gap: 18 }}>
-        {/* Section 1: Campaign Identity */}
-        <div className="card" style={{ padding: 20, display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 20 }}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontWeight: 900, color: '#0f172a', fontSize: '1.5rem' }}>{wizardCampaign.name || 'Yeni Kampanya'}</h2>
-              <MiniBadge active={wizardCampaign.active !== false} trueLabel="Aktif" falseLabel="Pasif" />
-            </div>
-            <div style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 700 }}>
-              Kod: <span style={{ color: '#0f172a' }}>{wizardCampaign.code || '-'}</span>
-            </div>
-            {wizardCampaign.description ? (
-              <div style={{ fontSize: '.9rem', color: '#334155', lineHeight: 1.6, background: '#f8fafc', padding: 12, borderRadius: 10 }}>
-                {wizardCampaign.description}
-              </div>
-            ) : (
-              <div style={{ fontSize: '.9rem', color: '#94a3b8', fontStyle: 'italic' }}>Açıklama girilmemiş.</div>
-            )}
-            <div style={{ border: '1px solid #dbeafe', borderRadius: 12, padding: 12, background: '#f8fbff', marginTop: 10 }}>
-              <div style={{ fontWeight: 800, color: '#1e3a8a', marginBottom: 6 }}>Özet Tanım</div>
-              <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.6 }}>
-                {getCampaignSummaryText(wizardCampaign, selectedGoal, customerCategories, salesChannels, summaryContext)}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ aspectRatio: '16 / 9', border: '1px solid #cbd5e1', borderRadius: 12, overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
-              {campaignImageUrl ? (
-                <img src={campaignImageUrl} alt={wizardCampaign.name || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ color: '#94a3b8', fontSize: '.82rem' }}>Görsel Yok</div>
-              )}
-            </div>
-            {campaignImages.length > 1 ? (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {campaignImages.map(img => (
-                  <div key={img.id} style={{ width: 48, height: 32, borderRadius: 6, overflow: 'hidden', border: `2.5px solid ${img.isPrimary ? '#2563eb' : '#e2e8f0'}` }}>
-                    <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
         {/* Section 2: Hedef / Goal */}
         <div className="card" style={{ padding: 18 }}>
           <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>Kampanya Hedefi</div>
@@ -4279,6 +4451,134 @@ export default function LoyaltyCampaignWizard({ mode }) {
             </div>
           </div>
         </div>
+
+        {/* Section 1: Campaign Identity */}
+        <div className="card" style={{ padding: 20, display: 'grid', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 20 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <h2 style={{ margin: 0, fontWeight: 900, color: '#0f172a', fontSize: '1.5rem' }}>{wizardCampaign.name || 'Yeni Kampanya'}</h2>
+                <MiniBadge active={wizardCampaign.active !== false} trueLabel="Aktif" falseLabel="Pasif" />
+              </div>
+              <div style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 700 }}>
+                Kod: <span style={{ color: '#0f172a' }}>{wizardCampaign.code || '-'}</span>
+              </div>
+              {wizardCampaign.description ? (
+                <div style={{ fontSize: '.9rem', color: '#334155', lineHeight: 1.6, background: '#f8fafc', padding: 12, borderRadius: 10 }}>
+                  {wizardCampaign.description}
+                </div>
+              ) : (
+                <div style={{ fontSize: '.9rem', color: '#94a3b8', fontStyle: 'italic' }}>Açıklama girilmemiş.</div>
+              )}
+              <div style={{ border: '1px solid #dbeafe', borderRadius: 12, padding: 12, background: '#f8fbff', marginTop: 10 }}>
+                <div style={{ fontWeight: 800, color: '#1e3a8a', marginBottom: 6 }}>Özet Tanım</div>
+                <div style={{ fontSize: '.82rem', color: '#334155', lineHeight: 1.6 }}>
+                  {getCampaignSummaryText(wizardCampaign, selectedGoal, customerCategories, salesChannels, summaryContext)}
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>Öne Çıkan Görsel</div>
+              <div style={{ aspectRatio: '16 / 9', border: '1px solid #cbd5e1', borderRadius: 12, overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                {campaignImageUrl ? (
+                  <img src={campaignImageUrl} alt={wizardCampaign.name || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ color: '#94a3b8', fontSize: '.82rem' }}>Görsel Yok</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid #f1f5f9', margin: '10px 0' }} />
+
+          {/* Dedicated Channels Grid */}
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-rectangle-ad" style={{ color: '#2563eb' }}></i>
+              Mecra Bazlı Kampanya Görselleri
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              {IMAGE_SLOTS.map(slot => {
+                const meta = wizardCampaign.metadata || {}
+                const slotImg = meta[slot.key]
+                const hasImg = slotImg && slotImg.url
+                return (
+                  <div key={slot.key} style={{ 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: 12, 
+                    padding: 10, 
+                    background: '#fff', 
+                    display: 'grid', 
+                    gap: 8, 
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '.78rem', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={slot.label}>
+                        {slot.label}
+                      </div>
+                      <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>Öneri: {slot.recommended}</div>
+                    </div>
+                    
+                    <div style={{ 
+                      aspectRatio: '16 / 10', 
+                      borderRadius: 8, 
+                      overflow: 'hidden', 
+                      border: hasImg ? '1px solid #e2e8f0' : '1px dashed #cbd5e1', 
+                      background: '#f8fafc',
+                      display: 'grid',
+                      placeItems: 'center',
+                      position: 'relative'
+                    }}>
+                      {hasImg ? (
+                        <a href={slotImg.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', height: '100%' }}>
+                          <img src={slotImg.url} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: '.7rem', color: '#94a3b8', fontWeight: 600 }}>Tanımlanmamış</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid #f1f5f9', margin: '10px 0' }} />
+
+          {/* General Image Archive */}
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-images" style={{ color: '#2563eb' }}></i>
+              Görsel Arşivi ({campaignImages.length})
+            </div>
+            {campaignImages.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10 }}>
+                {campaignImages.map(img => (
+                  <div key={img.id} style={{ 
+                    border: `1px solid ${img.isPrimary ? '#2563eb' : '#e2e8f0'}`, 
+                    borderRadius: 10, 
+                    overflow: 'hidden', 
+                    background: '#fff',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    display: 'grid'
+                  }}>
+                    <a href={img.url} target="_blank" rel="noopener noreferrer" style={{ aspectRatio: '16 / 9', overflow: 'hidden', display: 'block' }}>
+                      <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </a>
+                    {img.isPrimary && (
+                      <div style={{ background: '#2563eb', color: '#fff', fontSize: '.6rem', textAlign: 'center', padding: '2px 0', fontWeight: 800 }}>
+                        Öne Çıkan
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '.82rem', color: '#94a3b8', fontStyle: 'italic' }}>Arşivde henüz görsel bulunmuyor.</div>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
@@ -4286,95 +4586,6 @@ export default function LoyaltyCampaignWizard({ mode }) {
   function renderEditMode() {
     return (
       <div style={{ display: 'grid', gap: 18 }}>
-        {/* Section 1: Campaign Identity */}
-        <div className="card" style={{ padding: 18, display: 'grid', gap: 16 }}>
-          <div style={{ fontWeight: 800, color: '#0f172a' }}>Kampanya Kimliği</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 16 }}>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FieldStack label="Kampanya Adı">
-                  <input className="f-input" value={wizardCampaign.name || ''} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Kampanya adı" />
-                </FieldStack>
-                <FieldStack label="Kampanya Kodu">
-                  <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu" />
-                </FieldStack>
-              </div>
-              <FieldStack label="Açıklama">
-                <textarea className="f-input" style={{ minHeight: 80 }} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanya açıklaması" />
-              </FieldStack>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.84rem', color: '#475569', fontWeight: 700 }}>
-                  <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
-                  Aktif Kampanya
-                </label>
-              </div>
-            </div>
-
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, background: '#fff', display: 'grid', gap: 12 }}>
-              <div>
-                <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.88rem' }}>Görsel Kütüphanesi</div>
-                <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 4 }}>Yüklenen görseller Railway storage'a yüklenir.</div>
-              </div>
-              <div style={{ aspectRatio: '16 / 9', border: '1px dashed #cbd5e1', borderRadius: 12, background: '#f8fafc', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
-                {campaignImageUrl ? (
-                  <img src={campaignImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ color: '#94a3b8', fontSize: '.78rem' }}>Görsel yüklenmedi.</div>
-                )}
-              </div>
-              <FieldStack label="Yeni Görsel URL">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-                  <input
-                    className="f-input"
-                    placeholder="URL yapıştırın"
-                    onKeyDown={event => {
-                      if (event.key === 'Enter') {
-                        addCampaignImageUrl(event.currentTarget.value)
-                        event.currentTarget.value = ''
-                      }
-                    }}
-                  />
-                  <button type="button" className="btn-o" onClick={event => {
-                    const input = event.currentTarget.parentElement?.querySelector('input')
-                    addCampaignImageUrl(input?.value || '')
-                    if (input) input.value = ''
-                  }}>URL Ekle</button>
-                </div>
-              </FieldStack>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <label className="btn-o" style={{ margin: 0, cursor: campaignImageUploading ? 'not-allowed' : 'pointer' }}>
-                  <i className={`fa-solid ${campaignImageUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`} style={{ marginRight: 6 }} />
-                  {campaignImageUploading ? 'Yükleniyor' : 'Görsel Yükle'}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={campaignImageUploading}
-                    style={{ display: 'none' }}
-                    onChange={event => uploadCampaignImage(event.target.files?.[0])}
-                  />
-                </label>
-              </div>
-              {campaignImages.length > 0 && (
-                <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
-                  <div style={{ fontSize: '.74rem', fontWeight: 900, color: '#64748b' }}>Kütüphane ({campaignImages.length})</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 6 }}>
-                    {campaignImages.map(image => (
-                      <div key={image.id} style={{ border: `1px solid ${image.isPrimary ? '#2563eb' : '#e2e8f0'}`, borderRadius: 8, overflow: 'hidden', background: '#fff', display: 'grid' }}>
-                        <button type="button" onClick={() => setPrimaryCampaignImage(image.id)} style={{ border: 'none', padding: 0, background: '#fff', cursor: 'pointer', aspectRatio: '16 / 9', overflow: 'hidden' }}>
-                          <img src={image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </button>
-                        <div style={{ padding: 4, display: 'flex', gap: 4, justifyContent: 'space-between' }}>
-                          <button type="button" className="btn-danger" style={{ padding: '2px 4px', fontSize: '.68rem' }} onClick={() => removeCampaignImage(image.id)}>Sil</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Section 2: Hedef / Goal */}
         <div className="card" style={{ padding: 18, display: 'grid', gap: 12 }}>
           <div style={{ fontWeight: 800, color: '#0f172a' }}>Kampanya Hedefi</div>
@@ -5002,6 +5213,343 @@ export default function LoyaltyCampaignWizard({ mode }) {
                 )
               })}
             </div>
+          </div>
+        </div>
+
+        {/* Section 1: Campaign Identity */}
+        <div className="card" style={{ padding: 18, display: 'grid', gap: 16 }}>
+          <div style={{ fontWeight: 800, color: '#0f172a' }}>Kampanya Kimliği</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FieldStack label="Kampanya Adı">
+                  <input className="f-input" value={wizardCampaign.name || ''} onChange={event => updateCampaign({ name: event.target.value })} placeholder="Kampanya adı" />
+                </FieldStack>
+                <FieldStack label="Kampanya Kodu">
+                  <input className="f-input" value={wizardCampaign.code || ''} onChange={event => updateCampaign({ code: event.target.value })} placeholder="Kampanya kodu" />
+                </FieldStack>
+              </div>
+              <FieldStack label="Açıklama">
+                <textarea className="f-input" style={{ minHeight: 80 }} value={wizardCampaign.description || ''} onChange={event => updateCampaign({ description: event.target.value })} placeholder="Kampanya açıklaması" />
+              </FieldStack>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.84rem', color: '#475569', fontWeight: 700 }}>
+                  <input type="checkbox" checked={wizardCampaign.active !== false} onChange={event => updateCampaign({ active: event.target.checked })} />
+                  Aktif Kampanya
+                </label>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, background: '#fff', display: 'grid', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.88rem' }}>Öne Çıkan Görsel (Önizleme)</div>
+                <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 4 }}>Kampanya özetinde veya varsayılan olarak gösterilen görsel.</div>
+              </div>
+              <div style={{ aspectRatio: '16 / 9', border: '1px solid #cbd5e1', borderRadius: 12, overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
+                {campaignImageUrl ? (
+                  <img src={campaignImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ color: '#94a3b8', fontSize: '.78rem' }}>Görsel yüklenmedi.</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '14px 0' }} />
+
+          {/* Dedicated Channels Grid */}
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-rectangle-ad" style={{ color: '#2563eb' }}></i>
+              Mecra Bazlı Kampanya Görselleri
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+              {IMAGE_SLOTS.map(slot => {
+                const meta = wizardCampaign.metadata || {}
+                const slotImg = meta[slot.key]
+                const hasImg = slotImg && slotImg.url
+                return (
+                  <div key={slot.key} style={{ 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: 12, 
+                    padding: 12, 
+                    background: '#fff', 
+                    display: 'grid', 
+                    gap: 8, 
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '.8rem', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={slot.label}>
+                        {slot.label}
+                      </div>
+                      <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>Öneri: {slot.recommended}</div>
+                    </div>
+                    
+                    <div style={{ 
+                      aspectRatio: '16 / 10', 
+                      borderRadius: 8, 
+                      overflow: 'hidden', 
+                      border: hasImg ? '1px solid #e2e8f0' : '1px dashed #cbd5e1', 
+                      background: '#f8fafc',
+                      display: 'grid',
+                      placeItems: 'center',
+                      position: 'relative'
+                    }}>
+                      {hasImg ? (
+                        <>
+                          <img src={slotImg.url} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button 
+                            type="button" 
+                            onClick={() => removeSlotImage(slot.key)}
+                            style={{ 
+                              position: 'absolute', 
+                              top: 4, 
+                              right: 4, 
+                              background: 'rgba(239, 68, 68, 0.9)', 
+                              color: '#fff', 
+                              border: 'none', 
+                              borderRadius: '50%', 
+                              width: 20, 
+                              height: 20, 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              cursor: 'pointer',
+                              fontSize: '.68rem'
+                            }}
+                            title="Görseli Kaldır"
+                          >
+                            <i className="fa-solid fa-xmark"></i>
+                          </button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '.7rem', color: '#94a3b8', fontWeight: 600 }}>Tanımlanmamış</span>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
+                      <label className="btn-o" style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: 6, 
+                        fontSize: '.74rem', 
+                        cursor: slotUploading[slot.key] ? 'not-allowed' : 'pointer', 
+                        margin: 0,
+                        padding: '4px 8px'
+                      }}>
+                        <i className={`fa-solid ${slotUploading[slot.key] ? 'fa-spinner fa-spin' : 'fa-upload'}`} />
+                        {slotUploading[slot.key] ? 'Yükleniyor...' : 'Görsel Seç'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={slotUploading[slot.key]}
+                          style={{ display: 'none' }}
+                          onChange={e => uploadSlotImage(e.target.files?.[0], slot.key)}
+                        />
+                      </label>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4 }}>
+                        <input 
+                          type="text" 
+                          placeholder="URL yapıştır" 
+                          className="f-input"
+                          style={{ fontSize: '.74rem', padding: '4px 6px', height: 'auto' }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              setSlotImageUrl(slot.key, e.currentTarget.value)
+                              e.currentTarget.value = ''
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          className="btn-o" 
+                          style={{ padding: '4px 8px', fontSize: '.72rem' }}
+                          onClick={e => {
+                            const input = e.currentTarget.parentElement?.querySelector('input')
+                            if (input && input.value) {
+                              setSlotImageUrl(slot.key, input.value)
+                              input.value = ''
+                            }
+                          }}
+                        >
+                          Ekle
+                        </button>
+                      </div>
+
+                      {campaignImages.length > 0 && (
+                        <select 
+                          value="" 
+                          onChange={e => {
+                            if (e.target.value) {
+                              const img = campaignImages.find(i => i.id === e.target.value)
+                              useArchiveImageForSlot(img, slot.key)
+                            }
+                          }}
+                          style={{ fontSize: '.74rem', padding: '4px 6px', width: '100%', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer' }}
+                        >
+                          <option value="" disabled>Arşivden Ata...</option>
+                          {campaignImages.map(img => (
+                            <option key={img.id} value={img.id}>{img.fileName || img.title || 'Görsel'}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '14px 0' }} />
+
+          {/* General Image Archive */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-images" style={{ color: '#2563eb' }}></i>
+                Görsel Arşivi ({campaignImages.length})
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <label className="btn-o" style={{ cursor: slotUploading['archive'] ? 'not-allowed' : 'pointer', margin: 0, padding: '5px 10px', fontSize: '.76rem' }}>
+                  <i className={`fa-solid ${slotUploading['archive'] ? 'fa-spinner fa-spin' : 'fa-plus'}`} style={{ marginRight: 4 }} />
+                  Arşive Görsel Yükle
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={slotUploading['archive']}
+                    style={{ display: 'none' }}
+                    onChange={e => uploadSlotImage(e.target.files?.[0], 'archive')}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, maxWidth: 450 }}>
+              <input 
+                type="text" 
+                placeholder="Arşive eklenecek harici görsel URL'i" 
+                className="f-input"
+                style={{ fontSize: '.78rem', padding: '6px 8px', height: 'auto', flex: 1 }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    setSlotImageUrl('archive', e.currentTarget.value)
+                    e.currentTarget.value = ''
+                  }
+                }}
+              />
+              <button 
+                type="button" 
+                className="btn-o" 
+                style={{ padding: '6px 12px', fontSize: '.78rem' }}
+                onClick={e => {
+                  const input = e.currentTarget.parentElement?.querySelector('input')
+                  if (input && input.value) {
+                    setSlotImageUrl('archive', input.value)
+                    input.value = ''
+                  }
+                }}
+              >
+                URL'den Ekle
+              </button>
+            </div>
+
+            {campaignImages.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+                {campaignImages.map(img => (
+                  <div key={img.id} style={{ 
+                    border: `1px solid ${img.isPrimary ? '#2563eb' : '#e2e8f0'}`, 
+                    borderRadius: 12, 
+                    overflow: 'hidden', 
+                    background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    {/* Preview */}
+                    <div style={{ aspectRatio: '16 / 10', overflow: 'hidden', position: 'relative', background: '#f8fafc' }}>
+                      <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      {img.isPrimary && (
+                        <span style={{ 
+                          position: 'absolute', 
+                          top: 4, 
+                          left: 4, 
+                          background: '#2563eb', 
+                          color: '#fff', 
+                          fontSize: '.58rem', 
+                          padding: '1px 4px', 
+                          borderRadius: 4, 
+                          fontWeight: 800 
+                        }}>
+                          Öne Çıkan
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Actions */}
+                    <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc', borderTop: '1px solid #e2e8f0', flex: 1, justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '.68rem', color: '#64748b', wordBreak: 'break-all', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', height: 28 }} title={img.fileName || img.title}>
+                        {img.fileName || img.title || 'Görsel'}
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: 4, flexDirection: 'column' }}>
+                        <button 
+                          type="button" 
+                          className="btn-o" 
+                          style={{ padding: '2px 4px', fontSize: '.68rem', width: '100%' }}
+                          onClick={() => setPrimaryCampaignImage(img.id)}
+                        >
+                          Öne Çıkar
+                        </button>
+                        
+                        <div style={{ display: 'flex', gap: 4, width: '100%' }}>
+                          <button 
+                            type="button" 
+                            className="btn-danger" 
+                            style={{ padding: '2px 6px', fontSize: '.68rem', flex: 1 }} 
+                            onClick={() => removeCampaignImage(img.id)}
+                          >
+                            Sil
+                          </button>
+                          
+                          <select
+                            value=""
+                            onChange={e => {
+                              if (e.target.value) {
+                                useArchiveImageForSlot(img, e.target.value)
+                              }
+                            }}
+                            style={{ 
+                              padding: '2px 4px', 
+                              fontSize: '.68rem', 
+                              borderRadius: 4, 
+                              border: '1px solid #cbd5e1', 
+                              background: '#fff', 
+                              color: '#1e293b',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              flex: 1.2
+                            }}
+                          >
+                            <option value="" disabled>Ata...</option>
+                            {IMAGE_SLOTS.map(s => (
+                              <option key={s.key} value={s.key}>{s.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '.84rem', color: '#94a3b8', fontStyle: 'italic', padding: '10px 0' }}>
+                Arşivde henüz görsel bulunmuyor. Yukarıdan yeni görsel yükleyebilirsiniz.
+              </div>
+            )}
           </div>
         </div>
       </div>

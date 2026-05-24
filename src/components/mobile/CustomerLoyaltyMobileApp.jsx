@@ -244,7 +244,7 @@ function SummaryTile({ label, value, hint, color = '#0f172a' }) {
 function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   const statusMeta = getCouponStatusMeta(coupon.status)
 
-  // İsim, açıklama ve görsel almak için ilişkili kampanyayı bul
+  // Find associated campaign to get name, description and image
   const associatedCampaign = useMemo(() => {
     if (!Array.isArray(campaigns)) return null
     return campaigns.find(camp => {
@@ -259,107 +259,43 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
     })
   }, [campaigns, coupon.series_id])
 
-  // Kampanya tanımlarını esas al
   const campaignName = associatedCampaign?.name || coupon.seriesName || 'Sadakat Kuponu'
-  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada okutarak kullanabilirsiniz.'
+  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada veya kioskta okutarak kullanabilirsiniz.'
   const campaignExpiry = associatedCampaign?.endsAt || associatedCampaign?.ends_at || coupon.expiresAt || null
-
-  // Fayda değerini doğrudan kampanya tanımlarından çıkaralım
-  let campaignBenefitValue = ''
-  let campaignBenefitLabel = 'İNDİRİM'
-
-  if (associatedCampaign) {
-    // 1. Kuralları ve eylemleri tara
-    const rules = Array.isArray(associatedCampaign.applicableRules || associatedCampaign.rules)
-      ? (associatedCampaign.applicableRules || associatedCampaign.rules)
-      : []
-    
-    for (const rule of rules) {
-      const config = rule.actionConfig || rule.action_json || {}
-      const actionType = rule.actionType || rule.action_type || ''
-      
-      if (actionType === 'order_discount_amount' || actionType === 'special_discount' || actionType === 'order_discount') {
-        const amt = config.amount || config.value || associatedCampaign.rewardValue
-        if (amt) {
-          campaignBenefitValue = `${amt} TL`
-          campaignBenefitLabel = 'İNDİRİM'
-          break
-        }
-      } else if (actionType === 'total_order_discount_percent' || actionType === 'discount_percent') {
-        const pct = config.percent || config.value
-        if (pct) {
-          campaignBenefitValue = `%${pct}`
-          campaignBenefitLabel = 'İNDİRİM'
-          break
-        }
-      } else if (actionType === 'free_products' || actionType === 'product_pricing') {
-        campaignBenefitValue = 'Hediye'
-        campaignBenefitLabel = 'ÜRÜN'
-        break
-      } else if (actionType === 'bonus_points') {
-        const pts = config.points || associatedCampaign.rewardValue
-        if (pts) {
-          campaignBenefitValue = `${pts}`
-          campaignBenefitLabel = 'PUAN'
-          break
-        }
-      }
-    }
-
-    // 2. Kampanya isminde veya açıklamasında arama yap
-    if (!campaignBenefitValue) {
-      const searchStr = `${associatedCampaign.name || ''} ${associatedCampaign.description || ''}`.toLowerCase()
-      const matchPct = searchStr.match(/%\d+|\d+%/)
-      const matchTl = searchStr.match(/(\d+)\s*tl/)
-      if (matchPct) {
-        campaignBenefitValue = matchPct[0]
-        campaignBenefitLabel = 'İNDİRİM'
-      } else if (matchTl) {
-        campaignBenefitValue = `${matchTl[1]} TL`
-        campaignBenefitLabel = 'İNDİRİM'
-      }
-    }
-  }
-
-  // 3. Fallback olarak kuponun kendi tanımına bak
-  if (!campaignBenefitValue) {
-    const text = coupon.benefitText || ''
-    if (text.includes('%')) {
-      campaignBenefitValue = text.match(/%\d+|\d+%/)?.[0] || '%'
-      campaignBenefitLabel = 'İNDİRİM'
-    } else if (text.toLowerCase().includes('tl')) {
-      campaignBenefitValue = text.match(/\d+\s*TL|\d+/)?.[0] || 'TL'
-      if (!campaignBenefitValue.includes('TL')) campaignBenefitValue = `${campaignBenefitValue} TL`
-      campaignBenefitLabel = 'İNDİRİM'
-    } else if (text) {
-      campaignBenefitValue = text.length > 8 ? 'Hediye' : text
-      campaignBenefitLabel = 'HEDİYE'
-    }
-  }
-
-  // 4. Varsayılan Fallback: "50 TL"
-  if (!campaignBenefitValue) {
-    campaignBenefitValue = '50 TL'
-    campaignBenefitLabel = 'İNDİRİM'
-  }
 
   const isPassive = !['available', 'reserved'].includes(coupon.status)
   const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
 
+  // Parse benefit text to display value prominently on left stub
+  const text = coupon.benefitText || ''
+  let benefitText = ''
+  if (text.includes('%')) {
+    const match = text.match(/\d+/)
+    benefitText = match ? `%${match[0]}` : '%50'
+  } else if (text.toLowerCase().includes('tl') || text.includes('try') || text.match(/\d+/)) {
+    const match = text.match(/\d+/)
+    benefitText = match ? `${match[0]} TL` : '50 TL'
+  } else {
+    benefitText = 'HEDİYE'
+  }
+
   // Bilet gövdesi için düz renk haritası (Görsel referansına tam uyum)
   const SOLID_COLORS = [
-    '#dc2626', // Kırmızı (Görsel 1)
-    '#eab308', // Sarı/Turuncu (Görsel 2)
-    '#0d9488', // Turkuaz/Mavi-Yeşil (Görsel 3)
-    '#db2777', // Pembe
-    '#2563eb', // Mavi
-    '#1e293b', // Koyu Slate
-    '#059669', // Zümrüt Yeşili
-    '#9333ea', // Mor
-    '#7c3aed', // Eflatun
-    '#e11d48'  // Gül Rengi
+    '#dc2626', // Kırmızı
+    '#f5ba13', // Sarı/Turuncu
+    '#0d8197', // Teal
   ]
-  const solidBg = isPassive ? '#94a3b8' : (SOLID_COLORS[index % SOLID_COLORS.length])
+  const solidBg = isPassive ? '#64748b' : (SOLID_COLORS[index % SOLID_COLORS.length])
+
+  // Font boyutu hesaplama
+  let benefitFontSize = '2.4rem'
+  if (benefitText === 'HEDİYE') {
+    benefitFontSize = '1.35rem'
+  } else if (benefitText.includes('TL')) {
+    benefitFontSize = '1.75rem'
+  } else if (benefitText.length > 5) {
+    benefitFontSize = '1.5rem'
+  }
 
   return (
     <div style={{
@@ -370,7 +306,7 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
       position: 'relative',
       overflow: 'hidden',
       border: '1px solid rgba(148,163,184,.14)',
-      background: isPassive ? '#334155' : '#111827',
+      backgroundColor: '#ffffff',
     }}>
       {/* Sol Kenar Tırtıklı Maske */}
       <div style={{
@@ -398,38 +334,36 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
         zIndex: 10,
       }} />
 
-      {/* Üst Orta Bölüm Yırtmacı */}
+      {/* Sol Orta Bölüm Yırtmacı */}
       <div style={{
         position: 'absolute',
-        top: -7,
-        left: 85 - 7,
+        left: -7,
+        top: 'calc(50% - 7px)',
         width: 14,
         height: 14,
         borderRadius: '50%',
         background: bodyBgColor,
-        boxShadow: 'inset 0 -2px 3px rgba(0,0,0,0.05)',
-        zIndex: 3,
         border: '1px solid rgba(148,163,184,.14)',
+        zIndex: 11,
       }} />
 
-      {/* Alt Orta Bölüm Yırtmacı */}
+      {/* Sağ Orta Bölüm Yırtmacı */}
       <div style={{
         position: 'absolute',
-        bottom: -7,
-        left: 85 - 7,
+        right: -7,
+        top: 'calc(50% - 7px)',
         width: 14,
         height: 14,
         borderRadius: '50%',
         background: bodyBgColor,
-        boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.05)',
-        zIndex: 3,
         border: '1px solid rgba(148,163,184,.14)',
+        zIndex: 11,
       }} />
 
       {/* Sol Koçan (Stüp) */}
       <div style={{
-        width: 85,
-        background: isPassive ? '#334155' : '#111827',
+        width: 90,
+        backgroundColor: isPassive ? '#f1f5f9' : '#ffffff',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -438,7 +372,7 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
         zIndex: 2,
         padding: '0 4px',
       }}>
-        {/* Dikey döndürülmüş fayda değeri (Görsel referansıyla aynı - Konturlu Dikey Yazı) */}
+        {/* Dikey döndürülmüş fayda değeri */}
         <div style={{
           transform: 'rotate(-90deg)',
           whiteSpace: 'nowrap',
@@ -446,27 +380,28 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
           alignItems: 'center',
           justifyContent: 'center',
           color: 'transparent',
-          WebkitTextStroke: `1px ${solidBg}`,
+          WebkitTextStroke: `2px ${solidBg}`,
+          textStroke: `2px ${solidBg}`,
           fontWeight: 900,
           fontFamily: '"Impact", "Arial Black", sans-serif',
-          fontSize: campaignBenefitValue.length > 8 ? '1.45rem' : campaignBenefitValue.length > 5 ? '1.95rem' : '2.4rem',
+          fontSize: benefitFontSize,
           letterSpacing: '-0.01em',
           lineHeight: 1,
           textShadow: 'none',
         }}>
-          {campaignBenefitValue}
+          {benefitText}
         </div>
       </div>
 
       {/* Dikey Kesikli Ayırıcı Çizgi */}
       <div style={{
         width: 0,
-        borderLeft: '1.8px dashed rgba(148,163,184,.4)',
+        borderLeft: '2px dashed rgba(255,255,255,0.85)',
         height: '100%',
         zIndex: 2,
       }} />
 
-      {/* Sağ Gövde (Solid Canlı Renk Arka Planı - Ortalanmış Bilet Gövdesi) */}
+      {/* Sağ Gövde (Solid Canlı Renk Arka Planı) */}
       <div style={{
         flex: 1,
         background: solidBg,
@@ -474,7 +409,7 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: '12px 14px',
+        padding: '12px 16px',
         minWidth: 0,
         zIndex: 2,
         position: 'relative',
@@ -482,13 +417,13 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
         {/* Kupon Kodu - Sağ Üst Rozet */}
         <div style={{
           position: 'absolute',
-          top: 8,
+          top: 6,
           right: 12,
           fontFamily: 'monospace',
           fontWeight: 900,
-          fontSize: '0.72rem',
+          fontSize: '0.65rem',
           color: '#ffffff',
-          background: 'rgba(255,255,255,0.2)',
+          background: 'rgba(255,255,255,0.25)',
           padding: '2px 6px',
           borderRadius: 4,
           letterSpacing: '0.02em',
@@ -505,13 +440,13 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
           justifyContent: 'center',
           textAlign: 'center',
           width: '100%',
-          marginTop: 10,
+          marginTop: 8,
           marginBottom: 6,
         }}>
           <div style={{
             fontFamily: '"Impact", "Arial Narrow", sans-serif',
             fontWeight: 900,
-            fontSize: '1.45rem',
+            fontSize: campaignName.length > 15 ? '1.3rem' : '1.6rem',
             lineHeight: 1.15,
             color: '#ffffff',
             textTransform: 'uppercase',
@@ -522,19 +457,21 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
           }}>
             {campaignName}
           </div>
-          <div style={{
-            fontSize: '0.72rem',
-            color: 'rgba(255,255,255,0.9)',
-            lineHeight: 1.3,
-            marginTop: 4,
-            maxWidth: '90%',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}>
-            {campaignDescription}
-          </div>
+          {campaignDescription && (
+            <div style={{
+              fontSize: '0.72rem',
+              color: 'rgba(255,255,255,0.9)',
+              lineHeight: 1.3,
+              marginTop: 4,
+              maxWidth: '90%',
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}>
+              {campaignDescription}
+            </div>
+          )}
         </div>
 
         {/* Alt Çizgi ve Süre Bilgisi (Ortalanmış) */}
@@ -543,18 +480,135 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
           borderTop: '1px solid rgba(255,255,255,0.25)',
           paddingTop: 5,
           textAlign: 'center',
-          fontSize: '0.62rem',
-          color: 'rgba(255,255,255,0.85)',
-          fontWeight: 700,
-          letterSpacing: '0.03em',
+          fontSize: '0.72rem',
+          color: '#ffffff',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
         }}>
-          {campaignExpiry ? (
-            <>SON GÜN: {formatMobileDate(campaignExpiry, { day: '2-digit', month: 'long', year: 'numeric' })}</>
-          ) : (
-            <>SÜRESİZ KAMPANYA</>
-          )}
+          <span>GEÇERLİLİK: </span>
+          <span style={{ fontWeight: 800 }}>
+            {campaignExpiry ? (
+              formatMobileDate(campaignExpiry, { day: '2-digit', month: 'long', year: 'numeric' })
+            ) : (
+              'SÜRESİZ'
+            )}
+          </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
+  const [couponCode, setCouponCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState({ text: '', type: '' })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!couponCode.trim()) return
+    setLoading(true)
+    setMessage({ text: '', type: '' })
+    try {
+      await onAddCoupon(couponCode)
+      setMessage({ text: 'Kupon hesabınıza başarıyla tanımlandı!', type: 'success' })
+      setCouponCode('')
+    } catch (err) {
+      setMessage({ text: err.message || 'Kupon eklenirken bir hata oluştu.', type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Kupon Ekleme Formu */}
+      <form onSubmit={handleSubmit} style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value)}
+            placeholder="Kupon kodu girin"
+            style={{
+              flex: 1,
+              minHeight: 40,
+              borderRadius: 12,
+              border: '1px solid rgba(148,163,184,.22)',
+              background: '#fff',
+              color: '#0f172a',
+              padding: '0 12px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              textTransform: 'uppercase'
+            }}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading || !couponCode.trim()}
+            style={{
+              minWidth: 80,
+              minHeight: 40,
+              borderRadius: 12,
+              border: 'none',
+              background: 'linear-gradient(135deg,#f97316,#ea580c)',
+              color: '#fff',
+              fontWeight: 900,
+              cursor: loading || !couponCode.trim() ? 'not-allowed' : 'pointer',
+              opacity: loading || !couponCode.trim() ? 0.6 : 1,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6
+            }}
+          >
+            {loading ? (
+              <i className="fa-solid fa-spinner fa-spin" />
+            ) : (
+              <>
+                <i className="fa-solid fa-plus" />
+                Ekle
+              </>
+            )}
+          </button>
+        </div>
+        {message.text && (
+          <div style={{
+            fontSize: '.74rem',
+            fontWeight: 700,
+            color: message.type === 'success' ? '#166534' : '#b91c1c',
+            background: message.type === 'success' ? '#ecfdf5' : '#fef2f2',
+            padding: '8px 12px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            <i className={message.type === 'success' ? 'fa-solid fa-circle-check' : 'fa-solid fa-triangle-exclamation'} />
+            {message.text}
+          </div>
+        )}
+      </form>
+
+      {model.activeCoupons.length ? (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {model.activeCoupons.map((coupon, idx) => (
+            <div key={coupon.id}>
+              <CouponCard
+                coupon={coupon}
+                index={idx}
+                campaigns={model.campaigns}
+                appConfig={appConfig}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
+          Kullanılabilir aktif kuponunuz bulunmamaktadır.
+        </div>
+      )}
     </div>
   )
 }
@@ -1157,132 +1211,6 @@ function CardScreen({ model }) {
   )
 }
 
-function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
-  const [couponCode, setCouponCode] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState({ text: '', type: '' })
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!couponCode.trim()) return
-    setLoading(true)
-    setMessage({ text: '', type: '' })
-    try {
-      await onAddCoupon(couponCode)
-      setMessage({ text: 'Kupon hesabınıza başarıyla tanımlandı!', type: 'success' })
-      setCouponCode('')
-    } catch (err) {
-      setMessage({ text: err.message || 'Kupon eklenirken bir hata oluştu.', type: 'error' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      {/* Kupon Ekleme Formu */}
-      <form onSubmit={handleSubmit} style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value)}
-            placeholder="Kupon kodu girin"
-            style={{
-              flex: 1,
-              minHeight: 40,
-              borderRadius: 12,
-              border: '1px solid rgba(148,163,184,.22)',
-              background: '#fff',
-              color: '#0f172a',
-              padding: '0 12px',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              textTransform: 'uppercase'
-            }}
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            disabled={loading || !couponCode.trim()}
-            style={{
-              minWidth: 80,
-              minHeight: 40,
-              borderRadius: 12,
-              border: 'none',
-              background: 'linear-gradient(135deg,#f97316,#ea580c)',
-              color: '#fff',
-              fontWeight: 900,
-              cursor: loading || !couponCode.trim() ? 'not-allowed' : 'pointer',
-              opacity: loading || !couponCode.trim() ? 0.6 : 1,
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6
-            }}
-          >
-            {loading ? (
-              <i className="fa-solid fa-spinner fa-spin" />
-            ) : (
-              <>
-                <i className="fa-solid fa-plus" />
-                Ekle
-              </>
-            )}
-          </button>
-        </div>
-        {message.text && (
-          <div style={{
-            fontSize: '.74rem',
-            fontWeight: 700,
-            color: message.type === 'success' ? '#166534' : '#b91c1c',
-            background: message.type === 'success' ? '#ecfdf5' : '#fef2f2',
-            padding: '8px 12px',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }}>
-            <i className={message.type === 'success' ? 'fa-solid fa-circle-check' : 'fa-solid fa-triangle-exclamation'} />
-            {message.text}
-          </div>
-        )}
-      </form>
-
-      {model.activeCoupons.length ? (
-        <div style={{ display: 'grid', gap: 14 }}>
-          {model.activeCoupons.map((coupon, idx) => (
-            <div key={coupon.id}>
-              {idx > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0 14px 0', color: '#94a3b8' }}>
-                  <div style={{ flex: 1, borderTop: '1.5px dashed rgba(148,163,184,.3)' }} />
-                  <i 
-                    className="fa-solid fa-scissors" 
-                    style={{ 
-                      marginLeft: 8, 
-                      fontSize: '0.8rem',
-                      opacity: 0.65
-                    }} 
-                  />
-                </div>
-              )}
-              <CouponCard
-                coupon={coupon}
-                index={idx}
-                campaigns={model.campaigns}
-                appConfig={appConfig}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
-          Kullanılabilir aktif kuponunuz bulunmamaktadır.
-        </div>
-      )}
-    </div>
-  )
-}
 
 function CampaignsScreen({ model }) {
   const personalized = model.campaigns.filter(item => item.bucket === 'personalized')

@@ -115,7 +115,7 @@ export const CONDITION_LIBRARY = [
   { key: 'birthday', label: 'Doğum günü', description: 'Müşterinin doğum günü, önceki ve sonraki gün sayısına göre eşleşir.' },
   { key: 'period_total_order_amount', label: 'Dönem başına toplam sipariş tutarı', description: 'Müşterinin seçili zaman dilimindeki toplam sipariş tutarını kontrol eder; istenirse mevcut sipariş de hesaba katılır.' },
   { key: 'period_order_count', label: 'Dönem içindeki ziyaret / sipariş adedi', description: 'Müşterinin belirli dönemde yaptığı ziyaret veya verdiği sipariş sayısını kontrol eder; istenirse mevcut ziyaret / sipariş de bu sayıya dahil edilir.' },
-  { key: 'period_product_quantity', label: 'Dönem içindeki ürün miktarı', description: 'Müşterinin dönem boyunca sipariş ettiği ürün adedini kontrol eder.' },
+  { key: 'period_product_quantity', label: 'Damga Kartı / Ürün Adedi Koşulu', description: 'Müşterinin dönem boyunca satın aldığı seçili ürün/kategori miktarını kontrol eder (Damga Kartı kurguları için kullanılır).' },
   { key: 'period_sold_product_quantity', label: 'Dönem içinde satılan ürün miktarı', description: 'Seçili ürün ve kategorilerin gün, hafta, ay, 3 ay veya yıl içindeki toplam satış adedini kontrol eder.' },
   { key: 'missing_products', label: 'Ürün siparişte yoksa', description: 'Seçili ürün, kategori veya satış malı şablonundaki ürünler siparişte yoksa tetiklenir.' },
   { key: 'happy_hour', label: 'Happy hour', description: 'Belirli saat ve gün aralığında koşul sağlanır.' },
