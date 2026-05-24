@@ -2170,3 +2170,93 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Yok.
 - `Next Loyalty Step`:
   - Mobil uygulamayı yerel ortamda açıp kuponlar sekmesini sade haliyle ve kupon kartlarının doğru bilet görünümüyle render edildiğini son kez doğrulamak.
+
+
+## Entry 060
+
+- `Timestamp`: `2026-05-25T00:36:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `CouponCard Bilet Tasarımının Referans Görsele Birebir Uyumlu Yeniden Yazılması`
+- `Trigger`: `Kullanıcının gönderdiği referans kupon görseline birebir uyum sağlamak. Görselde: büyük tırtıklı (scallop) kenarlar, beyaz sol koçan üzerinde döndürülmüş büyük outline fayda metni (30%, 50TL, HEDİYE), düz renkli sağ gövde üzerinde büyük Impact fontlu "KUPON" başlığı, altında geçerlilik tarihi ve küçük kampanya adı. Kuponlar arası makas kesik çizgisi.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` (IMAGE_SLOTS tanımı)
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - CouponCard bileşeni referans görseldeki klasik bilet tasarımına tam uyumlu şekilde yeniden yazıldı.
+  - Sol koçan (105px genişlik, beyaz): döndürülmüş (-90deg) büyük outline fayda metni (WebkitTextStroke ile gövde renginde).
+  - Sağ gövde (solid renk): büyük Impact fontlu "KUPON" başlığı (2.6rem), altında geçerlilik tarihi ve küçük kampanya adı.
+  - 6 renk döngüsü: kırmızı, sarı, teal, mor, yeşil, turuncu.
+  - Büyük tırtıklı kenarlar (scallop, 6px radius radial-gradient).
+  - Dikey kesikli ayırıcı çizgi (dashed border).
+  - Kupon kodu sağ üst rozette görünür.
+  - Kampanya wizard'daki mobileCouponImage slot'undaki görsel varsa, sağ gövde arka planında renk overlay ile kullanılır.
+  - Kuponlar arası makas (✂) ikonlu kesik çizgi ayırıcı.
+  - Fayda metni: yüzde (30%), tutar (50TL), hediye (HEDİYE) — 3 seçenek desteklenir.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `CouponCard reference-image-exact ticket redesign`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Kuponlar Sekmesi`
+- `Readiness`:
+  - `CouponCard visual design`: `Ready`
+  - `CouponsScreen layout`: `Ready`
+  - `Campaign image integration`: `Ready`
+- `Decision`:
+  - CouponCard tamamen yeniden yazıldı: büyük "KUPON" başlığı ana öğe, kampanya adı küçük alt satır, fayda metni sol koçanda büyük ve okunaklı.
+  - mobileCouponImage slot'undan görsel varsa linear-gradient overlay ile arka planda gösterilir.
+  - Kuponlar arası makas simgeli (fa-scissors) kesik çizgi (dashed line) eklendi.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Mobil uygulamada kuponlar sekmesini açarak yeni bilet tasarımının referans görsele tam uyumlu olduğunu doğrulamak.
+
+
+## Entry 061
+
+- `Timestamp`: `2026-05-25T00:49:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `CouponCard İçeriğini Kampanya Verilerinden Otomatik Çekme`
+- `Trigger`: `Kullanıcı talebi: Kupon kartında "KUPON" yazmak yerine kupon setinin bağlı olduğu kampanya adı yazılsın, sol koçandaki fayda metni kampanyanın eylemlerinden (action config) otomatik çekilsin, geçerlilik tarihi kampanya bitiş tarihinden alınsın.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/lib/loyalty.js` (ACTION_TYPE_OPTIONS, getDefaultActionConfig yapısı)
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` (IMAGE_SLOTS)
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - CouponCard artık büyük başlık olarak kampanya adını gösterir ("KUPON" yerine, örn. "İNDİRİM").
+  - Sol koçandaki fayda metni kampanyanın `applicableRules` eylemlerinden otomatik çıkarılır:
+    - `order_discount` (amount/percent) → `50TL` veya `%30`
+    - `special_discount` / `order_discount_amount` → `50TL`
+    - `discount_percent` → `%30`
+    - `product_pricing` → öğe bazlı yüzde/tutar
+    - `free_products` → `HEDİYE`
+    - `bonus_points` → `250P`
+    - `points_earn_multiplier` → `x2`
+    - `combo_bundle` → `KOMBO` veya tutar
+    - Fallback: `coupon.benefitText` kullanılır, o da yoksa `HEDİYE` gösterilir.
+  - Kampanya eşleştirme geliştirildi: Önce `coupon_present` koşulunda bu kupon serisini arayan kampanya bulunur (çoklu ve tekli koşul yapısı desteklenir). Bulunamazsa eylem bazlı (couponSeriesId) eşleşme denenır.
+  - Geçerlilik tarihi kampanya bitiş tarihinden (`endsAt`) alınır; yoksa kuponun kendi `expiresAt` değeri kullanılır.
+  - Kampanya adı uzunluğuna göre otomatik font boyutu ayarlanır (>20 karakter: 1.3rem, >12: 1.6rem, kısa: 2rem).
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `CouponCard campaign-driven content`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Kuponlar Sekmesi`
+- `Readiness`:
+  - `CouponCard campaign name display`: `Ready`
+  - `CouponCard benefit extraction`: `Ready`
+  - `CouponCard campaign expiry`: `Ready`
+- `Decision`:
+  - `extractBenefitFromAction()` helper fonksiyonu eklenerek tüm eylem tiplerinden fayda metni çıkarma desteklendi.
+  - Kampanya eşleştirmesi `coupon_present` koşuluna öncelik verecek şekilde genişletildi (çoklu koşul ve tekli koşul formatı).
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Canlıda kupon kartlarının doğru kampanya adını, fayda metnini ve geçerlilik tarihini gösterdiğini doğrulamak.

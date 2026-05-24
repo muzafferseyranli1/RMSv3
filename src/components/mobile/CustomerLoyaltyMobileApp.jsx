@@ -247,11 +247,45 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   // Find associated campaign to get name, description and image
   const associatedCampaign = useMemo(() => {
     if (!Array.isArray(campaigns)) return null
+    // Önce coupon_present koşulunda bu kupon serisini kullanan kampanyayı bul
+    const byCouponCondition = campaigns.find(camp => {
+      const rules = [
+        ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+        ...(Array.isArray(camp.rules) ? camp.rules : []),
+      ]
+      return rules.some(rule => {
+        // Çoklu koşul yapısı — conditions dizisi
+        const conditions = Array.isArray(rule.conditions) ? rule.conditions : []
+        const matchesCondition = conditions.some(cond => {
+          if (cond.conditionKey !== 'coupon_present') return false
+          const cfg = cond.conditionConfig || cond.config || {}
+          const ids = Array.isArray(cfg.seriesIds) ? cfg.seriesIds : []
+          return ids.some(id => String(id) === String(coupon.series_id))
+        })
+        // Tekli koşul yapısı (eski format)
+        const singleKey = rule.conditionKey || ''
+        const singleCfg = rule.conditionConfig || rule.condition_json || {}
+        const singleIds = Array.isArray(singleCfg.seriesIds) ? singleCfg.seriesIds : []
+        const matchesSingle = singleKey === 'coupon_present' && singleIds.some(id => String(id) === String(coupon.series_id))
+        return matchesCondition || matchesSingle
+      })
+    })
+    if (byCouponCondition) return byCouponCondition
+    // Fallback: action'da couponSeriesId eşleşmesi
     return campaigns.find(camp => {
-      const rules = Array.isArray(camp.rules) ? camp.rules : []
+      const rules = [
+        ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+        ...(Array.isArray(camp.rules) ? camp.rules : []),
+      ]
       return rules.some(rule => {
         const config = rule.action_json || rule.actionConfig || {}
-        return String(config.couponSeriesId) === String(coupon.series_id) || String(config.seriesId) === String(coupon.series_id);
+        if (String(config.couponSeriesId || '') === String(coupon.series_id) || String(config.seriesId || '') === String(coupon.series_id)) return true
+        // Çoklu eylem yapısı
+        const actions = Array.isArray(rule.actions) ? rule.actions : []
+        return actions.some(act => {
+          const ac = act.actionConfig || act.action_json || {}
+          return String(ac.couponSeriesId || '') === String(coupon.series_id) || String(ac.seriesId || '') === String(coupon.series_id)
+        })
       })
     }) || campaigns.find(camp => {
       const meta = camp.metadata || {}
@@ -260,109 +294,118 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   }, [campaigns, coupon.series_id])
 
   const campaignName = associatedCampaign?.name || coupon.seriesName || 'Sadakat Kuponu'
-  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada veya kioskta okutarak kullanabilirsiniz.'
   const campaignExpiry = associatedCampaign?.endsAt || associatedCampaign?.ends_at || coupon.expiresAt || null
-
   const isPassive = !['available', 'reserved'].includes(coupon.status)
   const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
 
-  // Parse benefit text to display value prominently on left stub
-  const text = coupon.benefitText || ''
-  let benefitText = ''
-  if (text.includes('%')) {
-    const match = text.match(/\d+/)
-    benefitText = match ? `%${match[0]}` : '%50'
-  } else if (text.toLowerCase().includes('tl') || text.includes('try') || text.match(/\d+/)) {
-    const match = text.match(/\d+/)
-    benefitText = match ? `${match[0]} TL` : '50 TL'
-  } else {
-    benefitText = 'HEDİYE'
-  }
+  // Kampanya wizard'dan kupon görseli
+  const couponImageUrl = useMemo(() => {
+    if (!associatedCampaign?.metadata) return null
+    const meta = associatedCampaign.metadata
+    if (meta.mobileCouponImage?.url) return meta.mobileCouponImage.url
+    if (meta.campaignImage?.url) return meta.campaignImage.url
+    const images = Array.isArray(meta.campaignImages) ? meta.campaignImages : []
+    const primary = images.find(img => img.isPrimary)
+    if (primary?.url) return primary.url
+    if (images[0]?.url) return images[0].url
+    return null
+  }, [associatedCampaign])
 
-  // Bilet gövdesi için düz renk haritası (Görsel referansına tam uyum)
+  // ── Kampanya eylemlerinden fayda metnini çıkar ──
+  const benefitDisplay = useMemo(() => {
+    if (associatedCampaign) {
+      const allRules = [
+        ...(Array.isArray(associatedCampaign.applicableRules) ? associatedCampaign.applicableRules : []),
+        ...(Array.isArray(associatedCampaign.rules) ? associatedCampaign.rules : []),
+      ]
+      for (const rule of allRules) {
+        // Çoklu eylem yapısı (yeni format)
+        const actions = Array.isArray(rule.actions) ? rule.actions : []
+        for (const act of actions) {
+          const aType = act.actionType || ''
+          const aCfg = act.actionConfig || act.action_json || {}
+          const result = extractBenefitFromAction(aType, aCfg)
+          if (result) return result
+        }
+        // Tekli eylem yapısı (eski format)
+        const actionType = rule.actionType || ''
+        const actionCfg = rule.actionConfig || rule.action_json || {}
+        const result = extractBenefitFromAction(actionType, actionCfg)
+        if (result) return result
+      }
+    }
+    // Fallback: coupon.benefitText
+    const text = coupon.benefitText || ''
+    if (text.includes('%')) {
+      const match = text.match(/\d+/)
+      return match ? `%${match[0]}` : '%50'
+    } else if (text.toLowerCase().includes('tl') || text.includes('try') || text.match(/\d+/)) {
+      const match = text.match(/\d+/)
+      return match ? `${match[0]}TL` : '50TL'
+    }
+    return 'HEDİYE'
+  }, [associatedCampaign, coupon.benefitText])
+
+  // Bilet gövdesi renk haritası
   const SOLID_COLORS = [
     '#dc2626', // Kırmızı
     '#f5ba13', // Sarı/Turuncu
     '#0d8197', // Teal
+    '#7c3aed', // Mor
+    '#059669', // Yeşil
+    '#ea580c', // Turuncu
   ]
   const solidBg = isPassive ? '#64748b' : (SOLID_COLORS[index % SOLID_COLORS.length])
 
-  // Font boyutu hesaplama
-  let benefitFontSize = '2.4rem'
-  if (benefitText === 'HEDİYE') {
-    benefitFontSize = '1.35rem'
-  } else if (benefitText.includes('TL')) {
-    benefitFontSize = '1.75rem'
-  } else if (benefitText.length > 5) {
-    benefitFontSize = '1.5rem'
-  }
+  // Scallop boyutu
+  const scR = 6
+  const scD = scR * 2
+  const scGap = 4
+  const scStep = scD + scGap
+
+  // Kampanya adı font boyutu — uzun isimlerde küçült
+  const titleFontSize = campaignName.length > 20 ? '1.3rem' : campaignName.length > 12 ? '1.6rem' : '2rem'
 
   return (
     <div style={{
-      borderRadius: 12,
-      boxShadow: '0 8px 24px rgba(15,23,42,.06)',
+      borderRadius: 0,
       display: 'flex',
-      minHeight: 105,
+      minHeight: 130,
       position: 'relative',
       overflow: 'hidden',
-      border: '1px solid rgba(148,163,184,.14)',
       backgroundColor: '#ffffff',
     }}>
-      {/* Sol Kenar Tırtıklı Maske */}
+      {/* ── Sol Kenar Tırtık (scallop) ── */}
       <div style={{
         position: 'absolute',
-        left: -4,
+        left: -(scR),
         top: 0,
         bottom: 0,
-        width: 8,
-        backgroundImage: `radial-gradient(circle, ${bodyBgColor} 4px, transparent 4.5px)`,
-        backgroundSize: '8px 12px',
+        width: scD,
+        backgroundImage: `radial-gradient(circle at center, ${bodyBgColor} ${scR}px, transparent ${scR + 0.5}px)`,
+        backgroundSize: `${scD}px ${scStep}px`,
         backgroundRepeat: 'repeat-y',
+        backgroundPosition: `0 ${scGap / 2}px`,
         zIndex: 10,
       }} />
 
-      {/* Sağ Kenar Tırtıklı Maske */}
+      {/* ── Sağ Kenar Tırtık (scallop) ── */}
       <div style={{
         position: 'absolute',
-        right: -4,
+        right: -(scR),
         top: 0,
         bottom: 0,
-        width: 8,
-        backgroundImage: `radial-gradient(circle, ${bodyBgColor} 4px, transparent 4.5px)`,
-        backgroundSize: '8px 12px',
+        width: scD,
+        backgroundImage: `radial-gradient(circle at center, ${bodyBgColor} ${scR}px, transparent ${scR + 0.5}px)`,
+        backgroundSize: `${scD}px ${scStep}px`,
         backgroundRepeat: 'repeat-y',
+        backgroundPosition: `0 ${scGap / 2}px`,
         zIndex: 10,
       }} />
 
-      {/* Sol Orta Bölüm Yırtmacı */}
+      {/* ══════════ Sol Koçan (Beyaz Stub) ══════════ */}
       <div style={{
-        position: 'absolute',
-        left: -7,
-        top: 'calc(50% - 7px)',
-        width: 14,
-        height: 14,
-        borderRadius: '50%',
-        background: bodyBgColor,
-        border: '1px solid rgba(148,163,184,.14)',
-        zIndex: 11,
-      }} />
-
-      {/* Sağ Orta Bölüm Yırtmacı */}
-      <div style={{
-        position: 'absolute',
-        right: -7,
-        top: 'calc(50% - 7px)',
-        width: 14,
-        height: 14,
-        borderRadius: '50%',
-        background: bodyBgColor,
-        border: '1px solid rgba(148,163,184,.14)',
-        zIndex: 11,
-      }} />
-
-      {/* Sol Koçan (Stüp) */}
-      <div style={{
-        width: 90,
+        width: 105,
         backgroundColor: isPassive ? '#f1f5f9' : '#ffffff',
         display: 'flex',
         justifyContent: 'center',
@@ -370,133 +413,176 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
         flexShrink: 0,
         position: 'relative',
         zIndex: 2,
-        padding: '0 4px',
+        padding: '12px 0',
+        overflow: 'hidden',
       }}>
-        {/* Dikey döndürülmüş fayda değeri */}
         <div style={{
           transform: 'rotate(-90deg)',
           whiteSpace: 'nowrap',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           color: 'transparent',
-          WebkitTextStroke: `2px ${solidBg}`,
-          textStroke: `2px ${solidBg}`,
-          fontWeight: 900,
-          fontFamily: '"Impact", "Arial Black", sans-serif',
-          fontSize: benefitFontSize,
-          letterSpacing: '-0.01em',
+          WebkitTextStroke: `1.5px ${solidBg}`,
+          fontWeight: 800,
+          fontFamily: 'sans-serif',
+          fontSize: benefitDisplay === 'HEDİYE' ? '2.2rem' : benefitDisplay.length > 4 ? '3rem' : '3.8rem',
+          letterSpacing: '0.02em',
           lineHeight: 1,
-          textShadow: 'none',
         }}>
-          {benefitText}
+          {benefitDisplay}
         </div>
       </div>
 
-      {/* Dikey Kesikli Ayırıcı Çizgi */}
+      {/* ── Dikey Kesikli Ayırıcı ── */}
       <div style={{
         width: 0,
-        borderLeft: '2px dashed rgba(255,255,255,0.85)',
-        height: '100%',
-        zIndex: 2,
+        alignSelf: 'stretch',
+        borderLeft: '2.5px dashed rgba(255,255,255,0.6)',
+        zIndex: 3,
       }} />
 
-      {/* Sağ Gövde (Solid Canlı Renk Arka Planı) */}
+      {/* ══════════ Sağ Gövde ══════════ */}
       <div style={{
         flex: 1,
-        background: solidBg,
+        background: couponImageUrl
+          ? `linear-gradient(135deg, ${solidBg}dd 0%, ${solidBg}bb 100%)`
+          : solidBg,
+        backgroundImage: couponImageUrl
+          ? `linear-gradient(135deg, ${solidBg}cc 0%, ${solidBg}99 100%), url(${couponImageUrl})`
+          : undefined,
+        backgroundSize: couponImageUrl ? 'cover' : undefined,
+        backgroundPosition: couponImageUrl ? 'center' : undefined,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: '12px 16px',
+        padding: '18px 20px',
         minWidth: 0,
         zIndex: 2,
         position: 'relative',
       }}>
-        {/* Kupon Kodu - Sağ Üst Rozet */}
+        {/* Kupon kodu — sağ üst rozet */}
         <div style={{
           position: 'absolute',
-          top: 6,
-          right: 12,
+          top: 7,
+          right: 14,
           fontFamily: 'monospace',
           fontWeight: 900,
-          fontSize: '0.65rem',
-          color: '#ffffff',
-          background: 'rgba(255,255,255,0.25)',
-          padding: '2px 6px',
+          fontSize: '0.62rem',
+          color: '#fff',
+          background: 'rgba(0,0,0,0.2)',
+          padding: '2px 7px',
           borderRadius: 4,
-          letterSpacing: '0.02em',
+          letterSpacing: '0.04em',
           zIndex: 3,
         }}>
           {coupon.code}
         </div>
 
-        {/* Ortalanmış Kampanya Adı ve Açıklaması */}
+        {/* ── Ana içerik: kampanya adı ── */}
         <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          fontFamily: '"Impact", "Arial Black", sans-serif',
+          fontWeight: 900,
+          fontSize: titleFontSize,
+          lineHeight: 1.1,
+          color: '#ffffff',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          textShadow: '0 2px 8px rgba(0,0,0,0.15)',
           textAlign: 'center',
-          width: '100%',
-          marginTop: 8,
-          marginBottom: 6,
+          maxWidth: '95%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
         }}>
-          <div style={{
-            fontFamily: '"Impact", "Arial Narrow", sans-serif',
-            fontWeight: 900,
-            fontSize: campaignName.length > 15 ? '1.3rem' : '1.6rem',
-            lineHeight: 1.15,
-            color: '#ffffff',
-            textTransform: 'uppercase',
-            width: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {campaignName}
-          </div>
-          {campaignDescription && (
-            <div style={{
-              fontSize: '0.72rem',
-              color: 'rgba(255,255,255,0.9)',
-              lineHeight: 1.3,
-              marginTop: 4,
-              maxWidth: '90%',
-              display: '-webkit-box',
-              WebkitLineClamp: 1,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}>
-              {campaignDescription}
-            </div>
-          )}
+          {campaignName}
         </div>
 
-        {/* Alt Çizgi ve Süre Bilgisi (Ortalanmış) */}
+        {/* ── Geçerlilik — blok ── */}
         <div style={{
-          width: '100%',
-          borderTop: '1px solid rgba(255,255,255,0.25)',
-          paddingTop: 5,
-          textAlign: 'center',
-          fontSize: '0.72rem',
+          marginTop: 8,
+          fontSize: '0.64rem',
           color: '#ffffff',
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
+          background: 'rgba(0,0,0,0.18)',
+          padding: '4px 10px',
+          borderRadius: 4,
+          letterSpacing: '0.01em',
+          fontWeight: 700,
+          textAlign: 'center',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}>
-          <span>GEÇERLİLİK: </span>
-          <span style={{ fontWeight: 800 }}>
-            {campaignExpiry ? (
-              formatMobileDate(campaignExpiry, { day: '2-digit', month: 'long', year: 'numeric' })
-            ) : (
-              'SÜRESİZ'
-            )}
-          </span>
+          {campaignExpiry ? (
+            `${formatMobileDate(campaignExpiry, { day: '2-digit', month: 'short', year: 'numeric' })} tarihine kadar geçerlidir`
+          ) : (
+            'Süresiz geçerlidir'
+          )}
         </div>
       </div>
     </div>
   )
+}
+
+// Kampanya eyleminden fayda metni çıkarma yardımcı fonksiyonu
+function extractBenefitFromAction(actionType, actionConfig) {
+  const cfg = actionConfig || {}
+  switch (actionType) {
+    case 'order_discount': {
+      const vt = cfg.valueType || ''
+      if (vt === 'percent' || (!vt && cfg.percent > 0)) {
+        const p = Number(cfg.percent || 0)
+        if (p > 0) return `%${p}`
+      }
+      if (vt === 'amount' || (!vt && cfg.amount > 0)) {
+        const a = Number(cfg.amount || 0)
+        if (a > 0) return `${a}TL`
+      }
+      return null
+    }
+    case 'special_discount':
+    case 'order_discount_amount': {
+      const a = Number(cfg.amount || 0)
+      return a > 0 ? `${a}TL` : null
+    }
+    case 'total_order_discount_percent':
+    case 'discount_percent':
+    case 'order_discount_percent': {
+      const p = Number(cfg.percent || 0)
+      return p > 0 ? `%${p}` : null
+    }
+    case 'product_pricing': {
+      const items = Array.isArray(cfg.items) ? cfg.items : []
+      for (const item of items) {
+        const pt = item.pricingType || ''
+        if (pt === 'discount_percent' && Number(item.value) > 0) return `%${Number(item.value)}`
+        if ((pt === 'discount_amount' || pt === 'fixed_price') && Number(item.value) > 0) return `${Number(item.value)}TL`
+      }
+      return null
+    }
+    case 'free_products': {
+      return 'HEDİYE'
+    }
+    case 'bonus_points': {
+      const pts = Number(cfg.points || 0)
+      return pts > 0 ? `${pts}P` : null
+    }
+    case 'points_percent_of_order': {
+      const pct = Number(cfg.percent || 0)
+      return pct > 0 ? `%${pct}P` : null
+    }
+    case 'points_earn_multiplier':
+    case 'points_redeem_multiplier': {
+      const m = Number(cfg.multiplier || 0)
+      return m > 1 ? `x${m}` : null
+    }
+    case 'combo_bundle': {
+      const pv = Number(cfg.priceValue || 0)
+      return pv > 0 ? `${pv}TL` : 'KOMBO'
+    }
+    default:
+      return null
+  }
 }
 
 function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
@@ -592,9 +678,23 @@ function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
       </form>
 
       {model.activeCoupons.length ? (
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ display: 'grid', gap: 0 }}>
           {model.activeCoupons.map((coupon, idx) => (
             <div key={coupon.id}>
+              {idx > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', margin: '6px 0', color: '#94a3b8' }}>
+                  <div style={{ flex: 1, borderTop: '2px dashed rgba(148,163,184,.35)' }} />
+                  <i
+                    className="fa-solid fa-scissors"
+                    style={{
+                      marginLeft: 8,
+                      fontSize: '0.85rem',
+                      opacity: 0.55,
+                      transform: 'rotate(0deg)',
+                    }}
+                  />
+                </div>
+              )}
               <CouponCard
                 coupon={coupon}
                 index={idx}

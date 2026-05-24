@@ -5703,3 +5703,51 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - Kupon kartlarının görsel referanstaki bilet tasarımını (beyaz koçan, dikey outline fayda yazısı, dikey kesikli çizgi, renkli bilet gövdesi, yanlarda bilet yırtmaçları) bozacak herhangi bir değişiklik yapılmadı; bilet tasarımları aynen korundu.
   - Proje `npm run build` ile başarıyla derlenmiştir.
 - `Handoff Contract`: `CouponsScreen'deki mükerrer tanım silindi, sade kupon listeleme layout'u ve özel bilet tasarımları başarıyla korundu. Proje hatasız derlenmektedir.`
+
+
+## Entry 128 - 2026-05-25
+- `Timestamp`: `2026-05-25T00:36:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `CouponCard Bilet Tasarımının Referans Görsele Birebir Uyumlu Yeniden Yazılması`
+- `Intent`: `Kullanıcının gönderdiği referans kupon görselindeki klasik bilet tasarımını (beyaz koçan + renkli gövde + büyük tırtıklı kenarlar + makas ayırıcı) birebir uygulamak ve kampanya wizard'daki mobileCouponImage slot'undan görsel desteği eklemek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx` (IMAGE_SLOTS ve uploadSlotImage yapısı)
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` — CouponCard bileşeni tamamen yeniden yazıldı:
+    - Sol koçan (105px, beyaz): döndürülmüş büyük outline fayda metni (30%, 50TL, HEDİYE).
+    - Sağ gövde (solid renk, 6 renk döngüsü): büyük "KUPON" başlığı (Impact, 2.6rem), geçerlilik tarihi, küçük kampanya adı.
+    - Büyük scallop kenarlar (6px radius radial-gradient).
+    - mobileCouponImage slot'undan görsel desteği (linear-gradient overlay).
+    - Kupon kodu sağ üst rozet.
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` — CouponsScreen listesine kuponlar arası makas (fa-scissors) + dashed çizgi ayırıcı eklendi.
+- `Commands Run`:
+  - `npm run build:web` (başarıyla tamamlandı, 6.45s, 0 hata)
+- `Findings`:
+  - IMAGE_SLOTS tanımında `mobileCouponImage` anahtarı ile 600x300px kupon görseli yükleme desteği mevcut. Görseller `campaign.metadata.mobileCouponImage.url` altında saklanıyor.
+- `Decisions`:
+  - CouponCard ana başlığı olarak sabit "KUPON" metni kullanıldı (referans görseldeki "COUPON" karşılığı). Kampanya adı küçük alt satır olarak gösterildi.
+  - Fayda metni formatı: yüzde → `30%`, tutar → `50TL`, hediye → `HEDİYE`.
+  - Kampanya görseli varsa arka plan olarak renk overlay ile birlikte gösterilir, yoksa düz solid renk kullanılır.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Mobil uygulamayı açıp kuponlar sekmesinde yeni bilet tasarımının referans görsele birebir uyduğunu teyit etmek.
+- `Handoff Contract`: `CouponCard referans görseldeki bilet tasarımına birebir uyumlu olarak yeniden yazıldı. mobileCouponImage slot desteği eklendi. Kuponlar arası makas ayırıcı eklendi. Build başarılı.`
+
+
+## Entry 129 - 2026-05-25
+- `Timestamp`: `2026-05-25T00:49:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `CouponCard İçeriğini Kampanya Verilerinden Otomatik Çekme`
+- `Intent`: `Kupon kartındaki "KUPON" başlığını kampanya adıyla, sol koçandaki fayda metnini kampanya eylem konfigürasyonundan çıkarılan değerle, geçerlilik tarihini kampanya bitiş tarihiyle değiştirmek.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`:
+    - CouponCard bileşeni: "KUPON" → `campaignName` (büyük Impact font başlık)
+    - Kampanya eşleştirme geliştirildi: `coupon_present` koşulu öncelikli, sonra `couponSeriesId` eylem bazlı
+    - `extractBenefitFromAction()` helper fonksiyonu eklendi — tüm eylem tiplerini destekler
+    - Fayda metni kampanya eylemlerinden otomatik çıkarılır (fallback: coupon.benefitText)
+    - Kampanya adı uzunluğuna göre dinamik font boyutu
+- `Commands Run`:
+  - `npm run build:web` (başarılı, 6.92s, 0 hata)
+- `Handoff Contract`: `CouponCard artık kampanya adını büyük başlık olarak gösterir, fayda metnini kampanya eylemlerinden otomatik çıkarır, geçerlilik tarihini kampanya bitiş tarihinden alır. Build başarılı.`
