@@ -1941,3 +1941,41 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Aktif tab arka plan gradyanı daha hafif ve zarif bir görünüme kavuşturuldu (`rgba(251,113,133,.12)` ve `rgba(249,115,22,.1)`).
 - `Next Loyalty Step`:
   - Mobil simülatörde veya `/musteri-app` sayfasında alt menünün kısalmış, daha kompakt ve premium halini görsel olarak doğrula.
+
+
+## Entry 051
+
+- `Timestamp`: `2026-05-24T16:40:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kupon Tasarımının Birebir Görsel Pariteyle Yenilenmesi (Tırtıklı Kenarlar, Dikey Outline Metin ve Sıkışık Impact Başlık)`
+- `Trigger`: `Müşteri mobil uygulamasındaki kupon kartlarının görsel referansa (tırtıklı kenarlar, dikey rotated fayda metni, outline text-stroke stili, ortalanmış Impact kampanya başlığı ve Türkçe süre çizgisi) birebir uyacak şekilde güncellenmesi talebi.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Current Capability`:
+  - Kupon kartlarının sol ve sağ kenarları boyunca repeating `radial-gradient` maskesi kullanılarak tırtıklı (wavy/serrated) yırtık bilet görünümü sağlandı.
+  - Sol koçan (stüp) arka planı `#111827` (premium koyu gri) yapıldı; rotated dikey fayda yazısı (`Hediye`, `%10`, `50 TL`) `color: 'transparent'`, `WebkitTextStroke: '1px ' + solidBg`, `textShadow: 'none'` ve dinamik büyük font boyutuyla (`2.4rem` / `1.95rem` / `1.45rem`) stübü dolduracak şekilde tasarlandı.
+  - Sağ bilet gövdesi dikey ve yatayda tamamen ortalanarak kampanya adı sıkışık Impact tipografisi ile beyaz renkli olarak gösterildi.
+  - Kupon geçerlilik tarihi alt kısımda ince bir bölme çizgisi (`borderTop`) üzerinde ortalanarak Türkçe biçimde konumlandırıldı. Kupon kodu ise sağ üst köşede rozet olarak gösterildi.
+- `Next Loyalty Step`:
+  - Farklı makineden devam edildiğinde mobil arayüzde kuponların görsel paritesini, dikey rotated outline yazıların stübü dolduruşunu ve makas ayırıcı çizgilerini nihai olarak test et.
+
+
+## Entry 052
+
+- `Timestamp`: `2026-05-24T16:40:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Sadakat Yönetim Paneli Konsolidasyonu ve Sihirbaz Gör/Düzenle Entegrasyonu`
+- `Trigger`: `Sadakat modülünü konsolide ederek tüm kampanya yönetimini (oluşturma, düzenleme, detay/görünüm) akıllı kampanya sihirbazı rotalarına yönlendirmek ve yönetim panelini 4 sekmeli tek ekranda toplamak.`
+- `Files Changed`:
+  - `src/App.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/pages/LoyaltyReferralPrograms.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Current Capability`:
+  - `App.jsx` yönlendirmesi güncellendi; yeni kampanya oluşturma (`/sadakat/kampanya/yeni`), detay/rapor görünümü (`/sadakat/kampanya/:campaignId/gor`) ve düzenleme (`/sadakat/kampanya/:campaignId/duzenle`) doğrudan `LoyaltyCampaignWizard` bileşenine aktarıldı. Eski bağımsız önizleme rotası ve dosyası silindi.
+  - `LoyaltyManagement.jsx` paneli artık 4 ana sekmeden oluşmaktadır: Kampanyalar, Sadakat Seviyeleri (Tiers), Referanslar (embedded) ve Program Ayarları.
+  - Kampanyalar tablosuna `Gör`, `Düzenle`, `Kopyala` (kopya üreterek veritabanına kaydeder) ve `Sil` (onay sonrası veri tabanından siler) işlemleri eklendi. Seviyeler ve Ayarlar doğrudan bu panel üzerinden düzenlenip kaydedilebilmektedir.
+  - `LoyaltyReferralPrograms.jsx` bileşeni `embedMode` desteğiyle sekme içerisinde başlık ve kenar boşlukları olmadan entegre edildi.
+  - `LoyaltyCampaignWizard.jsx` sihirbazı `mode` propuna göre tek sayfa Gör ve Düzenle tasarımlarını (isim, açıklama ve görsel en üstte olmak üzere) yukarıdan aşağıya sunacak şekilde yapılandırıldı. Düzenle modundaki değişikliklerin veritabanına kaydedilmesi sağlandı.
+- `Next Loyalty Step`:
+  - Yönetim panelinden yeni bir kampanya ekleme, var olanları kopyalama, silme ve düzenleme akışlarının veri tabanı kayıtlarıyla tam entegre çalıştığını yerel ortamda test edin.

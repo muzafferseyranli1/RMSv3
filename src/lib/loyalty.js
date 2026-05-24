@@ -101,7 +101,6 @@ export const ACTION_TYPE_OPTIONS = [
   { value: 'points_earn_multiplier', label: 'Puan kazanma katsayısı uygula' },
   { value: 'points_redeem_multiplier', label: 'Puan harcama katsayısı uygula' },
   { value: 'issue_coupon', label: 'Kupon yarat' },
-  { value: 'discount_percent', label: 'Yüzde indirim uygula' },
 ]
 
 export const COUPON_CHARSET_OPTIONS = [
@@ -1206,6 +1205,13 @@ export function syncCouponSeriesCodes(series = {}, options = {}) {
   const normalized = normalizeCouponSeriesBase(series)
   if (normalized._couponsNotLoaded) {
     return normalized
+  }
+  if (normalized.metadata?.onDemandGenerationOnly) {
+    return {
+      ...normalized,
+      coupons: [],
+      codes: [],
+    }
   }
   const targetCount = getCouponTargetCount(normalized)
   const mode = options.mode === 'regenerate' ? 'regenerate' : 'preserve'

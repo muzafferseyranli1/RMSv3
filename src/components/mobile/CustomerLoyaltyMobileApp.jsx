@@ -244,7 +244,7 @@ function SummaryTile({ label, value, hint, color = '#0f172a' }) {
 function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   const statusMeta = getCouponStatusMeta(coupon.status)
 
-  // Find associated campaign to get name, description and image
+  // İsim, açıklama ve görsel almak için ilişkili kampanyayı bul
   const associatedCampaign = useMemo(() => {
     if (!Array.isArray(campaigns)) return null
     return campaigns.find(camp => {
@@ -259,223 +259,300 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
     })
   }, [campaigns, coupon.series_id])
 
-  const campaignImage = associatedCampaign?.metadata?.imageUrl || associatedCampaign?.metadata?.backgroundImageUrl || associatedCampaign?.metadata?.logoUrl || null
+  // Kampanya tanımlarını esas al
   const campaignName = associatedCampaign?.name || coupon.seriesName || 'Sadakat Kuponu'
-  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada veya kioskta okutarak kullanabilirsiniz.'
+  const campaignDescription = associatedCampaign?.description || coupon.ruleText || 'Kupon kodunu kasada okutarak kullanabilirsiniz.'
+  const campaignExpiry = associatedCampaign?.endsAt || associatedCampaign?.ends_at || coupon.expiresAt || null
 
-  // Pre-defined templates (10 different coupon styles)
-  const template = COUPON_TEMPLATES[index % COUPON_TEMPLATES.length]
-  const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
+  // Fayda değerini doğrudan kampanya tanımlarından çıkaralım
+  let campaignBenefitValue = ''
+  let campaignBenefitLabel = 'İNDİRİM'
 
-  // Parse benefit text to display value prominently on left stub
-  const text = coupon.benefitText || ''
-  let benefitValue = ''
-  let benefitLabel = 'İNDİRİM'
-  if (text.includes('%')) {
-    benefitValue = text.match(/%\d+|\d+%/)?.[0] || '%'
-    benefitLabel = 'İNDİRİM'
-  } else if (text.toLowerCase().includes('tl')) {
-    benefitValue = text.match(/\d+\s*TL|\d+/)?.[0] || 'TL'
-    benefitLabel = 'İNDİRİM'
-  } else {
-    benefitValue = text.slice(0, 10)
-    benefitLabel = 'HEDİYE'
+  if (associatedCampaign) {
+    // 1. Kuralları ve eylemleri tara
+    const rules = Array.isArray(associatedCampaign.applicableRules || associatedCampaign.rules)
+      ? (associatedCampaign.applicableRules || associatedCampaign.rules)
+      : []
+    
+    for (const rule of rules) {
+      const config = rule.actionConfig || rule.action_json || {}
+      const actionType = rule.actionType || rule.action_type || ''
+      
+      if (actionType === 'order_discount_amount' || actionType === 'special_discount' || actionType === 'order_discount') {
+        const amt = config.amount || config.value || associatedCampaign.rewardValue
+        if (amt) {
+          campaignBenefitValue = `${amt} TL`
+          campaignBenefitLabel = 'İNDİRİM'
+          break
+        }
+      } else if (actionType === 'total_order_discount_percent' || actionType === 'discount_percent') {
+        const pct = config.percent || config.value
+        if (pct) {
+          campaignBenefitValue = `%${pct}`
+          campaignBenefitLabel = 'İNDİRİM'
+          break
+        }
+      } else if (actionType === 'free_products' || actionType === 'product_pricing') {
+        campaignBenefitValue = 'Hediye'
+        campaignBenefitLabel = 'ÜRÜN'
+        break
+      } else if (actionType === 'bonus_points') {
+        const pts = config.points || associatedCampaign.rewardValue
+        if (pts) {
+          campaignBenefitValue = `${pts}`
+          campaignBenefitLabel = 'PUAN'
+          break
+        }
+      }
+    }
+
+    // 2. Kampanya isminde veya açıklamasında arama yap
+    if (!campaignBenefitValue) {
+      const searchStr = `${associatedCampaign.name || ''} ${associatedCampaign.description || ''}`.toLowerCase()
+      const matchPct = searchStr.match(/%\d+|\d+%/)
+      const matchTl = searchStr.match(/(\d+)\s*tl/)
+      if (matchPct) {
+        campaignBenefitValue = matchPct[0]
+        campaignBenefitLabel = 'İNDİRİM'
+      } else if (matchTl) {
+        campaignBenefitValue = `${matchTl[1]} TL`
+        campaignBenefitLabel = 'İNDİRİM'
+      }
+    }
   }
 
-  const Barcode = () => (
-    <div style={{ display: 'flex', gap: 1.5, height: 28, margin: '6px 0', opacity: 0.45, color: template.textColor }}>
-      {[2, 1, 3, 1, 2, 4, 1, 2, 1, 3, 1, 2, 1].map((w, i) => (
-        <span key={i} style={{ display: 'inline-block', width: w, height: '100%', backgroundColor: 'currentColor' }} />
-      ))}
-    </div>
-  )
+  // 3. Fallback olarak kuponun kendi tanımına bak
+  if (!campaignBenefitValue) {
+    const text = coupon.benefitText || ''
+    if (text.includes('%')) {
+      campaignBenefitValue = text.match(/%\d+|\d+%/)?.[0] || '%'
+      campaignBenefitLabel = 'İNDİRİM'
+    } else if (text.toLowerCase().includes('tl')) {
+      campaignBenefitValue = text.match(/\d+\s*TL|\d+/)?.[0] || 'TL'
+      if (!campaignBenefitValue.includes('TL')) campaignBenefitValue = `${campaignBenefitValue} TL`
+      campaignBenefitLabel = 'İNDİRİM'
+    } else if (text) {
+      campaignBenefitValue = text.length > 8 ? 'Hediye' : text
+      campaignBenefitLabel = 'HEDİYE'
+    }
+  }
+
+  // 4. Varsayılan Fallback: "50 TL"
+  if (!campaignBenefitValue) {
+    campaignBenefitValue = '50 TL'
+    campaignBenefitLabel = 'İNDİRİM'
+  }
 
   const isPassive = !['available', 'reserved'].includes(coupon.status)
+  const bodyBgColor = appConfig?.branding?.bodyBackgroundColor || '#f8fafc'
+
+  // Bilet gövdesi için düz renk haritası (Görsel referansına tam uyum)
+  const SOLID_COLORS = [
+    '#dc2626', // Kırmızı (Görsel 1)
+    '#eab308', // Sarı/Turuncu (Görsel 2)
+    '#0d9488', // Turkuaz/Mavi-Yeşil (Görsel 3)
+    '#db2777', // Pembe
+    '#2563eb', // Mavi
+    '#1e293b', // Koyu Slate
+    '#059669', // Zümrüt Yeşili
+    '#9333ea', // Mor
+    '#7c3aed', // Eflatun
+    '#e11d48'  // Gül Rengi
+  ]
+  const solidBg = isPassive ? '#94a3b8' : (SOLID_COLORS[index % SOLID_COLORS.length])
 
   return (
     <div style={{
-      borderRadius: 20,
-      background: isPassive ? 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%)' : template.gradient,
-      color: isPassive ? '#475569' : template.textColor,
-      boxShadow: '0 12px 28px rgba(15,23,42,.08)',
+      borderRadius: 12,
+      boxShadow: '0 8px 24px rgba(15,23,42,.06)',
       display: 'flex',
-      minHeight: 130,
+      minHeight: 105,
       position: 'relative',
       overflow: 'hidden',
-      border: '1px solid rgba(148,163,184,.12)',
+      border: '1px solid rgba(148,163,184,.14)',
+      background: isPassive ? '#334155' : '#111827',
     }}>
-      {/* Decorative pattern overlays */}
-      {!isPassive && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: template.pattern,
-          opacity: 0.15,
-          pointerEvents: 'none',
-        }} />
-      )}
-
-      {/* Ticket Cutout Notches */}
+      {/* Sol Kenar Tırtıklı Maske */}
       <div style={{
         position: 'absolute',
-        top: -8,
-        left: 77, // 85px (stub width) - 8px (half of 16px notch width)
-        width: 16,
-        height: 16,
-        borderRadius: '50%',
-        background: bodyBgColor,
-        boxShadow: 'inset 0 -3px 5px rgba(0,0,0,.04)',
-        zIndex: 2,
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: -8,
-        left: 77,
-        width: 16,
-        height: 16,
-        borderRadius: '50%',
-        background: bodyBgColor,
-        boxShadow: 'inset 0 3px 5px rgba(0,0,0,.04)',
-        zIndex: 2,
+        left: -4,
+        top: 0,
+        bottom: 0,
+        width: 8,
+        backgroundImage: `radial-gradient(circle, ${bodyBgColor} 4px, transparent 4.5px)`,
+        backgroundSize: '8px 12px',
+        backgroundRepeat: 'repeat-y',
+        zIndex: 10,
       }} />
 
-      {/* Left Stub (Barcode and Value) */}
+      {/* Sağ Kenar Tırtıklı Maske */}
+      <div style={{
+        position: 'absolute',
+        right: -4,
+        top: 0,
+        bottom: 0,
+        width: 8,
+        backgroundImage: `radial-gradient(circle, ${bodyBgColor} 4px, transparent 4.5px)`,
+        backgroundSize: '8px 12px',
+        backgroundRepeat: 'repeat-y',
+        zIndex: 10,
+      }} />
+
+      {/* Üst Orta Bölüm Yırtmacı */}
+      <div style={{
+        position: 'absolute',
+        top: -7,
+        left: 85 - 7,
+        width: 14,
+        height: 14,
+        borderRadius: '50%',
+        background: bodyBgColor,
+        boxShadow: 'inset 0 -2px 3px rgba(0,0,0,0.05)',
+        zIndex: 3,
+        border: '1px solid rgba(148,163,184,.14)',
+      }} />
+
+      {/* Alt Orta Bölüm Yırtmacı */}
+      <div style={{
+        position: 'absolute',
+        bottom: -7,
+        left: 85 - 7,
+        width: 14,
+        height: 14,
+        borderRadius: '50%',
+        background: bodyBgColor,
+        boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.05)',
+        zIndex: 3,
+        border: '1px solid rgba(148,163,184,.14)',
+      }} />
+
+      {/* Sol Koçan (Stüp) */}
       <div style={{
         width: 85,
+        background: isPassive ? '#334155' : '#111827',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 2,
+        padding: '0 4px',
+      }}>
+        {/* Dikey döndürülmüş fayda değeri (Görsel referansıyla aynı - Konturlu Dikey Yazı) */}
+        <div style={{
+          transform: 'rotate(-90deg)',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'transparent',
+          WebkitTextStroke: `1px ${solidBg}`,
+          fontWeight: 900,
+          fontFamily: '"Impact", "Arial Black", sans-serif',
+          fontSize: campaignBenefitValue.length > 8 ? '1.45rem' : campaignBenefitValue.length > 5 ? '1.95rem' : '2.4rem',
+          letterSpacing: '-0.01em',
+          lineHeight: 1,
+          textShadow: 'none',
+        }}>
+          {campaignBenefitValue}
+        </div>
+      </div>
+
+      {/* Dikey Kesikli Ayırıcı Çizgi */}
+      <div style={{
+        width: 0,
+        borderLeft: '1.8px dashed rgba(148,163,184,.4)',
+        height: '100%',
+        zIndex: 2,
+      }} />
+
+      {/* Sağ Gövde (Solid Canlı Renk Arka Planı - Ortalanmış Bilet Gövdesi) */}
+      <div style={{
+        flex: 1,
+        background: solidBg,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        borderRight: isPassive ? '2px dashed rgba(71,85,105,.2)' : '2px dashed rgba(255,255,255,.3)',
-        padding: '10px 4px',
-        background: isPassive ? 'rgba(0,0,0,0.03)' : template.stubBg,
-        position: 'relative',
-        flexShrink: 0,
-      }}>
-        {/* Ticket icon */}
-        <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
-          <i className={`fa-solid ${isPassive ? 'fa-ticket' : template.icon}`} />
-        </span>
-        
-        {/* Large Value */}
-        <div style={{
-          fontSize: benefitValue.length > 5 ? '0.9rem' : '1.25rem',
-          fontWeight: 900,
-          margin: '2px 0',
-          textAlign: 'center',
-          lineHeight: 1.1,
-          letterSpacing: '-0.02em',
-        }}>
-          {benefitValue}
-        </div>
-
-        {/* Small label */}
-        <div style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.05em', opacity: 0.8 }}>
-          {benefitLabel}
-        </div>
-
-        {/* Mini Barcode */}
-        <Barcode />
-      </div>
-
-      {/* Right Main Panel */}
-      <div style={{
-        flex: 1,
         padding: '12px 14px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        position: 'relative',
-        zIndex: 1,
         minWidth: 0,
+        zIndex: 2,
+        position: 'relative',
       }}>
-        {/* Top line: Header & Code */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-          <span style={{
-            fontSize: '0.62rem',
-            fontWeight: 800,
-            letterSpacing: '0.06em',
+        {/* Kupon Kodu - Sağ Üst Rozet */}
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          right: 12,
+          fontFamily: 'monospace',
+          fontWeight: 900,
+          fontSize: '0.72rem',
+          color: '#ffffff',
+          background: 'rgba(255,255,255,0.2)',
+          padding: '2px 6px',
+          borderRadius: 4,
+          letterSpacing: '0.02em',
+          zIndex: 3,
+        }}>
+          {coupon.code}
+        </div>
+
+        {/* Ortalanmış Kampanya Adı ve Açıklaması */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          width: '100%',
+          marginTop: 10,
+          marginBottom: 6,
+        }}>
+          <div style={{
+            fontFamily: '"Impact", "Arial Narrow", sans-serif',
+            fontWeight: 900,
+            fontSize: '1.45rem',
+            lineHeight: 1.15,
+            color: '#ffffff',
             textTransform: 'uppercase',
-            opacity: 0.75,
-            whiteSpace: 'nowrap',
+            width: '100%',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: '120px'
+            whiteSpace: 'nowrap',
           }}>
-            {appConfig?.branding?.companyName || 'RMS LOYALTY'}
-          </span>
-          <span style={{
-            fontFamily: 'monospace',
-            fontWeight: 900,
-            fontSize: '0.78rem',
-            background: isPassive ? 'rgba(71,85,105,0.08)' : 'rgba(255,255,255,0.22)',
-            padding: '2px 6px',
-            borderRadius: 6,
-            letterSpacing: '0.04em'
-          }}>
-            {coupon.code}
-          </span>
-        </div>
-
-        {/* Middle line: Campaign details & Image */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '4px 0', flex: 1, minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Campaign Name */}
-            <div style={{
-              fontWeight: 900,
-              fontSize: '0.92rem',
-              lineHeight: 1.25,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}>
-              {campaignName}
-            </div>
-            {/* Description */}
-            <div style={{
-              marginTop: 3,
-              fontSize: '0.74rem',
-              lineHeight: 1.35,
-              opacity: 0.85,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}>
-              {campaignDescription}
-            </div>
+            {campaignName}
           </div>
-
-          {/* Optional Campaign Image */}
-          {campaignImage && (
-            <img
-              src={campaignImage}
-              alt="Kampanya"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 8,
-                objectFit: 'cover',
-                border: isPassive ? '1.5px solid rgba(71,85,105,0.2)' : '1.5px solid rgba(255,255,255,0.3)',
-                boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
-                flexShrink: 0,
-              }}
-            />
-          )}
+          <div style={{
+            fontSize: '0.72rem',
+            color: 'rgba(255,255,255,0.9)',
+            lineHeight: 1.3,
+            marginTop: 4,
+            maxWidth: '90%',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
+            {campaignDescription}
+          </div>
         </div>
 
-        {/* Bottom line: Expiry, channel & status */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.66rem', opacity: 0.8, borderTop: isPassive ? '1px solid rgba(71,85,105,0.08)' : '1px solid rgba(255,255,255,0.15)', paddingTop: 6, marginTop: 4 }}>
-          <span>
-            {coupon.expiresAt ? (
-              <>Son kullanım: {formatMobileDate(coupon.expiresAt, { day: '2-digit', month: 'short' })}</>
-            ) : (
-              <>Süresiz kupon</>
-            )}
-          </span>
-          <span style={{ fontWeight: 800 }}>
-            {isPassive ? statusMeta.label : coupon.channelLabel}
-          </span>
+        {/* Alt Çizgi ve Süre Bilgisi (Ortalanmış) */}
+        <div style={{
+          width: '100%',
+          borderTop: '1px solid rgba(255,255,255,0.25)',
+          paddingTop: 5,
+          textAlign: 'center',
+          fontSize: '0.62rem',
+          color: 'rgba(255,255,255,0.85)',
+          fontWeight: 700,
+          letterSpacing: '0.03em',
+        }}>
+          {campaignExpiry ? (
+            <>SON GÜN: {formatMobileDate(campaignExpiry, { day: '2-digit', month: 'long', year: 'numeric' })}</>
+          ) : (
+            <>SÜRESİZ KAMPANYA</>
+          )}
         </div>
       </div>
     </div>
@@ -1105,15 +1182,11 @@ function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
     <div style={{ display: 'grid', gap: 14 }}>
       {/* Kupon Ekleme Formu */}
       <form onSubmit={handleSubmit} style={{ ...cardStyle('#fff'), padding: 16, display: 'grid', gap: 10 }}>
-        <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '0.88rem' }}>Yeni Kupon Ekle</div>
-        <div style={{ fontSize: '.76rem', color: '#64748b', lineHeight: 1.5 }}>
-          Sahip olduğunuz kupon kodunu buraya girerek hesabınızla eşleştirebilirsiniz.
-        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             value={couponCode}
             onChange={(e) => setCouponCode(e.target.value)}
-            placeholder="Kupon Kodu (Örn: SAVE20)"
+            placeholder="Kupon kodu girin"
             style={{
               flex: 1,
               minHeight: 40,
@@ -1176,57 +1249,35 @@ function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
         )}
       </form>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <SummaryTile label="Aktif kupon" value={String(model.activeCoupons.length)} hint="Kullanima hazir veya ayrilmis" color="#ea580c" />
-        <SummaryTile label="Yakinda bitecek" value={String(model.expiringCoupons.length)} hint="7 gun icinde sonlanir" color="#dc2626" />
-      </div>
-
       {model.activeCoupons.length ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>Aktif kuponlar</div>
+        <div style={{ display: 'grid', gap: 14 }}>
           {model.activeCoupons.map((coupon, idx) => (
-            <CouponCard
-              key={coupon.id}
-              coupon={coupon}
-              index={idx}
-              campaigns={model.campaigns}
-              appConfig={appConfig}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {model.expiringCoupons.length ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>Yakinda bitecekler</div>
-          {model.expiringCoupons.map((coupon, idx) => (
-            <CouponCard
-              key={`exp-${coupon.id}`}
-              coupon={coupon}
-              index={idx + model.activeCoupons.length}
-              campaigns={model.campaigns}
-              appConfig={appConfig}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {model.passiveCoupons.length ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>Gecmis ve pasif kuponlar</div>
-          {model.passiveCoupons.map((coupon, idx) => (
-            <CouponCard
-              key={`pass-${coupon.id}`}
-              coupon={coupon}
-              index={idx + model.activeCoupons.length + model.expiringCoupons.length}
-              campaigns={model.campaigns}
-              appConfig={appConfig}
-            />
+            <div key={coupon.id}>
+              {idx > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0 14px 0', color: '#94a3b8' }}>
+                  <div style={{ flex: 1, borderTop: '1.5px dashed rgba(148,163,184,.3)' }} />
+                  <i 
+                    className="fa-solid fa-scissors" 
+                    style={{ 
+                      marginLeft: 8, 
+                      fontSize: '0.8rem',
+                      opacity: 0.65
+                    }} 
+                  />
+                </div>
+              )}
+              <CouponCard
+                coupon={coupon}
+                index={idx}
+                campaigns={model.campaigns}
+                appConfig={appConfig}
+              />
+            </div>
           ))}
         </div>
       ) : (
         <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
-          Pasif kupon gecmisi bulunmuyor.
+          Kullanılabilir aktif kuponunuz bulunmamaktadır.
         </div>
       )}
     </div>
@@ -2028,8 +2079,8 @@ function AppViewport({
         ? `url(${bodyBgImage}) center/cover no-repeat fixed`
         : bodyBgColor,
       border: standalone ? 'none' : '1px solid rgba(226,232,240,.9)',
-      display: 'grid',
-      gridTemplateRows: 'auto auto 1fr auto',
+      display: 'flex',
+      flexDirection: 'column',
       overflow: 'hidden',
     }}>
       {!standalone && (
@@ -2113,7 +2164,7 @@ function AppViewport({
         </div>
       )}
 
-      <div style={{ overflowY: 'auto', padding: '0 18px 18px', display: 'grid', gap: 14, alignContent: 'start' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 18px 18px', display: 'grid', gap: 14, alignContent: 'start' }}>
         {activeTab === 'home' ? (
           standalone
             ? <MobileHomeDashboard

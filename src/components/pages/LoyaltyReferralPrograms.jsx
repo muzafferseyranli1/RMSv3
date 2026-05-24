@@ -396,7 +396,7 @@ function ReferralProgramModal({ open, draft, saving, isNew, onClose, onChange, o
   )
 }
 
-export default function LoyaltyReferralPrograms() {
+export default function LoyaltyReferralPrograms({ embedMode = false }) {
   const toast = useToast()
   const navigate = useNavigate()
   const workspace = useWorkspace()
@@ -568,19 +568,25 @@ export default function LoyaltyReferralPrograms() {
 
   return (
     <div>
-      <Header
-        title="Referans Programları"
-        subtitle="Müşteri referans programlarını ve davet senaryolarını yönetin."
-        actions={(
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn-o" onClick={() => navigate('/sadakat')}>
-              <i className="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />
-              Kampanyalara Dön
-            </button>
-            <AddButton onClick={openCreateModal} label="Yeni Referans Programı" disabled={!canWrite} />
-          </div>
-        )}
-      />
+      {!embedMode ? (
+        <Header
+          title="Referans Programları"
+          subtitle="Müşteri referans programlarını ve davet senaryolarını yönetin."
+          actions={(
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-o" onClick={() => navigate('/sadakat')}>
+                <i className="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />
+                Kampanyalara Dön
+              </button>
+              <AddButton onClick={openCreateModal} label="Yeni Referans Programı" disabled={!canWrite} />
+            </div>
+          )}
+        />
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <AddButton onClick={openCreateModal} label="Yeni Referans Programı" disabled={!canWrite} />
+        </div>
+      )}
 
       <div className="card" style={{ padding: '12px 16px', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>

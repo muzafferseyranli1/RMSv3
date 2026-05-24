@@ -5335,3 +5335,251 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Next Step`:
   - Müşteri mobil uygulamasının alt menü butonlarının yeni kompakt görünümünü canlıda veya simülatörde test etmek.
 - `Handoff Contract`: `Alt menü butonları artık daha kısa, kompakt ve Türkçe karakterleri düzgün. Proje başarıyla build edildi.`
+
+## Entry 112
+
+- `Timestamp`: `2026-05-24T11:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Alt Navigasyon Barı Yükseklik Eşitlemesi (Flexbox'a Dönüşüm)`
+- `Intent`: `Ana sayfa dışındaki ekranlarda alt navigasyon barının dikeyde uzamasını (stretching) engellemek ve tüm ekranlarda barın yükseklik ve görünümünü aynı/standart kılmak.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `src/components/pages/CustomerMobileAppPage.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `AppViewport` bileşeninin grid-tabanlı dikey yerleşimi (`gridTemplateRows: 'auto auto 1fr auto'`) flex-tabanlı yerleşime (`display: 'flex', flexDirection: 'column'`) çevrildi. İçerik sarmalayıcısına (`overflowY: 'auto'`) `flex: 1` eklenerek kalan alanı doldurması ve alt navigasyon barının tüm sayfalarda aynı ve kompakt boyutta (`auto` yükseklikte) kalması sağlandı.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 11.03s)
+- `Findings`:
+  - Grid düzeninde standalone modda üst zaman çubuğu ve bazı uyarı alanları boş kaldığında, grid satırları kayıyor ve `1fr` olan içerik satırı yerine en alttaki navigasyon barı `1fr` satırına oturarak dikeyde tüm boş alanı kaplıyordu. Flexbox ve `flex: 1` yerleşimi bu satır kayması/stretching hatasını tamamen çözmektedir.
+- `Decisions`:
+  - Koşullu olarak gizlenen zaman çubuğu, banner veya şema hata kutularının satır sayısını ve yerleşimini bozmaması için `AppViewport` ana düzenini CSS Grid yerine Flexbox ile yönetmek.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Değişikliği canlıda ve simülatörde test ederek alt barın sabit ve kompakt görünümünü doğrulamak.
+- `Handoff Contract`: `Alt navigasyon barı dikeyde uzama yapmıyor, tüm ekranlarda (Ana Sayfa, Kuponlar, Kampanyalar vb.) aynı standart yükseklikte kalıyor. Proje başarıyla build edildi.`
+
+
+## Entry 112
+
+- `Timestamp`: `2026-05-24T12:12:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Dinamik ve On-Demand Kupon Kodu Üretimi`
+- `Intent`: `Fiziki olarak dağıtılan kupon kodları ile dijital olarak otomatik atanan kuponlar arasındaki çakışmayı önlemek için kupon serisi düzeyinde dinamik üretim desteği eklemek.`
+- `Files Read`:
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+  - `src/lib/loyalty.js`
+- `Files Changed`:
+  - `src/lib/loyalty.js` - `syncCouponSeriesCodes` içinde dinamik kod bypass eklendi.
+  - `src/components/pages/LoyaltyCouponSets.jsx` - `CouponSetModal` içine dinamik kod checkbox'ı ve koşullu gösterim eklendi.
+  - `src/lib/loyaltyValueLedger.js` - `createRewardEntitlement` kupon serisini önce yükleyip dinamik flag durumuna göre boşta kupon aramayı bypass edecek şekilde güncellendi.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 10.74s)
+- `Findings`:
+  - `onDemandGenerationOnly` flag'i `loyalty_coupon_series.metadata` JSONB kolonu içinde saklanarak veritabanı şema değişimi (migration) ihtiyacı önlendi.
+- `Decisions`:
+  - Dinamik kupon üretiminde kupon adet sınırı girilmesi gizlendi, ancak prefix, uzunluk ve karakter seti parametreleri kupon oluşturulurken kullanılmak üzere korunmaya devam edildi.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Arayüz üzerinden yeni dinamik kupon seti ekleyip damga veya kampanya kapanışlarında otomatik kupon atamasını test etmek.
+- `Handoff Contract`: `Dinamik kupon serisi desteği UI, serialization ve value ledger entegrasyonlarıyla başarıyla tamamlandı. Proje hatasız derlenmektedir.`
+
+## Entry 113
+
+- `Timestamp`: `2026-05-24T12:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kuponlar Sayfası Sadeleştirmesi (UI/UX Temizliği)`
+- `Intent`: `Kuponlar sayfasındaki fazla bilgi kartlarını, sayaçları, başlıkları ve pasif/geçmiş kupon listelerini kaldırarak sade, temiz ve amaca odaklı bir tasarım elde etmek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `CouponsScreen` bileşeni sadeleştirildi. Kupon ekleme formundan "Yeni Kupon Ekle" başlığı ve açıklaması kaldırıldı. Kupon ekleme input kutusunun placeholder (hint) metni "Kupon kodu girin" olarak değiştirildi. "Aktif kupon" ve "Yakında bitecek" `SummaryTile` özet kutuları kaldırıldı. "Aktif kuponlar" başlığı kaldırıldı. "Geçmiş ve pasif kuponlar" listesi ve fallback kutusu kaldırıldı. Kupon yokken görüntülenecek yeni bir boş durum mesajı eklendi.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 11.07s)
+- `Findings`:
+  - Sadeleşen ekranda sadece kupon ekleme inputu ile eklenen aktif kuponların listesi kalmaktadır. Pasif/geçmiş kuponlar artık gösterilmemekte olup, süreleri bittiğinde listeden otomatik olarak silinecektir.
+- `Decisions`:
+  - Tasarımı daha kompakt, amaca yönelik ve kullanıcı talebi doğrultusunda temiz kılmak için tüm gereksiz metin ve kart yapılarını elemek.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Mobil simülatörde ve yönetim panelindeki Müşteri sekmesinde kuponlar ekranının yeni sadeleşmiş görünümünü test etmek.
+- `Handoff Contract`: `Kuponlar ekranı tümüyle sadeleştirildi, gereksiz kartlar ve sayaçlar kaldırıldı, placeholder 'Kupon kodu girin' olarak güncellendi. Proje başarıyla build edildi.`
+
+## Entry 114
+
+- `Timestamp`: `2026-05-24T12:25:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kupon Seti Kod YÃ¼kleme State Koruma`
+- `Intent`: `Kupon seti kodlarÄ± yÃ¼klendikten sonra sayfanÄ±n yeniden Ã§ekilmesi durumunda yÃ¼klenen kodlarÄ±n sÄ±fÄ±rlanmasÄ±nÄ± ve 'KodlarÄ± YÃ¼kle' butonunun tekrar Ã§Ä±kmasÄ±nÄ± engellemek.`
+- `Files Read`:
+  - src/components/pages/LoyaltyCouponSets.jsx
+  - src/lib/loyalty.js
+- `Files Changed`:
+  - src/components/pages/LoyaltyCouponSets.jsx - `useCallback` eklendi. `setCouponSets` state gÃ¼ncelleyicisi sarmalanarak Ã¶nceden yÃ¼klenmiÅŸ kupon kodlarÄ±nÄ±n (`_couponsNotLoaded === false`) Ã¼zerine tekrar boÅŸ kod listesi ve `_couponsNotLoaded = true` yazÄ±lmasÄ± engellendi.
+- `Commands Run`:
+  - 
+pm run build (baÅŸarÄ±yla tamamlandÄ±, 29.04s)
+- `Findings`:
+  - Sayfa ilk yÃ¼klendiÄŸinde aÄŸ/egress yÃ¼kÃ¼nÃ¼ azaltmak iÃ§in kupon kodlarÄ± getirilmez (`_couponsNotLoaded = true`). Ancak Ã§alÄ±ÅŸma alanÄ± veya bileÅŸen gÃ¼ncellemeleri nedeniyle sayfa arka planda `loadPage` ile tekrar yÃ¼klendiÄŸinde, yÃ¼klÃ¼ kuponlar yerel state'ten silinip eski haline dÃ¶nÃ¼yordu. State birleÅŸtirme (merge) mantÄ±ÄŸÄ± ile bu durum kalÄ±cÄ± olarak dÃ¼zeltildi.
+- `Decisions`:
+  - Kod yÃ¼kleme durumunu kaybetmemek iÃ§in React state gÃ¼ncellemelerinde gelen veri ile mevcut veriyi merge etme kararÄ± alÄ±ndÄ±.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kod yÃ¼kleme butonuna basÄ±ldÄ±ÄŸÄ±nda listenin kalÄ±cÄ± olduÄŸunu ve sayfa gÃ¼ncellense bile gitmediÄŸini doÄŸrulamak.
+- `Handoff Contract`: `Kupon kodlarÄ± yÃ¼klendikten sonra sayfa gÃ¼ncellense dahi yÃ¼klÃ¼ kalmaya devam eder, buton tekrar belirmez. Proje baÅŸarÄ±yla derlenmiÅŸtir.`
+## Entry 114
+
+- `Timestamp`: `2026-05-24T12:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kupon Tasarımının "Elegant Gift Voucher" Şablonuna Dönüştürülmesi`
+- `Intent`: `Kupon bilet şablonu (notches ve yırtmaç efektleri) yerine, lüks ve zarif bir hediye çeki (Gift Voucher) tasarımı uygulamak. Kampanya görselleri için 1:1 kare format (120x120px) desteği sağlamak.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `CouponCard` bileşeni "Elegant Gift Voucher" olarak baştan yazıldı. Bilet notches ve yırtmaç efektleri kaldırıldı. Template renk paletine göre solid/gradient renkli dış çerçeve (`padding: 4px`) ve krem rengi iç kart yapısı oluşturuldu. Sol kısımda dikey/yatay hediye kurdelesi ve ortasında dairesel mühür (pul) alanı entegre edildi. Yüklenen campaign görselinin pul içinde 1:1 en-boy oranıyla ve hediye/kurdele ikonlu fallback ile gösterilmesi sağlandı.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 11.78s)
+- `Findings`:
+  - Yeni lüks voucher görünümünde, her kupon index bazlı farklı bir gradient dış çerçeve ve kurdele rengi alır. Kampanya wizard'ında kullanılacak görsel boyutunun 120x120px (kare 1:1) olması en iyi sonucu vermektedir.
+- `Decisions`:
+  - Bilet yırtmacı yerine lüks hediye kutusu konseptini pekiştiren bir kurdeleli mühür tasarımı kullanmak.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Mobil simülatörde ve yönetim panelindeki Müşteri sekmesinde kuponlar ekranının yeni hediye çeki (Voucher) tasarımını test etmek.
+- `Handoff Contract`: `Kupon tasarımı lüks hediye çeki (Elegant Gift Voucher) olarak yenilendi. Görsel pul alanı 120x120px kare görselleri destekliyor. Proje başarıyla build edildi.`
+
+## Entry 115
+
+- `Timestamp`: `2026-05-24T12:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kupon Tasarımının "Modern Banner Card" Şablonuna Dönüştürülmesi`
+- `Intent`: `Kupon tasarımını tam genişlikte görsel destekli ve dikey stüplü "Modern Banner Card" (Görsel 2) yapısına dönüştürmek.`
+- `Files Read`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx` - `CouponCard` bileşeni "Modern Banner Card" olarak baştan yazıldı. Kampanya görselinin tam genişlikte arka plan resmi olarak ayarlanması sağlandı. Metinlerin kontrastını sağlamak amacıyla içerik panelinin arkasına koyu degrade katman eklendi. Sağ tarafta template renk paleti bazlı parlak gradient şerit (stüp) oluşturuldu. İndirim miktarı (`%30 İNDİRİM` vb.) bu şerit üzerinde 90 derece döndürülmüş dikey yazıyla yerleştirildi. Bilet yırtmaçları temizlendi.
+- `Commands Run`:
+  - `npm run build` (başarıyla tamamlandı, 10.24s)
+- `Findings`:
+  - Yeni banner tasarımında görseller 2:1 en-boy oranıyla tam kart arkasına oturmaktadır. Kampanya wizard'ında bu amaçla kullanılacak en ideal görsel boyutu 360x180px'dir. Görsel olmadığında renk geçişleri fallback olarak arka plana yerleşir.
+- `Decisions`:
+  - Görsel üzerindeki beyaz yazıların okunabilir kalması için overlay olarak `rgba(15,23,42,0.96)`'dan saydama giden bir lineer degrade kullanmak.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Mobil simülatörde ve yönetim panelindeki Müşteri sekmesinde kuponlar ekranının yeni "Modern Banner Card" tasarımını test etmek.
+- `Handoff Contract`: `Kupon tasarımı Modern Banner Card olarak yenilendi. Görsel alanı 360x180px (2:1) görselleri destekliyor. Proje başarıyla build edildi.`
+
+
+## Entry 116 - 2026-05-24
+- `Task`: `Kupon Tasarımının "Classic Ticket" Şablonuna Geri Döndürülmesi ve Görsel İyileştirmeler`
+- `Intent`: `Müşteri mobil uygulamasındaki kupon kartlarını "Classic Ticket" (Alternatif A) tasarımına geri döndürmek, örnek kampanyada tanımlı "50 TL" indirim tutarının kupon kartı üzerinde doğru gösterilmesini sağlamak ve kuponlar arasına makas simgeli kesim çizgisi eklemek.`
+- `Files`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Execution details`:
+  - `CouponCard` bileşeni "Classic Ticket" (Alternatif A) tasarımına göre güncellendi. Sol tarafta 85px genişliğinde beyaz bir koçan (stüp) oluşturuldu ve üzerine kampanya indirim tutarı / tipi yerleştirildi. Koçan ile gövde arasına dikey kesikli çizgi ve ekran arka plan rengine uyumlu üst/alt dairesel bilet yırtmaçları (notches) eklendi. Sağ taraftaki gövdede template renk gradyanları ve monospaced kupon kodu yer aldı. Kampanya resmi ise en sağda 66x66px boyutunda kare ürün görseli olarak konumlandırıldı.
+  - Kupon kartındaki indirim değerini dinamik ve hatasız gösterebilmek için robust bir çözüm uygulandı: Coupon `benefitText`'inden, bağlı kampanyanın kurallarından, isim/açıklamadan değer ayrıştırıldı ve her halükarda "50 TL" fallback tanımlandı.
+  - `CouponsScreen` bileşeninde aktif kuponların arasına yatay kesikli çizgi ve ortalanmış makas (`fa-scissors`) simgesi entegre edildi.
+  - Proje `npm run build` ile başarıyla derlendi ve doğruluğu teyit edildi.
+- `Handoff Contract`: `Kupon tasarımı Alternatif A (Classic Ticket) olarak güncellendi. Kupon kartları arasında makas simgeli yırtmaç çizgileri mevcut. 50 TL indirim kupon koçanında gösteriliyor. Proje başarıyla build ediliyor.`
+
+## Entry 115
+
+- `Timestamp`: `2026-05-24T14:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kampanya BazlÄ± Damga KartÄ± (Stamp Card) Ä°lerleme Takibi`
+- `Intent`: `Kampanya sihirbazÄ±nda (wizard) damga kurgularÄ±nÄ±n ("5 kahveye 1 bedava") tanÄ±mlanabilmesi ve sipariÅŸ kapanÄ±ÅŸÄ±nda mÃ¼ÅŸterinin damga ilerleme kaydÄ±nÄ±n veritabanÄ±nda gÃ¼ncellenerek CRM/Mobil uygulamada doÄŸru yansÄ±tÄ±lmasÄ±.`
+- `Files Read`:
+  - src/components/loyalty/LoyaltyCampaignWizard.jsx
+  - src/lib/loyaltyValueLedger.js
+  - src/lib/posLoyalty.js
+- `Files Changed`:
+  - src/components/loyalty/LoyaltyCampaignWizard.jsx - Ã–nerilen koÅŸullara period_product_quantity (ÃœrÃ¼n Adedi KoÅŸulu) eklendi, yardÄ±m ve kullanÄ±m metinleri gÃ¼ncellendi, dinamik kupon setleri arayÃ¼zde belirgin hale getirildi.
+  - src/lib/loyaltyValueLedger.js - syncCampaignStampProgress fonksiyonu eklendi. SipariÅŸ tamamlandÄ±ÄŸÄ±nda mÃ¼ÅŸterinin o kampanyaya ait gÃ¼ncel Ã¼rÃ¼n satÄ±n alma ilerlemesi hesaplanarak loyalty_frequency_progress tablosuna campaign_id bazlÄ± olarak kaydedilmesi saÄŸlandÄ±.
+- `Commands Run`:
+  - 
+pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
+- `Findings`:
+  - get_customer_period_stats veritabanÄ± fonksiyonu, posLoyalty.js'te olduÄŸu gibi ledger post-sale adÄ±mÄ±nda da kullanÄ±larak mÃ¼ÅŸterinin geÃ§miÅŸ sipariÅŸleri ve mevcut sipariÅŸ katkÄ±sÄ±yla en gÃ¼ncel Ã¼rÃ¼n miktarÄ±nÄ± getirdi.
+- `Decisions`:
+  - Damga kurgularÄ±nÄ±n ilerleme Ã§ubuÄŸunun CRM (Musteriler.jsx) ve Mobil MÃ¼ÅŸteri uygulamasÄ±nda gÃ¶rÃ¼ntÃ¼lenebilmesi iÃ§in campaign_id ile eÅŸleÅŸen bir loyalty_frequency_progress satÄ±rÄ± aÃ§Ä±lmasÄ±/gÃ¼ncellenmesi kararlaÅŸtÄ±rÄ±ldÄ±.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kampanya sihirbazÄ±ndan "ÃœrÃ¼n MiktarÄ±" koÅŸullu ve "Kupon Yarat" eylemli yeni bir damga kampanyasÄ± oluÅŸturup testi gerÃ§ekleÅŸtirmek.
+- `Handoff Contract`: `Damga kampanya kurgusu arayÃ¼zÃ¼ ve backend post-sale ilerleme senkronizasyonu tamamlandÄ±. Proje baÅŸarÄ±yla derlendi.`
+
+## Entry 117 - 2026-05-24
+- `Task`: `Kupon Tasarımının Görsel Referansa Göre Birebir Güncellenmesi`
+- `Intent`: `Müşteri mobil uygulamasındaki kuponları paylaşılan bilet görseline (dikey fayda yazısı, sol/sağ yırtmaçlar, düz canlı renkler, sağda makas çizgisi) göre birebir güncellemek ve veri kaynağını kampanya tanımlarına yönlendirmek.`
+- `Files`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Execution details`:
+  - `CouponCard` bileşeni görsel referansla aynı olacak şekilde güncellendi: Sol beyaz koçanda fayda değeri dikey döndürülmüş (`transform: 'rotate(-90deg)'`) ve gövde rengiyle uyumlu olarak yazıldı. Kartın en sol, en sağ, üst ve alt ortalarında 4 adet dairesel yırtmaç (notch) boşlukları simüle edildi. Bilet gövdesi degrade yerine düz (solid) canlı renkler (indekse göre Kırmızı, Sarı/Turuncu, Turkuaz, Pembe vb.) devralacak şekilde güncellendi.
+  - Kart üzerindeki kampanya bilgileri doğrudan ilişkili kampanya (`associatedCampaign`) verilerinden (endsAt, rules, name, description) okunacak şekilde entegre edildi.
+  - `CouponsScreen` içindeki makas ayırıcı çizgisi, makas simgesi sağa hizalı ve çizgi sola uzanacak şekilde düzenlendi.
+  - Proje `npm run build` ile başarıyla derlendi ve doğruluğu teyit edildi.
+- `Handoff Contract`: `Kupon tasarımı görsel referansla birebir aynı yapıldı (dikey rotated yazı, solid bilet renkleri, 4 kenar yırtmacı, kampanya verileri ve sağa hizalı makas çizgisi). Proje başarıyla build ediliyor.`
+
+
+## Entry 118 - 2026-05-24
+- `Task`: `Eylem Kütüphanesindeki Mükerrer Yüzde İndirim Eyleminin Kaldırılması`
+- `Intent`: `Eylem kütüphanesinin en sonunda bulunan ve mükerrer olan "yüzde indirim uygula" (discount_percent) eylemini kaldırmak.`
+- `Files`:
+  - `src/lib/loyalty.js`
+- `Execution details`:
+  - `discount_percent` (Yüzde indirim uygula) eyleminin, `order_discount` (Siparişte indirim) eyleminin yüzde (`valueType: 'percent'`) seçeneğiyle tamamen aynı işi yaptığı doğrulandı.
+  - Yeni kurgularda kafa karışıklığı yaratmaması için mükerrer olan `{ value: 'discount_percent', label: 'Yüzde indirim uygula' }` satırı `src/lib/loyalty.js` içindeki `ACTION_TYPE_OPTIONS` listesinden kaldırıldı.
+  - Geriye dönük uyumluluğun korunması ve veritabanındaki mevcut `discount_percent` kurgularının sorunsuz çalışmaya devam etmesi için `posLoyalty.js` ve diğer tüm motor/çalışma zamanı (runtime) kodlarındaki logic ve değerlendirme mantığı aynen korundu.
+  - Proje `npm run build` ile başarıyla derlendi.
+- `Handoff Contract`: `Mükerrer yüzde indirim eylemi ACTION_TYPE_OPTIONS kütüphanesinden kaldırıldı, geriye dönük uyumluluk korundu. Proje başarıyla build ediliyor.`
+
+
+## Entry 118 - 2026-05-24
+- `Task`: `Birebir Görsel Parite Kupon Tasarımı (Tırtıklı Kenarlar, Konturlu Yazı ve Ortalanmış Impact Tipografi)`
+- `Intent`: `Müşteri mobil uygulamasındaki kupon kartlarını, tırtıklı (serrated/wavy) kenarlar, içi boş konturlu (outline) dikey yazı, büyük/sıkışık Impact tipografili tamamen ortalanmış bilet gövdesi ve ortalanmış süre bilgisiyle görsel referansa birebir eşlemek.`
+- `Files`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Execution details`:
+  - `CouponCard`'ın en sol ve en sağ kenarları boyunca repeating `radial-gradient` (daire maskeleme) kullanılarak tırtıklı/serrated bilet yırtmaç efekti başarıyla entegre edildi.
+  - Sol koçandaki rotated dikey fayda değeri metni için `WebkitTextStroke: '1.5px ' + solidBg` ve `color: 'transparent'` kullanılarak içi boş konturlu dikey yazı tasarımı uygulandı ve font ailesi Impact olarak ayarlandı.
+  - Sağ bilet gövdesi dikey ve yatayda tamamen ortalanmış hale getirilerek (`justifyContent: 'center'`, `alignItems: 'center'`) kampanya adı büyük, sıkışık Impact tipografisiyle yazıldı.
+  - Kampanya geçerlilik süresi (endsAt) alt tarafta ince bir üst sınır çizgisi (`borderTop`) üzerinde ortalanarak Türkçe biçimde konumlandırıldı.
+  - Proje `npm run build` ile başarıyla derlenip doğrulanmıştır.
+- `Handoff Contract`: `Kupon tasarımı tırtıklı kenarlar, dikey outline font, ortalanmış Impact kampanya başlığı ve süre çizgisiyle güncellendi. Proje hatasız derlenmektedir.`
+
+
+## Entry 119 - 2026-05-24
+- `Task`: `Kupon Koçanındaki Fayda Metninin Büyütülmesi ve Outline İnceliği Ayarı`
+- `Intent`: `Kupon kartlarının sol koçanındaki fayda değerinin (Hediye, % indirim, tutar vb.) alanı maksimum düzeyde kaplamasını sağlamak, yazı gölgesini sıfırlamak ve kontur kalınlığını 1px'e düşürerek görsel netliği artırmak.`
+- `Files`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Execution details`:
+  - `CouponCard` sol koçan (stüp) arka planı `#111827` (premium koyu gri/siyah) olarak güncellenip netlik artırıldı.
+  - Koçan dikey döndürülmüş metin alanı için font boyutları karakter uzunluğuna göre dinamik olarak büyütüldü (`2.4rem`, `1.95rem` ve `1.45rem`). Böylece dikey alan maksimum oranda dolduruldu.
+  - Kontur kalınlığı `1px`'e düşürülerek daha zarif bir görünüm sağlandı (`WebkitTextStroke: '1px ' + solidBg`).
+  - Yazı üzerindeki gölgeler tamamen kaldırıldı (`textShadow: 'none'`).
+  - Proje `npm run build` ile başarıyla derlenmiştir.
+- `Handoff Contract`: `Kupon sol koçan arka planı koyulaştırıldı, outline font kalınlığı 1px yapıldı, gölgeler kaldırıldı ve dikey yazı alanı dolduracak şekilde büyütüldü. Proje hatasız derlenmektedir.`
+
+
+## Entry 120 - 2026-05-24
+- `Task`: `Sadakat Yönetim Paneli Konsolidasyonu ve Sihirbaz Gör/Düzenle Entegrasyonu`
+- `Intent`: `Sadakat kampanyalarının oluşturma, düzenleme ve detay ekranlarını wizard altyapısına bağlayarak LoyaltyManagement arayüzünü konsolide etmek, Gör/Düzenle ekranlarını tek sayfaya dönüştürmek.`
+- `Files`:
+  - `src/App.jsx`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/pages/LoyaltyReferralPrograms.jsx`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+- `Execution details`:
+  - `src/App.jsx` dosyasında `/sadakat` rotalarındaki kampanya yeni, detay (Gör) ve düzenle yolları `LoyaltyCampaignWizard` bileşenine bağlandı. Eski bağımsız önizleme rotası `/sadakat/kampanya-sihirbazi-onizleme` ve dosyası `LoyaltyCampaignWizardPreview.jsx` kaldırıldı.
+  - `LoyaltyManagement.jsx` paneli 4 sekmeli (Kampanyalar, Sadakat Seviyeleri, Referanslar, Program Ayarları) yapıya dönüştürüldü. Eski inline modal kaldırıldı. Seviye ve genel ayar alanları doğrudan bu sekme altındaki editörlerle güncellendi. Gör, Düzenle, Kopyala (duplicate) ve Sil (delete) butonları veritabanı senkronizasyonuyla birleştirildi.
+  - `LoyaltyReferralPrograms.jsx` bileşenine `embedMode` propu eklendi; sekme içinde başlık ve paddingsiz render sağlandı.
+  - `LoyaltyCampaignWizard.jsx` bileşeni `mode` (create, view, edit) parametrelerine göre tek sayfa Gör ve Düzenle tasarımlarını (isim, açıklama ve görsel en üstte olmak üzere) yukarıdan aşağıya sunacak şekilde yapılandırıldı. Düzenle modundaki değişikliklerin veritabanına kaydedilmesi sağlandı.
+  - Proje `npm run build` ile başarıyla derlenmiştir.
+- `Handoff Contract`: `Sadakat yönetim paneli konsolide edildi, Gör ve Düzenle ekranları sihirbaza bağlandı, eski önizleme rotası ve dosyası silindi, proje derleme kontrolü hatasız tamamlandı.`

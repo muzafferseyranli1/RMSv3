@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useToast } from '@/hooks/useToast'
@@ -115,7 +115,16 @@ function CouponSetModal({ open, value, saving, schemaReady, databaseUnavailable,
               Tek kupon
             </label>
 
-            {!draft.singleCoupon ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#475569' }}>
+              <input 
+                type="checkbox" 
+                checked={Boolean(draft.metadata?.onDemandGenerationOnly)} 
+                onChange={event => updateField('metadata', { ...draft.metadata, onDemandGenerationOnly: event.target.checked })} 
+              />
+              Dinamik Kodlar (Sadece Talep Üzerine Üretim)
+            </label>
+
+            {!draft.singleCoupon && !draft.metadata?.onDemandGenerationOnly ? (
               <div style={{ display: 'grid', gridTemplateColumns: '170px 120px', gap: 12, alignItems: 'center' }}>
                 <label style={{ color: '#475569' }}>Kupon sayısı:</label>
                 <input className="f-input" type="number" min={1} value={draft.couponCount} onChange={event => updateField('couponCount', event.target.value)} />
@@ -148,7 +157,11 @@ function CouponSetModal({ open, value, saving, schemaReady, databaseUnavailable,
             </label>
 
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16, marginTop: 8 }}>
-              {draft._couponsNotLoaded ? (
+              {draft.metadata?.onDemandGenerationOnly ? (
+                <div style={{ fontSize: '.84rem', color: '#64748b', fontStyle: 'italic', lineHeight: 1.5 }}>
+                  Dinamik üretim aktif: Kodlar önceden üretilmez; damga kurgusu veya kampanya tamamlandığında otomatik oluşturulur.
+                </div>
+              ) : draft._couponsNotLoaded ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '.84rem', color: '#64748b' }}>
                     Kupon kodları henüz yüklenmedi. Kodları görmek veya güncellemek için yükleyin.
@@ -303,7 +316,24 @@ export default function LoyaltyCouponSets() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [couponSets, setCouponSets] = useState([])
+  const [couponSets, setCouponSetsRaw] = useState([])
+  const setCouponSets = useCallback((nextSetsOrFn) => {
+    setCouponSetsRaw(prev => {
+      const nextSets = typeof nextSetsOrFn === 'function' ? nextSetsOrFn(prev) : nextSetsOrFn
+      return nextSets.map(incoming => {
+        const existing = prev.find(p => p.id === incoming.id)
+        if (existing && !existing._couponsNotLoaded && incoming._couponsNotLoaded) {
+          return {
+            ...incoming,
+            codes: existing.codes,
+            coupons: existing.coupons,
+            _couponsNotLoaded: false
+          }
+        }
+        return incoming
+      })
+    })
+  }, [])
   const [workspacePayload, setWorkspacePayload] = useState(null)
   const [schemaReady, setSchemaReady] = useState(false)
   const [databaseUnavailable, setDatabaseUnavailable] = useState(false)

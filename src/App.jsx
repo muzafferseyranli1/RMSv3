@@ -61,7 +61,7 @@ const PurchasingManager = lazy(() => import('@/components/pages/PurchasingManage
 const SupplierOrderPanel = lazy(() => import('@/components/pages/SupplierOrderPanel'))
 const Tasks = lazy(() => import('@/components/pages/Tasks'))
 const LoyaltyManagement = lazy(() => import('@/components/pages/LoyaltyManagement'))
-const LoyaltyCampaignWizardPreview = lazy(() => import('@/components/pages/LoyaltyCampaignWizardPreview'))
+const LoyaltyCampaignWizard = lazy(() => import('@/components/loyalty/LoyaltyCampaignWizard'))
 const LoyaltyCustomerCategories = lazy(() => import('@/components/pages/LoyaltyCustomerCategories'))
 const LoyaltyCouponSets = lazy(() => import('@/components/pages/LoyaltyCouponSets'))
 const LoyaltyReferralPrograms = lazy(() => import('@/components/pages/LoyaltyReferralPrograms'))
@@ -378,9 +378,10 @@ function AppShell() {
               <Route path="/mobil-app/musteri" element={<MobileAppShells screenKey="customer" />} />
               <Route path="/mobil-app/boss" element={<MobileAppShells screenKey="boss" />} />
               <Route path="/sadakat" element={<LoyaltyManagement />} />
-              <Route path="/sadakat/kampanya/yeni" element={<LoyaltyManagement />} />
-              <Route path="/sadakat/kampanya/:campaignId" element={<LoyaltyManagement />} />
-              <Route path="/sadakat/kampanya-sihirbazi-onizleme" element={<LoyaltyCampaignWizardPreview />} />
+              <Route path="/sadakat/kampanya/yeni" element={<LoyaltyCampaignWizard mode="create" />} />
+              <Route path="/sadakat/kampanya/:campaignId" element={<LoyaltyCampaignWizard mode="view" />} />
+              <Route path="/sadakat/kampanya/:campaignId/gor" element={<LoyaltyCampaignWizard mode="view" />} />
+              <Route path="/sadakat/kampanya/:campaignId/duzenle" element={<LoyaltyCampaignWizard mode="edit" />} />
               <Route path="/sadakat/kategoriler" element={<LoyaltyCustomerCategories />} />
               <Route path="/sadakat/kuponlar" element={<LoyaltyCouponSets />} />
               <Route path="/sadakat/referanslar" element={<LoyaltyReferralPrograms />} />

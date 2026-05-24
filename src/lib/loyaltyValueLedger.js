@@ -536,18 +536,33 @@ async function createRewardEntitlement({
     }
 
     if (seriesId) {
-      const { data: coupons, error: couponError } = await db
-        .from('loyalty_coupons')
-        .select('id, code')
-        .eq('series_id', seriesId)
-        .is('customer_id', null)
-        .eq('is_used', false)
-        .eq('active', true)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: true })
+      const { data: seriesRows, error: seriesError } = await db
+        .from('loyalty_coupon_series')
+        .select('id, name, code_prefix, code_length, code_charset, coupon_count, expires_at, metadata')
+        .eq('id', seriesId)
         .limit(1)
 
-      if (couponError) throw couponError
+      if (seriesError) throw seriesError
+      const series = seriesRows?.[0]
+
+      let coupons = null
+      const onDemandGenerationOnly = Boolean(series?.metadata?.onDemandGenerationOnly)
+
+      if (!onDemandGenerationOnly) {
+        const { data, error: couponError } = await db
+          .from('loyalty_coupons')
+          .select('id, code')
+          .eq('series_id', seriesId)
+          .is('customer_id', null)
+          .eq('is_used', false)
+          .eq('active', true)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true })
+          .limit(1)
+
+        if (couponError) throw couponError
+        coupons = data
+      }
 
       if (coupons && coupons.length > 0) {
         const coupon = coupons[0]
@@ -561,80 +576,70 @@ async function createRewardEntitlement({
 
         if (updateError) throw updateError
         assignedCouponCode = coupon.code
-      } else {
-        const { data: seriesRows, error: seriesError } = await db
-          .from('loyalty_coupon_series')
-          .select('id, name, code_prefix, code_length, code_charset, coupon_count, expires_at')
-          .eq('id', seriesId)
-          .limit(1)
+      } else if (series) {
+        const prefix = series.code_prefix || ''
+        const length = Number(series.code_length || 8)
+        const charset = series.code_charset || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        
+        let randomPart = ''
+        for (let i = 0; i < (length - prefix.length); i++) {
+          randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
+        }
+        let uniqueCode = (prefix + randomPart).toUpperCase()
 
-        if (seriesError) throw seriesError
-        const series = seriesRows?.[0]
-        if (series) {
-          const prefix = series.code_prefix || ''
-          const length = Number(series.code_length || 8)
-          const charset = series.code_charset || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-          
-          let randomPart = ''
+        let attempts = 0
+        while (attempts < 10) {
+          const { data: existingCodes, error: checkError } = await db
+            .from('loyalty_coupons')
+            .select('id')
+            .eq('code', uniqueCode)
+            .limit(1)
+          if (checkError) throw checkError
+          if (!existingCodes?.length) break
+
+          randomPart = ''
           for (let i = 0; i < (length - prefix.length); i++) {
             randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
           }
-          let uniqueCode = (prefix + randomPart).toUpperCase()
-
-          let attempts = 0
-          while (attempts < 10) {
-            const { data: existingCodes, error: checkError } = await db
-              .from('loyalty_coupons')
-              .select('id')
-              .eq('code', uniqueCode)
-              .limit(1)
-            if (checkError) throw checkError
-            if (!existingCodes?.length) break
-
-            randomPart = ''
-            for (let i = 0; i < (length - prefix.length); i++) {
-              randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
-            }
-            uniqueCode = (prefix + randomPart).toUpperCase()
-            attempts++
-          }
-
-          const newCouponId = `coupon-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-          const expiresAt = series.expires_at || null
-
-          const { error: insertError } = await db
-            .from('loyalty_coupons')
-            .insert({
-              id: newCouponId,
-              series_id: seriesId,
-              customer_id: customerId,
-              code: uniqueCode,
-              is_used: false,
-              active: true,
-              redemption_status: 'available',
-              expires_at: expiresAt,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              metadata: {
-                generatedBy: 'loyalty_value_ledger',
-                seriesName: series.name
-              }
-            })
-
-          if (insertError) throw insertError
-          assignedCouponCode = uniqueCode
-
-          const currentCount = Number(series.coupon_count || 0)
-          const { error: seriesUpdateError } = await db
-            .from('loyalty_coupon_series')
-            .update({
-              coupon_count: currentCount + 1,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', seriesId)
-
-          if (seriesUpdateError) throw seriesUpdateError
+          uniqueCode = (prefix + randomPart).toUpperCase()
+          attempts++
         }
+
+        const newCouponId = `coupon-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+        const expiresAt = series.expires_at || null
+
+        const { error: insertError } = await db
+          .from('loyalty_coupons')
+          .insert({
+            id: newCouponId,
+            series_id: seriesId,
+            customer_id: customerId,
+            code: uniqueCode,
+            is_used: false,
+            active: true,
+            redemption_status: 'available',
+            expires_at: expiresAt,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            metadata: {
+              generatedBy: 'loyalty_value_ledger',
+              seriesName: series.name
+            }
+          })
+
+        if (insertError) throw insertError
+        assignedCouponCode = uniqueCode
+
+        const currentCount = Number(series.coupon_count || 0)
+        const { error: seriesUpdateError } = await db
+          .from('loyalty_coupon_series')
+          .update({
+            coupon_count: currentCount + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', seriesId)
+
+        if (seriesUpdateError) throw seriesUpdateError
       }
     }
   }
@@ -673,6 +678,123 @@ async function createRewardEntitlement({
 
   if (error) throw error
   return data
+}
+
+async function syncCampaignStampProgress({
+  customerId,
+  campaignId,
+  rule,
+  saleId,
+  options = {}
+}) {
+  if (!campaignId || !rule) return null
+  const conditionKey = rule.condition_key
+  if (conditionKey !== 'period_product_quantity' && conditionKey !== 'period_order_count') {
+    return null
+  }
+
+  let config = {}
+  try {
+    config = typeof rule.condition_json === 'string' ? JSON.parse(rule.condition_json) : (rule.condition_json || {})
+  } catch (e) {
+    config = {}
+  }
+
+  const period = String(config.period || 'rolling_days')
+  const periodDays = config.period === 'rolling_days' ? parseInt(config.periodDays || 30, 10) : 30
+  const productMasks = Array.isArray(config.productMasks) ? config.productMasks : []
+  const excludeFreeItems = Boolean(config.excludeFreeItems)
+  const allowSameItemRepeat = config.allowSameItemRepeat !== false
+
+  let actualCount = 0
+  let targetCount = 0
+  let progressType = 'orders'
+
+  if (conditionKey === 'period_product_quantity') {
+    progressType = 'products'
+    targetCount = Math.max(0, parseInt(config.quantity || 0, 10))
+  } else {
+    progressType = 'orders'
+    targetCount = Math.max(0, parseInt(config.count || 0, 10))
+  }
+
+  try {
+    const res = await db.rpc('get_customer_period_stats', {
+      p_customer_id: customerId,
+      p_period: period,
+      p_period_days: periodDays,
+      p_product_masks: productMasks,
+      p_exclude_free_items: excludeFreeItems,
+      p_allow_same_item_repeat: allowSameItemRepeat,
+      p_current_product_ids: [],
+      p_sales_channel: options.runtimeChannel || 'pos'
+    })
+    
+    if (res && res.data && res.data[0]) {
+      actualCount = Number(
+        conditionKey === 'period_product_quantity'
+          ? res.data[0].product_quantity
+          : res.data[0].order_count
+      )
+    }
+  } catch (err) {
+    console.error('[syncCampaignStampProgress] Failed to fetch period stats:', err)
+    return null
+  }
+
+  const { data: rows, error: readError } = await db
+    .from('loyalty_frequency_progress')
+    .select('id,current_count,target_count,completed_cycles,metadata')
+    .eq('customer_id', customerId)
+    .eq('campaign_id', campaignId)
+    .eq('progress_type', progressType)
+    .limit(1)
+  if (readError) throw readError
+
+  const current = Array.isArray(rows) ? rows[0] || null : rows
+  const completedCycles = targetCount > 0 ? Math.floor(actualCount / targetCount) : 0
+  const currentCount = targetCount > 0 ? (actualCount % targetCount) : 0
+  const completedNow = targetCount > 0 && actualCount > 0 && (actualCount % targetCount === 0)
+
+  const metadata = {
+    ...(parseJsonValue(current?.metadata, {}) || {}),
+    lastSourceRefId: saleId,
+    period,
+    periodDays,
+    lastActualCount: actualCount
+  }
+
+  if (current?.id) {
+    const { error: updateError } = await db
+      .from('loyalty_frequency_progress')
+      .update({
+        current_count: currentCount,
+        target_count: targetCount,
+        completed_cycles: completedCycles,
+        last_qualified_at: completedNow ? new Date().toISOString() : (current.last_qualified_at || new Date().toISOString()),
+        metadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', current.id)
+    if (updateError) throw updateError
+  } else {
+    const { error: insertError } = await db
+      .from('loyalty_frequency_progress')
+      .insert({
+        customer_id: customerId,
+        program_id: rule.program_id || null,
+        campaign_id: campaignId,
+        progress_type: progressType,
+        current_count: currentCount,
+        target_count: targetCount,
+        completed_cycles: completedCycles,
+        last_qualified_at: new Date().toISOString(),
+        metadata,
+      })
+    if (insertError) throw insertError
+  }
+
+  return { currentCount, targetCount, completedNow, completedCycles }
 }
 
 export async function postSaleLoyaltyValueLedger({
@@ -848,6 +970,14 @@ export async function postSaleLoyaltyValueLedger({
     campaignId,
     saleId: normalizedSaleId,
   })
+
+  posted.campaignFrequency = await syncCampaignStampProgress({
+    customerId,
+    campaignId,
+    rule,
+    saleId: normalizedSaleId,
+    options: { runtimeChannel: sourceChannel }
+  })
   if (posted.frequency) {
     const frequencyWallet = await ensureWallet({
       customerId,
@@ -910,7 +1040,7 @@ export async function postSaleLoyaltyValueLedger({
     }))?.id || null
   }
 
-  if (!posted.transactionId && !posted.redemptionId && !posted.coupon && !posted.frequency && !posted.entitlementId) {
+  if (!posted.transactionId && !posted.redemptionId && !posted.coupon && !posted.frequency && !posted.entitlementId && !posted.campaignFrequency) {
     return {
       skipped: true,
       reason: 'no_supported_loyalty_value_action',

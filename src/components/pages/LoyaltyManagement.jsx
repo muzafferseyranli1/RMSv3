@@ -46,6 +46,7 @@ import {
   hydrateCampaignForEditor,
   serializeCampaignForPersistence,
 } from '@/lib/loyaltyCampaignEditorModel'
+import LoyaltyReferralPrograms from './LoyaltyReferralPrograms'
 import {
   RUNTIME_STATUS_META,
   getConditionRuntimeStatus,
@@ -2461,9 +2462,10 @@ export default function LoyaltyManagement() {
     ? normalizeCampaign(location.state.draftCampaign)
     : null
 
-  const isListMode = location.pathname === '/sadakat'
-  const isNewCampaignMode = location.pathname === '/sadakat/kampanya/yeni'
-  const isEditorMode = location.pathname.startsWith('/sadakat/kampanya/')
+  const isListMode = true
+  const isNewCampaignMode = false
+  const isEditorMode = false
+  const [activeTab, setActiveTab] = useState('campaigns')
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -3138,7 +3140,7 @@ export default function LoyaltyManagement() {
     setShowCampaignAdvanced(false)
   }
 
-  function duplicateCampaign(campaignId) {
+  async function duplicateCampaign(campaignId) {
     const source = campaigns.find(item => item.id === campaignId)
     if (!source) return
     const duplicated = normalizeCampaign({
@@ -3149,15 +3151,64 @@ export default function LoyaltyManagement() {
       applicableRules: source.applicableRules.map(rule => ({ ...rule, id: createId('rule') })),
       periodicRules: source.periodicRules.map(rule => ({ ...rule, id: createId('rule') })),
     }, campaigns.length)
-    setEditorTab('general')
-    navigate(`/sadakat/kampanya/${duplicated.id}`, {
-      state: { draftCampaign: duplicated },
-    })
+    
+    setSaving(true)
+    try {
+      const nextCampaigns = [...campaigns, duplicated]
+      const payload = {
+        program,
+        tiers,
+        campaigns: nextCampaigns.map(item => serializeCampaignForPersistence(item, program.id)),
+        couponSeries,
+        referralPrograms,
+      }
+      await saveLoyaltyWorkspace({
+        scope: workspace.scope,
+        branchId: workspace.branchId,
+        branchName: workspace.branchName,
+      }, payload)
+      setCampaigns(nextCampaigns)
+      toast('Kampanya başarıyla kopyalandı', 'success')
+      navigate(`/sadakat/kampanya/${duplicated.id}/duzenle`)
+    } catch (error) {
+      toast(error?.message || 'Kampanya kopyalanamadı', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function removeCampaign(campaignId) {
     setCampaigns(current => current.filter(campaign => campaign.id !== campaignId))
     if (location.pathname !== '/sadakat') navigate('/sadakat')
+  }
+
+  async function handleDeleteCampaign(campaignId) {
+    const campaign = campaigns.find(c => c.id === campaignId)
+    const name = campaign ? campaign.name : 'Kampanya'
+    if (!window.confirm(`"${name}" kampanyasını tamamen silmek istediğinize emin misiniz?`)) return
+
+    const nextCampaigns = campaigns.filter(c => c.id !== campaignId)
+    setSaving(true)
+    try {
+      const payload = {
+        program,
+        tiers,
+        campaigns: nextCampaigns.map(item => serializeCampaignForPersistence(item, program.id)),
+        couponSeries,
+        referralPrograms,
+      }
+      await saveLoyaltyWorkspace({
+        scope: workspace.scope,
+        branchId: workspace.branchId,
+        branchName: workspace.branchName,
+      }, payload)
+      setCampaigns(nextCampaigns)
+      toast('Kampanya başarıyla silindi', 'success')
+    } catch (error) {
+      toast(error?.message || 'Kampanya silinemedi', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function moveLegacyAudienceToConditions(campaignId) {
@@ -5540,31 +5591,21 @@ export default function LoyaltyManagement() {
   return (
     <div>
       <Header
-        title={isListMode ? 'Sadakat Kampanyalari' : 'Kampanya Editoru'}
-        subtitle={isListMode
-          ? (scopeInfo?.description || 'Aktif ve pasif kampanyalari listeleyin, filtreleyin ve yeni kampanya olusturun')
-          : (selectedCampaign?.name || 'Secilen kampanyanin hedef kitlesini, kosullarini ve eylemlerini yonetin')}
+        title="Sadakat Modülü"
+        subtitle={scopeInfo?.description || 'Kampanyaları, sadakat seviyelerini, referans programlarını ve ayarları yönetin.'}
         actions={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {isEditorMode && (
-              <button className="btn-o" onClick={() => navigate('/sadakat')}>
-                <i className="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />
-                Listeye Don
-              </button>
-            )}
             <button className="btn-o" onClick={() => navigate('/sadakat/kategoriler')}>
               <i className="fa-solid fa-tags" style={{ marginRight: 6 }} />
-              Musteri Kategorileri
+              Müşteri Kategorileri
             </button>
-            <button className="btn-o" onClick={() => navigate('/sadakat/kampanya-sihirbazi-onizleme')}>
-              <i className="fa-solid fa-wand-magic-sparkles" style={{ marginRight: 6 }} />
-              Akilli Kampanya Kur
-            </button>
-            <button className="btn-o" onClick={() => addCampaign(true)}>
+            <button className="btn-p" onClick={() => addCampaign(true)}>
               <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
               Yeni Kampanya
             </button>
-            {isListMode && <button className="btn-o" onClick={resetDefaults} disabled={databaseUnavailable}>Taslak Yukle</button>}
+            <button className="btn-o" onClick={resetDefaults} disabled={databaseUnavailable}>
+              Varsayılan Taslak Yükle
+            </button>
             <button className="btn-p" onClick={saveAll} disabled={saving || loading || databaseUnavailable || !schemaReady}>
               {saving
                 ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Kaydediliyor</>
@@ -5656,42 +5697,65 @@ export default function LoyaltyManagement() {
         {stats.map(card => <StatsCard key={card.label} {...card} />)}
       </div>
 
-      <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-        <SectionTitle
-          title={isListMode ? 'Kampanya Listesi' : 'Kampanya Detayi'}
-          subtitle={isListMode
-            ? 'Bu ekrana girildiginde once mevcut kampanyalar listelenir. Aktif/pasif filtreleyip bir kampanyayi duzenlemek veya yeni kampanya acmak icin kullanin.'
-            : 'Bu ekranda sadece secilen kampanyanin temel ayarlari ve kural bloklari duzenlenir.'}
-          action={(
-            isListMode ? (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className={campaignStatusFilter === 'all' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('all')}>
-                  Hepsi ({campaignStats.all})
-                </button>
-                <button className={campaignStatusFilter === 'active' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('active')}>
-                  Aktif ({campaignStats.active})
-                </button>
-                <button className={campaignStatusFilter === 'passive' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('passive')}>
-                  Pasif ({campaignStats.passive})
-                </button>
-              </div>
-            ) : selectedCampaign ? (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn-o" onClick={() => duplicateCampaign(selectedCampaign.id)}>Kopyala</button>
-                <button className="btn-danger" onClick={() => removeCampaign(selectedCampaign.id)}>Sil</button>
-              </div>
-            ) : null
-            
-          )}
-        />
+      <div style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', marginBottom: 18 }}>
+        {[
+          { key: 'campaigns', label: 'Kampanyalar', icon: 'fa-solid fa-gift' },
+          { key: 'tiers', label: 'Sadakat Seviyeleri', icon: 'fa-solid fa-award' },
+          { key: 'referrals', label: 'Referans Programları', icon: 'fa-solid fa-people-arrows' },
+          { key: 'settings', label: 'Program Ayarları', icon: 'fa-solid fa-gear' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            type="button"
+            className={activeTab === tab.key ? 'tab-btn active' : 'tab-btn'}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '12px 20px',
+              border: 'none',
+              background: 'none',
+              borderBottom: activeTab === tab.key ? '3px solid #2563eb' : '3px solid transparent',
+              color: activeTab === tab.key ? '#2563eb' : '#64748b',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: '.9rem',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <i className={tab.icon} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <div>
-          {isListMode ? (
+      <div style={{ display: 'grid', gap: 18 }}>
+        {activeTab === 'campaigns' && (
+          <div className="card" style={{ padding: 18 }}>
+            <SectionTitle
+              title="Kampanya Listesi"
+              subtitle="Aktif/pasif filtreleyip kampanyaları düzenleyin, kopyalayın veya silin."
+              action={(
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className={campaignStatusFilter === 'all' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('all')}>
+                    Hepsi ({campaignStats.all})
+                  </button>
+                  <button className={campaignStatusFilter === 'active' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('active')}>
+                    Aktif ({campaignStats.active})
+                  </button>
+                  <button className={campaignStatusFilter === 'passive' ? 'btn-p' : 'btn-o'} onClick={() => setCampaignStatusFilter('passive')}>
+                    Pasif ({campaignStats.passive})
+                  </button>
+                </div>
+              )}
+            />
+
             <div style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.3fr) 180px 220px auto', gap: 10, alignItems: 'end' }}>
                 <div>
                   <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Ara</div>
-                  <input className="f-input" value={campaignSearch} onChange={event => setCampaignSearch(event.target.value)} placeholder="Kampanya adi, kodu veya aciklama" />
+                  <input className="f-input" value={campaignSearch} onChange={event => setCampaignSearch(event.target.value)} placeholder="Kampanya adı, kodu veya açıklama" />
                 </div>
                 <div>
                   <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Durum</div>
@@ -5707,7 +5771,7 @@ export default function LoyaltyManagement() {
                   <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Hedef Kitle</div>
                   <div className="sel-wrap">
                     <select className="f-input" value={campaignAudienceFilter} onChange={event => setCampaignAudienceFilter(event.target.value)}>
-                      <option value="all">Tum Hedefler</option>
+                      <option value="all">Tüm Hedefler</option>
                       {CAMPAIGN_AUDIENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </div>
@@ -5728,7 +5792,7 @@ export default function LoyaltyManagement() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                       <thead style={{ background: '#f8fafc' }}>
                         <tr>
-                          {['Kampanya', 'Kod', 'Hedef Kitle', 'Tetik', 'Tip', 'Durum', 'Islem'].map(label => (
+                          {['Kampanya', 'Kod', 'Hedef Kitle', 'Tetik', 'Tip', 'Durum', 'İşlem'].map(label => (
                             <th key={label} style={{ textAlign: 'left', padding: '12px 14px', fontSize: '.74rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid #e2e8f0' }}>
                               {label}
                             </th>
@@ -5741,7 +5805,7 @@ export default function LoyaltyManagement() {
                             <td style={{ padding: '12px 14px', borderBottom: '1px solid #eef2f7' }}>
                               <div style={{ fontWeight: 800, color: '#0f172a' }}>{campaign.name || 'Yeni Kampanya'}</div>
                               <div style={{ marginTop: 4, fontSize: '.76rem', color: '#64748b', maxWidth: 360, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {campaign.description || 'Aciklama girilmedi'}
+                                {campaign.description || 'Açıklama girilmedi'}
                               </div>
                             </td>
                             <td style={{ padding: '12px 14px', borderBottom: '1px solid #eef2f7', fontSize: '.82rem', color: '#334155', fontWeight: 700 }}>{campaign.code || '-'}</td>
@@ -5753,8 +5817,10 @@ export default function LoyaltyManagement() {
                             </td>
                             <td style={{ padding: '12px 14px', borderBottom: '1px solid #eef2f7' }}>
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                <button className="btn-o" onClick={() => navigate(`/sadakat/kampanya/${campaign.id}`)}>Duzenle</button>
+                                <button className="btn-o" onClick={() => navigate(`/sadakat/kampanya/${campaign.id}/gor`)}>Gör</button>
+                                <button className="btn-o" onClick={() => navigate(`/sadakat/kampanya/${campaign.id}/duzenle`)}>Düzenle</button>
                                 <button className="btn-o" onClick={() => duplicateCampaign(campaign.id)}>Kopyala</button>
+                                <button className="btn-o" onClick={() => handleDeleteCampaign(campaign.id)} style={{ color: '#b91c1c', borderColor: '#fecaca' }}>Sil</button>
                               </div>
                             </td>
                           </tr>
@@ -5765,583 +5831,204 @@ export default function LoyaltyManagement() {
                 </div>
               )}
             </div>
-          ) : !selectedCampaign ? (
-            <div style={{ border: '1px dashed #cbd5e1', borderRadius: 16, padding: 24, textAlign: 'center', color: '#64748b' }}>
-              <div style={{ fontWeight: 700, color: '#475569' }}>Bu rota icin kampanya taslagi bulunamadi.</div>
-              <div style={{ marginTop: 8 }}>Listeye donun veya buradan yeni bir kampanya taslagi olusturun.</div>
-              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <button className="btn-o" type="button" onClick={() => navigate('/sadakat')}>
-                  Listeye Don
-                </button>
-                <button className="btn-p" type="button" onClick={() => addCampaign(true)}>
-                  Yeni Kampanya Ac
-                </button>
+          </div>
+        )}
+
+        {activeTab === 'tiers' && (
+          <div className="card" style={{ padding: 18, display: 'grid', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem' }}>Sadakat Seviyeleri (Tiers)</div>
+                <div style={{ fontSize: '.84rem', color: '#64748b', marginTop: 4 }}>
+                  Müşterilerinizin harcama limitleri veya sipariş sayılarına göre otomatik yükselebileceği sadakat kademelerini belirleyin.
+                </div>
               </div>
+              <button className="btn-p" type="button" onClick={addTier}>
+                <i className="fa-solid fa-plus" style={{ marginRight: 6 }} /> Yeni Kademe Ekle
+              </button>
             </div>
-          ) : (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', zIndex: 80, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
-              <div className="card" style={{ width: 'min(1180px, 100%)', padding: 18, margin: '24px 0', boxShadow: '0 24px 60px rgba(15, 23, 42, 0.18)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 14 }}>
-                  <div>
-                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem' }}>{selectedCampaign.name || 'Kampanya Editoru'}</div>
-                    <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: 4 }}>
-                      Secilen kampanyayi bu detay penceresinde duzenleyin.
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button className="btn-o" onClick={() => duplicateCampaign(selectedCampaign.id)}>Kopyala</button>
-                    <button className="btn-danger" onClick={() => removeCampaign(selectedCampaign.id)}>Sil</button>
-                    <button className="btn-o" onClick={() => navigate('/sadakat')}>Kapat</button>
-                  </div>
-                </div>
 
-                <div style={{ display: 'grid', gap: 14 }}>
-                <div style={{ position: 'sticky', top: 0, zIndex: 5, border: '1px solid #fde68a', background: '#fffdf5', borderRadius: 16, padding: 14, boxShadow: '0 10px 24px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontWeight: 900, color: '#92400e', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Kampanya Ozeti</div>
-                      <div style={{ marginTop: 6, fontSize: '.95rem', color: '#1f2937', lineHeight: 1.6 }}>
-                        {summaryText || 'Kampanya adi, tarih, hedef kitle, kosul ve eylem bilgileri burada ozetlenecek.'}
+            {tiers.length === 0 ? (
+              <div style={{ border: '1px dashed #cbd5e1', borderRadius: 16, padding: 24, textAlign: 'center', color: '#64748b' }}>
+                Tanımlı kademe bulunmamaktadır.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                {tiers.map((tier) => (
+                  <div
+                    key={tier.id}
+                    style={{
+                      border: `2px solid ${tier.color || '#e2e8f0'}`,
+                      borderRadius: 16,
+                      padding: 16,
+                      background: '#fff',
+                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                      display: 'grid',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: tier.color || '#cbd5e1', display: 'inline-block' }} />
+                        <strong style={{ color: '#0f172a' }}>{tier.name || 'Yeni Kademe'}</strong>
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {[
-                        { key: 'general', label: 'Genel Ayarlar' },
-                        { key: 'conditions', label: 'Kosullar' },
-                        { key: 'actions', label: 'Eylemler' },
-                      ].map(tab => (
-                        <button
-                          key={tab.key}
-                          className={editorTab === tab.key ? 'btn-p' : 'btn-o'}
-                          onClick={() => setEditorTab(tab.key)}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {editorTab === 'general' && (
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Kampanya Ayarlari</div>
-                    </div>
-                    <button className="btn-o" onClick={() => setShowCampaignAdvanced(current => !current)}>
-                      {showCampaignAdvanced ? 'Gelismisi Gizle' : 'Gelismis Ayarlar'}
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
-                    {campaignStructure.map(section => (
-                      <div
-                        key={section.key}
-                        style={{
-                          borderRadius: 14,
-                          border: `1px solid ${section.ready ? '#bfdbfe' : '#fde68a'}`,
-                          background: section.ready ? '#f8fbff' : '#fffaf0',
-                          padding: 12,
-                        }}
+                      <button
+                        className="btn-o"
+                        type="button"
+                        onClick={() => removeTier(tier.id)}
+                        style={{ color: '#b91c1c', borderColor: '#fecaca', padding: '4px 8px', fontSize: '.75rem' }}
                       >
-                        <div style={{ fontSize: '.74rem', fontWeight: 900, color: section.ready ? '#1d4ed8' : '#b45309', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                          {section.title}
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: '.86rem', color: '#0f172a', fontWeight: 700, lineHeight: 1.5 }}>
-                          {section.value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        Sil
+                      </button>
+                    </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.8fr', gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Kampanya Adi</div>
-                      <input className="f-input" value={selectedCampaign.name} onChange={event => updateCampaign(selectedCampaign.id, 'name', event.target.value)} placeholder="Kampanya adi" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <FieldStack label="Kademe Adı">
+                        <input className="f-input" value={tier.name || ''} onChange={e => updateTier(tier.id, 'name', e.target.value)} />
+                      </FieldStack>
+                      <FieldStack label="Kademe Kodu">
+                        <input className="f-input" value={tier.code || ''} onChange={e => updateTier(tier.id, 'code', e.target.value)} />
+                      </FieldStack>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Ne Zaman Baslar</div>
-                      <input className="f-input" type="datetime-local" value={formatDateTimeInput(selectedCampaign.startsAt)} onChange={event => updateCampaign(selectedCampaign.id, 'startsAt', event.target.value)} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Ne Zaman Biter</div>
-                      <input className="f-input" type="datetime-local" value={formatDateTimeInput(selectedCampaign.endsAt)} onChange={event => updateCampaign(selectedCampaign.id, 'endsAt', event.target.value)} />
-                    </div>
-                  </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr 0.6fr', gap: 10, marginTop: 10 }}>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Aciklama</div>
-                      <textarea className="f-input" rows={3} value={selectedCampaign.description} onChange={event => updateCampaign(selectedCampaign.id, 'description', event.target.value)} placeholder="Bu kampanya ne icin var?" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <FieldStack label="Asgari Harcama (TL)">
+                        <input className="f-input" type="number" min={0} value={formatNumberInputValue(tier.minSpend)} onChange={e => updateTier(tier.id, 'minSpend', parseFloat(e.target.value) || 0)} />
+                      </FieldStack>
+                      <FieldStack label="Asgari Sipariş">
+                        <input className="f-input" type="number" min={0} value={formatNumberInputValue(tier.minOrderCount)} onChange={e => updateTier(tier.id, 'minOrderCount', parseInt(e.target.value, 10) || 0)} />
+                      </FieldStack>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Kimlere Yapilacak</div>
-                      <div className="sel-wrap">
-                        <select
-                          className="f-input"
-                          value={selectedCampaign.audienceType === 'tagged_customers' ? 'all' : selectedCampaign.audienceType}
-                          onChange={event => updateCampaign(selectedCampaign.id, 'audienceType', event.target.value)}
-                        >
-                          {availableAudienceOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
-                      </div>
-                      <div style={{ fontSize: '.72rem', color: '#94a3b8', lineHeight: 1.5, marginTop: 6 }}>
-                        Musteri kategori hedefleri artik bu alandan degil, kosullar sekmesindeki kategori kosullari ile tanimlanir.
-                      </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <FieldStack label="Puan Katsayısı">
+                        <input className="f-input" type="number" min={1} step="0.1" value={formatNumberInputValue(tier.pointsMultiplier)} onChange={e => updateTier(tier.id, 'pointsMultiplier', parseFloat(e.target.value) || 1)} />
+                      </FieldStack>
+                      <FieldStack label="Doğum Günü Puanı">
+                        <input className="f-input" type="number" min={0} value={formatNumberInputValue(tier.birthdayBonusPoints)} onChange={e => updateTier(tier.id, 'birthdayBonusPoints', parseInt(e.target.value, 10) || 0)} />
+                      </FieldStack>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Kasada Nasil Davransin</div>
-                      <div className="sel-wrap">
-                        <select className="f-input" value={selectedCampaign.applicationMode} onChange={event => updateCampaign(selectedCampaign.id, 'applicationMode', event.target.value)}>
-                          {CAMPAIGN_APPLICATION_MODE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
-                      </div>
-                      <div style={{ fontSize: '.72rem', color: '#94a3b8', lineHeight: 1.5, marginTop: 6 }}>
-                        {getCampaignApplicationModeHint(selectedCampaign.applicationMode)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Durum</div>
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
-                          <input type="checkbox" checked={selectedCampaign.active} onChange={event => updateCampaign(selectedCampaign.id, 'active', event.target.checked)} />
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 10 }}>
+                      <FieldStack label="Kademe Rengi">
+                        <input className="f-input" type="color" value={tier.color || '#1d4ed8'} onChange={e => updateTier(tier.id, 'color', e.target.value)} style={{ padding: '2px 8px', height: 38, cursor: 'pointer' }} />
+                      </FieldStack>
+                      <div style={{ display: 'flex', alignItems: 'end', paddingBottom: 10 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.84rem', color: '#475569', fontWeight: 700 }}>
+                          <input type="checkbox" checked={tier.active !== false} onChange={e => updateTier(tier.id, 'active', e.target.checked)} />
                           Aktif
                         </label>
                       </div>
                     </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>Birlesme Kurali</div>
-                      {(() => {
-                        const currentMode = getCampaignMergeMode(selectedCampaign)
-                        const currentRuleDetails = STACKING_RULE_DETAILS[currentMode]
 
-                        return (
-                          <>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                        {STACKING_RULE_OPTIONS.map(opt => {
-                          const isActive = currentMode === opt.value
-                          return (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              title={opt.desc}
-                              onClick={() => {
-                                if (opt.value === 'stackable') {
-                                  updateCampaign(selectedCampaign.id, 'stackable', true)
-                                  updateCampaign(selectedCampaign.id, 'exclusionGroup', '')
-                                } else if (opt.value === 'exclusive') {
-                                  updateCampaign(selectedCampaign.id, 'stackable', false)
-                                  updateCampaign(selectedCampaign.id, 'exclusionGroup', '')
-                                } else {
-                                  updateCampaign(selectedCampaign.id, 'stackable', false)
-                                  if (!selectedCampaign.exclusionGroup) {
-                                    updateCampaign(selectedCampaign.id, 'exclusionGroup', 'indirim_grubu')
-                                  }
-                                }
-                              }}
-                              style={{
-                                padding: '6px 14px',
-                                borderRadius: 20,
-                                border: `2px solid ${isActive ? opt.color : '#e2e8f0'}`,
-                                background: isActive ? `${opt.color}18` : 'transparent',
-                                color: isActive ? opt.color : '#64748b',
-                                fontWeight: 800,
-                                fontSize: '.78rem',
-                                cursor: 'pointer',
-                              }}
-                            >{opt.label}</button>
-                          )
-                        })}
-                      </div>
-                      <div style={{ display: 'grid', gap: 6, marginBottom: 10, padding: 12, borderRadius: 12, border: '1px solid #dbeafe', background: '#f8fbff' }}>
-                        <div style={{ fontSize: '.76rem', fontWeight: 900, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                          Cakisma mantigi
-                        </div>
-                        <div style={{ fontSize: '.78rem', color: '#475569', lineHeight: 1.6 }}>
-                          <strong>{STACKING_RULE_OPTIONS.find(opt => opt.value === currentMode)?.label}:</strong> {currentRuleDetails.summary}
-                        </div>
-                        <div style={{ fontSize: '.78rem', color: '#475569', lineHeight: 1.6 }}>
-                          <strong>Kullanim:</strong> {currentRuleDetails.usage}
-                        </div>
-                        <div style={{ fontSize: '.76rem', color: '#64748b', lineHeight: 1.6, fontStyle: 'italic' }}>
-                          <strong>Oncelik:</strong> {currentRuleDetails.priority}
-                        </div>
-                        <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
-                          <div style={{ fontSize: '.74rem', color: '#1d4ed8', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            Ornek senaryolar
-                          </div>
-                          <div style={{ display: 'grid', gap: 6 }}>
-                            {currentRuleDetails.examples.map((example, index) => (
-                              <div key={`${currentMode}-example-${index}`} style={{ fontSize: '.78rem', color: '#475569', lineHeight: 1.6 }}>
-                                <strong>{index + 1}.</strong> {example}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                          </>
-                        )
-                      })()}
-                      {!selectedCampaign.stackable && (
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          {selectedCampaign.exclusionGroup !== undefined && (
-                            <div>
-                              <div style={{ fontSize: '.72rem', color: '#94a3b8', marginBottom: 4 }}>
-                                {selectedCampaign.exclusionGroup ? 'Grup adi — ayni gruptaki kampanyalar birlikte calismaz' : 'Munhasir — tum munhasir kampanyalarla catisir (oncelik belirler)'}
-                              </div>
-                              {selectedCampaign.exclusionGroup !== '' && (
-                                <input
-                                  className="f-input"
-                                  value={selectedCampaign.exclusionGroup}
-                                  onChange={event => updateCampaign(selectedCampaign.id, 'exclusionGroup', event.target.value)}
-                                  placeholder="ornek: indirim_grubu"
-                                  style={{ marginBottom: 6 }}
-                                />
-                              )}
-                              {selectedCampaign.exclusionGroup && (() => {
-                                const siblings = campaigns.filter(c =>
-                                  c.id !== selectedCampaign.id &&
-                                  !c.stackable &&
-                                  c.exclusionGroup === selectedCampaign.exclusionGroup
-                                )
-                                return siblings.length > 0 ? (
-                                  <div style={{ fontSize: '.72rem', color: '#94a3b8', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
-                                    <span style={{ fontWeight: 800, color: '#64748b' }}>Ayni grupta: </span>
-                                    {siblings.map(s => s.name).join(', ')}
-                                  </div>
-                                ) : null
-                              })()}
-                            </div>
-                          )}
-                          <div>
-                            <div style={{ fontSize: '.72rem', color: '#94a3b8', marginBottom: 4 }}>Catisma Onceligi — dusuk sayi daha yuksek oncelik (kazanan olur)</div>
-                            <input
-                              className="f-input"
-                              type="number"
-                              min={1}
-                              value={formatNumberInputValue(selectedCampaign.priority, '1')}
-                              onChange={event => updateCampaign(selectedCampaign.id, 'priority', event.target.value)}
-                              placeholder="Oncelik (1 = en yuksek)"
-                              style={{ maxWidth: 160 }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <FieldStack label="Avantajlar Özeti">
+                      <textarea className="f-input" rows={2} value={tier.benefitsSummary || ''} onChange={e => updateTier(tier.id, 'benefitsSummary', e.target.value)} placeholder="Örn: Ücretsiz çay ikramı, öncelikli rezervasyon" />
+                    </FieldStack>
                   </div>
-
-                  {usesLegacyCategoryAudience(selectedCampaign) && (
-                    <div style={{ marginTop: 12, border: '1px solid #fbcfe8', background: '#fffafc', borderRadius: 14, padding: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <div>
-                          <div style={{ fontSize: '.78rem', color: '#9d174d', fontWeight: 900 }}>Legacy Musteri Kategorisi Hedefi</div>
-                          <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 3 }}>
-                            Bu kampanyada eski tip kategori hedefi bulundu. Bunu koşul bloklarına taşırsan kampanya yeni editör mantığı ile uyumlu olur.
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button className="btn-o" type="button" onClick={() => navigate('/sadakat/kategoriler')}>
-                            Kategorileri Yonet
-                          </button>
-                          <button className="btn-p" type="button" onClick={() => moveLegacyAudienceToConditions(selectedCampaign.id)}>
-                            Kosullara Tasi
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 10, fontSize: '.76rem', color: '#475569', lineHeight: 1.6 }}>
-                        Secili kategori sayisi: {(selectedCampaign.audienceCategoryIds || []).length} | Eslesen musteri: {selectedAudienceCustomerCount}
-                      </div>
-                    </div>
-                  )}
-
-                  {showCampaignAdvanced && (
-                    <div style={{ marginTop: 12, borderTop: '1px dashed #cbd5e1', paddingTop: 12, display: 'grid', gap: 10 }}>
-                      <div style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 800 }}>
-                        Gelismis alanlar. MVP akista bunlar zorunlu degil; detayli segmentleme ve entegrasyon icin tutulur.
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-                        <input className="f-input" value={selectedCampaign.code} onChange={event => updateCampaign(selectedCampaign.id, 'code', event.target.value)} placeholder="Kod" />
-                        <div className="sel-wrap">
-                          <select className="f-input" value={selectedCampaign.triggerType} onChange={event => updateCampaign(selectedCampaign.id, 'triggerType', event.target.value)}>
-                            {CAMPAIGN_TRIGGER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                          </select>
-                        </div>
-                        <div className="sel-wrap">
-                          <select className="f-input" value={selectedCampaign.campaignType} onChange={event => updateCampaign(selectedCampaign.id, 'campaignType', event.target.value)}>
-                            {CAMPAIGN_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                          </select>
-                        </div>
-                        <input className="f-input" type="number" min={0} value={formatNumberInputValue(selectedCampaign.priority)} onChange={event => updateCampaign(selectedCampaign.id, 'priority', event.target.value)} placeholder="Oncelik" />
-                        <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(selectedCampaign.rewardValue)} onChange={event => updateCampaign(selectedCampaign.id, 'rewardValue', event.target.value)} placeholder="Odul degeri" />
-                      </div>
-                      <div style={{ fontSize: '.74rem', color: '#94a3b8' }}>
-                        Program tipi: {getOptionLabel(PROGRAM_TYPE_OPTIONS, program.programType)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                )}
-
-                {editorTab !== 'general' && (
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Kosullar ve Eylemler</div>
-                      <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4 }}>
-                        Kampanya bloklarını iki parçalı düzende yönetin: solda koşul, sağda aynı bloğun eylemi.
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        className={activeRuleTab === 'applicable' ? 'btn-p' : 'btn-o'}
-                        onClick={() => setActiveRuleTab('applicable')}
-                      >
-                        Siparis Aninda
-                      </button>
-                      <button
-                        className={activeRuleTab === 'periodic' ? 'btn-p' : 'btn-o'}
-                        onClick={() => setActiveRuleTab('periodic')}
-                      >
-                        Zaman Bazli
-                      </button>
-                      <button className="btn-o" onClick={() => addRule(selectedCampaign.id, activeRuleTab, 'conditions')}>
-                        <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-                        Kosul Bloğu Ekle
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: 12 }}>
-                    <HelperNote title="Ornek kurulum">
-                      Ornek kampanya: zzz musteri kategorisi + Pazartesi 18:00-20:00 + siparis tutari en az 500 TL. Solda aynı bloğa birden fazla koşul, sağda ise o blok çalışınca uygulanacak bir veya birden fazla eylem ekleyebilirsiniz.
-                    </HelperNote>
-
-                  </div>
-
-                  {visibleRules.length === 0 ? (
-                    <div style={{ border: '1px dashed #cbd5e1', borderRadius: 14, padding: 18, color: '#64748b', textAlign: 'center' }}>
-                      Bu kampanyada henüz blok yok.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 10 }}>
-                      {visibleRules.map(rule => (
-                        <RuleRow
-                          key={rule.id}
-                          rule={rule}
-                          summaryContext={ruleSummaryContext}
-                          onEditCondition={conditionId => openRuleEditor('conditions', activeRuleTab, rule.id, conditionId, selectedCampaign.id)}
-                          onEditAction={actionId => openRuleEditor('actions', activeRuleTab, rule.id, actionId, selectedCampaign.id)}
-                          onAddCondition={() => addConditionToRule(selectedCampaign.id, activeRuleTab, rule.id)}
-                          onAddAction={() => addActionToRule(selectedCampaign.id, activeRuleTab, rule.id)}
-                          onToggleConditionJoiner={mode => updateRuleConditionJoinerMode(selectedCampaign.id, activeRuleTab, rule.id, mode)}
-                          onDeleteCondition={conditionId => removeConditionFromRule(selectedCampaign.id, activeRuleTab, rule.id, conditionId)}
-                          onDeleteAction={actionId => removeActionFromRule(selectedCampaign.id, activeRuleTab, rule.id, actionId)}
-                          onDelete={() => removeRule(selectedCampaign.id, activeRuleTab, rule.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-                )}
-
-                {editorTab === 'conditions' && (
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, background: '#f8fafc' }}>
-                  <div style={{ fontWeight: 800, color: '#0f172a' }}>Kosul Kutuphanesi</div>
-                  <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
-                    <div className="sel-wrap">
-                      <select
-                        className="f-input"
-                        value={conditionLibraryPreviewKey}
-                        onChange={event => setConditionLibraryPreviewKey(event.target.value)}
-                      >
-                        {CONDITION_LIBRARY.map(item => {
-                          const status = getConditionRuntimeStatus(item.key)
-                          return <option key={item.key} value={item.key}>{`${item.label} - ${status.label}`}</option>
-                        })}
-                      </select>
-                    </div>
-                    {selectedConditionLibraryItem ? (
-                      <div style={{ borderRadius: 12, border: '1px solid #dbeafe', padding: 12, background: '#fff' }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{selectedConditionLibraryItem.label}</div>
-                        <div style={{ marginTop: 6, fontSize: '.76rem', color: '#64748b', lineHeight: 1.5 }}>
-                          {selectedConditionLibraryItem.description}
-                        </div>
-                        <RuntimeStatusNote status={getConditionRuntimeStatus(selectedConditionLibraryItem.key)} />
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                )}
-
-                {ruleEditorState && activeRuleEditorRule && activeRuleEditorCampaign && activeRuleEditorItem ? (
-                  <EditorModal
-                    title={ruleEditorState.mode === 'actions' ? 'Eylemi Duzenle' : 'Kosulu Duzenle'}
-                    subtitle={ruleEditorState.scope === 'periodic' ? 'Zaman bazlı akışa bağlı blok' : 'Sipariş anında çalışan blok'}
-                    onClose={closeRuleEditor}
-                  >
-                    {ruleEditorState.mode === 'actions' ? (
-                      <div style={{ display: 'grid', gap: 12 }}>
-                        <div style={{ border: '1px solid #bfdbfe', background: '#f8fbff', borderRadius: 12, padding: 12 }}>
-                          <div style={{ fontSize: '.74rem', color: '#1d4ed8', fontWeight: 900, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            Uygulama notu
-                          </div>
-                          <div style={{ fontSize: '.84rem', color: '#334155', fontWeight: 700 }}>
-                            {`${buildAudienceSummary(activeRuleEditorCampaign, customerCategories)} icin, ${buildConditionScenarioText(activeRuleEditorRule, ruleSummaryContext)} uygulanacak eylemi tanimlayin.`}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 10, alignItems: 'end' }}>
-                          <FieldStack label="Eylem tipi">
-                            <div className="sel-wrap">
-                              <select
-                                className="f-input"
-                                value={
-                                  activeRuleEditorItem.actionType === 'remove_customer_tag'
-                                    ? 'add_customer_tag'
-                                    : activeRuleEditorItem.actionType === 'points_percent_of_order'
-                                    ? 'bonus_points'
-                                    : activeRuleEditorItem.actionType
-                                }
-                                onChange={event => updateActionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', event.target.value)}
-                              >
-                                {ACTION_TYPE_OPTIONS.filter(option => option.value !== 'remove_customer_tag' && option.value !== 'points_percent_of_order').map(option => {
-                                  return <option key={option.value} value={option.value}>{option.label}</option>
-                                })}
-                              </select>
-                            </div>
-                          </FieldStack>
-                          <FieldStack label="Kisa ozet">
-                            <input
-                              className="f-input"
-                              value={activeRuleEditorItem.actionSummary || ''}
-                              onChange={event => updateActionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionSummary', event.target.value)}
-                              placeholder={buildActionSummary({ ...activeRuleEditorRule, actionType: activeRuleEditorItem.actionType, actionSummary: activeRuleEditorItem.actionSummary, actionConfig: activeRuleEditorItem.actionConfig }, ruleSummaryContext)}
-                            />
-                          </FieldStack>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: '#475569', fontWeight: 700, minHeight: 42 }}>
-                            <input type="checkbox" checked={activeRuleEditorRule.stopProcessing} onChange={event => updateRule(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, 'stopProcessing', event.target.checked)} />
-                            Durdur
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: '#475569', fontWeight: 700, minHeight: 42 }}>
-                            <input type="checkbox" checked={activeRuleEditorRule.active} onChange={event => updateRule(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, 'active', event.target.checked)} />
-                            Aktif
-                          </label>
-                        </div>
-                        <RuntimeStatusNote status={getActionRuntimeStatus(activeRuleEditorItem.actionType)} />
-
-                        <div style={{ border: '1px solid #fde68a', background: '#fffaf0', borderRadius: 12, padding: 12 }}>
-                          <div style={{ fontSize: '.74rem', color: '#b45309', fontWeight: 900, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            Eylem ayarlari
-                          </div>
-                          {renderActionDetails({
-                            ...activeRuleEditorRule,
-                            actionType: activeRuleEditorItem.actionType,
-                            actionSummary: activeRuleEditorItem.actionSummary,
-                            actionConfig: activeRuleEditorItem.actionConfig,
-                          }, ruleEditorState.scope, patch => patchActionItemConfig(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, patch), newType => updateActionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'actionType', newType))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'grid', gap: 12 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'end' }}>
-                          <FieldStack label="Kosul tipi">
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              <div className="sel-wrap">
-                                <select
-                                  className="f-input"
-                                  value={activeRuleEditorItem.conditionKey}
-                                  onChange={event => updateConditionItem(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, 'conditionKey', event.target.value)}
-                                >
-                                  {CONDITION_LIBRARY.map(option => {
-                                    return <option key={option.key} value={option.key}>{option.label}</option>
-                                  })}
-                                </select>
-                              </div>
-                              <div style={{ fontSize: '.76rem', color: '#64748b', lineHeight: 1.5 }}>
-                                {getConditionMeta(activeRuleEditorItem.conditionKey).description}
-                              </div>
-                              <RuntimeStatusNote status={getConditionRuntimeStatus(activeRuleEditorItem.conditionKey)} />
-                            </div>
-                          </FieldStack>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: '#475569', fontWeight: 700, minHeight: 42 }}>
-                            <input type="checkbox" checked={activeRuleEditorRule.stopProcessing} onChange={event => updateRule(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, 'stopProcessing', event.target.checked)} />
-                            Durdur
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: '#475569', fontWeight: 700, minHeight: 42 }}>
-                            <input type="checkbox" checked={activeRuleEditorRule.active} onChange={event => updateRule(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, 'active', event.target.checked)} />
-                            Aktif
-                          </label>
-                        </div>
-
-                        <div style={{ border: '1px solid #bfdbfe', background: '#f8fbff', borderRadius: 12, padding: 12 }}>
-                          <div style={{ fontSize: '.74rem', color: '#1d4ed8', fontWeight: 900, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            Kosul ayarlari
-                          </div>
-                          {renderConditionDetails({
-                            ...activeRuleEditorRule,
-                            conditionKey: activeRuleEditorItem.conditionKey,
-                            conditionConfig: activeRuleEditorItem.conditionConfig,
-                          }, ruleEditorState.scope, {
-                            onPatch: patch => patchConditionItemConfig(activeRuleEditorCampaign.id, ruleEditorState.scope, activeRuleEditorRule.id, activeRuleEditorItem.id, patch),
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </EditorModal>
-                ) : null}
-
-                {showNewTemplateModal ? (
-                  <NewTemplateModal
-                    saleItems={saleItems}
-                    onClose={() => setShowNewTemplateModal(false)}
-                    onSave={(newTemplate) => {
-                      const newNormalized = {
-                        id: String(newTemplate.id),
-                        name: newTemplate.name || '',
-                        description: newTemplate.description || '',
-                        saleIds: Array.isArray(newTemplate.sale_ids) ? newTemplate.sale_ids.map(String) : [],
-                      }
-                      setSaleTemplates(current => [...current, newNormalized])
-                      setShowNewTemplateModal(false)
-                    }}
-                  />
-                ) : null}
-
-                <div style={{
-                  position: 'sticky',
-                  bottom: 0,
-                  zIndex: 6,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  flexWrap: 'wrap',
-                  padding: '14px 16px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 16,
-                  background: 'rgba(255,255,255,0.96)',
-                  boxShadow: '0 -8px 24px rgba(15,23,42,0.08)',
-                  backdropFilter: 'blur(6px)',
-                }}>
-                  <div style={{ fontSize: '.8rem', color: '#64748b' }}>
-                    Degisiklikleri kaydetmek icin sagdaki butonu kullanin.
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <button className="btn-o" type="button" onClick={() => navigate('/sadakat')}>
-                      Kapat
-                    </button>
-                    <button className="btn-p" type="button" onClick={saveAll} disabled={saving || loading || databaseUnavailable || !schemaReady}>
-                      {saving
-                        ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Kaydediliyor</>
-                        : <><i className="fa-solid fa-floppy-disk" style={{ marginRight: 6 }} />Kaydet</>}
-                    </button>
-                  </div>
-                </div>
+                ))}
               </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button className="btn-p" type="button" onClick={saveAll} disabled={saving || loading || databaseUnavailable || !schemaReady}>
+                {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'referrals' && (
+          <div className="card" style={{ padding: 18 }}>
+            <LoyaltyReferralPrograms embedMode={true} />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="card" style={{ padding: 18, display: 'grid', gap: 16 }}>
+            <div>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem' }}>Program Ayarları</div>
+              <div style={{ fontSize: '.84rem', color: '#64748b', marginTop: 4 }}>
+                Loyalty / Sadakat modülünün genel kazanım, harcama ve bildirim kurallarını yapılandırın.
               </div>
             </div>
-          )}
-      </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              <FieldStack label="Sadakat Program Adı">
+                <input className="f-input" value={program.name || ''} onChange={e => updateProgram('name', e.target.value)} placeholder="Sadakat Programı" />
+              </FieldStack>
+
+              <FieldStack label="Program Türü">
+                <div className="sel-wrap">
+                  <select className="f-input" value={program.programType || 'points'} onChange={e => updateProgram('programType', e.target.value)}>
+                    <option value="points">Puan Tabanlı</option>
+                    <option value="stamp">Damga (Stamp) Tabanlı</option>
+                    <option value="cashback">Nakit İade (Cashback) Tabanlı</option>
+                  </select>
+                </div>
+              </FieldStack>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              <FieldStack label="Kazanım Modeli">
+                <div className="sel-wrap">
+                  <select className="f-input" value={program.earnModel || 'points_per_amount'} onChange={e => updateProgram('earnModel', e.target.value)}>
+                    <option value="points_per_amount">Harcama Tutarına Göre Puan</option>
+                    <option value="points_per_order">Sipariş Başına Sabit Puan</option>
+                  </select>
+                </div>
+              </FieldStack>
+
+              <FieldStack label="Harcama Modeli">
+                <div className="sel-wrap">
+                  <select className="f-input" value={program.redemptionModel || 'points_to_discount'} onChange={e => updateProgram('redemptionModel', e.target.value)}>
+                    <option value="points_to_discount">Puanı Sepet İndirimine Dönüştür</option>
+                    <option value="points_to_products">Puanla Bedava Ürün Al</option>
+                  </select>
+                </div>
+              </FieldStack>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              <FieldStack label="Puan Dönüşüm Oranı (Örn: 100 Puan = X TL)">
+                <input className="f-input" type="number" min={0} step="0.01" value={formatNumberInputValue(program.redemptionRate)} onChange={e => updateProgram('redemptionRate', parseFloat(e.target.value) || 0)} />
+              </FieldStack>
+
+              <FieldStack label="Bildirim Kanalı">
+                <div className="sel-wrap">
+                  <select className="f-input" value={program.notificationChannel || 'push_or_sms'} onChange={e => updateProgram('notificationChannel', e.target.value)}>
+                    <option value="push_or_sms">Push Bildirimi veya SMS</option>
+                    <option value="sms_only">Sadece SMS</option>
+                    <option value="push_only">Sadece Uygulama İçi (Push)</option>
+                    <option value="none">Bildirim Gönderme</option>
+                  </select>
+                </div>
+              </FieldStack>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', color: '#334155', fontWeight: 700 }}>
+                  <input type="checkbox" checked={program.active !== false} onChange={e => updateProgram('active', e.target.checked)} />
+                  Sadakat Programı Genel Aktif
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', color: '#334155', fontWeight: 700 }}>
+                  <input type="checkbox" checked={program.notifyBalanceChange !== false} onChange={e => updateProgram('notifyBalanceChange', e.target.checked)} />
+                  Bakiye Değişimlerinde Müşteriyi Bilgilendir
+                </label>
+              </div>
+
+              <FieldStack label="Program Açıklaması">
+                <textarea className="f-input" rows={2} value={program.description || ''} onChange={e => updateProgram('description', e.target.value)} placeholder="Program kuralları ve detayları..." />
+              </FieldStack>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button className="btn-p" type="button" onClick={saveAll} disabled={saving || loading || databaseUnavailable || !schemaReady}>
+                {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
