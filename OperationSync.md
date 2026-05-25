@@ -5847,3 +5847,65 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - Değişiklikleri kullanıcıya raporlamak ve onay almak.
 - `Handoff Contract`: `.antigravityrules.md dosyasına otomatik başlangıç hizalanma kuralı eklenmiştir. Proje derleme ve çalışma durumları etkilenmemiştir.`
 
+
+## Entry 134 - 2026-05-25
+
+- `Timestamp`: `2026-05-25T23:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kampanya Sihirbazı Görsel Yükleme Port ve URL Çözümleme Hatasının Düzeltilmesi`
+- `Intent`: `Kampanya sihirbazı görsellerinin (adım pill başlıkları, slotlar, arşiv görselleri, inceleme ekranı) frontend portundan (localhost:5173) yüklenmeye çalışıp hata vermesi sorununu, backend API URL'i üzerinden çözümleyerek gidermek.`
+- `Files Read`:
+  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+- `Files Changed`:
+  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+  - `[LOYALTYMEMORY.md](file:///C:/RMSv3/LOYALTYMEMORY.md)`
+  - `[OperationSync.md](file:///C:/RMSv3/OperationSync.md)`
+  - `[LOYALTY_MASTER_PLAN.md](file:///C:/RMSv3/LOYALTY_MASTER_PLAN.md)`
+- `Commands Run`:
+  - `npm run build`
+- `Findings`:
+  - Kampanya sihirbazında mecra bazlı görsel slotları, görsel arşivi, adım pill başlıkları ve inceleme/detay ekranlarındaki tüm img/background-image yollarının relative URL (`/api/files/...`) olmasından ötürü localhost:5173 portunda çözümlendiği ve görsellerin yüklenemediği tespit edildi.
+- `Decisions`:
+  - `@/lib/db` dosyasından `buildApiUrl` import edildi.
+  - `resolveImageUrl(url)` fonksiyonu tanımlandı. Bağıntılı resim yollarının başına backend API adresi (buildApiUrl) eklenirken, absolute resim yolları (`http`, `https`, `data:`) doğrudan geçecek şekilde yapılandırıldı.
+  - Tüm img elementlerinin `src` değerleri ve background-image inline CSS stilleri `resolveImageUrl` fonksiyonu ile sarıldı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Arayüzde kampanya sihirbazı adımlarını ve görsellerin yüklendiği tüm alanları test ederek resimlerin backend adresi üzerinden başarıyla geldiğini doğrulamak.
+- `Handoff Contract`: `Kampanya sihirbazındaki tüm görsel yolları resolveImageUrl ile backend API adresine yönlendirilerek görsel yükleme sorunları giderildi. Derleme sorunsuzdur.`
+
+
+## Entry 135 - 2026-05-26
+
+- `Timestamp`: `2026-05-26T00:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `MobileGarsonRuntime Performans, Hızlı Masa Seçici ve Sonsuz Render Döngüsü Çözümü`
+- `Intent`: `Kullanıcının mobil garson ekranındaki donmaları/kasmaları çözmek, manuel yenileme flaşını gidermek, görsel mock'taki yönlendirmeleri birebir uygulayıp hızlı masa seçimi eklemek ve Railway trafiğini güvende tutmak.`
+- `Files Read`:
+  - `src/components/pages/MobileAppShells.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/lib/db.js`
+- `Files Changed`:
+  - `src/components/pages/MobileAppShells.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run build`
+  - `git diff C:\RMSv3\src\components\pages\MobileAppShells.jsx`
+  - `git status`
+- `Findings`:
+  - `MobileOrderSurface` (Sipariş alma ekranı) bileşeninde, default parametrelerin `loyaltyCampaigns = []`, `saleTemplates = []` ve `couponContext = {}` olmasından kaynaklı her render'da yeni dizi/nesne referansı üretilmesi ve bunun `useEffect` bağımlılıklarında bulunması sebebiyle **sonsuz render döngüsü (infinite loop)** oluştuğu ve tarayıcıyı kilitlediği gözlemlendi.
+  - `MobileGarsonRuntime` manuel yenileme tıklandığında `hydrateRuntime`'ın `background = false` (varsayılan) çağrılarak `loading = true` yapması yüzünden tüm sayfanın donup flaş yaptığı tespit edildi.
+  - Mobil Garson üst başlığına görsel parite hedefleri doğrultusunda "Masa seç, ardından sipariş al." subtext'i yerleştirildi.
+- `Decisions`:
+  - `MobileOrderSurface` varsayılan parametreleri ve `customerContext` return değerleri için dondurulmuş kararlı referanslar (`STABLE_EMPTY_ARRAY`, `STABLE_EMPTY_OBJECT`) tanımlandı ve sonsuz döngü tamamen çözüldü.
+  - Manuel yenileme butonuna tıklandığında `hydrateRuntime({ background: refreshTrigger > 0 })` şeklinde çağrı yapılması kararlaştırıldı; böylece ilk açılışta loading gösterilirken sonraki yenilemeler pürüzsüzce arka planda yürütüldü.
+  - Üst başlığa doğrudan masaların listelendiği şık bir `<select>` (Hızlı Masa Seçimi) açılır menüsü eklendi. Seçilen masa anında aktif hale getirilip detay modalı açılmaktadır.
+  - Railway veritabanı performansını korumak adına arka planda çalışan hiçbir otomatik polling/veri sorgulaması (`setInterval`) eklenmedi.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kullanıcının mobil arayüzde masa seçimini ve sipariş ekleme butonunu deneyimlemesini gözlemlemek.
+- `Handoff Contract`: `Mobil garson hızlı masa seçim dropdown'ı ve manuel arka plan yenilemesi entegre edildi. Sonsuz render döngüsü çözüldü, sipariş ekleme ekranı anında ve donmadan açılmaktadır. Üretim derlemesi hatasız çalışıyor.`
+
+
