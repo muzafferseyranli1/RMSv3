@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
@@ -712,18 +712,41 @@ function MusteriModal({ musteri, onClose, onSaved, iller, ilceler, setIlceler, m
     setSaving(true)
     let saved = false
     try {
+      let cleanPhone = form.telefon?.trim() || null
+      if (cleanPhone && cleanPhone.startsWith('0')) {
+        cleanPhone = cleanPhone.slice(1).trim()
+      }
+      let normalizedPhone = null
+      if (cleanPhone) {
+        let digits = cleanPhone.replace(/\D/g, '')
+        const countryDigits = form.telefon_ulke ? form.telefon_ulke.replace(/\D/g, '') : '90'
+        if (digits.startsWith('900')) {
+          digits = '90' + digits.slice(3)
+        } else if (digits.startsWith('0')) {
+          digits = digits.slice(1)
+        }
+        if (digits.length === 10 && digits.startsWith('5')) {
+          normalizedPhone = countryDigits + digits
+        } else if (digits.startsWith(countryDigits)) {
+          normalizedPhone = digits
+        } else {
+          normalizedPhone = countryDigits + digits
+        }
+      }
+
       const payload = {
-      ad_soyad: form.ad_soyad.trim(),
-      cari: form.cari,
-      musteri_tipi: form.musteri_tipi,
-      sirket_adi: form.sirket_adi?.trim() || null,
-      vergi_no: form.vergi_no?.trim() || null,
-      email: form.email?.trim() || null,
-      notlar: form.notlar?.trim() || null,
-      telefon: form.telefon?.trim() || null,
-      telefon_ulke: form.telefon_ulke,
-      adresler: JSON.stringify(form.adresler),
-    }
+        ad_soyad: form.ad_soyad.trim(),
+        cari: form.cari,
+        musteri_tipi: form.musteri_tipi,
+        sirket_adi: form.sirket_adi?.trim() || null,
+        vergi_no: form.vergi_no?.trim() || null,
+        email: form.email?.trim() || null,
+        notlar: form.notlar?.trim() || null,
+        telefon: cleanPhone,
+        telefon_ulke: form.telefon_ulke,
+        normalized_phone: normalizedPhone,
+        adresler: JSON.stringify(form.adresler),
+      }
     const { error } = isNew
       ? await db.from('musteriler').insert(payload)
       : await db.from('musteriler').update(payload).eq('id', musteri.id)

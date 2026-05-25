@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
@@ -1383,7 +1383,17 @@ export default function OrderHub() {
     if (selectedCustomer?.id) return selectedCustomer
     const adSoyad = [customerForm.firstName, customerForm.lastName].filter(Boolean).join(' ').trim()
     if (!adSoyad) throw new Error('Müşteri adı soyadı zorunlu')
-    const phoneDigits = normalizePhone(customerForm.phone)
+    let phoneDigits = normalizePhone(customerForm.phone)
+    if (phoneDigits) {
+      if (phoneDigits.startsWith('900')) {
+        phoneDigits = '90' + phoneDigits.slice(3)
+      } else if (phoneDigits.startsWith('0')) {
+        phoneDigits = phoneDigits.slice(1)
+      }
+      if (phoneDigits.length === 10 && phoneDigits.startsWith('5')) {
+        phoneDigits = '90' + phoneDigits
+      }
+    }
     const { data, error } = await db.from('musteriler').insert({
       ad_soyad: adSoyad,
       telefon: phoneDigits ? phoneDigits.slice(-10) : null,

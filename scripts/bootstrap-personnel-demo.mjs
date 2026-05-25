@@ -167,7 +167,7 @@ function createDemoPersonnel({ branches, positions }) {
         birthDate: `${1978 + (globalIndex % 24)}-${String((globalIndex % 12) + 1).padStart(2, '0')}-${String((globalIndex % 27) + 1).padStart(2, '0')}`,
         address: `${branch.name} personel lojman kaydı`,
         phone: '',
-        mobilePhone: `05${String(300000000 + globalIndex).padStart(9, '0')}`,
+        mobilePhone: `5${String(300000000 + globalIndex).padStart(9, '0')}`,
         telegramUsername: '',
         email: `${slugify(name.firstName)}.${slugify(name.lastName)}.${globalIndex + 1}@demo.suitablerms.local`,
         authorityLevel: roleIndex < 2 ? 'Şube' : 'Operasyon',

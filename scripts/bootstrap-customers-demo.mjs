@@ -111,7 +111,7 @@ function normalizePhone(index) {
 
 function displayPhone(index) {
   const raw = normalizePhone(index)
-  return `0${raw.slice(2, 5)} ${raw.slice(5, 8)} ${raw.slice(8, 10)} ${raw.slice(10, 12)}`
+  return `${raw.slice(2, 5)} ${raw.slice(5, 8)} ${raw.slice(8, 10)} ${raw.slice(10, 12)}`
 }
 
 function customerProfileType(index) {

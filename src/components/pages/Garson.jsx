@@ -6,7 +6,6 @@ import UnifiedPosStaffScreen, { useUnifiedPosCatalogBootstrap } from '@/componen
 import FavoriteProductsModal from '@/components/pos/FavoriteProductsModal'
 import LoyaltyCampaignCatalog from '@/components/pos/LoyaltyCampaignCatalog'
 import LoyaltyCheckoutPrompt from '@/components/pos/LoyaltyCheckoutPrompt'
-import PosLoyaltyLinkModal from '@/components/pos/PosLoyaltyLinkModal'
 import PosCustomerLinkModal from '@/components/pos/PosCustomerLinkModal'
 import StaffPinGate from '@/components/pos/StaffPinGate'
 import TableManagementModal from '@/components/pos/TableManagementModal'
@@ -1646,6 +1645,8 @@ function OdemeModalFlow({
   onSaveDebt,
   onOpenCustomers,
   onClose,
+  manualCouponCode = '',
+  selectedLoyaltyProgramId = '',
 }) {
   const timerRef = useRef(null)
   const loyaltyPollRef = useRef(null)
@@ -1745,8 +1746,8 @@ function OdemeModalFlow({
   const splitHasCollectedPayment = splitFlowStarted && totalPaidAmount > 0.009
   const totalUnpaid = groupedUnpaidItems.reduce((sum, item) => sum + getCartLineTotal(item), 0)
   const orderLabel = `${channelName || 'H\u0131zl\u0131 Sat\u0131\u015f'} - Masa ${masaNo}`
-  const loyaltyEvaluation = useMemo(
-    () => evaluateRuntimeOrderCampaigns(loyaltyCampaigns, {
+  const [loyaltyEvaluation, setLoyaltyEvaluation] = useState(() =>
+    evaluateRuntimeOrderCampaigns(loyaltyCampaigns, {
       runtimeChannel: runtimeLoyaltyChannel,
       orderTotal: targetBaseTotal,
       customerContext: linkedLoyaltyCustomer
@@ -1760,11 +1761,67 @@ function OdemeModalFlow({
           }
         : {},
       manuallyTriggeredCampaignIds,
+      selectedCouponCode: linkedLoyaltyCustomer?.selectedCouponCode || manualCouponCode || '',
       cartLines: targetItems,
       saleTemplates,
-    }),
-    [linkedLoyaltyCustomer, loyaltyCampaigns, runtimeLoyaltyChannel, targetBaseTotal, manuallyTriggeredCampaignIds, targetItems, saleTemplates]
+    })
   )
+
+  useEffect(() => {
+    let ignore = false
+    const customerContext = linkedLoyaltyCustomer
+      ? {
+          customerId: linkedLoyaltyCustomer.customerId,
+          customerName: linkedLoyaltyCustomer.customerName,
+          customerCategoryIds: linkedLoyaltyCustomer.customerCategoryIds || [],
+          customerCreatedAt: linkedLoyaltyCustomer.customerCreatedAt || linkedLoyaltyCustomer.created_at || null,
+          customerFirstOrderAt: linkedLoyaltyCustomer.customerFirstOrderAt || linkedLoyaltyCustomer.first_order_at || null,
+          tierPointsMultiplier: linkedLoyaltyCustomer.tierPointsMultiplier || linkedLoyaltyCustomer.pointsMultiplier || linkedLoyaltyCustomer.points_multiplier || 1,
+        }
+      : {}
+
+    const syncFallback = evaluateRuntimeOrderCampaigns(loyaltyCampaigns, {
+      runtimeChannel: runtimeLoyaltyChannel,
+      orderTotal: targetBaseTotal,
+      customerContext,
+      manuallyTriggeredCampaignIds,
+      selectedCouponCode: linkedLoyaltyCustomer?.selectedCouponCode || manualCouponCode || '',
+      cartLines: targetItems,
+      saleTemplates,
+    })
+    setLoyaltyEvaluation(syncFallback)
+
+    ;(async () => {
+      try {
+        const evaluated = await evaluateRuntimeOrderCampaignsAsync(loyaltyCampaigns, {
+          runtimeChannel: runtimeLoyaltyChannel,
+          orderTotal: targetBaseTotal,
+          customerContext,
+          manuallyTriggeredCampaignIds,
+          selectedCouponCode: linkedLoyaltyCustomer?.selectedCouponCode || manualCouponCode || '',
+          programId: selectedLoyaltyProgramId,
+          cartLines: targetItems,
+          saleTemplates,
+        })
+        if (ignore) return
+        setLoyaltyEvaluation(evaluated)
+      } catch (err) {
+        console.error('Async loyalty evaluation failed in OdemeModalFlow (Garson):', err)
+      }
+    })()
+
+    return () => { ignore = true }
+  }, [
+    linkedLoyaltyCustomer,
+    loyaltyCampaigns,
+    runtimeLoyaltyChannel,
+    targetBaseTotal,
+    manuallyTriggeredCampaignIds,
+    targetItems,
+    saleTemplates,
+    manualCouponCode,
+    selectedLoyaltyProgramId,
+  ])
   const applicableLoyaltyOffers = loyaltyEvaluation.applicableOffers
   const activeWarningOffer = useMemo(() => {
     return (applicableLoyaltyOffers || []).find(
@@ -1900,50 +1957,12 @@ function OdemeModalFlow({
 
   async function openLoyaltyLinkModal() {
     if (busy || !branchId) return
-
     setLoyaltyLinkError('')
     setLoyaltyLinkStatus('')
-
-    try {
-      if (loyaltySession?.token) {
-        await consumePosLoyaltyLinkSession(loyaltySession.token)
-      }
-      const qrModule = await import('qrcode')
-      const QRCodeLib = qrModule?.default || qrModule
-      const session = await createPosLoyaltyLinkSession({
-        branchId,
-        branchName,
-        registerNo,
-        registerLabel,
-      })
-      setLoyaltySession(session)
-      setShowLoyaltyLinkModal(true)
-      setLoyaltyQrUrl(await QRCodeLib.toDataURL(getPosLoyaltyLinkUrl(session.token), { width: 420, margin: 1 }))
-
-      if (loyaltyPollRef.current) window.clearInterval(loyaltyPollRef.current)
-      loyaltyPollRef.current = window.setInterval(async () => {
-        const next = await readPosLoyaltyLinkSession(session.token)
-        if (!next || next.status !== 'linked' || !next.customerId) return
-        setLoyaltySession(next)
-        setLinkedLoyaltyCustomer(next)
-        setLoyaltyLinkStatus(`${next.customerName || 'Musteri'} ${next.registerLabel || registerLabel} ekranina baglandi.`)
-        window.clearInterval(loyaltyPollRef.current)
-        loyaltyPollRef.current = null
-      }, 2500)
-    } catch (error) {
-      setLoyaltyLinkError(error?.message || 'Sadakat baglantisi baslatilamadi.')
-      setShowLoyaltyLinkModal(true)
-    }
+    setShowLoyaltyLinkModal(true)
   }
 
   async function clearLinkedLoyaltyCustomer() {
-    if (loyaltySession?.token) {
-      try {
-        await consumePosLoyaltyLinkSession(loyaltySession.token)
-      } catch {
-        // Best-effort cleanup for the temporary link session.
-      }
-    }
     setLinkedLoyaltyCustomer(null)
     setLoyaltySession(null)
     setLoyaltyQrUrl('')
@@ -2644,118 +2663,31 @@ function OdemeModalFlow({
                 </div>
               </div>
 
-              <div style={{
-                padding: 14,
-                borderRadius: 18,
-                border: `1px solid ${linkedLoyaltyCustomer ? 'rgba(34,197,94,.24)' : 'rgba(56,189,248,.18)'}`,
-                background: linkedLoyaltyCustomer ? 'rgba(20,83,45,.24)' : 'rgba(8,47,73,.24)',
-                display: 'grid',
-                gap: 12,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ color: linkedLoyaltyCustomer ? '#86efac' : '#7dd3fc', fontSize: '.74rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                      Sadakat musteri baglantisi
+              {linkedLoyaltyCustomer ? (
+                <div style={{
+                  padding: 14,
+                  borderRadius: 18,
+                  border: '1px solid rgba(34,197,94,.24)',
+                  background: 'rgba(20,83,45,.24)',
+                  display: 'grid',
+                  gap: 12,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ color: '#86efac', fontSize: '.74rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                        Sadakat musteri baglantisi
+                      </div>
+                      <div style={{ marginTop: 6, color: '#fff', fontWeight: 900, fontSize: '1rem' }}>
+                        {linkedLoyaltyCustomer.customerName}
+                      </div>
+                      <div style={{ marginTop: 6, color: '#cbd5e1', fontSize: '.8rem', lineHeight: 1.55 }}>
+                        {`${linkedLoyaltyCustomer.phone || 'Telefon bilgisi yok'}${(linkedLoyaltyCustomer.customerCategoryIds || []).length > 0 ? ` • ${(linkedLoyaltyCustomer.customerCategoryIds || []).length} kategori uyeligi` : ''}`}
+                      </div>
+                      <PreparedAdvantageRows preparedAdvantage={linkedPreparedAdvantage} tone="light" />
                     </div>
-                    <div style={{ marginTop: 6, color: '#fff', fontWeight: 900, fontSize: '1rem' }}>
-                      {linkedLoyaltyCustomer?.customerName || 'Musteri henuz tanimlanmadi'}
-                    </div>
-                    <div style={{ marginTop: 6, color: '#cbd5e1', fontSize: '.8rem', lineHeight: 1.55 }}>
-                      {linkedLoyaltyCustomer
-                        ? `${linkedLoyaltyCustomer.phone || 'Telefon bilgisi yok'}${(linkedLoyaltyCustomer.customerCategoryIds || []).length > 0 ? ` • ${(linkedLoyaltyCustomer.customerCategoryIds || []).length} kategori uyeligi` : ''}`
-                        : 'QR ile telefonundan baglanan musteriye gore kategori kampanyalari burada aktif olur.'}
-                    </div>
-                    <PreparedAdvantageRows preparedAdvantage={linkedPreparedAdvantage} tone="light" />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={openLoyaltyLinkModal}
-                      disabled={busy || !branchId}
-                      style={{
-                        minHeight: 44,
-                        padding: '0 14px',
-                        borderRadius: 12,
-                        border: 'none',
-                        background: busy || !branchId ? 'rgba(255,255,255,.08)' : 'linear-gradient(135deg,#f59e0b,#fbbf24)',
-                        color: busy || !branchId ? '#64748b' : '#111827',
-                        fontWeight: 900,
-                        cursor: busy || !branchId ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {linkedLoyaltyCustomer ? 'Musteriyi Guncelle' : 'Kampanya Uygula'}
-                    </button>
-
-                    {linkedLoyaltyCustomer ? (
-                      <button
-                        type="button"
-                        onClick={clearLinkedLoyaltyCustomer}
-                        disabled={busy || totalPaidAmount > 0.009}
-                        style={{
-                          minHeight: 44,
-                          padding: '0 14px',
-                          borderRadius: 12,
-                          border: '1px solid rgba(255,255,255,.12)',
-                          background: busy || totalPaidAmount > 0.009 ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.34)',
-                          color: busy || totalPaidAmount > 0.009 ? '#64748b' : '#e2e8f0',
-                          fontWeight: 800,
-                          cursor: busy || totalPaidAmount > 0.009 ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        Musteri Bagini Kaldir
-                      </button>
-                    ) : null}
                   </div>
                 </div>
-
-                {linkedLoyaltyCustomer ? (
-                  manualSelectableLoyaltyOffers.length > 0 ? (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div style={{ color: '#d1fae5', fontSize: '.78rem', fontWeight: 800 }}>
-                        Bu musteri icin uygulanabilir kampanyalar
-                      </div>
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        {manualSelectableLoyaltyOffers.map(offer => {
-                          const selected = appliedLoyaltyCampaignId === offer.campaignId
-                          return (
-                            <button
-                              key={offer.campaignId}
-                              type="button"
-                              onClick={() => handleApplyLoyaltyCampaign(offer)}
-                              disabled={busy || totalPaidAmount > 0.009}
-                              style={{
-                                textAlign: 'left',
-                                borderRadius: 14,
-                                border: `1px solid ${selected ? 'rgba(251,191,36,.42)' : 'rgba(255,255,255,.10)'}`,
-                                background: selected ? 'rgba(251,191,36,.12)' : 'rgba(255,255,255,.04)',
-                                color: '#fff',
-                                padding: '12px 14px',
-                                cursor: busy || totalPaidAmount > 0.009 ? 'not-allowed' : 'pointer',
-                                opacity: busy || totalPaidAmount > 0.009 ? 0.7 : 1,
-                                display: 'grid',
-                                gap: 4,
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                                <span style={{ fontWeight: 900 }}>{offer.campaignName}</span>
-                                <span style={{ color: '#fbbf24', fontWeight: 800 }}>{offer.offerLabel}</span>
-                              </div>
-                              <div style={{ color: '#cbd5e1', fontSize: '.76rem', lineHeight: 1.5 }}>
-                                {offer.conditionLabel || 'Ek kosul yok'}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ color: '#cbd5e1', fontSize: '.8rem', lineHeight: 1.55 }}>
-                      Bu musteri icin mevcut sepet ve kanal baglaminda uygulanabilir kampanya bulunamadi.
-                    </div>
-                  )
-                ) : null}
-              </div>
+              ) : null}
 
               <LoyaltyCheckoutPrompt
                 pendingCampaign={pendingLoyaltyCampaign}
@@ -2868,15 +2800,22 @@ function OdemeModalFlow({
         />
       )}
 
-      <PosLoyaltyLinkModal
+      <PosCustomerLinkModal
         open={showLoyaltyLinkModal}
-        session={loyaltySession}
-        qrUrl={loyaltyQrUrl}
-        customer={linkedLoyaltyCustomer}
-        errorText={loyaltyLinkError}
-        statusText={loyaltyLinkStatus}
+        branchId={branchId}
+        branchName={branchName}
+        registerNo={registerNo}
+        registerLabel={registerLabel}
+        linkedCustomer={linkedLoyaltyCustomer}
+        onCustomerLinked={customer => {
+          setLinkedLoyaltyCustomer(customer)
+          setShowLoyaltyLinkModal(false)
+        }}
+        onClearCustomer={() => {
+          setLinkedLoyaltyCustomer(null)
+          setShowLoyaltyLinkModal(false)
+        }}
         onClose={closeLoyaltyLinkModal}
-        onClearCustomer={clearLinkedLoyaltyCustomer}
       />
     </>
   )
@@ -4337,13 +4276,10 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
     const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaign)
     const saleLoyaltyFields = buildSaleLoyaltyFields(saleLoyaltySnapshot, discountAmount)
 
-    const campaignNotes = (applicableLoyaltyOffers || [])
-      .filter(offer => {
-        const isApplied = (offer.applicationMode === 'auto' && loyaltyDecisionMap[offer.campaignId] !== 'skipped') ||
-                          (offer.campaignId === appliedLoyaltyCampaignId);
-        return isApplied && offer.actionType === 'write_customer_note' && offer.customerNote;
-      })
-      .map(offer => offer.customerNote);
+    const campaignNotes = [];
+    if (loyaltyCampaign?.actionType === 'write_customer_note' && loyaltyCampaign?.customerNote) {
+      campaignNotes.push(loyaltyCampaign.customerNote);
+    }
     const finalOrderNote = [orderNote, ...campaignNotes].filter(Boolean).join('\n');
 
     const normalizedSale = buildNormalizedSalePayload({
@@ -5537,6 +5473,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
           onSaveDebt={saveDebtSaleGroup}
           onOpenCustomers={() => navigate('/musteriler')}
           onClose={() => setModal(null)}
+          manualCouponCode={manualCouponCode}
+          selectedLoyaltyProgramId={selectedLoyaltyProgramId}
         />
       )}
 

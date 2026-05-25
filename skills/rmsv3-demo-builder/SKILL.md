@@ -9,14 +9,14 @@ metadata:
 
 Use this skill when the user asks to create demo records, prepare a showcase
 dataset, repair a demo flow, or verify whether a demo is truly DB-first in
-`C:\RMSggl\Dropbox\RMSv3`.
+`C:\RMSv3`.
 
 This skill is for real RMSv3 demo work, not browser-only fake data.
 
 ## Required Preflight
 
-1. Read `C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
-2. Read `C:\RMSggl\Dropbox\RMSv3\OperationSync.md` if it exists.
+1. Read `C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
+2. Read `C:\RMSv3\OperationSync.md` if it exists.
 3. Treat `SUITABLERMS_PROJECT_GOVERNANCE.md` as higher priority than
    `README.md` or any historical note.
 4. Identify the requested demo scope:

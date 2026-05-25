@@ -245,5 +245,6 @@ export function createSaleLoyaltySnapshot(campaign = null) {
     appliedActionsSummary: campaign.appliedActionsSummary || null,
     decisionContext: campaign.decisionContext || null,
     redemptionContext: campaign.redemptionContext || campaign.decisionContext?.redemptionContext || null,
+    customerNote: campaign.customerNote ? String(campaign.customerNote) : null,
   }
 }

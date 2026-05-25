@@ -1198,7 +1198,7 @@ function NumKeyboard({ value, onChange, onConfirm, onCancel, label }) {
   )
 }
 
-function AlphaKeyboard({ value, onChange, onConfirm, onCancel, label }) {
+function AlphaKeyboard({ value, onChange, onConfirm, onCancel, label, error }) {
   function press(key) {
     if (key === 'DEL') onChange(value.slice(0, -1))
     else if (key === 'CLR') onChange('')
@@ -1218,6 +1218,18 @@ function AlphaKeyboard({ value, onChange, onConfirm, onCancel, label }) {
         fontSize: 26, fontWeight: 800, color: '#f1f5f9', minWidth: 240,
         textAlign: 'center', letterSpacing: 3, minHeight: 56,
       }}>{value || <span style={{ color: '#475569' }}>-</span>}</div>
+
+      {error && (
+        <div style={{
+          color: '#fca5a5', background: 'rgba(127,29,29,.4)',
+          border: '1px solid rgba(248,113,113,.3)', padding: '10px 14px',
+          borderRadius: 12, fontSize: '.9rem', lineHeight: 1.4, maxWidth: 320,
+          textAlign: 'center'
+        }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gap: 8 }}>
         {COUPON_KEYS.map((row, index) => (
           <div key={index} style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, 1fr)`, gap: 8 }}>
@@ -1297,6 +1309,10 @@ function LoyaltyModal({
   customerName,
   onCustomerLinked,
   onClearCustomer,
+  settings,
+  loyaltyAdjustedSubtotal,
+  onCouponApplied,
+  onEnterCouponClick,
 }) {
   const [isKeypadOpen, setIsKeypadOpen] = useState(false)
   const [phoneDigits, setPhoneDigits] = useState('')
@@ -1394,13 +1410,61 @@ function LoyaltyModal({
       if (!code) return
       
       setLoading(true)
+      // 1. Önce müşteri QR kodunu sorgula
       const customer = await lookupCustomerByQrCode(code)
-      if (!customer) {
-        setErrorMsg('QR kodlu müşteri bulunamadı.')
+      if (customer) {
+        await linkCustomerProcess(customer)
+        return
+      }
+
+      // 2. Müşteri bulunamadıysa kupon kodunu sorgula (Hem local hem veritabanından)
+      const upperCode = code.toUpperCase()
+      // Yerel statik kuponları kontrol et
+      const localResult = evaluateCoupon(upperCode, settings, loyaltyAdjustedSubtotal)
+      if (localResult && !localResult.error) {
+        onCouponApplied?.(upperCode, `${localResult.coupon.label || upperCode} kuponu uygulandı.`)
         setLoading(false)
         return
       }
-      await linkCustomerProcess(customer)
+
+      // Yerelde yoksa sadakat veritabanından dinamik kuponu sorgula
+      try {
+        const res = await db.from('loyalty_coupons')
+          .select('id,code,series_id,is_used,active,redemption_status,expires_at')
+          .ilike('code', upperCode)
+          .maybeSingle()
+
+        if (res?.data) {
+          const coupon = res.data
+          if (coupon.active === false) {
+            setErrorMsg('Bu kupon pasif durumdadır.')
+            setLoading(false)
+            return
+          }
+
+          const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
+          if (coupon.is_used || isUsedStatus) {
+            setErrorMsg('Bu kupon daha önce kullanılmıştır.')
+            setLoading(false)
+            return
+          }
+
+          if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+            setErrorMsg('Bu kuponun kullanım süresi dolmuştur.')
+            setLoading(false)
+            return
+          }
+
+          onCouponApplied?.(upperCode, `Sadakat kuponu (${upperCode}) uygulandı.`)
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        console.error(err)
+      }
+
+      setErrorMsg('QR kod geçerli bir müşteri veya kupon koduyla eşleşmedi.')
+      setLoading(false)
     }
   }
 
@@ -1512,7 +1576,7 @@ function LoyaltyModal({
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ color: '#f8fafc', fontSize: 20, fontWeight: 900 }}>
-            {isKeypadOpen ? displayText('Telefonla Devam Et') : displayText('Sadakat hesabı bağla')}
+            {isKeypadOpen ? displayText('Telefonla Devam Et') : displayText('Sadakat & Kupon')}
           </div>
           {isKeypadOpen && (
             <button
@@ -1574,7 +1638,7 @@ function LoyaltyModal({
             ) : (
               <>
                 <div style={{ color: '#94a3b8', fontSize: '.88rem', lineHeight: 1.5 }}>
-                  {displayText('Uygulamadaki QR kodunuzu veya kartınızı tarayıcıya okutun.')}
+                  {displayText('Sadakat QR okutun, telefon numaranızı veya kupon kodunuzu girin.')}
                 </div>
 
                 {/* Modern Scanner Animation */}
@@ -1596,16 +1660,29 @@ function LoyaltyModal({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setIsKeypadOpen(true)}
-                  style={{
-                    minHeight: 52, borderRadius: 16, border: `1.5px solid ${accentColor}33`,
-                    background: 'rgba(255,255,255,.02)', color: accentColor, fontWeight: 900,
-                    cursor: 'pointer', transition: '.2s',
-                  }}
-                >
-                  {displayText('Telefonla Giriş Yap')}
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <button
+                    onClick={() => setIsKeypadOpen(true)}
+                    style={{
+                      minHeight: 52, borderRadius: 16, border: `1.5px solid ${accentColor}33`,
+                      background: 'rgba(255,255,255,.02)', color: accentColor, fontWeight: 900,
+                      cursor: 'pointer', transition: '.2s',
+                    }}
+                  >
+                    {displayText('Telefonla Giriş Yap')}
+                  </button>
+
+                  <button
+                    onClick={onEnterCouponClick}
+                    style={{
+                      minHeight: 52, borderRadius: 16, border: `1.5px solid rgba(255,255,255,.08)`,
+                      background: 'rgba(255,255,255,.04)', color: '#cbd5e1', fontWeight: 900,
+                      cursor: 'pointer', transition: '.2s',
+                    }}
+                  >
+                    {displayText('Kupon Kodu Gir')}
+                  </button>
+                </div>
               </>
             )}
 
@@ -2984,7 +3061,10 @@ export default function KioskTablet() {
   ])
   const autoApplicableLoyaltyOffer = useMemo(() => {
     if (selectedLoyaltyOffer) return null
-    return loyaltyEvaluation.applicableOffers.find(item => item.applicationMode === 'auto') || null
+    return loyaltyEvaluation.applicableOffers.find(item => 
+      item.applicationMode === 'auto' || 
+      item.decisionContext?.conditionKey === 'coupon_present'
+    ) || null
   }, [loyaltyEvaluation.applicableOffers, selectedLoyaltyOffer])
   const appliedLoyaltyOffer = selectedLoyaltyOffer || autoApplicableLoyaltyOffer || null
   const preparedAdvantageStatusText = useMemo(() => {
@@ -3112,7 +3192,7 @@ export default function KioskTablet() {
   const loyaltyDiscountAmount = roundMoney(loyaltyGiftDiscountAmount + loyaltyOrderDiscountAmount)
   const totalDiscountAmount = roundMoney(loyaltyDiscountAmount + couponDiscountAmount)
   const orderTotal = roundMoney(Math.max(0, cartSubtotal - totalDiscountAmount))
-  const isZeroTotalOrder = orderTotal <= 0.009
+  const isZeroTotalOrder = cart.length > 0 && orderTotal <= 0.009
   const primaryCheckoutLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : '\u00d6demeye ge\u00e7'
   const paymentConfirmLabel = isZeroTotalOrder ? 'Sipari\u015fi g\u00f6nder' : 'Sipari\u015fi Tamamla'
   const saleLoyaltySnapshot = useMemo(() => {
@@ -3393,8 +3473,12 @@ export default function KioskTablet() {
         return
       }
       setCouponCode(code)
-      setCouponMessage(`${localResult.coupon.label || code} kuponu uygulandi.`)
-      setScreen('cart_review')
+      setCouponMessage(`${localResult.coupon.label || code} kuponu uygulandı.`)
+      if (cart.length > 0) {
+        setScreen('cart_review')
+      } else {
+        setScreen('menu')
+      }
       return
     }
 
@@ -3403,36 +3487,40 @@ export default function KioskTablet() {
       setCouponMessage('Kupon kontrol ediliyor...')
       const res = await db.from('loyalty_coupons')
         .select('id,code,series_id,is_used,active,redemption_status,expires_at')
-        .eq('code', code)
+        .ilike('code', code)
         .maybeSingle()
 
       if (!res?.data) {
-        setCouponMessage('Bu kupon bulunamadi.')
+        setCouponMessage('Bu kupon bulunamadı.')
         return
       }
 
       const coupon = res.data
       if (coupon.active === false) {
-        setCouponMessage('Bu kupon pasif durumdadir.')
+        setCouponMessage('Bu kupon pasif durumdadır.')
         return
       }
 
       const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
       if (coupon.is_used || isUsedStatus) {
-        setCouponMessage('Bu kupon daha once kullanilmistir.')
+        setCouponMessage('Bu kupon daha önce kullanılmıştır.')
         return
       }
 
       if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-        setCouponMessage('Bu kuponun kullanim suresi dolmustur.')
+        setCouponMessage('Bu kuponun kullanım süresi dolmuştur.')
         return
       }
 
       setCouponCode(code)
-      setCouponMessage(`Sadakat kuponu (${code}) uygulandi.`)
-      setScreen('cart_review')
+      setCouponMessage(`Sadakat kuponu (${code}) uygulandı.`)
+      if (cart.length > 0) {
+        setScreen('cart_review')
+      } else {
+        setScreen('menu')
+      }
     } catch (err) {
-      setCouponMessage('Kupon sorgulanamadi, lutfen tekrar deneyin.')
+      setCouponMessage('Kupon sorgulanamadı, lütfen tekrar deneyin.')
       console.error(err)
     }
   }
@@ -4310,10 +4398,10 @@ export default function KioskTablet() {
                         <i className="fa-solid fa-qrcode" style={{ fontSize: 32, color: accentColor }} />
                       </div>
                       <div style={{ color: '#fff7ed', fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', textAlign: 'center' }}>
-                        {displayText('Sadakat Bağla')}
+                        {displayText('Sadakat / Kupon')}
                       </div>
                       <div style={{ color: 'rgba(255,255,255,.72)', fontSize: '.54rem', lineHeight: 1.3, textAlign: 'center', maxWidth: 112 }}>
-                        {displayText('Sadakat QR okutun veya Telefon girin')}
+                        {displayText('QR okutun, telefon veya kupon girin')}
                       </div>
                     </>
                   )}
@@ -4666,12 +4754,12 @@ export default function KioskTablet() {
             </div>
 
             <div style={{ padding: 12, display: 'grid', gap: 12, background: 'rgba(255,255,255,.86)', borderTop: '1px solid rgba(15,23,42,.06)', backdropFilter: 'blur(10px)' }}>
-              {(settings.coupon_enabled || loyaltyQrAvailable) && (
+              {true && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <button onClick={() => { setCouponInputDraft(couponCode); setCouponMessage(''); setScreen('coupon') }} disabled={!settings.coupon_enabled} style={{ minHeight: 46, borderRadius: 14, border: '1px solid rgba(15,23,42,.08)', cursor: settings.coupon_enabled ? 'pointer' : 'default', background: settings.coupon_enabled ? '#fff' : '#e5e7eb', color: '#0f172a', fontWeight: 800 }}>
+                  <button onClick={() => { setCouponInputDraft(couponCode); setCouponMessage(''); setScreen('coupon') }} style={{ minHeight: 46, borderRadius: 14, border: '1px solid rgba(15,23,42,.08)', cursor: 'pointer', background: '#fff', color: '#0f172a', fontWeight: 800 }}>
                     {couponCode ? `Kupon: ${couponCode}` : 'Kupon gir'}
                   </button>
-                  <button onClick={() => { if (!maskedLoyaltyCustomerName) openLoyaltyModal() }} disabled={Boolean(maskedLoyaltyCustomerName) || !loyaltyQrAvailable} style={{ minHeight: 46, borderRadius: 14, border: '1px solid rgba(15,23,42,.08)', cursor: !maskedLoyaltyCustomerName && loyaltyQrAvailable ? 'pointer' : 'default', background: maskedLoyaltyCustomerName ? 'rgba(22,163,74,.08)' : (loyaltyQrAvailable ? '#fff' : '#e5e7eb'), color: maskedLoyaltyCustomerName ? '#166534' : '#0f172a', fontWeight: 800 }}>
+                  <button onClick={() => { if (!maskedLoyaltyCustomerName) openLoyaltyModal() }} disabled={Boolean(maskedLoyaltyCustomerName)} style={{ minHeight: 46, borderRadius: 14, border: '1px solid rgba(15,23,42,.08)', cursor: !maskedLoyaltyCustomerName ? 'pointer' : 'default', background: maskedLoyaltyCustomerName ? 'rgba(22,163,74,.08)' : '#fff', color: maskedLoyaltyCustomerName ? '#166534' : '#0f172a', fontWeight: 800 }}>
                     {maskedLoyaltyCustomerName || 'Sadakat ba\u011fla'}
                   </button>
                 </div>
@@ -4757,10 +4845,11 @@ export default function KioskTablet() {
           <div style={{ position: 'absolute', inset: 0, background: '#0f172a' }}>
             <AlphaKeyboard
               value={couponInputDraft}
-              onChange={value => setCouponInputDraft(value.toUpperCase())}
+              onChange={value => { setCouponInputDraft(value.toUpperCase()); setCouponMessage(''); }}
               onConfirm={applyCouponDraft}
-              onCancel={() => setScreen('cart_review')}
+              onCancel={() => { setScreen('cart_review'); setCouponMessage(''); }}
               label="Kupon kodu"
+              error={couponMessage}
             />
           </div>
         )}
@@ -5014,6 +5103,24 @@ export default function KioskTablet() {
           onClearCustomer={() => {
             setLoyaltyCustomer(null)
             setLoyaltyModalOpen(false)
+          }}
+          settings={settings}
+          loyaltyAdjustedSubtotal={loyaltyAdjustedSubtotal}
+          onCouponApplied={(appliedCode, msg) => {
+            setCouponCode(appliedCode)
+            setCouponMessage(msg)
+            setLoyaltyModalOpen(false)
+            if (cart.length > 0) {
+              setScreen('cart_review')
+            } else {
+              setScreen('menu')
+            }
+          }}
+          onEnterCouponClick={() => {
+            setLoyaltyModalOpen(false)
+            setCouponInputDraft(couponCode)
+            setCouponMessage('')
+            setScreen('coupon')
           }}
         />
 

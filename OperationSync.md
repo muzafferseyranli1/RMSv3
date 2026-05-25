@@ -5780,3 +5780,44 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - `MobileHomeDashboard` (standalone) ve `HomeScreen` (standart) summary tiles güncellendi: Aktif damga kartı kampanyası varsa üçüncü özet tile'ı "Damga" / "Damgalarım" başlığıyla, güncel damga durumlarını gösterecek şekilde (`1/5` veya birden fazla kurgu varsa `1/5 | 2/10`) dinamik duruma geçirildi. Tıklanarak campaigns sekmesine hızlı geçiş sağlandı.
   - Proje `npm run build` ile başarıyla derlenmiştir.
 - `Handoff Contract`: `Kampanyalar ekranında damga kurguları görsel slot matrisleriyle gösteriliyor. Ana sayfadaki Seviye tile'ı damga varsa dinamik olarak Damgalarım özetine dönüşüyor ve tıklanabilir durumdadır. Proje hatasız derlenmektedir.`
+
+
+## Entry 132 - 2026-05-25
+- `Timestamp`: `2026-05-25T18:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Telefon numaralarındaki öndeki sıfır (0) ve +90 sonrası sıfırların temizlenmesi (Müşteri ve Personel)`
+- `Intent`: `Müşteri (musteriler tablosu) ve Personel (settings tablosundaki personnel_records) verilerindeki telefon numaralarının format standartlarını düzeltmek, seeder ve UI ekranlarının bu standarta uymasını sağlamak.`
+- `Files Read`:
+  - `skills/rmsv3-demo-builder/SKILL.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `scripts/bootstrap-customers-demo.mjs`
+  - `scripts/bootstrap-personnel-demo.mjs`
+  - `src/components/pages/Musteriler.jsx`
+  - `src/components/pages/CallCenter.jsx`
+- `Files Changed`:
+  - `scripts/bootstrap-customers-demo.mjs`
+  - `scripts/bootstrap-personnel-demo.mjs`
+  - `src/components/pages/Musteriler.jsx`
+  - `src/components/pages/CallCenter.jsx`
+- `Commands Run`:
+  - `node scratch/migrate_phones.js`
+  - `npm run bootstrap:customers-demo:dry-run`
+  - `npm run bootstrap:personnel-demo:dry-run`
+  - `node scratch/check_phones.js`
+  - `npm run build`
+- `Findings`:
+  - `musteriler` tablosunda 102 müşteri kaydının `telefon` alanındaki ön sıfır temizlendi ve `normalized_phone` alanındaki ülke kodundan sonraki (900 -> 90) hatalı sıfır düzeltildi.
+  - `settings` tablosundaki `personnel_records` JSONB verisi içerisinde 418 personelin `phone` ve `mobilePhone` değerlerindeki ön sıfırlar kaldırıldı.
+  - Rate-limit aşımını (HTTP 429) engellemek amacıyla güncellemeler 25'lik küçük batch'ler halinde upsert edildi.
+  - Seeder'lar (`bootstrap-customers-demo.mjs` ve `bootstrap-personnel-demo.mjs`) yeni telefon numarası kurallarına göre güncellendi.
+  - UI tarafında müşteri kaydetme (`Musteriler.jsx`) ve çağrı merkezi müşteri bulma/oluşturma (`CallCenter.jsx`) akışlarında ön sıfır temizleme mantığı entegre edildi.
+  - Yapılan `npm run build` işlemi sıfır hata ile başarıyla tamamlandı.
+- `Decisions`:
+  - Telefon formatının temiz kalması için tüm yazma yollarının (UI ve seeder script'leri) önündeki sıfırları otomatik temizlemesi kararlaştırıldı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Görevin tamamlandığını bildirmek ve skill gereği `DEMO_READY_WITH_NOTES` sonucunu dönmek.
+- `Handoff Contract`: `Müşteri ve personel telefon numaraları temizlendi, UI formları ve seed verileri güncellendi, üretim derlemesi başarıyla tamamlandı.`
+
