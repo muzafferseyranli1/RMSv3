@@ -245,9 +245,9 @@ const CONDITION_HELP_METADATA = {
     usage: 'Örneğin: "Bu ayki 5. ziyaretinde indirim kazanır" veya "Haftada 3 kere sipariş verirse" kuralları için bu koşulu kullanın.'
   },
   period_product_quantity: {
-    title: 'Damga Kartı / Ürün Adedi Koşulu',
+    title: 'Dönem İçindeki Ürün Miktarı Koşulu',
     desc: 'Müşterinin belirli bir zaman diliminde (günlük, haftalık, aylık veya genel) satın aldığı seçili ürün veya kategorilerin toplam miktarını kontrol eder.',
-    usage: 'Örneğin: "Toplam 5 adet kahve alana" veya "Bu ay 10 adet kurabiye alan müşteriye" gibi damga kartı kurguları için bu koşulu kullanın.'
+    usage: 'Örneğin: "Bu ay 10 adet kurabiye alan müşteriye" gibi hedefleri kontrol etmek veya "5 kahveye 1 bedava" gibi damga kartı kurguları oluşturmak için bu koşulu kullanın.'
   },
   birthday: {
     title: 'Doğum Günü Koşulu',
@@ -2987,7 +2987,91 @@ export default function LoyaltyCampaignWizard({ mode }) {
             </label>
           </div>
         )
-      case 'period_product_quantity':
+      case 'period_product_quantity': {
+        const isStampMode = config.isStampMode !== false;
+        return (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {/* Mode selection radio buttons */}
+            <div style={{ display: 'flex', gap: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 10, border: '1px dashed #e2e8f0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#0f172a', fontWeight: 700, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name={`mode-${rule.id}`}
+                  checked={isStampMode}
+                  onChange={() => onPatch({ isStampMode: true, operator: 'gte' })}
+                />
+                🏆 Damga Kartı Modu (Önerilen)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name={`mode-${rule.id}`}
+                  checked={!isStampMode}
+                  onChange={() => onPatch({ isStampMode: false })}
+                />
+                ⚙️ Gelişmiş Ürün Miktarı Modu
+              </label>
+            </div>
+
+            {/* Stamp mode explanation or notice */}
+            {isStampMode ? (
+              <div style={{ padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, color: '#1e40af', fontSize: '.78rem', lineHeight: 1.5 }}>
+                <strong>🏆 Damga Kartı Modu Aktif:</strong> Karşılaştırma operatörü otomatik olarak <strong>"büyük veya eşit"</strong> olarak ayarlanmıştır. Bu sayede müşterinin hedefin üzerinde aldığı kahveler/ürünler (örneğin 4 kahvesi varken tek seferde 2 kahve alması durumunda) kaybolmaz, yeni döngüye (1/5 olarak) başarıyla aktarılır.
+              </div>
+            ) : (
+              <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, color: '#92400e', fontSize: '.78rem', lineHeight: 1.5 }}>
+                <strong>⚠️ Gelişmiş Mod Aktif:</strong> Dönemlik ürün kontrolü için karşılaştırma operatörünü serbestçe seçebilirsiniz. Damga kartı benzeri kazanım kurguları yapıyorsanız "büyük veya eşit" operatörünü seçmeniz önerilir.
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <FieldStack label={isStampMode ? 'Hedef Damga / Ürün Sayısı' : 'Ürün adedi'}>
+                <input className="f-input" type="number" min={0} value={formatNumberInputValue(config.quantity)} onChange={event => onPatch({ quantity: event.target.value })} />
+              </FieldStack>
+              {isStampMode ? (
+                <FieldStack label="Karşılaştırma">
+                  <input className="f-input" style={{ background: '#f1f5f9', cursor: 'not-allowed', color: '#64748b' }} type="text" readOnly value="Büyük veya Eşit (>=)" />
+                </FieldStack>
+              ) : (
+                <FieldStack label="Karşılaştırma">
+                  <div className="sel-wrap">
+                    <select className="f-input" value={config.operator || 'gte'} onChange={event => onPatch({ operator: event.target.value })}>
+                      {COMPARISON_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </FieldStack>
+              )}
+              <FieldStack label="Dönem">
+                <div className="sel-wrap">
+                  <select className="f-input" value={config.period || 'all_time'} onChange={event => onPatch({ period: event.target.value })}>
+                    {PERIOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+              </FieldStack>
+            </div>
+            {(config.period || 'all_time') === 'rolling_days' ? (
+              <FieldStack label="Kayan gün sayısı">
+                <input className="f-input" type="number" min={1} value={formatNumberInputValue(config.periodDays, '30')} onChange={event => onPatch({ periodDays: event.target.value })} />
+              </FieldStack>
+            ) : null}
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                <input type="checkbox" checked={Boolean(config.repeatable)} onChange={event => onPatch({ repeatable: event.target.checked })} />
+                Bir sipariste birkac kez etkinlestirilebilir
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                <input type="checkbox" checked={config.allowSameItemRepeat !== false} onChange={event => onPatch({ allowSameItemRepeat: event.target.checked })} />
+                Ayni urun tekrarlarini say
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: '#475569', fontWeight: 700 }}>
+                <input type="checkbox" checked={Boolean(config.excludeFreeItems)} onChange={event => onPatch({ excludeFreeItems: event.target.checked })} />
+                Ucretsiz ogeleri haric tut
+              </label>
+            </div>
+            {renderProductMasksEditor(config, onPatch)}
+          </div>
+        )
+      }
       case 'period_sold_product_quantity':
       case 'order_item_quantity':
         return (
