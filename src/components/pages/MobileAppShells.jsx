@@ -1,6 +1,6 @@
 import Header from '@/components/layout/Header'
 import CustomerLoyaltyMobileApp from '@/components/mobile/CustomerLoyaltyMobileApp'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { loadCustomerAppConfig, saveCustomerAppConfig, getDefaultAppConfig } from '@/lib/customerMobileAppConfig'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -24,6 +24,7 @@ import {
   createSaleLoyaltySnapshot,
   isLoyaltyPersistenceColumnError,
 } from '@/lib/checkoutLoyalty'
+import { fetchAnnouncements, markAnnouncementAsRead } from '@/lib/taskService'
 
 const SCREEN_MAP = {
   personnel: {
@@ -916,10 +917,37 @@ function PersonnelPhoneRuntime({
     { id: 2, date: '23.05.2026', checkIn: '08:58', checkOut: '18:01', total: '9 Saat 3 Dk', status: 'completed' },
   ])
 
-  const [announcements] = useState([
-    { id: 1, text: 'Haftalık Vardiya Planı Güncellendi. Lütfen takvim sekmesini kontrol edin.', date: 'Bugün' },
-    { id: 2, text: 'Yeni yazlık menü eğitimi Çarşamba saat 15:00\'te toplantı salonunda yapılacaktır.', date: 'Dün' },
-  ])
+  const [announcements, setAnnouncements] = useState([])
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false)
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null)
+
+  const loadAnnouncements = useCallback(async () => {
+    if (!activeStaff) return
+    setAnnouncementsLoading(true)
+    try {
+      const result = await fetchAnnouncements({ actor: activeStaff })
+      if (!result.error) {
+        setAnnouncements(result.data || [])
+      }
+    } catch (err) {
+      console.error('Error loading announcements:', err)
+    } finally {
+      setAnnouncementsLoading(false)
+    }
+  }, [activeStaff])
+
+  useEffect(() => {
+    loadAnnouncements()
+  }, [loadAnnouncements])
+
+  async function openAnnouncement(ann) {
+    setSelectedAnnouncement(ann)
+    if (!ann.is_read && activeStaff?.id) {
+      await markAnnouncementAsRead(ann.id, activeStaff.id)
+      setAnnouncements(prev => prev.map(a => a.id === ann.id ? { ...a, is_read: true } : a))
+      showToast('Duyuru okundu olarak işaretlendi', '#10b981')
+    }
+  }
 
   // PDKS timer
   useEffect(() => {
@@ -1032,6 +1060,7 @@ function PersonnelPhoneRuntime({
               tasks={tasks}
               setTasks={setTasks}
               announcements={announcements}
+              onAnnouncementClick={openAnnouncement}
               pdksStatus={pdksStatus}
               pdksSeconds={pdksSeconds}
               handlePdksToggle={handlePdksToggle}
@@ -1263,6 +1292,130 @@ function PersonnelPhoneRuntime({
             </div>
           </>
         ) : null}
+
+        {/* Announcement Detail Modal */}
+        {selectedAnnouncement ? (
+          <>
+            <button
+              type="button"
+              aria-label="Duyuru kapat"
+              onClick={() => setSelectedAnnouncement(null)}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                border: 'none',
+                background: 'rgba(15,23,42,.6)',
+                backdropFilter: 'blur(4px)',
+                cursor: 'pointer',
+                zIndex: 110,
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: '#fff',
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                padding: '24px 20px 30px 20px',
+                boxShadow: '0 -10px 40px rgba(0,0,0,0.15)',
+                zIndex: 120,
+                display: 'grid',
+                gap: 16,
+                animation: 'slideUp 0.3s ease-out',
+                maxHeight: '80%',
+                overflowY: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      background:
+                        selectedAnnouncement.priority === 'high'
+                          ? '#fee2e2'
+                          : selectedAnnouncement.priority === 'low'
+                          ? '#f0fdf4'
+                          : '#f1f5f9',
+                      color:
+                        selectedAnnouncement.priority === 'high'
+                          ? '#dc2626'
+                          : selectedAnnouncement.priority === 'low'
+                          ? '#16a34a'
+                          : '#475569',
+                      fontSize: '.62rem',
+                      fontWeight: 900,
+                      width: 'fit-content',
+                    }}
+                  >
+                    {selectedAnnouncement.priority === 'high'
+                      ? 'YÜKSEK'
+                      : selectedAnnouncement.priority === 'low'
+                      ? 'DÜŞÜK'
+                      : 'NORMAL'}
+                  </span>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, marginTop: 4 }}>
+                    {selectedAnnouncement.title || 'Duyuru'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnnouncement(null)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: '#f1f5f9',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              <div style={{ fontSize: '.84rem', color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {selectedAnnouncement.content}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderTop: '1px solid #e2e8f0',
+                  paddingTop: 12,
+                  marginTop: 8,
+                  fontSize: '.72rem',
+                  color: '#64748b',
+                }}
+              >
+                <span>
+                  <i className="fa-solid fa-clock" style={{ marginRight: 4 }} />
+                  {new Date(selectedAnnouncement.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'long',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+                {selectedAnnouncement.request_read_receipt && (
+                  <span style={{ color: '#10b981', fontWeight: 700 }}>
+                    <i className="fa-solid fa-circle-check" style={{ marginRight: 4 }} />
+                    Okundu Bilgisi İletildi
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -1274,6 +1427,7 @@ function PersonnelDashboard({
   tasks,
   setTasks,
   announcements,
+  onAnnouncementClick,
   pdksStatus,
   pdksSeconds,
   handlePdksToggle,
@@ -1305,18 +1459,69 @@ function PersonnelDashboard({
 
       {/* Announcements */}
       {announcements.length > 0 && (
-        <div style={{ padding: 14, borderRadius: 18, background: '#fffbeb', border: '1px solid #fde68a', display: 'grid', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b45309', fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-            <i className="fa-solid fa-bullhorn" />
+        <div style={{ padding: 14, borderRadius: 18, background: '#f8fafc', border: '1px solid #e2e8f0', display: 'grid', gap: 10, boxShadow: '0 8px 16px rgba(15,23,42,.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a', fontSize: '.78rem', fontWeight: 900 }}>
+            <i className="fa-solid fa-bullhorn" style={{ color: '#f59e0b' }} />
             Duyurular
           </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {announcements.map(item => (
-              <div key={item.id} style={{ fontSize: '.74rem', color: '#78350f', lineHeight: 1.5, display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
-                <span>• {item.text}</span>
-                <span style={{ fontSize: '.64rem', color: '#b45309', fontWeight: 800 }}>{item.date}</span>
-              </div>
-            ))}
+          <div style={{ display: 'grid', gap: 8 }}>
+            {announcements.map(item => {
+              const priorityColors = {
+                high: { bg: '#fee2e2', text: '#dc2626', label: 'Yüksek' },
+                normal: { bg: '#f1f5f9', text: '#475569', label: 'Normal' },
+                low: { bg: '#f0fdf4', text: '#16a34a', label: 'Düşük' },
+              }
+              const priority = priorityColors[item.priority] || priorityColors.normal
+              const isUnread = !item.is_read
+
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => onAnnouncementClick && onAnnouncementClick(item)}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    background: isUnread ? '#f0fdf460' : '#fff',
+                    border: isUnread ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                    borderLeft: isUnread ? '4px solid #10b981' : '1px solid #e2e8f0',
+                    cursor: 'pointer',
+                    display: 'grid',
+                    gap: 6,
+                    position: 'relative',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '.78rem', fontWeight: 800, color: '#0f172a' }}>
+                      {item.title}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {isUnread && (
+                        <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />
+                      )}
+                      <span
+                        style={{
+                          padding: '1px 5px',
+                          borderRadius: 4,
+                          background: priority.bg,
+                          color: priority.text,
+                          fontSize: '.54rem',
+                          fontWeight: 900,
+                        }}
+                      >
+                        {priority.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '.7rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.4 }}>
+                    {item.content}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '.62rem', color: '#94a3b8' }}>
+                    {new Date(item.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

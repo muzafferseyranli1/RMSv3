@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/hooks/useToast'
 import { useWorkspace } from '@/context/WorkspaceContext'
+import { db } from '@/lib/db'
 import {
   acceptAssignment,
   acceptDelegate,
@@ -24,6 +24,9 @@ import {
   sendBack,
   softDeleteTask,
   uploadTaskFile,
+  fetchAnnouncements,
+  createAnnouncement,
+  markAnnouncementAsRead,
 } from '@/lib/taskService'
 import TaskCard from '@/components/pages/tasks/TaskCard'
 import TaskDrawer from '@/components/pages/tasks/TaskDrawer'
@@ -33,16 +36,16 @@ import TaskDelegateModal from '@/components/pages/tasks/TaskDelegateModal'
 
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'Tek seferlik' },
-  { value: 'daily', label: 'Gunluk' },
-  { value: 'weekly', label: 'Haftalik' },
-  { value: 'monthly', label: 'Aylik' },
-  { value: 'yearly', label: 'Yillik' },
+  { value: 'daily', label: 'Günlük' },
+  { value: 'weekly', label: 'Haftalık' },
+  { value: 'monthly', label: 'Aylık' },
+  { value: 'yearly', label: 'Yıllık' },
 ]
 
 const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Dusuk' },
+  { value: 'low', label: 'Düşük' },
   { value: 'normal', label: 'Normal' },
-  { value: 'high', label: 'Yuksek' },
+  { value: 'high', label: 'Yüksek' },
   { value: 'urgent', label: 'Kritik' },
 ]
 
@@ -145,7 +148,7 @@ function MultiPersonPicker({ label, values, options, onChange, placeholder }) {
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
         {selectedValues.length === 0 ? (
-          <span style={{ fontSize: '.76rem', color: '#94a3b8' }}>Secim yok.</span>
+          <span style={{ fontSize: '.76rem', color: '#94a3b8' }}>Seçim yok.</span>
         ) : selectedValues.map(value => (
           <span key={value} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1d4ed8', padding: '6px 10px', fontSize: '.76rem', fontWeight: 700 }}>
             {options.find(option => option.value === value)?.label || value}
@@ -163,6 +166,90 @@ function fieldGrid(children) {
   return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>{children}</div>
 }
 
+function AnnouncementCard({ announcement, peopleById, onOpen }) {
+  const priorityColors = {
+    high: { bg: '#fee2e2', text: '#dc2626', label: 'Yüksek' },
+    normal: { bg: '#f1f5f9', text: '#475569', label: 'Normal' },
+    low: { bg: '#f0fdf4', text: '#16a34a', label: 'Düşük' },
+  }
+
+  const priority = priorityColors[announcement.priority] || priorityColors.normal
+  const dateStr = new Date(announcement.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+  const creator = peopleById.get(String(announcement.created_by_personnel_id))
+  const creatorName = creator ? `${creator.firstName} ${creator.lastName}` : 'Sistem'
+
+  return (
+    <div
+      className="card"
+      onClick={() => onOpen(announcement)}
+      style={{
+        padding: 16,
+        display: 'grid',
+        gap: 12,
+        cursor: 'pointer',
+        position: 'relative',
+        borderLeft: announcement.is_read ? '1px solid #e2e8f0' : '4px solid #10b981',
+        transition: 'all .2s',
+        background: announcement.is_read ? '#fff' : '#f0fdf440',
+        borderRadius: 14,
+        textAlign: 'left',
+      }}
+      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)' }}
+      onMouseOut={e => { e.currentTarget.style.transform = 'none' }}
+    >
+      {!announcement.is_read && (
+        <span style={{
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          padding: '2px 8px',
+          borderRadius: 999,
+          background: '#10b981',
+          color: '#fff',
+          fontSize: '.62rem',
+          fontWeight: 900,
+        }}>
+          YENİ
+        </span>
+      )}
+
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span style={{
+          padding: '2px 8px',
+          borderRadius: 999,
+          background: priority.bg,
+          color: priority.text,
+          fontSize: '.62rem',
+          fontWeight: 800,
+        }}>
+          {priority.label}
+        </span>
+        <span style={{ fontSize: '.68rem', color: '#64748b' }}>
+          Hedef: <strong>{announcement.target_type === 'all' ? 'Tüm Sistem' : announcement.target_type}</strong>
+        </span>
+      </div>
+
+      <div style={{ fontSize: '.88rem', fontWeight: 900, color: '#0f172a' }}>
+        {announcement.title}
+      </div>
+
+      <div style={{ fontSize: '.78rem', color: '#475569', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {announcement.content}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 4 }}>
+        <span style={{ fontSize: '.7rem', color: '#64748b' }}>
+          Yayınlayan: <strong>{creatorName}</strong>
+        </span>
+        <span style={{ fontSize: '.68rem', color: '#94a3b8' }}>
+          {dateStr}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function Tasks({ scope = 'center' }) {
   const toast = useToast()
   const navigate = useNavigate()
@@ -177,8 +264,8 @@ export default function Tasks({ scope = 'center' }) {
   const [positionRecords, setPositionRecords] = useState([])
   const [taskRows, setTaskRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('mine')
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [tab, setTab] = useState('mine') // 'mine', 'assigned_by_me', 'watching', 'announcements'
+  const [statusFilter, setStatusFilter] = useState('active') // 'active', 'completed', 'overdue', 'not_completed', 'pending_approval', 'deleted', 'all', 'unread'
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState(createInitialForm())
   const [selectedTask, setSelectedTask] = useState(null)
@@ -186,6 +273,26 @@ export default function Tasks({ scope = 'center' }) {
   const [closureOpen, setClosureOpen] = useState(false)
   const [sendBackOpen, setSendBackOpen] = useState(false)
   const [delegateOpen, setDelegateOpen] = useState(false)
+
+  // Announcements States
+  const [announcements, setAnnouncements] = useState([])
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false)
+  const [announcementCreateOpen, setAnnouncementCreateOpen] = useState(false)
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null)
+  const [readReceipts, setReadReceipts] = useState([])
+  const [receiptsLoading, setReceiptsLoading] = useState(false)
+  const [annForm, setAnnForm] = useState({
+    title: '',
+    content: '',
+    target_type: 'all',
+    target_id: '',
+    priority: 'normal',
+    request_read_receipt: false,
+  })
+
+  // Search & Sorting States
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortBy, setSortBy] = useState('due_soon')
 
   useEffect(() => {
     let mounted = true
@@ -197,7 +304,7 @@ export default function Tasks({ scope = 'center' }) {
       if (!activeUser?.id) {
         if (!mounted) return
         setActor(null)
-        setActorError('Aktif kullanici baglami bulunamadi. Once mevcut calisma baglamini secin.')
+        setActorError('Aktif kullanıcı bağlamı bulunamadı. Önce mevcut çalışma bağlamını seçin.')
         setPeopleOptions([])
         setPeopleById(new Map())
         setPositionRecords([])
@@ -233,7 +340,7 @@ export default function Tasks({ scope = 'center' }) {
 
         if (!nextActor?.id) {
           setActor(null)
-          setActorError('Aktif kullanici personel kaydiyla eslestirilemedi.')
+          setActorError('Aktif kullanıcı personel kaydıyla eşleştirilemedi.')
           setTaskRows([])
           return
         }
@@ -242,9 +349,9 @@ export default function Tasks({ scope = 'center' }) {
       } catch (error) {
         if (!mounted) return
         setActor(null)
-        setActorError(`Gorev baglami yuklenemedi: ${error.message}`)
+        setActorError(`Görev bağlamı yüklenemedi: ${error.message}`)
         setTaskRows([])
-        toast(`Gorev baglami yuklenemedi: ${error.message}`, 'error')
+        toast(`Görev bağlamı yüklenemedi: ${error.message}`, 'error')
       } finally {
         if (mounted) setLoading(false)
       }
@@ -256,23 +363,42 @@ export default function Tasks({ scope = 'center' }) {
     }
   }, [toast, workspace.branchId, workspace.pickerOpen])
 
-  async function refreshTasks() {
+  async function refreshAll() {
     if (!actor) return
     setLoading(true)
-    const result = await fetchTasks({
+
+    // Determine query filter compatibility
+    let apiStatusFilter = 'active'
+    if (statusFilter === 'completed') apiStatusFilter = 'completed'
+    if (statusFilter === 'deleted') apiStatusFilter = 'deleted'
+    if (statusFilter === 'all') apiStatusFilter = 'active'
+
+    const taskResult = await fetchTasks({
       actor,
       scope,
       scopeBranchId: scope === 'center' ? '' : (workspace.branchId || actor.branchId || ''),
-      tab,
-      statusFilter,
+      tab: tab === 'announcements' ? 'mine' : tab,
+      statusFilter: apiStatusFilter,
     })
-    if (result.error) toast(`Gorev listesi yuklenemedi: ${result.error.message}`, 'error')
-    else setTaskRows(result.data || [])
+    if (taskResult.error) {
+      toast(`Görev listesi yüklenemedi: ${taskResult.error.message}`, 'error')
+    } else {
+      setTaskRows(taskResult.data || [])
+    }
+
+    setAnnouncementsLoading(true)
+    const annResult = await fetchAnnouncements({ actor })
+    if (annResult.error) {
+      toast(`Duyurular yüklenemedi: ${annResult.error.message}`, 'error')
+    } else {
+      setAnnouncements(annResult.data || [])
+    }
+    setAnnouncementsLoading(false)
     setLoading(false)
   }
 
   useEffect(() => {
-    refreshTasks()
+    refreshAll()
   }, [actor, scope, workspace.branchId, tab, statusFilter])
 
   useEffect(() => {
@@ -298,23 +424,51 @@ export default function Tasks({ scope = 'center' }) {
   async function openTask(task) {
     setDetailLoading(true)
     const result = await fetchTaskDetail(task.id)
-    if (result.error) toast(`Gorev detayi yuklenemedi: ${result.error.message}`, 'error')
+    if (result.error) toast(`Görev detayı yüklenemedi: ${result.error.message}`, 'error')
     else setSelectedTask(result.data)
     setDetailLoading(false)
+  }
+
+  async function openAnnouncement(ann) {
+    setSelectedAnnouncement(ann)
+    if (!ann.is_read && actor?.id) {
+      await markAnnouncementAsRead(ann.id, actor.id)
+      // Instant state update for UX
+      setAnnouncements(prev => prev.map(a => a.id === ann.id ? { ...a, is_read: true } : a))
+    }
+
+    if (String(ann.created_by_personnel_id) === String(actor?.id)) {
+      setReceiptsLoading(true)
+      try {
+        const { data } = await db
+          .from('announcement_reads')
+          .select('personnel_id, read_at')
+          .eq('announcement_id', ann.id)
+        setReadReceipts(data || [])
+      } catch (err) {
+        console.error('Error fetching receipts:', err)
+      } finally {
+        setReceiptsLoading(false)
+      }
+    }
   }
 
   function setField(key, value) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
+  function setAnnField(key, value) {
+    setAnnForm(current => ({ ...current, [key]: value }))
+  }
+
   async function submitCreate() {
     if (!actor) {
-      toast('Once mevcut calisma baglamini secin.', 'error')
+      toast('Önce çalışma bağlamını seçin.', 'error')
       workspace.openWorkspacePicker()
       return
     }
     if (!form.title.trim() || !form.responsibleId || !form.locationId) {
-      toast('Gorev adi, sorumlu ve lokasyon zorunludur.', 'error')
+      toast('Görev adı, sorumlu ve lokasyon zorunludur.', 'error')
       return
     }
 
@@ -331,10 +485,10 @@ export default function Tasks({ scope = 'center' }) {
 
       const result = await createTask(form, actor, uploadedFiles)
       if (result.error) {
-        toast(`Gorev kaydedilemedi: ${result.error.message}`, 'error')
+        toast(`Görev kaydedilemedi: ${result.error.message}`, 'error')
         return
       }
-      toast('Gorev olusturuldu.', 'success')
+      toast('Görev oluşturuldu.', 'success')
       setCreateOpen(false)
       setForm(createInitialForm(actor.branchId || ''))
       const returnTo = searchParams.get('returnTo')
@@ -342,9 +496,41 @@ export default function Tasks({ scope = 'center' }) {
         navigate(returnTo)
         return
       }
-      await refreshTasks()
+      await refreshAll()
     } catch (error) {
-      toast(`Gorev kaydedilemedi: ${error.message}`, 'error')
+      toast(`Görev kaydedilemedi: ${error.message}`, 'error')
+    }
+  }
+
+  async function submitCreateAnnouncement() {
+    if (!actor) {
+      toast('Önce çalışma bağlamını seçin.', 'error')
+      return
+    }
+    if (!annForm.title.trim() || !annForm.content.trim()) {
+      toast('Başlık ve metin alanları zorunludur.', 'error')
+      return
+    }
+
+    try {
+      const result = await createAnnouncement(annForm, actor)
+      if (result.error) {
+        toast(`Duyuru yayınlanamadı: ${result.error.message}`, 'error')
+        return
+      }
+      toast('Duyuru başarıyla yayınlandı.', 'success')
+      setAnnouncementCreateOpen(false)
+      setAnnForm({
+        title: '',
+        content: '',
+        target_type: 'all',
+        target_id: '',
+        priority: 'normal',
+        request_read_receipt: false,
+      })
+      await refreshAll()
+    } catch (err) {
+      toast(`Duyuru yayınlanamadı: ${err.message}`, 'error')
     }
   }
 
@@ -354,7 +540,7 @@ export default function Tasks({ scope = 'center' }) {
       toast(result.error.message, 'error')
       return false
     }
-    await refreshTasks()
+    await refreshAll()
     if (selectedTask?.id) {
       const detail = await fetchTaskDetail(selectedTask.id)
       if (!detail.error) setSelectedTask(detail.data)
@@ -364,113 +550,400 @@ export default function Tasks({ scope = 'center' }) {
 
   const assignablePeople = useMemo(() => peopleOptions, [peopleOptions])
 
+  const legalEntityOptions = useMemo(() => {
+    const entities = [...new Set(branchOptions.map(b => b.description).filter(Boolean))]
+    return entities.map(le => ({ value: le, label: le }))
+  }, [branchOptions])
+
+  const positionOptions = useMemo(() => {
+    return positionRecords.map(pos => ({ value: String(pos.id), label: pos.name }))
+  }, [positionRecords])
+
+  // In-Memory Filtering and Sorting
+  const processedTasks = useMemo(() => {
+    let result = [...taskRows]
+
+    // Local sub-tab filter
+    if (statusFilter === 'active') {
+      result = result.filter(t => t.status === 'open' || t.status === 'in_progress')
+    } else if (statusFilter === 'overdue') {
+      result = result.filter(t => t.display_status === 'overdue' || (t.due_at && new Date(t.due_at) < new Date() && t.status !== 'completed'))
+    } else if (statusFilter === 'not_completed') {
+      result = result.filter(t => t.status === 'not_completed')
+    } else if (statusFilter === 'pending_approval') {
+      result = result.filter(t => t.status === 'pending_approval' || t.status === 'pending_completion_approval')
+    }
+
+    // Search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(task => (
+        task.title?.toLowerCase().includes(term) ||
+        task.description?.toLowerCase().includes(term)
+      ))
+    }
+
+    // Sorting
+    if (sortBy === 'due_soon') {
+      result.sort((a, b) => {
+        if (!a.due_at) return 1
+        if (!b.due_at) return -1
+        return new Date(a.due_at) - new Date(b.due_at)
+      })
+    } else if (sortBy === 'created_desc') {
+      result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    } else if (sortBy === 'priority_desc') {
+      const priorityWeights = { urgent: 4, high: 3, normal: 2, low: 1 }
+      result.sort((a, b) => (priorityWeights[b.priority] || 0) - (priorityWeights[a.priority] || 0))
+    }
+
+    return result
+  }, [taskRows, statusFilter, searchTerm, sortBy])
+
+  const processedAnnouncements = useMemo(() => {
+    let result = [...announcements]
+
+    // Sub-tab filter
+    if (statusFilter === 'unread') {
+      result = result.filter(ann => !ann.is_read)
+    }
+
+    // Search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(ann => (
+        ann.title?.toLowerCase().includes(term) ||
+        ann.content?.toLowerCase().includes(term)
+      ))
+    }
+
+    // Sort descending
+    result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+    return result
+  }, [announcements, statusFilter, searchTerm])
+
+  const subTabs = tab === 'announcements'
+    ? [
+        { value: 'all', label: 'Tümü' },
+        { value: 'unread', label: 'Okunmamışlar' }
+      ]
+    : [
+        { value: 'active', label: 'Devam Edenler' },
+        { value: 'completed', label: 'Tamamlananlar' },
+        { value: 'overdue', label: 'Gecikenler' },
+        { value: 'not_completed', label: 'Tamamlanmadı' },
+        { value: 'pending_approval', label: 'Onay Bekleyenler' },
+        { value: 'deleted', label: 'Silinmişler' },
+        { value: 'all', label: 'Tümü' }
+      ]
+
+  const getSubTabStyle = (isActive) => ({
+    padding: '6px 14px',
+    borderRadius: 8,
+    fontSize: '.76rem',
+    fontWeight: 700,
+    border: '1px solid',
+    borderColor: isActive ? '#0d9488' : '#e2e8f0',
+    background: isActive ? '#f0fdfa' : '#fff',
+    color: isActive ? '#0f766e' : '#475569',
+    cursor: 'pointer',
+    transition: 'all .15s ease',
+  })
+
   return (
     <>
-      <Header
-        title="Gorevler"
-        subtitle="DB-first gorev takip modulu. Liste, detay ve workflow akislari burada yonetilir."
-        actions={(
-          <>
-            <button type="button" className="btn-o" onClick={() => workspace.openWorkspacePicker()}>
-              <i className="fa-solid fa-layer-group" /> Calisma Baglami
-            </button>
-            <button type="button" className="btn-p" onClick={() => setCreateOpen(true)}>
-              <i className="fa-solid fa-plus" /> Yeni Gorev
-            </button>
-          </>
-        )}
-      />
+      {/* Custom Premium Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#fff',
+        padding: '16px 20px',
+        borderRadius: 16,
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 12px rgba(15,23,42,.02)',
+        marginBottom: 20
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: '#0f172a',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.1rem'
+          }}>
+            <i className="fa-solid fa-list-check" />
+          </div>
+          <div>
+            <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              {scope === 'center' ? 'Merkez Görevleri' : 'Şube Görevleri'}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>
+              Görevler
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => setAnnouncementCreateOpen(true)}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 12,
+              border: 'none',
+              background: '#f59e0b',
+              color: '#0f172a',
+              fontWeight: 900,
+              fontSize: '.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(245,158,11,.15)',
+              transition: 'all .2s'
+            }}
+          >
+            <span style={{ fontSize: '1.1rem', lineHeight: 0 }}>•</span> Yeni Duyuru
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 12,
+              border: 'none',
+              background: '#eab308',
+              color: '#0f172a',
+              fontWeight: 900,
+              fontSize: '.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(234,179,8,.15)',
+              transition: 'all .2s'
+            }}
+          >
+            <i className="fa-solid fa-plus" /> Yeni Görev
+          </button>
+        </div>
+      </div>
 
       {actor && (
         <div className="card" style={{ padding: 14, marginBottom: 16, borderColor: '#bfdbfe', background: '#eff6ff' }}>
           <div style={{ fontSize: '.84rem', fontWeight: 800, color: '#1d4ed8' }}>
-            Aktif kullanici: {[peopleById.get(String(actor.id))?.firstName, peopleById.get(String(actor.id))?.lastName].filter(Boolean).join(' ') || [actor.firstName, actor.lastName].filter(Boolean).join(' ') || actor.id}
+            Aktif kullanıcı: {[peopleById.get(String(actor.id))?.firstName, peopleById.get(String(actor.id))?.lastName].filter(Boolean).join(' ') || [actor.firstName, actor.lastName].filter(Boolean).join(' ') || actor.id}
           </div>
           <div style={{ marginTop: 4, fontSize: '.76rem', color: '#1e40af' }}>
-            Scope: {scope} · Sube: {branchOptions.find(option => option.value === actor.branchId)?.label || workspace.branchName || actor.branchId || '-'}
+            Kapsam: {scope} · Şube: {branchOptions.find(option => option.value === actor.branchId)?.label || workspace.branchName || actor.branchId || '-'}
           </div>
         </div>
       )}
 
       {!actor && actorError && (
         <div className="card" style={{ padding: 18, marginBottom: 16, borderColor: '#fdba74', background: '#fff7ed' }}>
-          <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#9a3412' }}>Gorev baglami hazir degil</div>
+          <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#9a3412' }}>Görev bağlamı hazır değil</div>
           <div style={{ marginTop: 6, fontSize: '.82rem', color: '#9a3412' }}>{actorError}</div>
           <div style={{ marginTop: 12 }}>
             <button type="button" className="btn-p" onClick={() => workspace.openWorkspacePicker()}>
-              Calisma Baglamini Ac
+              Çalışma Bağlamını Aç
             </button>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      {/* Row 1 Main Tabs */}
+      <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #e2e8f0', paddingBottom: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
-          { value: 'mine', label: 'Gorevlerim' },
-          { value: 'assigned_by_me', label: 'Verdigim Gorevler' },
-          { value: 'watching', label: 'Gozlemci Olduklarim' },
-        ].map(item => (
-          <button key={item.value} type="button" className={tab === item.value ? 'btn-p' : 'btn-o'} onClick={() => setTab(item.value)}>
-            {item.label}
-          </button>
-        ))}
+          { value: 'mine', label: 'Görevlerim', icon: 'fa-user-check' },
+          { value: 'assigned_by_me', label: 'Verdiğim Görevler', icon: 'fa-user-pen' },
+          { value: 'watching', label: 'Gözlemci Olduklarım', icon: 'fa-eye' },
+          { value: 'announcements', label: 'Duyurular', icon: 'fa-bullhorn' },
+        ].map(item => {
+          const isActive = tab === item.value
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => {
+                setTab(item.value)
+                if (item.value === 'announcements') {
+                  setStatusFilter('all')
+                } else {
+                  setStatusFilter('active')
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 20px',
+                borderRadius: 12,
+                border: '1px solid',
+                borderColor: isActive ? '#0d9488' : '#e2e8f0',
+                background: isActive ? '#f0fdfa' : '#fff',
+                color: isActive ? '#0f766e' : '#475569',
+                fontWeight: 800,
+                fontSize: '.84rem',
+                cursor: 'pointer',
+                boxShadow: isActive ? '0 4px 12px rgba(13,148,136,.1)' : 'none',
+                transition: 'all .2s'
+              }}
+            >
+              <i className={`fa-solid ${item.icon}`} />
+              {item.label}
+            </button>
+          )
+        })}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
-        {[
-          { value: 'active', label: 'Devam Edenler' },
-          { value: 'completed', label: 'Tamamlananlar' },
-          { value: 'deleted', label: 'Pasifler' },
-        ].map(item => (
-          <button key={item.value} type="button" className={statusFilter === item.value ? 'btn-p' : 'btn-o'} onClick={() => setStatusFilter(item.value)}>
-            {item.label}
-          </button>
-        ))}
+      {/* Row 2 Sub-Tabs, Search & Sort */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {subTabs.map(item => (
+            <button
+              key={item.value}
+              type="button"
+              style={getSubTabStyle(statusFilter === item.value)}
+              onClick={() => setStatusFilter(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+          
+          {tab !== 'announcements' && (
+            <button
+              type="button"
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                fontSize: '.76rem',
+                fontWeight: 700,
+                border: '1px solid #e2e8f0',
+                background: '#fff',
+                color: '#475569',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+              }}
+              onClick={() => toast('Gelişmiş filtreler yakında...', 'info')}
+            >
+              <i className="fa-solid fa-sliders" /> Gelişmiş Filtreler
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: 220 }}>
+            <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '.8rem' }} />
+            <input
+              type="text"
+              placeholder={tab === 'announcements' ? "Duyuru ara..." : "Görev, kişi veya..."}
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 30px',
+                borderRadius: 10,
+                border: '1px solid #e2e8f0',
+                fontSize: '.78rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          {tab !== 'announcements' && (
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 10,
+                border: '1px solid #e2e8f0',
+                fontSize: '.78rem',
+                background: '#fff',
+                color: '#0f172a',
+                fontWeight: 700,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="due_soon">Süresi en az kalan</option>
+              <option value="created_desc">Yeni eklenenler</option>
+              <option value="priority_desc">Önceliğe göre</option>
+            </select>
+          )}
+        </div>
       </div>
 
+      {/* Main Grid View */}
       {loading ? (
-        <div style={{ padding: 38, textAlign: 'center', color: '#94a3b8' }}>Yukleniyor...</div>
+        <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
+          <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} /> Yükleniyor...
+        </div>
+      ) : tab === 'announcements' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+          {processedAnnouncements.length === 0 ? (
+            <div className="card" style={{ padding: 32, gridColumn: '1 / -1', color: '#94a3b8', textAlign: 'center' }}>
+              Bu kapsamda henüz duyuru yok.
+            </div>
+          ) : processedAnnouncements.map(ann => (
+            <AnnouncementCard key={ann.id} announcement={ann} peopleById={peopleById} onOpen={openAnnouncement} />
+          ))}
+        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-          {taskRows.length === 0 ? (
-            <div className="card" style={{ padding: 24, color: '#94a3b8' }}>Bu filtrede gorev bulunamadi.</div>
-          ) : taskRows.map(task => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+          {processedTasks.length === 0 ? (
+            <div className="card" style={{ padding: 32, gridColumn: '1 / -1', color: '#94a3b8', textAlign: 'center' }}>
+              Bu kapsamda henüz görev bulunamadı.
+            </div>
+          ) : processedTasks.map(task => (
             <TaskCard key={task.id} task={task} peopleById={peopleById} onOpen={openTask} />
           ))}
         </div>
       )}
 
+      {/* Modal: Yeni Görev */}
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Yeni Gorev"
-        subtitle="Mevcut gorev formunun DB-first v1 karsiligi."
+        title="Yeni Görev"
+        subtitle="Sisteme yeni bir iş/görev tanımlayın."
         width={920}
         flex
         footer={(
           <>
-            <button type="button" className="btn-o" onClick={() => setCreateOpen(false)}>Vazgec</button>
-            <button type="button" className="btn-p" onClick={submitCreate} disabled={!actor}>Kaydet</button>
+            <button type="button" className="btn-o" onClick={() => setCreateOpen(false)}>Vazgeç</button>
+            <button type="button" className="btn-p" onClick={submitCreate} disabled={!actor} style={{ background: '#0284c7', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 800, cursor: 'pointer' }}>Kaydet</button>
           </>
         )}
       >
         <div style={{ display: 'grid', gap: 18 }}>
           <section className="card" style={{ padding: 16 }}>
-            <div style={{ fontSize: '.86rem', fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>Gorev Kimligi</div>
+            <div style={{ fontSize: '.86rem', fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>Görev Kimliği</div>
             {fieldGrid(
               <>
                 <div>
-                  <label className="f-label">Gorev Adi</label>
+                  <label className="f-label">Görev Adı</label>
                   <input className="f-input" value={form.title} onChange={event => setField('title', event.target.value)} />
                 </div>
                 <div>
-                  <label className="f-label">Oncelik</label>
+                  <label className="f-label">Öncelik</label>
                   <SearchableSelect value={form.priority} onChange={value => setField('priority', value)} options={PRIORITY_OPTIONS} allowClear={false} />
                 </div>
               </>,
             )}
             <div style={{ marginTop: 14 }}>
-              <label className="f-label">Aciklama</label>
+              <label className="f-label">Açıklama</label>
               <textarea className="f-input" rows={4} value={form.description} onChange={event => setField('description', event.target.value)} />
             </div>
           </section>
@@ -480,18 +953,18 @@ export default function Tasks({ scope = 'center' }) {
             {fieldGrid(
               <>
                 <div>
-                  <label className="f-label">Birincil Assignee</label>
-                  <SearchableSelect value={form.responsibleId} onChange={value => setField('responsibleId', value)} options={assignablePeople} placeholder="Personel secin..." searchPlaceholder="Personel ara..." />
+                  <label className="f-label">Birincil Sorumlu (Assignee)</label>
+                  <SearchableSelect value={form.responsibleId} onChange={value => setField('responsibleId', value)} options={assignablePeople} placeholder="Personel seçin..." searchPlaceholder="Personel ara..." />
                 </div>
                 <div>
-                  <label className="f-label">Lokasyon</label>
-                  <SearchableSelect value={form.locationId} onChange={value => setField('locationId', value)} options={branchOptions} placeholder="Sube secin..." searchPlaceholder="Sube ara..." />
+                  <label className="f-label">Lokasyon (Şube)</label>
+                  <SearchableSelect value={form.locationId} onChange={value => setField('locationId', value)} options={branchOptions} placeholder="Şube seçin..." searchPlaceholder="Şube ara..." />
                 </div>
               </>,
             )}
             <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-              <MultiPersonPicker label="Ek Assignee" values={form.collaboratorIds} options={assignablePeople} onChange={value => setField('collaboratorIds', value)} placeholder="Personel ekle..." />
-              <MultiPersonPicker label="Watcher" values={form.observerIds} options={assignablePeople} onChange={value => setField('observerIds', value)} placeholder="Watcher ekle..." />
+              <MultiPersonPicker label="Ek Sorumlular (Collaborator)" values={form.collaboratorIds} options={assignablePeople} onChange={value => setField('collaboratorIds', value)} placeholder="Personel ekle..." />
+              <MultiPersonPicker label="Gözlemciler (Watcher)" values={form.observerIds} options={assignablePeople} onChange={value => setField('observerIds', value)} placeholder="Watcher ekle..." />
             </div>
           </section>
 
@@ -500,7 +973,7 @@ export default function Tasks({ scope = 'center' }) {
             {fieldGrid(
               <>
                 <div>
-                  <label className="f-label">Baslangic Tarihi</label>
+                  <label className="f-label">Başlangıç Tarihi</label>
                   <input type="date" className="f-input" value={form.startDate} onChange={event => setField('startDate', event.target.value)} />
                 </div>
                 <div>
@@ -511,7 +984,7 @@ export default function Tasks({ scope = 'center' }) {
                   <label className="f-label">Tekrar</label>
                   <SearchableSelect value={form.recurrence} onChange={value => setField('recurrence', value)} options={RECURRENCE_OPTIONS} />
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 24 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 24, cursor: 'pointer' }}>
                   <input type="checkbox" checked={form.has_specific_time} onChange={event => setField('has_specific_time', event.target.checked)} />
                   <span style={{ fontSize: '.84rem', color: '#0f172a', fontWeight: 600 }}>Saat belirt</span>
                 </label>
@@ -560,16 +1033,16 @@ export default function Tasks({ scope = 'center' }) {
             <div style={{ fontSize: '.86rem', fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>Kurallar</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               {[
-                ['delegation_allowed', 'Delege Etmeye Izin Ver'],
-                ['approval_required', 'Kapanis Onayi Gerekli'],
-                ['closure_summary_required', 'Kapanis Ozeti Zorunlu'],
-                ['closure_file_required', 'Kapanis Dosyasi Zorunlu'],
-                ['closure_image_required', 'Kapanis Fotograf Zorunlu'],
-                ['edit_due_date_allowed', 'Atanan Vade Degistirebilir'],
-                ['edit_schedule_allowed', 'Atanan Takvim Degistirebilir'],
-                ['incomplete_if_late', 'Suresinde Bitmezse Tamamlanmadi'],
+                ['delegation_allowed', 'Delege Etmeye İzin Ver'],
+                ['approval_required', 'Kapanış Onayı Gerekli'],
+                ['closure_summary_required', 'Kapanış Özeti Zorunlu'],
+                ['closure_file_required', 'Kapanış Dosyası Zorunlu'],
+                ['closure_image_required', 'Kapanış Fotoğrafı Zorunlu'],
+                ['edit_due_date_allowed', 'Atanan Vade Değiştirebilir'],
+                ['edit_schedule_allowed', 'Atanan Takvim Değiştirebilir'],
+                ['incomplete_if_late', 'Süresinde Bitmezse Tamamlanmadı'],
               ].map(([key, label]) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!form[key]} onChange={event => setField(key, event.target.checked)} />
                   <span style={{ fontSize: '.84rem', color: '#0f172a', fontWeight: 600 }}>{label}</span>
                 </label>
@@ -579,6 +1052,197 @@ export default function Tasks({ scope = 'center' }) {
         </div>
       </Modal>
 
+      {/* Modal: Publish Announcement */}
+      <Modal
+        open={announcementCreateOpen}
+        onClose={() => setAnnouncementCreateOpen(false)}
+        title="Duyuru Yayınla"
+        subtitle="Sisteme yeni bir duyuru/ilan yayınlayın."
+        width={560}
+        footer={(
+          <>
+            <button type="button" className="btn-o" onClick={() => setAnnouncementCreateOpen(false)}>Vazgeç</button>
+            <button
+              type="button"
+              onClick={submitCreateAnnouncement}
+              disabled={!actor}
+              style={{
+                padding: '10px 20px',
+                borderRadius: 10,
+                border: 'none',
+                background: '#f59e0b',
+                color: '#fff',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              Duyuruyu yayınla
+            </button>
+          </>
+        )}
+      >
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div>
+            <label className="f-label">Başlık</label>
+            <input
+              type="text"
+              className="f-input"
+              value={annForm.title}
+              onChange={e => setAnnField('title', e.target.value)}
+              placeholder="Kısa duyuru başlığı"
+            />
+          </div>
+          <div>
+            <label className="f-label">Metin</label>
+            <textarea
+              className="f-input"
+              rows={5}
+              value={annForm.content}
+              onChange={e => setAnnField('content', e.target.value)}
+              placeholder="Duyuru içeriği"
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label className="f-label">Hedef ön tanımı</label>
+              <select
+                className="f-input"
+                value={annForm.target_type}
+                onChange={e => setAnnField('target_type', e.target.value)}
+                style={{ height: 38 }}
+              >
+                <option value="all">Tüm Sistem</option>
+                <option value="legal_entity">Tüzel Kişilik</option>
+                <option value="branch">Şube</option>
+                <option value="position">Pozisyon</option>
+                <option value="personal">Kişisel</option>
+              </select>
+            </div>
+            <div>
+              <label className="f-label">Öncelik</label>
+              <select
+                className="f-input"
+                value={annForm.priority}
+                onChange={e => setAnnField('priority', e.target.value)}
+                style={{ height: 38 }}
+              >
+                <option value="normal">Normal</option>
+                <option value="high">Yüksek</option>
+                <option value="low">Düşük</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Dynamic Target Selection */}
+          {annForm.target_type === 'legal_entity' && (
+            <div>
+              <label className="f-label">Tüzel Kişilik Seçin</label>
+              <SearchableSelect
+                value={annForm.target_id}
+                onChange={value => setAnnField('target_id', value)}
+                options={legalEntityOptions}
+                placeholder="Tüzel Kişilik ara/seç..."
+              />
+            </div>
+          )}
+
+          {annForm.target_type === 'branch' && (
+            <div>
+              <label className="f-label">Şube Seçin</label>
+              <SearchableSelect
+                value={annForm.target_id}
+                onChange={value => setAnnField('target_id', value)}
+                options={branchOptions}
+                placeholder="Şube ara/seç..."
+              />
+            </div>
+          )}
+
+          {annForm.target_type === 'position' && (
+            <div>
+              <label className="f-label">Pozisyon Seçin</label>
+              <SearchableSelect
+                value={annForm.target_id}
+                onChange={value => setAnnField('target_id', value)}
+                options={positionOptions}
+                placeholder="Pozisyon ara/seç..."
+              />
+            </div>
+          )}
+
+          {annForm.target_type === 'personal' && (
+            <div>
+              <label className="f-label">Personel Seçin</label>
+              <SearchableSelect
+                value={annForm.target_id}
+                onChange={value => setAnnField('target_id', value)}
+                options={assignablePeople}
+                placeholder="Personel ara/seç..."
+              />
+            </div>
+          )}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={annForm.request_read_receipt}
+              onChange={e => setAnnField('request_read_receipt', e.target.checked)}
+            />
+            <span style={{ fontSize: '.84rem', color: '#0f172a', fontWeight: 600 }}>Okundu bilgisi iste ve raporla</span>
+          </label>
+        </div>
+      </Modal>
+
+      {/* Modal: Announcement Details & Read Receipts */}
+      <Modal
+        open={!!selectedAnnouncement}
+        onClose={() => setSelectedAnnouncement(null)}
+        title={selectedAnnouncement?.title || 'Duyuru Detayı'}
+        subtitle="Yayınlanan duyuru içeriği ve okundu takibi."
+        width={560}
+      >
+        {selectedAnnouncement && (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ fontSize: '.9rem', color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              {selectedAnnouncement.content}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#64748b' }}>
+              <span>Öncelik: <strong>{selectedAnnouncement.priority === 'high' ? 'Yüksek' : selectedAnnouncement.priority === 'low' ? 'Düşük' : 'Normal'}</strong></span>
+              <span>Yayın Tarihi: <strong>{new Date(selectedAnnouncement.created_at).toLocaleDateString('tr-TR')}</strong></span>
+            </div>
+
+            {/* Read Receipt list for creator */}
+            {selectedAnnouncement.request_read_receipt && String(selectedAnnouncement.created_by_personnel_id) === String(actor?.id) && (
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, marginTop: 6 }}>
+                <div style={{ fontSize: '.84rem', fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>
+                  Okundu Raporu ({readReceipts.length} Kişi Okudu)
+                </div>
+                {receiptsLoading ? (
+                  <div style={{ fontSize: '.76rem', color: '#94a3b8' }}>Rapor yükleniyor...</div>
+                ) : readReceipts.length === 0 ? (
+                  <div style={{ fontSize: '.76rem', color: '#94a3b8' }}>Henüz okundu bilgisi yok.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 150, overflowY: 'auto', background: '#f8fafc', padding: 10, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                    {readReceipts.map(rec => {
+                      const person = peopleById.get(String(rec.personnel_id))
+                      const name = person ? `${person.firstName} ${person.lastName}` : rec.personnel_id
+                      return (
+                        <div key={rec.personnel_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: '#475569' }}>
+                          <span>{name}</span>
+                          <span style={{ color: '#94a3b8' }}>{new Date(rec.read_at).toLocaleString('tr-TR')}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Task Drawer & Workflows */}
       <TaskDrawer
         open={!!selectedTask}
         task={selectedTask}
@@ -587,12 +1251,12 @@ export default function Tasks({ scope = 'center' }) {
         onStart={() => runTaskAction(() => acceptTask(selectedTask.id, actor.id))}
         onAccept={approvalId => runTaskAction(() => acceptAssignment(selectedTask.id, approvalId, actor.id))}
         onReject={approvalId => {
-          const reason = window.prompt('Geri gonderme gerekcesi')
+          const reason = window.prompt('Geri gönderme gerekçesi')
           if (!reason) return
           return runTaskAction(() => rejectAssignment(selectedTask.id, approvalId, actor.id, reason))
         }}
         onSoftDelete={() => {
-          if (!window.confirm('Gorev pasife alinsin mi?')) return
+          if (!window.confirm('Görev pasife alınsın mi?')) return
           return runTaskAction(() => softDeleteTask(selectedTask.id, actor.id))
         }}
         onRestore={() => runTaskAction(() => restoreTask(selectedTask.id, actor.id))}
@@ -601,7 +1265,7 @@ export default function Tasks({ scope = 'center' }) {
         onOpenDelegate={() => setDelegateOpen(true)}
         onApproveCompletion={approvalId => runTaskAction(() => approveCompletion(approvalId, actor.id))}
         onRejectCompletion={approvalId => {
-          const reason = window.prompt('Kapanis iade gerekcesi')
+          const reason = window.prompt('Kapanış iade gerekçesi')
           if (!reason) return
           return runTaskAction(() => rejectCompletion(approvalId, actor.id, reason))
         }}
@@ -648,7 +1312,7 @@ export default function Tasks({ scope = 'center' }) {
         onSubmit={async personnelId => {
           const person = peopleById.get(String(personnelId))
           if (!person) {
-            toast('Personel bulunamadi.', 'error')
+            toast('Personel bulunamadı.', 'error')
             return
           }
           const success = await runTaskAction(() => delegateTask(selectedTask.id, actor.id, person, {
@@ -659,7 +1323,7 @@ export default function Tasks({ scope = 'center' }) {
         }}
       />
 
-      {detailLoading && <div style={{ position: 'fixed', right: 20, bottom: 20, background: '#0f172a', color: '#fff', padding: '10px 14px', borderRadius: 12 }}>Detay yukleniyor...</div>}
+      {detailLoading && <div style={{ position: 'fixed', right: 20, bottom: 20, background: '#0f172a', color: '#fff', padding: '10px 14px', borderRadius: 12 }}>Detay yükleniyor...</div>}
     </>
   )
 }
