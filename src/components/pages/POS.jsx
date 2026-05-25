@@ -2973,6 +2973,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
   // Sipariş öncesi müşteri tanımlama (POS ana ekranı)
   const [preOrderLinkedCustomer, setPreOrderLinkedCustomer] = useState(null)
   const [showPreOrderCustomerLink, setShowPreOrderCustomerLink] = useState(false)
+  const [manualCouponCode, setManualCouponCode] = useState('')
 
   // Toast helper
   function showToast(msg, color='#10b981') {
@@ -3418,56 +3419,63 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     setSelectedBranchId(current => (current === workspaceBranchId ? current : workspaceBranchId))
   }, [branchLocked, workspaceBranchId])
 
-  useEffect(() => {
-    let cancelled = false
-    let refreshTimer = null
+  const loadLoyaltyCampaigns = useCallback(async ({ background = false, preferFresh = false } = {}) => {
+    if (!background) setLoyaltyCampaignLoading(true)
+    try {
+      const snapshot = await loadCachedRuntimeLoyaltyCampaignCatalog({
+        branchId: selectedBranchContext?.branchId || '',
+        branchName: selectedBranchContext?.branchName || '',
+        preferFresh,
+      })
+      setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
+      setSaleTemplates(snapshot?.saleTemplates || [])
+      const schemaIssueText = (snapshot?.issues || []).filter(Boolean).join(' | ')
 
-    async function loadLoyaltyCampaigns({ background = false, preferFresh = false } = {}) {
-      if (!background) setLoyaltyCampaignLoading(true)
-      try {
-        const snapshot = await loadCachedRuntimeLoyaltyCampaignCatalog({
-          branchId: selectedBranchContext?.branchId || '',
-          branchName: selectedBranchContext?.branchName || '',
-          preferFresh,
-        })
-        if (cancelled) return
-
-        setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
-        setSaleTemplates(snapshot?.saleTemplates || [])
-        const schemaIssueText = (snapshot?.issues || []).filter(Boolean).join(' | ')
-
-        if (snapshot?.stale) {
-          setLoyaltyCampaignError(schemaIssueText || 'Canli loyalty baglantisi gecici olarak kullanilamadi. Son senkron kampanya listesi gosteriliyor.')
-          return
-        }
-
-        if (snapshot?.databaseUnavailable) {
-          setLoyaltyCampaignError('Loyalty veri kaynagina su anda ulasilamiyor.')
-          return
-        }
-
-        if (snapshot?.schemaReady === false) {
-          setLoyaltyCampaignError(schemaIssueText || 'Loyalty tablolarinin yapisi henuz hazir degil.')
-          return
-        }
-
-        setLoyaltyCampaignError('')
-      } catch (error) {
-        if (cancelled) return
-        setLoyaltyCampaignCatalog([])
-        setSaleTemplates([])
-        setLoyaltyCampaignError(error?.message || 'Loyalty kampanyalari yuklenemedi.')
-      } finally {
-        if (!background && !cancelled) setLoyaltyCampaignLoading(false)
+      if (snapshot?.stale) {
+        setLoyaltyCampaignError(schemaIssueText || 'Canli loyalty baglantisi gecici olarak kullanilamadi. Son senkron kampanya listesi gosteriliyor.')
+        return
       }
-    }
 
-    loadLoyaltyCampaigns()
+      if (snapshot?.databaseUnavailable) {
+        setLoyaltyCampaignError('Loyalty veri kaynagina su anda ulasilamiyor.')
+        return
+      }
 
-    return () => {
-      cancelled = true
+      if (snapshot?.schemaReady === false) {
+        setLoyaltyCampaignError(schemaIssueText || 'Loyalty tablolarinin yapisi henuz hazir degil.')
+        return
+      }
+
+      setLoyaltyCampaignError('')
+    } catch (error) {
+      setLoyaltyCampaignCatalog([])
+      setSaleTemplates([])
+      setLoyaltyCampaignError(error?.message || 'Loyalty kampanyalari yuklenemedi.')
+    } finally {
+      if (!background) setLoyaltyCampaignLoading(false)
     }
   }, [selectedBranchContext?.branchId, selectedBranchContext?.branchName])
+
+  useEffect(() => {
+    loadLoyaltyCampaigns({ background: false, preferFresh: false })
+  }, [loadLoyaltyCampaigns])
+
+  useEffect(() => {
+    // 30 dakikada bir otomatik güncelleme (Production modu için)
+    // Test aşamasında otomatik güncelleme istenmediği için pasif bırakılmıştır.
+    const AUTO_REFRESH_ENABLED = false;
+    let refreshTimer = null;
+    
+    if (AUTO_REFRESH_ENABLED) {
+      refreshTimer = setInterval(() => {
+        loadLoyaltyCampaigns({ background: true, preferFresh: true })
+      }, 30 * 60 * 1000)
+    }
+
+    return () => {
+      if (refreshTimer) clearInterval(refreshTimer)
+    }
+  }, [loadLoyaltyCampaigns])
 
   const effectiveFavoriteIds = useMemo(() => {
     const ids = new Set(favoriteProductIds.map(value => String(value)))
@@ -3975,7 +3983,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
       customerContext,
       selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
       manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
-      selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
+      selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || manualCouponCode || '',
       cartLines: activeCart,
       saleTemplates,
     })
@@ -3988,7 +3996,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           customerContext,
           selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
           manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
-          selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
+          selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || manualCouponCode || '',
           programId: selectedLoyaltyProgramId,
           cartLines: activeCart,
           saleTemplates,
@@ -4014,6 +4022,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     selectedLoyaltyProgramId,
     activeCart,
     saleTemplates,
+    manualCouponCode,
   ])
 
   useEffect(() => {
@@ -4514,7 +4523,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
         saleLines: persistedSalesLines,
         customer,
         loyaltyCampaign: saleLoyaltySnapshot,
-        selectedCouponCode: customer?.selectedCouponCode || '',
+        selectedCouponCode: customer?.selectedCouponCode || manualCouponCode || '',
         sourceChannel: isMasaMode ? 'masa' : 'pos',
       })
     }
@@ -5043,7 +5052,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
                   style={{minHeight:32,padding:'0 9px',borderRadius:8,border:'1px solid rgba(34,197,94,.3)',background:'rgba(34,197,94,.1)',color:'#86efac',fontWeight:800,fontSize:'.7rem',cursor:'pointer'}}>
                   Değiştir
                 </button>
-                <button type="button" onClick={() => setPreOrderLinkedCustomer(null)}
+                <button type="button" onClick={() => { setPreOrderLinkedCustomer(null); setManualCouponCode(''); }}
                   style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',color:'#94a3b8',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.74rem'}}>
                   <i className="fa-solid fa-times" />
                 </button>
@@ -5061,6 +5070,73 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
               {'Müşteri Tanı (Kampanya)'}
             </button>
           )}
+
+          {/* Kupon Kodu Giriş Bandı */}
+          <div style={{
+            marginBottom: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            width: '100%'
+          }}>
+            <div style={{
+              flex: 1,
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <i className="fa-solid fa-ticket" style={{
+                position: 'absolute',
+                left: 12,
+                color: manualCouponCode ? '#fbbf24' : 'rgba(255,255,255,.3)',
+                fontSize: '.85rem'
+              }} />
+              <input
+                type="text"
+                placeholder="Kupon Kodu Girin"
+                value={manualCouponCode}
+                onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
+                style={{
+                  width: '100%',
+                  minHeight: 38,
+                  padding: '0 12px 0 32px',
+                  borderRadius: 11,
+                  border: '1px solid rgba(255,255,255,.08)',
+                  background: 'rgba(255,255,255,.04)',
+                  color: '#f8fafc',
+                  fontSize: '.78rem',
+                  fontWeight: 700,
+                  outline: 'none',
+                  transition: 'all 0.15s ease',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'rgba(251,191,36,.4)';
+                  e.target.style.background = 'rgba(255,255,255,.07)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = 'rgba(255,255,255,.08)';
+                  e.target.style.background = 'rgba(255,255,255,.04)';
+                }}
+              />
+              {manualCouponCode && (
+                <button
+                  type="button"
+                  onClick={() => setManualCouponCode('')}
+                  style={{
+                    position: 'absolute',
+                    right: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(255,255,255,.4)',
+                    cursor: 'pointer',
+                    fontSize: '.74rem'
+                  }}
+                >
+                  <i className="fa-solid fa-times" />
+                </button>
+              )}
+            </div>
+          </div>
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:14}}>
             <span style={{color:'#a5b4fc',fontWeight:700,fontSize:'.8rem',
@@ -5453,9 +5529,44 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
                     {runtimeLoyaltyChannelLabel} kanalinda gecerli kampanyalar. Mevcut sepet toplami {fmt(cartTotal)}{UI_TEXT.tlSuffix}.
                   </div>
                 </div>
-                <div style={{ textAlign:'right', minWidth:120 }}>
-                  <div style={{ color:'#7dd3fc', fontWeight:900, fontSize:'1.3rem' }}>{visibleLoyaltyCampaigns.length}</div>
-                  <div style={{ color:'#94a3b8', fontSize:'.74rem', textTransform:'uppercase', letterSpacing:'.08em' }}>Aktif Kayit</div>
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8, minWidth:120 }}>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ color:'#7dd3fc', fontWeight:900, fontSize:'1.3rem' }}>{visibleLoyaltyCampaigns.length}</div>
+                    <div style={{ color:'#94a3b8', fontSize:'.74rem', textTransform:'uppercase', letterSpacing:'.08em' }}>Aktif Kayit</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => loadLoyaltyCampaigns({ background: false, preferFresh: true })}
+                    disabled={loyaltyCampaignLoading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(56,189,248,.3)',
+                      background: 'rgba(56,189,248,.1)',
+                      color: '#7dd3fc',
+                      fontSize: '0.74rem',
+                      fontWeight: '800',
+                      cursor: loyaltyCampaignLoading ? 'default' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      outline: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (loyaltyCampaignLoading) return;
+                      e.currentTarget.style.background = 'rgba(56,189,248,.2)';
+                      e.currentTarget.style.borderColor = '#38bdf8';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(56,189,248,.1)';
+                      e.currentTarget.style.borderColor = 'rgba(56,189,248,.3)';
+                    }}
+                  >
+                    <i className={`fa-solid fa-rotate${loyaltyCampaignLoading ? ' fa-spin' : ''}`} />
+                    {loyaltyCampaignLoading ? 'Guncelleniyor...' : 'Guncelle'}
+                  </button>
                 </div>
               </div>
 

@@ -2300,7 +2300,7 @@ export default function KioskBig() {
         .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr')))
       setChannel(chanRes.data || null)
       setTaxes(taxRes.data || [])
-      loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: true })
+      loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: false })
         .then(snapshot => setLoyaltyCampaignCatalog(snapshot?.campaigns || []))
         .catch(() => {})
       setError('')
@@ -2360,7 +2360,7 @@ export default function KioskBig() {
     if (!branchId && !branchName) return
     let cancelled = false
 
-    loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: true })
+    loadCachedRuntimeLoyaltyCampaignCatalog({ branchId, branchName, preferFresh: false })
       .then(snapshot => {
         if (!cancelled) setLoyaltyCampaignCatalog(snapshot?.campaigns || [])
       })
@@ -2369,7 +2369,7 @@ export default function KioskBig() {
     return () => {
       cancelled = true
     }
-  }, [branchId, branchName, loyaltyCustomer?.customerId, loyaltyCustomer?.selectedCampaignId])
+  }, [branchId, branchName])
 
   useEffect(() => {
     if (screen !== 'idle') return
@@ -2675,7 +2675,7 @@ export default function KioskBig() {
   }, [loyaltyCampaignCatalog, loyaltyEvaluation.visibleCampaigns, selectedCampaignCompatibilityEvaluation.visibleCampaigns, selectedLoyaltyCampaignId])
   useEffect(() => {
     let ignore = false
-    if (!loyaltyCustomer || !loyaltyCampaignCatalog.length || cartSubtotal <= 0) {
+    if (!loyaltyCampaignCatalog.length || cartSubtotal <= 0) {
       setLoyaltyEvaluation({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
       setSelectedCampaignCompatibilityEvaluation({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null })
       return
@@ -2687,7 +2687,7 @@ export default function KioskBig() {
       customerContext: loyaltyCustomerContext,
       selectedCampaignId: selectedLoyaltyCampaignId,
       manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
-      selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
+      selectedCouponCode: loyaltyCustomer?.selectedCouponCode || couponCode || '',
     })
     const syncCompat = selectedLoyaltyCampaignId
       ? evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
@@ -2696,7 +2696,7 @@ export default function KioskBig() {
         customerContext: loyaltyCustomerContext,
         selectedCampaignId: selectedLoyaltyCampaignId,
         manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
-        selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
+        selectedCouponCode: loyaltyCustomer?.selectedCouponCode || couponCode || '',
       })
       : { visibleCampaigns: [], applicableOffers: [], walletReadiness: null }
 
@@ -2710,7 +2710,7 @@ export default function KioskBig() {
             selectedCampaignId: selectedLoyaltyCampaignId,
             programId: selectedLoyaltyProgramId,
             manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
-            selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
+            selectedCouponCode: loyaltyCustomer?.selectedCouponCode || couponCode || '',
           }),
           selectedLoyaltyCampaignId
             ? evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
@@ -2720,7 +2720,7 @@ export default function KioskBig() {
               selectedCampaignId: selectedLoyaltyCampaignId,
               programId: selectedLoyaltyProgramId,
               manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
-              selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
+              selectedCouponCode: loyaltyCustomer?.selectedCouponCode || couponCode || '',
             })
             : Promise.resolve({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null }),
         ])
@@ -2735,7 +2735,7 @@ export default function KioskBig() {
     })()
 
     return () => { ignore = true }
-  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId, selectedLoyaltyProgramId])
+  }, [loyaltyCustomer, loyaltyCampaignCatalog, cartSubtotal, loyaltyCustomerContext, selectedLoyaltyCampaignId, selectedLoyaltyProgramId, couponCode])
   const selectedLoyaltyOffer = useMemo(() => {
     const selectedId = selectedLoyaltyCampaignId
     if (!selectedId) return null
@@ -3154,20 +3154,60 @@ export default function KioskBig() {
     }
   }
 
-  function applyCouponDraft() {
+  async function applyCouponDraft() {
     const code = couponInputDraft.trim().toUpperCase()
-    const result = evaluateCoupon(code, settings, loyaltyAdjustedSubtotal)
-    if (!result) {
-      setCouponMessage('Bu kupon bulunamadi.')
+    if (!code) return
+
+    // 1. Önce yerel statik kuponları kontrol et
+    const localResult = evaluateCoupon(code, settings, loyaltyAdjustedSubtotal)
+    if (localResult) {
+      if (localResult.error) {
+        setCouponMessage(localResult.error)
+        return
+      }
+      setCouponCode(code)
+      setCouponMessage(`${localResult.coupon.label || code} kuponu uygulandi.`)
+      setScreen('cart_review')
       return
     }
-    if (result.error) {
-      setCouponMessage(result.error)
-      return
+
+    // 2. Yerelde yoksa sadakat veritabanından dinamik kuponu sorgula
+    try {
+      setCouponMessage('Kupon kontrol ediliyor...')
+      const res = await db.from('loyalty_coupons')
+        .select('id,code,series_id,is_used,active,redemption_status,expires_at')
+        .eq('code', code)
+        .maybeSingle()
+
+      if (!res?.data) {
+        setCouponMessage('Bu kupon bulunamadi.')
+        return
+      }
+
+      const coupon = res.data
+      if (coupon.active === false) {
+        setCouponMessage('Bu kupon pasif durumdadir.')
+        return
+      }
+
+      const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
+      if (coupon.is_used || isUsedStatus) {
+        setCouponMessage('Bu kupon daha once kullanilmistir.')
+        return
+      }
+
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        setCouponMessage('Bu kuponun kullanim suresi dolmustur.')
+        return
+      }
+
+      setCouponCode(code)
+      setCouponMessage(`Sadakat kuponu (${code}) uygulandi.`)
+      setScreen('cart_review')
+    } catch (err) {
+      setCouponMessage('Kupon sorgulanamadi, lutfen tekrar deneyin.')
+      console.error(err)
     }
-    setCouponCode(code)
-    setCouponMessage(`${result.coupon.label || code} kuponu uygulandi.`)
-    setScreen('cart_review')
   }
 
   function clearCategorySyncIntent() {

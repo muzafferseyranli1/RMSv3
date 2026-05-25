@@ -2969,6 +2969,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
   // Sipariş öncesi müşteri tanımlama (Garson ana ekranı)
   const [preOrderLinkedCustomer, setPreOrderLinkedCustomer] = useState(null)
   const [showPreOrderCustomerLink, setShowPreOrderCustomerLink] = useState(false)
+  const [manualCouponCode, setManualCouponCode] = useState('')
 
   // Toast helper
   function showToast(msg, color='#10b981') {
@@ -3912,7 +3913,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
       customerContext,
       selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
       manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
-      selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
+      selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || manualCouponCode || '',
       cartLines: cart,
       saleTemplates,
     })
@@ -3925,7 +3926,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
           customerContext,
           selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
           manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
-          selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
+          selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || manualCouponCode || '',
           programId: selectedLoyaltyProgramId,
           cartLines: cart,
           saleTemplates,
@@ -3951,6 +3952,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
     selectedLoyaltyProgramId,
     cart,
     saleTemplates,
+    manualCouponCode,
   ])
 
   useEffect(() => {
@@ -4434,7 +4436,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
         saleLines: persistedSalesLines,
         customer,
         loyaltyCampaign: saleLoyaltySnapshot,
-        selectedCouponCode: customer?.selectedCouponCode || '',
+        selectedCouponCode: customer?.selectedCouponCode || manualCouponCode || '',
         sourceChannel: 'masa',
       })
     }
@@ -4925,7 +4927,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
                   style={{minHeight:32,padding:'0 9px',borderRadius:8,border:'1px solid rgba(34,197,94,.3)',background:'rgba(34,197,94,.1)',color:'#86efac',fontWeight:800,fontSize:'.7rem',cursor:'pointer'}}>
                   Değiştir
                 </button>
-                <button type="button" onClick={() => setPreOrderLinkedCustomer(null)}
+                <button type="button" onClick={() => { setPreOrderLinkedCustomer(null); setManualCouponCode(''); }}
                   style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,.1)',background:'rgba(255,255,255,.05)',color:'#94a3b8',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.74rem'}}>
                   <i className="fa-solid fa-times" />
                 </button>
@@ -4943,6 +4945,73 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
               {'Müşteri Tanı (Kampanya)'}
             </button>
           )}
+
+          {/* Kupon Kodu Giriş Bandı */}
+          <div style={{
+            marginBottom: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            width: '100%'
+          }}>
+            <div style={{
+              flex: 1,
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <i className="fa-solid fa-ticket" style={{
+                position: 'absolute',
+                left: 12,
+                color: manualCouponCode ? '#fbbf24' : 'rgba(255,255,255,.3)',
+                fontSize: '.85rem'
+              }} />
+              <input
+                type="text"
+                placeholder="Kupon Kodu Girin"
+                value={manualCouponCode}
+                onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
+                style={{
+                  width: '100%',
+                  minHeight: 38,
+                  padding: '0 12px 0 32px',
+                  borderRadius: 11,
+                  border: '1px solid rgba(255,255,255,.08)',
+                  background: 'rgba(255,255,255,.04)',
+                  color: '#f8fafc',
+                  fontSize: '.78rem',
+                  fontWeight: 700,
+                  outline: 'none',
+                  transition: 'all 0.15s ease',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'rgba(251,191,36,.4)';
+                  e.target.style.background = 'rgba(255,255,255,.07)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = 'rgba(255,255,255,.08)';
+                  e.target.style.background = 'rgba(255,255,255,.04)';
+                }}
+              />
+              {manualCouponCode && (
+                <button
+                  type="button"
+                  onClick={() => setManualCouponCode('')}
+                  style={{
+                    position: 'absolute',
+                    right: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(255,255,255,.4)',
+                    cursor: 'pointer',
+                    fontSize: '.74rem'
+                  }}
+                >
+                  <i className="fa-solid fa-times" />
+                </button>
+              )}
+            </div>
+          </div>
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:14}}>
             <span style={{color:'#a5b4fc',fontWeight:700,fontSize:'.8rem',
