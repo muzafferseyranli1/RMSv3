@@ -7,7 +7,7 @@ Status: `active — tüm agent'lar için bağlayıcı`
 
 ## 1. Proje Konumu
 
-- Lokal dizin: `C:\RMSggl\Dropbox\RMSv3`
+- Lokal dizin: `C:\RMSv3`
 - Lokal dev: `npm.cmd run dev`
 - Lokal build: `npm.cmd run build`
 

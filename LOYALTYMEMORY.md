@@ -1990,7 +1990,7 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Files Changed`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Current Capability`:
-  - `getCampaignApplicationModeHint` fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlanarak hata giderildi.
+  - `getCampaignApplicationModeHint` fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlanarak hata giderildi.
 - `Next Loyalty Step`:
   - Kampanyayı gör butonunun artık sorunsuzca detay sayfasını yüklediğini arayüzde doğrulayın.
 
@@ -2004,7 +2004,7 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Files Changed`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Current Capability`:
-  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde `renderViewMode` ve `renderEditMode` görünüm sıralaması güncellendi; Kampanya Kimliği kartı (isim, kod, açıklama, görsel, özet tanım) en sona alındı.
+  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde `renderViewMode` ve `renderEditMode` görünüm sıralaması güncellendi; Kampanya Kimliği kartı (isim, kod, açıklama, görsel, özet tanım) en sona alındı.
 - `Next Loyalty Step`:
   - Gör ve düzenle sayfalarını açıp kartların sırasının (Hedef -> Kapsam -> Kurallar -> Operasyon -> Kimlik) doğru şekilde yüklendiğini arayüzde doğrulayın.
 

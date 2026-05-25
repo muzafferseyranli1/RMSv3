@@ -78,7 +78,7 @@ teyit edecegini ve nereden devam edecegini tek tek yazmalidir.
 
 ### 4.1 Kanonik Uretim Gercegi
 
-- Proje kok dizini: `C:\RMSggl\Dropbox\RMSv3`
+- Proje kok dizini: `C:\RMSv3`
 - Tek uretim ortami: Railway
 - Tek uretim veritabani: Railway Postgres
 - Frontend DB erisim sozlulesmesi: `src/lib/db.js`
@@ -1906,7 +1906,7 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `railway domain` in project root and `server/`
   - `railway logs --lines 80`
   - `railway variables`
-  - `railway up` from `C:\RMSggl\Dropbox\RMSv3\server`
+  - `railway up` from `C:\RMSv3\server`
   - `Invoke-RestMethod https://rms-api-production-219d.up.railway.app/health`
   - `Invoke-RestMethod POST https://rms-api-production-219d.up.railway.app/api/query` with `settings` probe
   - `Invoke-RestMethod POST https://rms-api-production-219d.up.railway.app/api/query` with `loyalty_programs` probe
@@ -1915,7 +1915,7 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - Service mapping was confirmed: root app linked to `frontend`, `server/` linked to `rms-api`.
   - `rms-api` domain was attached to the correct Railway service, so the earlier outage was not a wrong-domain-to-wrong-service mapping.
   - Before redeploy, `rms-api` requests were answered by `Caddy` with `405 Allow: GET, HEAD` for `OPTIONS /api/query`; this meant the live deployment on that service was behaving like a static site rather than the Express API in `server/index.js`.
-  - A fresh deploy from the actual API source directory `C:\RMSggl\Dropbox\RMSv3\server` replaced that bad runtime.
+  - A fresh deploy from the actual API source directory `C:\RMSv3\server` replaced that bad runtime.
   - After redeploy, logs showed `API server listening on port 8080`.
   - After redeploy, `GET /health` returned `{"ok":true}`.
   - After redeploy, `POST /api/query` returned valid JSON for `settings` and `loyalty_programs` probes. `loyalty_programs` returned `data: []` with `error: null`, which is healthy transport behavior and no longer a fetch-layer outage.
@@ -2168,8 +2168,8 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `LOYALTYMEMORY.md`
   - `OperationSync.md`
 - `Commands Run`:
-  - `python C:\Users\muzaf\.codex\skills\.system\skill-creator\scripts\init_skill.py suitablerms-loyalty-module-advisor --path C:\RMSggl\Dropbox\RMSv3\skills --resources references --interface ...`
-  - `python C:\Users\muzaf\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\RMSggl\Dropbox\RMSv3\skills\suitablerms-loyalty-module-advisor`
+  - `python C:\Users\muzaf\.codex\skills\.system\skill-creator\scripts\init_skill.py suitablerms-loyalty-module-advisor --path C:\RMSv3\skills --resources references --interface ...`
+  - `python C:\Users\muzaf\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\RMSv3\skills\suitablerms-loyalty-module-advisor`
   - `rg --files ...`
   - `rg -n ...`
   - `Get-Content ...`
@@ -2779,7 +2779,7 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `rg -n "Merkez|POS|KDS|sales|musteriler|customer_addresses" src server schema-railway-master.sql`
   - `npm.cmd run build:web -- --outDir temp-dist-call-center` (ilk deneme basarili; ikinci deneme Windows/Dropbox temp-dist silme kilidine takildi)
   - `npm.cmd run build:web -- --outDir temp-dist-call-center --emptyOutDir=false`
-  - `Start-Process -FilePath npm.cmd -ArgumentList @('run','dev','--','--host','127.0.0.1','--port','5173') -WorkingDirectory C:\RMSggl\Dropbox\RMSv3 -WindowStyle Hidden -PassThru`
+  - `Start-Process -FilePath npm.cmd -ArgumentList @('run','dev','--','--host','127.0.0.1','--port','5173') -WorkingDirectory C:\RMSv3 -WindowStyle Hidden -PassThru`
   - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/call-center`
 - `Findings`:
   - `Mevcut kalici satis omurgasi sales, sale_lines ve sale_payments tablolaridir; POS ve Garson da bu omurgaya yazar. Cagri merkezi icin yeni fake/local order store acilmadi.`
@@ -4136,15 +4136,15 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Files Changed`:
   - `OperationSync.md`
 - `Commands Run`:
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\NEWagent.md`
-  - `Get-ChildItem -Force -LiteralPath C:\RMSggl\Dropbox\RMSv3\skills\rmsv3-demo-builder`
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\skills\rmsv3-demo-builder\SKILL.md`
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md`
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Tail 260`
-  - `Get-ChildItem -Force -LiteralPath C:\RMSggl\Dropbox\RMSv3 -Filter DESIGN_HANDBOOK_V3_TR*`
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\DESIGN_HANDBOOK_V3_TR.md`
-  - `Get-Content -Raw -LiteralPath C:\RMSggl\Dropbox\RMSv3\README.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\NEWagent.md`
+  - `Get-ChildItem -Force -LiteralPath C:\RMSv3\skills\rmsv3-demo-builder`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\skills\rmsv3-demo-builder\SKILL.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\OperationSync.md`
+  - `Get-Content -LiteralPath C:\RMSv3\OperationSync.md -Tail 260`
+  - `Get-ChildItem -Force -LiteralPath C:\RMSv3 -Filter DESIGN_HANDBOOK_V3_TR*`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\DESIGN_HANDBOOK_V3_TR.md`
+  - `Get-Content -Raw -LiteralPath C:\RMSv3\README.md`
   - `Get-Date -Format o`
 - `Findings`:
   - `NEWagent.md gorev oncesi SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md ve DESIGN_HANDBOOK_V3_TR okunmasini istiyor.`
@@ -4312,13 +4312,13 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Files Changed`:
   - `OperationSync.md`
 - `Commands Run`:
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\NEWagent.md -Encoding UTF8`
-  - `Get-ChildItem -LiteralPath C:\RMSggl\Dropbox\RMSv3 -Force | Where-Object { $_.Name -in @('SUITABLERMS_PROJECT_GOVERNANCE.md','OperationSync.md','DESIGN_HANDBOOK_V3_TR') }`
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md -Encoding UTF8`
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Encoding UTF8`
+  - `Get-Content -LiteralPath C:\RMSv3\NEWagent.md -Encoding UTF8`
+  - `Get-ChildItem -LiteralPath C:\RMSv3 -Force | Where-Object { $_.Name -in @('SUITABLERMS_PROJECT_GOVERNANCE.md','OperationSync.md','DESIGN_HANDBOOK_V3_TR') }`
+  - `Get-Content -LiteralPath C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md -Encoding UTF8`
+  - `Get-Content -LiteralPath C:\RMSv3\OperationSync.md -Encoding UTF8`
   - `rg --files | rg "DESIGN_HANDBOOK|HANDBOOK|V3_TR|DESIGN"`
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\DESIGN_HANDBOOK_V3_TR.md -Encoding UTF8`
-  - `Get-Content -LiteralPath C:\RMSggl\Dropbox\RMSv3\OperationSync.md -Encoding UTF8 -Tail 220`
+  - `Get-Content -LiteralPath C:\RMSv3\DESIGN_HANDBOOK_V3_TR.md -Encoding UTF8`
+  - `Get-Content -LiteralPath C:\RMSv3\OperationSync.md -Encoding UTF8 -Tail 220`
   - `Get-Date -Format o`
 - `Findings`:
   - `NEWagent.md, yeni gorev oncesinde SUITABLERMS_PROJECT_GOVERNANCE.md, OperationSync.md ve DESIGN_HANDBOOK_V3_TR okunmasini ve ardindan hazir olundugunun soylenmesini istiyor.`
@@ -5591,7 +5591,7 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Files`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Execution details`:
-  - `getCampaignApplicationModeHint` yardımcı fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde tanımlanmamıştı.
+  - `getCampaignApplicationModeHint` yardımcı fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde tanımlanmamıştı.
   - Bu fonksiyon dosya içerisine dahil edilerek hata çözüldü.
   - Proje `npm.cmd run build` ile başarıyla derlendi.
 - `Handoff Contract`: `getCampaignApplicationModeHint fonksiyonu wizard dosyasına eklendi, sayfa yükleme çökmesi giderildi. Proje hatasız derlenmektedir.`
@@ -5603,7 +5603,7 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Files`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Execution details`:
-  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasındaki `renderViewMode` ve `renderEditMode` fonksiyonları güncellendi.
+  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasındaki `renderViewMode` ve `renderEditMode` fonksiyonları güncellendi.
   - `renderViewMode` altındaki Kampanya Kimliği (Section 1) kartı, Operasyon kartından (Section 5) sonra gelecek şekilde en sona taşındı.
   - `renderEditMode` altındaki Kampanya Kimliği (Section 1) kartı, Operasyon kartından (Section 5) sonra gelecek şekilde en sona taşındı.
   - Proje `npm.cmd run build` ile başarıyla derlendi.
@@ -5616,7 +5616,7 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Files`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Execution details`:
-  - `formatSummaryDate` yardımcı fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSggl/Dropbox/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlandı.
+  - `formatSummaryDate` yardımcı fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlandı.
   - Proje `npm.cmd run build` ile başarıyla derlendi.
 - `Handoff Contract`: `formatSummaryDate fonksiyonu wizard dosyasına eklendi, sayfa yükleme çökmesi giderildi. Proje hatasız derlenmektedir.`
 

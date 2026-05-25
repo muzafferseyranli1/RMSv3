@@ -11,7 +11,7 @@ Bu iki dosya, tarihsel notlar ve eski README iceriklerinin uzerindedir.
 
 ## Proje Gercegi
 
-- Proje dizini: `C:\RMSggl\Dropbox\RMSv3`
+- Proje dizini: `C:\RMSv3`
 - Tek uretim ortami: Railway
 - Tek veri kaynagi: Railway Postgres
 - Frontend veri erisimi: `src/lib/db.js`

@@ -2,7 +2,7 @@
 
 Yürürlük tarihi: `2026-05-09`
 Status: `active — tüm UI agent'ları için bağlayıcı`
-Proje dizini: `C:\RMSggl\Dropbox\RMSv3`
+Proje dizini: `C:\RMSv3`
 
 ---
 
