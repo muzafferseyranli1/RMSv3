@@ -832,8 +832,27 @@ export async function postSaleLoyaltyValueLedger({
 } = {}) {
   const normalizedSaleId = normalizeText(saleId || saleHeader.id)
   const customerId = getCustomerId(customer || {}, saleHeader)
-  if (!normalizedSaleId || !customerId) {
-    return { skipped: true, reason: 'missing_sale_or_customer' }
+  const couponCode = getSelectedCouponCode(selectedCouponCode, customer || {})
+
+  if (!normalizedSaleId) {
+    return { skipped: true, reason: 'missing_sale_id' }
+  }
+
+  if (!customerId) {
+    if (couponCode) {
+      const couponResult = await markCouponUsed({
+        couponCode,
+        customerId: null,
+        saleId: normalizedSaleId,
+        sourceChannel: sourceChannel || saleHeader.source_channel_type || saleHeader.source || 'sale',
+      })
+      return {
+        skipped: true,
+        reason: 'missing_customer_but_coupon_processed',
+        coupon: couponResult,
+      }
+    }
+    return { skipped: true, reason: 'missing_customer' }
   }
 
   const campaignId = getCampaignId(loyaltyCampaign || {}, customer || {}, saleHeader)
@@ -879,7 +898,6 @@ export async function postSaleLoyaltyValueLedger({
   const pointsDelta = resolvedPointActions.reduce((sum, entry) => sum + entry.pointsDelta, 0)
   const resolvedPointAction = resolvedPointActions.find(entry => entry.pointsDelta !== 0) || resolvedPointActions[0] || null
   const pointsAction = resolvedPointAction?.action || null
-  const couponCode = getSelectedCouponCode(selectedCouponCode, customer || {})
   const redeemedValue = roundPoints(
     loyaltyCampaign?.discountAmount
     || saleHeader.loyalty_discount_allocated_amount
