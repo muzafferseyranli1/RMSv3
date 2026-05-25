@@ -18,7 +18,7 @@ Bu plan, "Kupon mevcut" (`coupon_present`) sadakat koşulunun POS, Garson, Kiosk
 
 ### 1. İş Mantığı Katmanı (JavaScript)
 
-#### [MODIFY] [posLoyalty.js](file:///C:/RMSggl/Dropbox/RMSv3/src/lib/posLoyalty.js)
+#### [MODIFY] [posLoyalty.js](file:///C:/RMSv3/src/lib/posLoyalty.js)
 
 - **Veritabanı İmport Ayarı**: Dosyanın en üstüne `import { db } from '@/lib/db'` eklenecektir.
 - **Koşulun Yerel Listeye Eklenmesi**: `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` eklenecektir.
@@ -38,7 +38,7 @@ Bu plan, "Kupon mevcut" (`coupon_present`) sadakat koşulunun POS, Garson, Kiosk
 - **Koşul Değerlendirme Mantığı**: `evaluateSingleCondition` fonksiyonu altına `case 'coupon_present':` bloğu eklenerek aşağıdaki kontroller gerçekleştirilecektir:
   - Aktiflik, kullanım durumu, son kullanma tarihi ve seri eşleşme doğrulamaları.
 
-#### [MODIFY] [loyaltyRuntimeStatus.js](file:///C:/RMSggl/Dropbox/RMSv3/src/lib/loyaltyRuntimeStatus.js)
+#### [MODIFY] [loyaltyRuntimeStatus.js](file:///C:/RMSv3/src/lib/loyaltyRuntimeStatus.js)
 
 - **Durum Güncellemesi**: `CONDITION_KEY_STATUS` haritasındaki `coupon_present` kaydının `category` değeri `'server'` yerine `'local'` olarak güncellenecektir. Böylece arayüzler ve motor bu kuralı doğrudan yerel olarak çalıştırılabilir kabul edecektir.
 

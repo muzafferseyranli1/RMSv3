@@ -5821,3 +5821,29 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - Görevin tamamlandığını bildirmek ve skill gereği `DEMO_READY_WITH_NOTES` sonucunu dönmek.
 - `Handoff Contract`: `Müşteri ve personel telefon numaraları temizlendi, UI formları ve seed verileri güncellendi, üretim derlemesi başarıyla tamamlandı.`
 
+
+## Entry 133 - 2026-05-25
+
+- `Timestamp`: `2026-05-25T20:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `.antigravityrules.md Dosyasına Başlangıç Protokolü Eklenmesi`
+- `Intent`: `Agent'ların ilk çalıştıklarında talimat beklemeksizin .antigravityrules.md, SUITABLERMS_PROJECT_GOVERNANCE.md ve OperationSync.md dosyalarını otomatik okuyup hizalanmalarını sağlamak.`
+- `Files Read`:
+  - `C:\RMSv3\.antigravityrules.md`
+  - `C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `C:\RMSv3\OperationSync.md`
+- `Files Changed`:
+  - `C:\RMSv3\.antigravityrules.md`
+  - `C:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `git status`
+- `Findings`:
+  - `.antigravityrules.md dosyasına 0. BAŞLANGIÇ PROTOKOLÜ (STARTUP PROTOCOL) - ZORUNLU bölümü eklendi.`
+- `Decisions`:
+  - Agent'ların başlangıçtaki proaktifliğini artırmak amacıyla bu zorunlu protokol kurallar arasına dahil edildi.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Değişiklikleri kullanıcıya raporlamak ve onay almak.
+- `Handoff Contract`: `.antigravityrules.md dosyasına otomatik başlangıç hizalanma kuralı eklenmiştir. Proje derleme ve çalışma durumları etkilenmemiştir.`
+

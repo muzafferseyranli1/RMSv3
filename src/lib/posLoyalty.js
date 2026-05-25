@@ -502,7 +502,12 @@ export function getRuntimeCampaignResolutionMode(campaign = {}, customerContext 
 function buildOfferFromRule(campaign = {}, rule = {}, orderContext = {}, repeatMultiplier = 1) {
   const config = rule.actionConfig || {}
   const orderTotal = Number(orderContext.orderTotal || 0)
-  const applicationMode = normalizeLoyaltyApplicationMode(campaign.applicationMode)
+  const applicationMode = normalizeLoyaltyApplicationMode(
+    campaign.applicationMode
+    || campaign.metadata?.applicationMode
+    || campaign.audience_json?.applicationMode
+    || campaign.audienceJson?.applicationMode
+  )
   const mult = Math.max(1, Number(repeatMultiplier) || 1)
 
   // Build applied actions summary for audit/readback
@@ -1559,7 +1564,12 @@ function evaluateRuleForOrder(rule = {}, orderContext = {}, campaign = {}) {
 function buildFallbackOffer(campaign = {}, orderContext = {}) {
   if (campaign.campaignType === 'discount_percent' && Number(campaign.rewardValue || 0) > 0) {
     const percent = Number(campaign.rewardValue || 0)
-    const applicationMode = normalizeLoyaltyApplicationMode(campaign.applicationMode)
+    const applicationMode = normalizeLoyaltyApplicationMode(
+      campaign.applicationMode
+      || campaign.metadata?.applicationMode
+      || campaign.audience_json?.applicationMode
+      || campaign.audienceJson?.applicationMode
+    )
     const orderTotal = Number(orderContext.orderTotal || 0)
 
     // Fallback offer'da da audit alanları üretilir — snapshot/readback kolonları boş kalmasın
@@ -1664,7 +1674,12 @@ function buildAudienceStatus(campaign = {}, customerContext = {}) {
 }
 
 function buildCampaignCard(campaign = {}, orderContext = {}, selectedCampaignId = '') {
-  const applicationMode = normalizeLoyaltyApplicationMode(campaign.applicationMode)
+  const applicationMode = normalizeLoyaltyApplicationMode(
+    campaign.applicationMode
+    || campaign.metadata?.applicationMode
+    || campaign.audience_json?.applicationMode
+    || campaign.audienceJson?.applicationMode
+  )
   const resolutionMode = getRuntimeCampaignResolutionMode(campaign, orderContext)
   const audience = buildAudienceStatus(campaign, orderContext)
   const applicableRules = (campaign.applicableRules || []).filter(rule => rule.active !== false)
@@ -1770,7 +1785,7 @@ export async function loadRuntimeLoyaltyCampaignCatalog({ branchId = '', branchN
     hasBranchIdentity
       ? loadLoyaltyWorkspace({ scope: 'branch', branchId, branchName })
       : Promise.resolve(null),
-    db.from('sale_templates').select('id,name,sale_ids').catch(() => ({ data: [], error: null }))
+    Promise.resolve(db.from('sale_templates').select('id,name,sale_ids')).catch(() => ({ data: [], error: null }))
   ])
 
   const saleTemplates = templatesRes?.data || []

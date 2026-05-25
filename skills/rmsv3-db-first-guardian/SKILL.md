@@ -18,8 +18,8 @@ This skill has two modes:
 
 ## Required Preflight
 
-1. Read `C:\RMSggl\Dropbox\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
-2. Read `C:\RMSggl\Dropbox\RMSv3\OperationSync.md` if it exists.
+1. Read `C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
+2. Read `C:\RMSv3\OperationSync.md` if it exists.
 3. Treat the governance file as canonical when it conflicts with `README.md`
    or historical artifacts.
 4. Identify the audit target:

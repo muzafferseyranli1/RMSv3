@@ -2,7 +2,7 @@
 
 Tarih: 2026-05-11  
 Kaynak: görevtakibi.txt (Railway Postgres mimarisine uyarlanmış)  
-Proje: C:\RMSggl\Dropbox\RMSv3
+Proje: C:\RMSv3
 
 ---
 

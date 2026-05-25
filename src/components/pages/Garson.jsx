@@ -3809,6 +3809,14 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
     )
   }, [loyaltyCampaignPreview.applicableOffers, preOrderLinkedCustomer?.selectedCampaignId, acknowledgedWarningCampaignIds])
 
+  const matchedCouponOffer = useMemo(() => {
+    if (!manualCouponCode) return null
+    return (loyaltyCampaignPreview?.applicableOffers || []).find(offer => 
+      String(offer.selectedCouponCode || '').trim().toUpperCase() === String(manualCouponCode).trim().toUpperCase() ||
+      String(offer.decisionContext?.selectedCouponCode || '').trim().toUpperCase() === String(manualCouponCode).trim().toUpperCase()
+    )
+  }, [loyaltyCampaignPreview?.applicableOffers, manualCouponCode])
+
   useEffect(() => {
     setAcknowledgedWarningCampaignIds(new Set())
   }, [preOrderLinkedCustomer?.customerId, cart.length === 0])
@@ -4293,7 +4301,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
       customer,
       orderNote: finalOrderNote,
     })
-    const legacyItems = buildLegacySalesItemsSnapshot(
+    const legacyItems = buildLegacySaleItemsSnapshot(
       expandCartItemsForPayload(items),
       discountAmount,
       saleLoyaltySnapshot,
@@ -4886,67 +4894,87 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
           <div style={{
             marginBottom: 10,
             display: 'flex',
-            alignItems: 'center',
-            gap: 6,
+            flexDirection: 'column',
+            gap: 4,
             width: '100%'
           }}>
             <div style={{
-              flex: 1,
-              position: 'relative',
               display: 'flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              gap: 6,
+              width: '100%'
             }}>
-              <i className="fa-solid fa-ticket" style={{
-                position: 'absolute',
-                left: 12,
-                color: manualCouponCode ? '#fbbf24' : 'rgba(255,255,255,.3)',
-                fontSize: '.85rem'
-              }} />
-              <input
-                type="text"
-                placeholder="Kupon Kodu Girin"
-                value={manualCouponCode}
-                onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
-                style={{
-                  width: '100%',
-                  minHeight: 38,
-                  padding: '0 12px 0 32px',
-                  borderRadius: 11,
-                  border: '1px solid rgba(255,255,255,.08)',
-                  background: 'rgba(255,255,255,.04)',
-                  color: '#f8fafc',
-                  fontSize: '.78rem',
-                  fontWeight: 700,
-                  outline: 'none',
-                  transition: 'all 0.15s ease',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = 'rgba(251,191,36,.4)';
-                  e.target.style.background = 'rgba(255,255,255,.07)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = 'rgba(255,255,255,.08)';
-                  e.target.style.background = 'rgba(255,255,255,.04)';
-                }}
-              />
-              {manualCouponCode && (
-                <button
-                  type="button"
-                  onClick={() => setManualCouponCode('')}
+              <div style={{
+                flex: 1,
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <i className="fa-solid fa-ticket" style={{
+                  position: 'absolute',
+                  left: 12,
+                  color: manualCouponCode ? '#fbbf24' : 'rgba(255,255,255,.3)',
+                  fontSize: '.85rem'
+                }} />
+                <input
+                  type="text"
+                  placeholder="Kupon Kodu Girin"
+                  value={manualCouponCode}
+                  onChange={(e) => setManualCouponCode(e.target.value.toUpperCase())}
                   style={{
-                    position: 'absolute',
-                    right: 8,
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'rgba(255,255,255,.4)',
-                    cursor: 'pointer',
-                    fontSize: '.74rem'
+                    width: '100%',
+                    minHeight: 38,
+                    padding: '0 12px 0 32px',
+                    borderRadius: 11,
+                    border: '1px solid rgba(255,255,255,.08)',
+                    background: 'rgba(255,255,255,.04)',
+                    color: '#f8fafc',
+                    fontSize: '.78rem',
+                    fontWeight: 700,
+                    outline: 'none',
+                    transition: 'all 0.15s ease',
                   }}
-                >
-                  <i className="fa-solid fa-times" />
-                </button>
-              )}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'rgba(251,191,36,.4)';
+                    e.target.style.background = 'rgba(255,255,255,.07)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'rgba(255,255,255,.08)';
+                    e.target.style.background = 'rgba(255,255,255,.04)';
+                  }}
+                />
+                {manualCouponCode && (
+                  <button
+                    type="button"
+                    onClick={() => setManualCouponCode('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'rgba(255,255,255,.4)',
+                      cursor: 'pointer',
+                      fontSize: '.74rem'
+                    }}
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                )}
+              </div>
             </div>
+            {manualCouponCode && (
+              <div style={{ paddingLeft: 6, fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {matchedCouponOffer ? (
+                  <span style={{ color: '#4ade80', fontWeight: 800 }}>
+                    <i className="fa-solid fa-circle-check" /> Kupon uygulandı: {matchedCouponOffer.campaignName} (-{fmt(matchedCouponOffer.discountAmount)} ₺)
+                  </span>
+                ) : (
+                  <span style={{ color: '#f87171', fontWeight: 700 }}>
+                    <i className="fa-solid fa-circle-exclamation" /> Kupon doğrulanıyor veya koşullar uymuyor...
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:14}}>

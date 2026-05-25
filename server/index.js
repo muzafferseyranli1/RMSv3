@@ -271,6 +271,12 @@ function normalizeWriteValue(table, column, value) {
     pos_sales: new Set(['items']),
     price_changes: new Set(['changes']),
     customer_app_config: new Set(['branding', 'home_buttons']),
+    sales: new Set(['delivery_address_snapshot', 'loyalty_applied_actions_json', 'loyalty_decision_context_json']),
+    sale_lines: new Set(['loyalty_applied_actions_json', 'loyalty_decision_context_json', 'options_json']),
+    purchase_orders: new Set(['meta']),
+    purchase_order_lines: new Set(['meta']),
+    loyalty_referral_programs: new Set(['allowed_referrer_categories', 'config_json']),
+    time_tracking_defs: new Set(['times']),
   }
 
   // These columns accept nested arrays/objects. Stringifying here keeps the generic
