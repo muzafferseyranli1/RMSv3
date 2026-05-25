@@ -2260,3 +2260,52 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Yok.
 - `Next Loyalty Step`:
   - Canlıda kupon kartlarının doğru kampanya adını, fayda metnini ve geçerlilik tarihini gösterdiğini doğrulamak.
+
+
+## Entry 062
+
+- `Timestamp`: `2026-05-25T12:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Damga Kartı Koşul Arayüzünün Özelleştirilmesi ve Mobil Geliştirici Handoff Kılavuzu`
+- `Trigger`: `Kullanıcı talebi: Dönemlik ürün koşulunun (period_product_quantity) damga dışı senaryolar için genel adının (Dönem içindeki ürün miktarı) korunması, wizard üzerinde Damga Kartı Modu vs Gelişmiş Mod ayrımı yapılması, ve Mobil Acenteye damga kartı kurgularını ayırt etme/görüntüleme kılavuzu yazılması.`
+- `Files Read`:
+  - `src/lib/loyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `period_product_quantity` adı "Dönem içindeki ürün miktarı" olarak geri yüklendi.
+  - Wizard koşul editöründe "Damga Kartı Modu" ve "Gelişmiş Ürün Miktarı Modu" radyo butonları eklendi. Damga Kartı Modu seçildiğinde karşılaştırma kilitlenerek `>=` (gte) olur ve döngü taşma (spill-over) açıklaması gösterilir.
+  - **Mobil Geliştirici / Acente için Damga Handoff Kılavuzu:**
+    1. **Müşterinin Damga Sayısını Okuma:**
+       - Mobil snapshot yüklendiğinde gelen `model.progressRows` (veya `loyalty_frequency_progress` tablosu) sorgulanır.
+       - Her satırdaki `progress_type` değeri `'products'` ise ürün damgaları, `'orders'` ise ziyaret damgalarını temsil eder.
+       - `campaign_id` ile `loyalty_campaigns.id` eşleştirilerek o kampanyaya ait damga ilerlemesi okunur:
+         * **Mevcut Damga Adedi:** `current_count` (varsayılan: 0)
+         * **Hedef Damga Hedefi:** `target_count` (varsayılan: 5 veya kuraldaki `quantity` / `count` eşiği)
+         * **Tamamlanan Döngü Sayısı:** `completed_cycles`
+    2. **Damga Kartı Kampanyalarını Diğerlerinden Ayırt Etme:**
+       - Kampanya nesnesinin kuralları (`campaign.rules` veya `campaign.applicableRules`) taranmalıdır.
+       - Eğer bir kuralın koşulu `conditionKey === 'period_product_quantity'` ise ve konfigürasyonunda `isStampMode !== false` ise bu kampanya bir **Ürün Bazlı Damga Kartı** kampanyasıdır.
+       - Eğer bir kuralın koşulu `conditionKey === 'period_order_count'` ise bu kampanya bir **Ziyaret Bazlı Damga Kartı** kampanyasıdır.
+       - Bu sayede mobil uygulama, bu kampanyaları düz kart yerine görsel şablonlarla (örneğin kahve fincanı veya damga slotları görseli) listeleyebilir.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Stamp Mode UI separation & Mobile handoff guidance`
+- `Affected Surfaces`:
+  - `Kampanya Sihirbazı Koşul Editörü`
+  - `Müşteri Mobil Uygulaması (Geliştirici Seviyesi)`
+- `Readiness`:
+  - `Stamp Mode UI Toggle`: `Ready`
+  - `Auto gte configuration`: `Ready`
+  - `SQL / Ledger synchronization`: `Ready`
+- `Decision`:
+  - `isStampMode` parametresi kural `condition_json` içine kaydedilerek arayüzün hangi modda yükleneceği DB şemasını bozmadan çözüldü.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Mobile agent/client'ın bu handoff kılavuzunu okuyarak damga kartı ekranını görsel şablonlarla zenginleştirmesi.

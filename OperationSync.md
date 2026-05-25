@@ -5751,3 +5751,18 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Commands Run`:
   - `npm run build:web` (başarılı, 6.92s, 0 hata)
 - `Handoff Contract`: `CouponCard artık kampanya adını büyük başlık olarak gösterir, fayda metnini kampanya eylemlerinden otomatik çıkarır, geçerlilik tarihini kampanya bitiş tarihinden alır. Build başarılı.`
+
+
+## Entry 130 - 2026-05-25
+- `Timestamp`: `2026-05-25T12:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Damga Kartı Koşul Arayüzü Ayrımı ve Mobil Handoff Belgelemesi`
+- `Intent`: `Dönemlik ürün koşulunun (period_product_quantity) damga kartı dışındaki kurgular için kullanılmasını kolaylaştırmak ve mobil geliştirici için damga sayısı okuma & ayrıştırma kurallarını yazmak.`
+- `Files Changed`:
+  - `src/lib/loyalty.js`
+  - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run build` (başarılı, 12.11s, 0 hata)
+- `Handoff Contract`: `Dönemlik ürün koşulu ismi 'Dönem içindeki ürün miktarı' olarak geri yüklendi. Wizard koşul editöründe 'Damga Kartı Modu' ve 'Gelişmiş Mod' seçicisi ve oto-gte mantığı eklendi. Mobil acente/geliştirici için damga sayısı okuma kılavuzu LOYALTYMEMORY.md dosyasına işlendi. Build başarılı.`
