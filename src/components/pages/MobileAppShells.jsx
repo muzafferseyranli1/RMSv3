@@ -25,6 +25,11 @@ import {
   isLoyaltyPersistenceColumnError,
 } from '@/lib/checkoutLoyalty'
 import { fetchAnnouncements, markAnnouncementAsRead } from '@/lib/taskService'
+import ShiftPlanner from '@/components/pages/ShiftPlanner'
+import Tasks from '@/components/pages/Tasks'
+import Garson from '@/components/pages/Garson'
+import Orders from '@/components/pages/Orders'
+import MalKabul from '@/components/pages/MalKabul'
 
 const SCREEN_MAP = {
   personnel: {
@@ -995,9 +1000,9 @@ function PersonnelPhoneRuntime({
   // Sidebar Menu Items
   const menuItems = [
     { key: 'home', label: 'Ana Sayfa', icon: 'fa-house', subtitle: 'Hızlı bakış ve özetler' },
-    { key: 'calendar', label: 'Takvim & Vardiya', icon: 'fa-calendar-days', subtitle: 'Çalışma günleri ve izinler' },
-    { key: 'tasks', label: 'Görevlerim', icon: 'fa-list-check', subtitle: 'Görev listesi ve yeni görev' },
-    { key: 'pdks', label: 'PDKS Giriş/Çıkış', icon: 'fa-clock', subtitle: 'Giriş-çıkış saatleri ve süre' },
+    { key: 'calendar', label: 'Çalışma Takvimi', icon: 'fa-calendar-days', subtitle: 'Vardiya ve zaman planlama' },
+    { key: 'tasks', label: 'Görevler', icon: 'fa-list-check', subtitle: 'İş takip ve atamalar' },
+    { key: 'pdks', label: 'PDKS Giriş/Çıkış', icon: 'fa-clock', subtitle: 'Mesai giriş-çıkış PDKS' },
   ]
 
   // Role based items
@@ -1022,12 +1027,12 @@ function PersonnelPhoneRuntime({
           <div>
             <div style={{ fontSize: '.88rem', fontWeight: 900, color: '#0f172a' }}>
               {activeTab === 'home' && 'Ana Sayfa'}
-              {activeTab === 'calendar' && 'Takvim & Vardiya'}
-              {activeTab === 'tasks' && 'Görevlerim'}
+              {activeTab === 'calendar' && 'Çalışma Takvimi'}
+              {activeTab === 'tasks' && 'Görevler'}
               {activeTab === 'pdks' && 'PDKS Kontrol'}
               {activeTab === 'garson' && 'Garson Terminali'}
-              {activeTab === 'kurye' && 'Kurye Modülü'}
-              {activeTab === 'yonetici' && 'Yönetici Modülü'}
+              {activeTab === 'orders' && 'Siparişler'}
+              {activeTab === 'mal-kabul' && 'Mal Kabul'}
             </div>
             <div style={{ fontSize: '.68rem', color: '#64748b' }}>{branchName}</div>
           </div>
@@ -1051,8 +1056,12 @@ function PersonnelPhoneRuntime({
       </div>
 
       {/* Screen Body */}
-      <div style={{ position: 'relative', minHeight: 0, overflow: 'hidden' }}>
-        <div style={{ height: '100%', overflowY: activeTab === 'garson' ? 'hidden' : 'auto', padding: activeTab === 'garson' ? 0 : 14 }}>
+      <div style={{ position: 'relative', minHeight: 0, overflow: 'hidden', height: '100%' }}>
+        <div style={{
+          height: '100%',
+          overflowY: ['garson', 'calendar', 'tasks', 'orders', 'mal-kabul'].includes(activeTab) ? 'hidden' : 'auto',
+          padding: ['garson', 'calendar', 'tasks', 'orders', 'mal-kabul'].includes(activeTab) ? 0 : 14
+        }}>
           {activeTab === 'home' && (
             <PersonnelDashboard
               activeStaff={activeStaff}
@@ -1068,14 +1077,11 @@ function PersonnelPhoneRuntime({
           )}
 
           {activeTab === 'calendar' && (
-            <PersonnelCalendar />
+            <ShiftPlanner />
           )}
 
           {activeTab === 'tasks' && (
-            <PersonnelTasks
-              tasks={tasks}
-              setTasks={setTasks}
-            />
+            <Tasks scope="branch" />
           )}
 
           {activeTab === 'pdks' && (
@@ -1088,23 +1094,15 @@ function PersonnelPhoneRuntime({
           )}
 
           {activeTab === 'garson' && (
-            <MobileGarsonRuntime
-              branchId={branchId || ''}
-              branchName={branchName || ''}
-              activeStaff={activeStaff}
-              onStaffLogout={onStaffLogout}
-            />
+            <Garson />
           )}
 
-          {activeTab === 'kurye' && (
-            <PersonnelKurye />
+          {activeTab === 'orders' && (
+            <Orders />
           )}
 
-          {activeTab === 'yonetici' && (
-            <PersonnelManager
-              branchId={branchId}
-              branchName={branchName}
-            />
+          {activeTab === 'mal-kabul' && (
+            <MalKabul />
           )}
         </div>
 
@@ -1192,7 +1190,7 @@ function PersonnelPhoneRuntime({
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: 8, paddingRight: 4 }}>
                     <div style={{ fontSize: '.64rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748b' }}>Rol Bazlı Paneller</div>
-                    <span style={{ fontSize: '.6rem', color: '#38bdf8', fontWeight: 900 }}>Simülasyon</span>
+                    <span style={{ fontSize: '.6rem', color: '#10b981', fontWeight: 900 }}>Gerçek İşlemler</span>
                   </div>
 
                   <button
@@ -1229,15 +1227,15 @@ function PersonnelPhoneRuntime({
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveTab('kurye')
+                      setActiveTab('orders')
                       setDrawerOpen(false)
                     }}
                     style={{
                       minHeight: 52,
                       borderRadius: 14,
                       border: 'none',
-                      background: activeTab === 'kurye' ? 'rgba(56,189,248,.15)' : 'transparent',
-                      color: activeTab === 'kurye' ? '#38bdf8' : '#94a3b8',
+                      background: activeTab === 'orders' ? 'rgba(56,189,248,.15)' : 'transparent',
+                      color: activeTab === 'orders' ? '#38bdf8' : '#94a3b8',
                       cursor: 'pointer',
                       padding: '10px 12px',
                       display: 'flex',
@@ -1247,28 +1245,27 @@ function PersonnelPhoneRuntime({
                       width: '100%',
                     }}
                   >
-                    <i className="fa-solid fa-motorcycle" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'kurye' ? '#38bdf8' : '#64748b' }} />
+                    <i className="fa-solid fa-receipt" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'orders' ? '#38bdf8' : '#64748b' }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'kurye' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        Kurye Modülü
-                        {staffRole === 'Kurye' && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />}
+                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'orders' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Siparişler
                       </div>
-                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Aktif teslimatlar ve durum güncelleme</div>
+                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Şube siparişleri ve takibi</div>
                     </div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveTab('yonetici')
+                      setActiveTab('mal-kabul')
                       setDrawerOpen(false)
                     }}
                     style={{
                       minHeight: 52,
                       borderRadius: 14,
                       border: 'none',
-                      background: activeTab === 'yonetici' ? 'rgba(56,189,248,.15)' : 'transparent',
-                      color: activeTab === 'yonetici' ? '#38bdf8' : '#94a3b8',
+                      background: activeTab === 'mal-kabul' ? 'rgba(56,189,248,.15)' : 'transparent',
+                      color: activeTab === 'mal-kabul' ? '#38bdf8' : '#94a3b8',
                       cursor: 'pointer',
                       padding: '10px 12px',
                       display: 'flex',
@@ -1278,13 +1275,13 @@ function PersonnelPhoneRuntime({
                       width: '100%',
                     }}
                   >
-                    <i className="fa-solid fa-briefcase" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'yonetici' ? '#38bdf8' : '#64748b' }} />
+                    <i className="fa-solid fa-briefcase" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'mal-kabul' ? '#38bdf8' : '#64748b' }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'yonetici' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        Yönetici Paneli
+                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'mal-kabul' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Mal Kabul
                         {staffRole === 'Müdür' && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />}
                       </div>
-                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Sipariş verme ve Mal Kabul arayüzü</div>
+                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Sevkiyat kontrol ve mal kabulü</div>
                     </div>
                   </button>
                 </div>
