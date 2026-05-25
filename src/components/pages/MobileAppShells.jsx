@@ -839,34 +839,54 @@ function MobileOrderSurface({
   )
 }
 
-export function PersonnelPhone() {
+export function PersonnelPhone({ mode = 'simulated' }) {
   const { branchId, branchName } = useWorkspace()
   const [activeTab, setActiveTab] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const isStandalone = mode === 'standalone'
+
+  const content = (
+    <StaffPinGate
+      storageKey={MOBILE_GARSON_STAFF_SESSION_KEY}
+      branchId={branchId || ''}
+      branchName={branchName || ''}
+      title="Mobil Personel Girişi"
+      subtitle="Uygulamayı kullanmak için PIN giriniz."
+      embeddedPin
+    >
+      {(activeStaff, helpers) => (
+        <PersonnelPhoneRuntime
+          branchId={branchId || ''}
+          branchName={branchName || ''}
+          activeStaff={activeStaff}
+          onStaffLogout={helpers?.logout}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          drawerOpen={drawerOpen}
+          setDrawerOpen={setDrawerOpen}
+        />
+      )}
+    </StaffPinGate>
+  )
+
+  if (isStandalone) {
+    return (
+      <div style={{
+        width: 'min(100%, 430px)',
+        height: '100svh',
+        background: '#fff',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        {content}
+      </div>
+    )
+  }
 
   return (
     <PhoneShellFrame accent="#38bdf8">
-      <StaffPinGate
-        storageKey={MOBILE_GARSON_STAFF_SESSION_KEY}
-        branchId={branchId || ''}
-        branchName={branchName || ''}
-        title="Mobil Personel Girişi"
-        subtitle="Uygulamayı kullanmak için PIN giriniz."
-        embeddedPin
-      >
-        {(activeStaff, helpers) => (
-          <PersonnelPhoneRuntime
-            branchId={branchId || ''}
-            branchName={branchName || ''}
-            activeStaff={activeStaff}
-            onStaffLogout={helpers?.logout}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            drawerOpen={drawerOpen}
-            setDrawerOpen={setDrawerOpen}
-          />
-        )}
-      </StaffPinGate>
+      {content}
     </PhoneShellFrame>
   )
 }

@@ -43,11 +43,11 @@ export default function PersonnelMobileAppPage() {
       display: 'grid',
       placeItems: 'center',
       background: '#0f172a',
-      padding: 16,
-      overflow: 'auto',
+      padding: 0,
+      overflow: 'hidden',
       boxSizing: 'border-box'
     }}>
-      <PersonnelPhone />
+      <PersonnelPhone mode="standalone" />
     </div>
   )
 }
