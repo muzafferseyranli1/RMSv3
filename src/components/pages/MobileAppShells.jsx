@@ -1,6 +1,6 @@
 import Header from '@/components/layout/Header'
 import CustomerLoyaltyMobileApp from '@/components/mobile/CustomerLoyaltyMobileApp'
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { loadCustomerAppConfig, saveCustomerAppConfig, getDefaultAppConfig } from '@/lib/customerMobileAppConfig'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -919,7 +919,9 @@ function PersonnelPhoneRuntime({
   ])
 
   const [pdksStatus, setPdksStatus] = useState('out') // 'in' or 'out'
-  const [pdksSeconds, setPdksSeconds] = useState(0)
+  // Store shift start timestamp in a ref to avoid re-rendering the entire tree every second.
+  // Each consumer component (PersonnelDashboard, PersonnelPdks) runs its own local timer.
+  const pdksStartTimeRef = useRef(null)
   const [pdksLogs, setPdksLogs] = useState([
     { id: 1, date: '24.05.2026', checkIn: '09:02', checkOut: '18:04', total: '9 Saat 2 Dk', status: 'completed' },
     { id: 2, date: '23.05.2026', checkIn: '08:58', checkOut: '18:01', total: '9 Saat 3 Dk', status: 'completed' },
@@ -957,48 +959,41 @@ function PersonnelPhoneRuntime({
     }
   }
 
-  // PDKS timer
-  useEffect(() => {
-    let interval = null
-    if (pdksStatus === 'in') {
-      interval = setInterval(() => {
-        setPdksSeconds(prev => prev + 1)
-      }, 1000)
-    } else {
-      setPdksSeconds(0)
-    }
-    return () => clearInterval(interval)
-  }, [pdksStatus])
+  // No more setInterval here — PDKS timer rendering is pushed down to consumer components.
 
-  function handlePdksToggle() {
+  const handlePdksToggle = useCallback(() => {
     const now = new Date()
     const timeStr = now.toTimeString().split(' ')[0].slice(0, 5)
-    if (pdksStatus === 'out') {
-      setPdksStatus('in')
-      setPdksSeconds(0)
-      showToast('Shift Başlatıldı. Giriş kaydedildi.', '#10b981')
-    } else {
-      const checkInTime = new Date(Date.now() - pdksSeconds * 1000)
-      const checkInStr = checkInTime.toTimeString().split(' ')[0].slice(0, 5)
-      const hours = Math.floor(pdksSeconds / 3600)
-      const minutes = Math.floor((pdksSeconds % 3600) / 60)
-      const elapsedStr = `${hours} Saat ${minutes} Dk`
-      
-      setPdksLogs(prev => [
-        {
-          id: Date.now(),
-          date: now.toLocaleDateString('tr-TR'),
-          checkIn: checkInStr,
-          checkOut: timeStr,
-          total: elapsedStr,
-          status: 'completed',
-        },
-        ...prev,
-      ])
-      setPdksStatus('out')
-      showToast('Shift Bitirildi. Çıkış kaydedildi.', '#ef4444')
-    }
-  }
+    setPdksStatus(prev => {
+      if (prev === 'out') {
+        pdksStartTimeRef.current = Date.now()
+        showToast('Shift Başlatıldı. Giriş kaydedildi.', '#10b981')
+        return 'in'
+      } else {
+        const elapsed = pdksStartTimeRef.current ? Math.floor((Date.now() - pdksStartTimeRef.current) / 1000) : 0
+        const checkInTime = new Date(Date.now() - elapsed * 1000)
+        const checkInStr = checkInTime.toTimeString().split(' ')[0].slice(0, 5)
+        const hours = Math.floor(elapsed / 3600)
+        const minutes = Math.floor((elapsed % 3600) / 60)
+        const elapsedStr = `${hours} Saat ${minutes} Dk`
+        
+        setPdksLogs(prevLogs => [
+          {
+            id: Date.now(),
+            date: now.toLocaleDateString('tr-TR'),
+            checkIn: checkInStr,
+            checkOut: timeStr,
+            total: elapsedStr,
+            status: 'completed',
+          },
+          ...prevLogs,
+        ])
+        pdksStartTimeRef.current = null
+        showToast('Shift Bitirildi. Çıkış kaydedildi.', '#ef4444')
+        return 'out'
+      }
+    })
+  }, [])
 
   // Sidebar Menu Items
   const menuItems = [
@@ -1074,7 +1069,7 @@ function PersonnelPhoneRuntime({
               announcements={announcements}
               onAnnouncementClick={openAnnouncement}
               pdksStatus={pdksStatus}
-              pdksSeconds={pdksSeconds}
+              pdksStartTime={pdksStartTimeRef.current}
               handlePdksToggle={handlePdksToggle}
             />
           )}
@@ -1090,7 +1085,7 @@ function PersonnelPhoneRuntime({
           {activeTab === 'pdks' && (
             <PersonnelPdks
               pdksStatus={pdksStatus}
-              pdksSeconds={pdksSeconds}
+              pdksStartTime={pdksStartTimeRef.current}
               handlePdksToggle={handlePdksToggle}
               pdksLogs={pdksLogs}
             />
@@ -1434,10 +1429,24 @@ function PersonnelDashboard({
   announcements,
   onAnnouncementClick,
   pdksStatus,
-  pdksSeconds,
+  pdksStartTime,
   handlePdksToggle,
 }) {
   const openTasks = useMemo(() => tasks.filter(t => !t.done).slice(0, 3), [tasks])
+
+  // Local lightweight timer for PDKS display — only ticks when this component is mounted
+  const [pdksSeconds, setPdksSeconds] = useState(() => pdksStartTime ? Math.floor((Date.now() - pdksStartTime) / 1000) : 0)
+  useEffect(() => {
+    if (pdksStatus !== 'in' || !pdksStartTime) {
+      setPdksSeconds(0)
+      return
+    }
+    setPdksSeconds(Math.floor((Date.now() - pdksStartTime) / 1000))
+    const interval = setInterval(() => {
+      setPdksSeconds(Math.floor((Date.now() - pdksStartTime) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [pdksStatus, pdksStartTime])
 
   function handleTaskCheckbox(id) {
     setTasks(prev => prev.map(task => task.id === id ? { ...task, done: !task.done } : task))
@@ -1998,16 +2007,17 @@ function PersonnelTasks({ tasks, setTasks }) {
   )
 }
 
-function PersonnelPdks({ pdksStatus, pdksSeconds, handlePdksToggle, pdksLogs }) {
-  // Current Live Clock
-  const [time, setTime] = useState(new Date())
+function PersonnelPdks({ pdksStatus, pdksStartTime, handlePdksToggle, pdksLogs }) {
+  // Local combined timer for both live clock and PDKS elapsed — single setInterval
+  const [now, setNow] = useState(new Date())
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000)
+    const timer = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  const clockString = time.toTimeString().split(' ')[0]
+  const clockString = now.toTimeString().split(' ')[0]
 
+  const pdksSeconds = (pdksStatus === 'in' && pdksStartTime) ? Math.floor((now.getTime() - pdksStartTime) / 1000) : 0
   const hours = Math.floor(pdksSeconds / 3600)
   const minutes = Math.floor((pdksSeconds % 3600) / 60)
   const seconds = pdksSeconds % 60

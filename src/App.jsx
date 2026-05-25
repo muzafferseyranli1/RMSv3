@@ -86,6 +86,11 @@ const PickupScreen = lazy(() => import('@/components/pages/PickupScreen'))
 const QueueScreen = lazy(() => import('@/components/pages/QueueScreen'))
 const ScreenFrame = lazy(() => import('@/components/pos/ScreenFrame'))
 const DesignDemo = lazy(() => import('@/components/pages/DesignDemo'))
+const TicketCategories = lazy(() => import('@/components/pages/TicketCategories'))
+const FeedbackManagement = lazy(() => import('@/components/pages/FeedbackManagement'))
+const TicketBoard = lazy(() => import('@/components/pages/TicketBoard'))
+const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
+const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -408,6 +413,11 @@ function AppShell() {
               <Route path="/donem-kapanis" element={<PeriodClose />} />
               <Route path="/mal-kabul" element={<WorkspaceBranchScope><MalKabul /></WorkspaceBranchScope>} />
               <Route path="/kiosk-management" element={<KioskManagementDesktop />} />
+              <Route path="/geri-bildirimler" element={<FeedbackManagement />} />
+              <Route path="/biletler" element={<TicketBoard />} />
+              <Route path="/form-sablonlari" element={<FormTemplates />} />
+              <Route path="/form-yanitlari" element={<FormSubmissions />} />
+              <Route path="/bilet-kategorileri" element={<TicketCategories />} />
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
               <Route path="/merkez-orders" element={<Placeholder title="Siparişler" icon="fa-receipt" />} />
               <Route path="/merkez-uretim" element={<Production />} />

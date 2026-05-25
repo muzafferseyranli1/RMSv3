@@ -2339,3 +2339,39 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Yok.
 - `Next Loyalty Step`:
   - Mobil simülatörde veya POS tarafında örnek bir damga satışı gerçekleştirip ana ekrandaki "Damgalarım" özetinin ve kampanya listesindeki slotların gerçek zamanlı güncellendiğini doğrulamak.
+
+
+## Entry 064
+
+- `Timestamp`: `2026-05-25T23:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Kampanya Sihirbazı Görsel Yükleme Port ve URL Çözümleme Hatasının Düzeltilmesi`
+- `Trigger`: `Kampanya sihirbazı görsellerinin (önizlemeler, mecra slotları, arşiv küçük resimleri, adım pill başlıkları ve inceleme sayfası gridleri) localhost:5173 (frontend portu) yerine backend API URL'i üzerinden yüklenememesi hatası.`
+- `Files Read`:
+  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+- `Files Changed`:
+  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+  - `[LOYALTYMEMORY.md](file:///C:/RMSv3/LOYALTYMEMORY.md)`
+  - `[OperationSync.md](file:///C:/RMSv3/OperationSync.md)`
+  - `[LOYALTY_MASTER_PLAN.md](file:///C:/RMSv3/LOYALTY_MASTER_PLAN.md)`
+- `Current Capability`:
+  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)` içerisinde `buildApiUrl` (@/lib/db) import edildi.
+  - `resolveImageUrl(url)` yardımcı fonksiyonu tanımlandı. Bu fonksiyon bağıntılı (relative) URL yollarının başına backend API URL'ini eklerken, mutlak (absolute - http, https, data:) URL'leri olduğu gibi korur.
+  - Sihirbaz içerisindeki tüm görsel (`img src`) ve CSS arka plan resim (`background-image`) referansları bu yardımcı fonksiyonla sarılarak backend portu üzerinden doğru şekilde yüklenmeleri sağlandı.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Campaign Wizard Image Resolution Fix`
+- `Affected Surfaces`:
+  - `Kampanya Sihirbazı Önizleme Ekranı (Previews)`
+  - `Mecra Bazlı Görsel Slotları (Slots)`
+  - `Görsel Arşiv Küçük Resimleri (Archive thumbnails)`
+  - `Adım Pill Başlıkları (Step pill headers)`
+  - `İnceleme Sayfası Izgaraları (Review page grids)`
+- `Readiness`:
+  - `Wizard campaign image resolution`: `Ready`
+- `Decision`:
+  - Görsel referansların doğru backend API portuna yönlendirilmesi için relative path'leri dynamic backend API path'i ile birleştiren `resolveImageUrl` fonksiyonu entegre edildi.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Tarayıcıda sihirbazı açıp tüm görsellerin (adım başlıkları, slotlar ve önizlemeler dahil) backend API portundan (Railway veya localhost:3000/3001) düzgün yüklendiğini kontrol etmek.

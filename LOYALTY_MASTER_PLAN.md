@@ -88,3 +88,5 @@ Amac: SuitableRMS sadakat / kampanya modulu icin tek sayfada takip edilen ana pl
 - [x] Campaign wizard operasyon adiminda DB kaynakli cakişma grubu dropdown/modal akisi ve kapsam uyumlu kampanya listeleri
 - [x] Campaign wizard Adim 5 kupon/puan detaylarindan arindirildi; kampanya kimligi, ozet, gorsel kutuphanesi, gorev ve duyuru hazirligi eklendi
 - [x] Kupon seti yeni/duzenle modali sade seri/kod uretim akisina indirildi; kuponun etkisi kosul/eylem kural modeline birakildi
+- [x] Kampanya sihirbazı görsellerinin (önizleme, mecra slotları, arşiv, pill başlıkları ve inceleme ızgaraları) frontend portu yerine backend API URL'i üzerinden yüklenmesi sağlandı (resolveImageUrl)
+

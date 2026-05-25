@@ -4,7 +4,7 @@ import Header from '@/components/layout/Header'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useToast } from '@/hooks/useToast'
-import { db, uploadApiFile } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import {
   ACTION_TYPE_OPTIONS,
   CAMPAIGN_APPLICATION_MODE_OPTIONS,
@@ -79,6 +79,15 @@ function formatSummaryDate(value) {
   } catch {
     return value
   }
+}
+
+function resolveImageUrl(url) {
+  const cleanUrl = String(url || '').trim()
+  if (!cleanUrl) return ''
+  if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://') || cleanUrl.startsWith('data:')) {
+    return cleanUrl
+  }
+  return buildApiUrl(cleanUrl)
 }
 
 async function loadLoyaltyWorkspaceWithRetry(workspacePayload, attempts = 3) {
@@ -4300,15 +4309,15 @@ export default function LoyaltyCampaignWizard({ mode }) {
   const campaignImages = campaignImageLibrary.images
   const primaryCampaignImage = campaignImageLibrary.primaryImage
   const campaignImageUrl = useMemo(() => {
-    if (primaryCampaignImage?.url) return String(primaryCampaignImage.url).trim()
+    if (primaryCampaignImage?.url) return resolveImageUrl(primaryCampaignImage.url)
     if (campaignImages && campaignImages.length > 0) {
       const firstImg = campaignImages[0]?.url
-      if (firstImg) return String(firstImg).trim()
+      if (firstImg) return resolveImageUrl(firstImg)
     }
     const meta = wizardCampaign.metadata || {}
     for (const slot of IMAGE_SLOTS) {
       if (meta[slot.key]?.url) {
-        return String(meta[slot.key].url).trim()
+        return resolveImageUrl(meta[slot.key].url)
       }
     }
     return ''
@@ -4615,8 +4624,8 @@ export default function LoyaltyCampaignWizard({ mode }) {
                       position: 'relative'
                     }}>
                       {hasImg ? (
-                        <a href={slotImg.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', height: '100%' }}>
-                          <img src={slotImg.url} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.4rem;color:#cbd5e1"></i><span style="font-size:.65rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
+                        <a href={resolveImageUrl(slotImg.url)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', height: '100%' }}>
+                          <img src={resolveImageUrl(slotImg.url)} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.4rem;color:#cbd5e1"></i><span style="font-size:.65rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
                         </a>
                       ) : (
                         <span style={{ fontSize: '.7rem', color: '#94a3b8', fontWeight: 600 }}>Tanımlanmamış</span>
@@ -4647,8 +4656,8 @@ export default function LoyaltyCampaignWizard({ mode }) {
                     boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
                     display: 'grid'
                   }}>
-                    <a href={img.url} target="_blank" rel="noopener noreferrer" style={{ aspectRatio: '16 / 9', overflow: 'hidden', display: 'block' }}>
-                      <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
+                    <a href={resolveImageUrl(img.url)} target="_blank" rel="noopener noreferrer" style={{ aspectRatio: '16 / 9', overflow: 'hidden', display: 'block' }}>
+                      <img src={resolveImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
                     </a>
                     {img.isPrimary && (
                       <div style={{ background: '#2563eb', color: '#fff', fontSize: '.6rem', textAlign: 'center', padding: '2px 0', fontWeight: 800 }}>
@@ -5381,7 +5390,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                     }}>
                       {hasImg ? (
                         <>
-                          <img src={slotImg.url} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.4rem;color:#cbd5e1"></i><span style="font-size:.65rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
+                          <img src={resolveImageUrl(slotImg.url)} alt={slot.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.4rem;color:#cbd5e1"></i><span style="font-size:.65rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
                           <button 
                             type="button" 
                             onClick={() => removeSlotImage(slot.key)}
@@ -5555,7 +5564,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                   }}>
                     {/* Preview */}
                     <div style={{ aspectRatio: '16 / 10', overflow: 'hidden', position: 'relative', background: '#f8fafc' }}>
-                      <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
+                      <img src={resolveImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
                       {img.isPrimary && (
                         <span style={{ 
                           position: 'absolute', 
@@ -5728,7 +5737,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                       boxShadow: image.isPrimary ? '0 6px 14px rgba(37,99,235,.18)' : 'none',
                     }}
                   >
-                    <img src={image.url} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f1f5f9;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:.7rem;color:#cbd5e1"></i>'; p.appendChild(ph); } }} />
+                    <img src={resolveImageUrl(image.url)} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f1f5f9;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:.7rem;color:#cbd5e1"></i>'; p.appendChild(ph); } }} />
                   </button>
                 ))}
                 {campaignImages.length > 6 ? (
@@ -6747,7 +6756,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                         {campaignImages.map(image => (
                           <div key={image.id} style={{ border: `1px solid ${image.isPrimary ? '#2563eb' : '#e2e8f0'}`, borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'grid' }}>
                             <button type="button" onClick={() => setPrimaryCampaignImage(image.id)} style={{ border: 'none', padding: 0, background: '#fff', cursor: 'pointer', aspectRatio: '16 / 9', overflow: 'hidden' }}>
-                              <img src={image.url} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
+                              <img src={resolveImageUrl(image.url)} alt={image.title || 'Kampanya görseli'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.display = 'none'; const p = e.currentTarget.parentElement; if (p) { const ph = document.createElement('div'); ph.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5f9;gap:4px;'; ph.innerHTML = '<i class="fa-solid fa-image" style="font-size:1.2rem;color:#cbd5e1"></i><span style="font-size:.6rem;color:#94a3b8;font-weight:600">Yüklenemedi</span>'; p.appendChild(ph); } }} />
                             </button>
                             <div style={{ padding: 8, display: 'grid', gap: 6 }}>
                               <div style={{ fontSize: '.72rem', color: image.isPrimary ? '#1d4ed8' : '#64748b', fontWeight: 900 }}>

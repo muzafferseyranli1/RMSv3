@@ -112,6 +112,11 @@ const CENTER_PATHS = new Set([
   '/positions/hierarchy',
   '/demo-sales',
   '/tasks',
+  '/geri-bildirimler',
+  '/biletler',
+  '/form-sablonlari',
+  '/form-yanitlari',
+  '/bilet-kategorileri',
 ])
 
 const SHARED_PATHS = new Set([

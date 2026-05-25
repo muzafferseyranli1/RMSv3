@@ -705,3 +705,98 @@ export async function replaceChecklist(taskId, checklistItems) {
   if (!rows.length) return { data: [], error: null }
   return db.from('task_checklist_items').insert(rows).select()
 }
+
+// Announcements API Implementation
+export async function fetchAnnouncements({ actor }) {
+  const context = await loadTaskContext()
+  const { data, error } = await db.from('announcements').select('*').is('deleted_at', null).order('created_at', { ascending: false })
+  if (error) return { data: [], error }
+
+  const actorId = String(actor?.id || '')
+  const actorPositionId = String(actor?.positionId || '')
+  const actorBranchIds = new Set([
+    actor?.branchId,
+    actor?.defaultBranchId,
+    ...toArray(actor?.workingBranchIds),
+    ...toArray(actor?.managedBranchIds),
+  ].filter(Boolean).map(String))
+
+  const actorLegalEntityIds = getActorLegalEntityIds(actor, context)
+
+  const filtered = toArray(data).filter(ann => {
+    const type = String(ann.target_type).toLowerCase()
+    const targetId = String(ann.target_id || '').trim()
+
+    if (type === 'all' || type === 'tüm sistem' || type === 'system') return true
+    if (type === 'legal_entity' || type === 'tüzel kişilik') {
+      return actorLegalEntityIds.has(targetId)
+    }
+    if (type === 'branch' || type === 'şube') {
+      return actorBranchIds.has(targetId)
+    }
+    if (type === 'position' || type === 'pozisyon') {
+      return actorPositionId === targetId
+    }
+    if (type === 'personal' || type === 'kişisel') {
+      return actorId === targetId
+    }
+    return false
+  })
+
+  const annIds = filtered.map(a => a.id)
+  const readMap = new Set()
+  if (annIds.length) {
+    const { data: readData } = await db
+      .from('announcement_reads')
+      .select('announcement_id')
+      .eq('personnel_id', actorId)
+      .in('announcement_id', annIds)
+    
+    toArray(readData).forEach(r => {
+      readMap.add(String(r.announcement_id))
+    })
+  }
+
+  return {
+    data: filtered.map(ann => ({
+      ...ann,
+      is_read: readMap.has(String(ann.id))
+    })),
+    error: null
+  }
+}
+
+export async function createAnnouncement(form, actor) {
+  const result = await db.from('announcements').insert({
+    title: form.title,
+    content: form.content,
+    target_type: form.target_type,
+    target_id: form.target_id || null,
+    priority: form.priority || 'normal',
+    request_read_receipt: !!form.request_read_receipt,
+    created_by_personnel_id: actor.id,
+    created_at: nowIso(),
+  }).select().maybeSingle()
+  return result
+}
+
+export async function markAnnouncementAsRead(announcementId, personnelId) {
+  const existing = await db
+    .from('announcement_reads')
+    .select('id')
+    .eq('announcement_id', announcementId)
+    .eq('personnel_id', personnelId)
+    .maybeSingle()
+  
+  if (existing.data) return { data: existing.data, error: null }
+
+  const result = await db.from('announcement_reads').insert({
+    announcement_id: announcementId,
+    personnel_id: personnelId,
+    read_at: nowIso(),
+  }).select().maybeSingle()
+  return result
+}
+
+// Re-export ticket → task bridge for convenience
+export { createTaskFromTicket } from '@/lib/ticketService'

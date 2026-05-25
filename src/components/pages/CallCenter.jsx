@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
+import { useAuth } from '@/context/AuthContext'
+import { createManualTicket } from '@/lib/ticketService'
+import { fetchTicketCategories, createManualFeedback } from '@/lib/feedbackService'
 import {
   attachLoyaltyToSaleHeader,
   attachLoyaltyToSaleLines,
@@ -389,10 +392,17 @@ function CallCenterLoyaltyCampaignCard({
 
 export default function OrderHub() {
   const toast = useToast()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [step, setStep] = useState('customer')
+  
+  // Ticket creation states
+  const [showTicketModal, setShowTicketModal] = useState(false)
+  const [ticketCategories, setTicketCategories] = useState([])
+  const [ticketForm, setTicketForm] = useState({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', description: '' })
+  const [ticketSubmitting, setTicketSubmitting] = useState(false)
   const [orderTab, setOrderTab] = useState('menu')
   const [fulfillmentType, setFulfillmentType] = useState('delivery')
   const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM)
@@ -837,6 +847,7 @@ export default function OrderHub() {
         citiesResult,
         posTablesResult,
         openTicketSettingsResult,
+        ticketCategoriesResult,
       ] = await Promise.all([
         db.from('company_nodes').select('id,name,type,parent_id,can_sell').order('sort_order'),
         db.from('branch_addresses').select('branch_id,branch_name,city_id,city_name,district_id,district_name,neighborhood_id,neighborhood_name,street,line_1,active').is('deleted_at', null).order('branch_name'),
@@ -853,6 +864,7 @@ export default function OrderHub() {
         db.from('tr_iller').select('id,ad').order('ad').limit(100),
         db.from('pos_tables').select('id,branch_id,table_name,table_number').is('deleted_at', null).eq('is_active', true),
         db.from('settings').select('value').eq('key', OPEN_TABLE_TICKETS_SETTING_KEY).maybeSingle(),
+        fetchTicketCategories(),
       ])
       if (branchesResult.error) throw branchesResult.error
       if (branchAddressesResult.error) throw branchAddressesResult.error
@@ -924,6 +936,7 @@ export default function OrderHub() {
           .sort((left, right) => new Date(right.updatedAt || right.sale_datetime || 0) - new Date(left.updatedAt || left.sale_datetime || 0))
       )
       setCities(citiesResult.data || [])
+      setTicketCategories(ticketCategoriesResult.data || [])
     } catch (error) {
       toast(`Siparis merkezi verileri yuklenemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
@@ -1377,6 +1390,89 @@ export default function OrderHub() {
     setCart(current => current
       .map(row => row.id === id ? { ...row, qty: Math.max(0, row.qty + delta) } : row)
       .filter(row => row.qty > 0))
+  }
+
+  const handleOpenTicketModal = (customer = null) => {
+    let initialPhone = ''
+    let initialName = ''
+    if (customer) {
+      initialPhone = customer.telefon ? `+90 ${customer.telefon}` : (customer.phone || '')
+      initialName = customer.ad_soyad || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || ''
+    } else if (selectedCustomer) {
+      initialPhone = selectedCustomer.telefon ? `+90 ${selectedCustomer.telefon}` : ''
+      initialName = selectedCustomer.ad_soyad || ''
+    } else if (customerForm && customerForm.phone && customerForm.phone !== '+90 ') {
+      initialPhone = customerForm.phone
+      initialName = [customerForm.firstName, customerForm.lastName].filter(Boolean).join(' ')
+    }
+
+    setTicketForm({
+      categoryId: ticketCategories[0]?.id || '',
+      priority: 'normal',
+      branchId: selectedBranchId || branches[0]?.id || '',
+      customerPhone: initialPhone,
+      customerName: initialName,
+      description: '',
+    })
+    setShowTicketModal(true)
+  }
+
+  const handleCreateTicket = async () => {
+    if (!ticketForm.description.trim()) {
+      return toast('Açıklama alanı zorunlu.', 'warning')
+    }
+    if (!ticketForm.branchId) {
+      return toast('Lütfen bir şube seçin.', 'warning')
+    }
+
+    setTicketSubmitting(true)
+    try {
+      let feedbackId = null
+      const cleanPhone = normalizePhone(ticketForm.customerPhone)
+
+      // If customer details are provided, create a table_feedback entry first to maintain the connection
+      if (cleanPhone || ticketForm.customerName.trim()) {
+        const feedbackRes = await createManualFeedback({
+          branchId: ticketForm.branchId,
+          source: 'call_center',
+          rating: 3, // neutral rating
+          comment: `[Çağrı Merkezi Manuel Bilet] ${ticketForm.description}`,
+          customerPhone: cleanPhone || null,
+          customerId: selectedCustomer?.id || null,
+          staffId: user?.id || null,
+          metadata: {
+            customer_name: ticketForm.customerName.trim(),
+            channel: 'call_center'
+          }
+        })
+        if (feedbackRes.error) {
+          console.error("Feedback creation failed:", feedbackRes.error)
+        } else {
+          feedbackId = feedbackRes.data?.id
+        }
+      }
+
+      // Create the ticket
+      const { data: ticket, error } = await createManualTicket({
+        branchId: ticketForm.branchId,
+        categoryId: ticketForm.categoryId || null,
+        feedbackId: feedbackId,
+        priority: ticketForm.priority,
+        description: ticketForm.description.trim(),
+        actorId: user?.id || null,
+      })
+
+      if (error) throw error
+
+      toast('Bilet başarıyla oluşturuldu.', 'success')
+      setShowTicketModal(false)
+      // Reset form
+      setTicketForm({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', description: '' })
+    } catch (err) {
+      toast(`Bilet oluşturulamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
+    } finally {
+      setTicketSubmitting(false)
+    }
   }
 
   async function ensureCustomer() {
@@ -1992,6 +2088,9 @@ export default function OrderHub() {
           <>
             <button className="btn-o" onClick={loadBase} title="Yenile">
               <i className="fa-solid fa-rotate-right" />
+            </button>
+            <button className="btn-o" onClick={() => handleOpenTicketModal(null)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-ticket" style={{ color: '#ef4444' }} /> Bilet Aç
             </button>
             <button className="btn-p" onClick={() => {
               resetComposer()
@@ -2624,6 +2723,16 @@ export default function OrderHub() {
               <SidebarCard icon="fa-gift" title="Seçili sadakat" value={appliedLoyaltyCampaign.campaignName || appliedLoyaltyCampaign.offerLabel} />
             )}
             <SidebarCard icon="fa-location-dot" title="Adres / Şube" value={fulfillmentType === 'delivery' ? selectedAddressSummary : selectedBranch?.name} />
+            {(selectedCustomer || activeCustomerName) && (
+              <button
+                type="button"
+                className="btn-o"
+                onClick={() => handleOpenTicketModal(selectedCustomer)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.76rem', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', marginTop: 4 }}
+              >
+                <i className="fa-solid fa-ticket" /> Müşteri İçin Bilet Aç
+              </button>
+            )}
           </div>
 
           <div style={{ minHeight: 430, padding: 16 }}>
@@ -2892,6 +3001,114 @@ export default function OrderHub() {
               <div style={{ display: 'flex', gap: 10 }}>
                 <button type="button" className="btn-o" disabled={!selectedOrderCanEdit || orderActionBusy || selectedOrder.status === 'cancelled'} onClick={cancelSelectedOrder}>Iptal Et</button>
                 {orderEditMode ? <button type="button" className="btn-p" disabled={!selectedOrderCanEdit || orderActionBusy} onClick={saveOrderEdits}>{orderActionBusy ? 'Kaydediliyor...' : 'Kaydet'}</button> : <button type="button" className="btn-p" disabled={!selectedOrderCanEdit || orderActionBusy || selectedOrder.status === 'cancelled'} onClick={() => setOrderEditMode(true)}>Duzenle</button>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showTicketModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)',
+          zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="card" style={{
+            width: 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', padding: 22,
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', borderLeft: '4px solid #ef4444'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-ticket" style={{ color: '#ef4444' }} /> Yeni Destek / Şikayet Bileti
+              </div>
+              <button className="btn-g" onClick={() => setShowTicketModal(false)} style={{ padding: '4px 8px' }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="f-label">Bilet Kategorisi *</label>
+                  <div className="sel-wrap">
+                    <select
+                      value={ticketForm.categoryId}
+                      onChange={e => setTicketForm(p => ({ ...p, categoryId: e.target.value }))}
+                      className="f-input"
+                    >
+                      {ticketCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="f-label">Öncelik Seviyesi</label>
+                  <div className="sel-wrap">
+                    <select
+                      value={ticketForm.priority}
+                      onChange={e => setTicketForm(p => ({ ...p, priority: e.target.value }))}
+                      className="f-input"
+                    >
+                      <option value="low">Düşük</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">Yüksek</option>
+                      <option value="critical">Kritik</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="f-label">İlgili Şube *</label>
+                <div className="sel-wrap">
+                  <select
+                    value={ticketForm.branchId}
+                    onChange={e => setTicketForm(p => ({ ...p, branchId: e.target.value }))}
+                    className="f-input"
+                  >
+                    <option value="">Şube Seçin</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="f-label">Müşteri Telefon</label>
+                  <input
+                    type="text"
+                    value={ticketForm.customerPhone}
+                    onChange={e => setTicketForm(p => ({ ...p, customerPhone: e.target.value }))}
+                    className="f-input"
+                    placeholder="+90 5xx xxx xx xx"
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Müşteri Ad Soyad</label>
+                  <input
+                    type="text"
+                    value={ticketForm.customerName}
+                    onChange={e => setTicketForm(p => ({ ...p, customerName: e.target.value }))}
+                    className="f-input"
+                    placeholder="Müşteri Adı Soyadı"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="f-label">Açıklama / Şikayet Detayı *</label>
+                <textarea
+                  value={ticketForm.description}
+                  onChange={e => setTicketForm(p => ({ ...p, description: e.target.value }))}
+                  rows={4}
+                  placeholder="Şikayet veya destek talebi detaylarını buraya yazın..."
+                  className="f-input"
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+                <button className="btn-o" onClick={() => setShowTicketModal(false)} disabled={ticketSubmitting}>İptal</button>
+                <button className="btn-p" onClick={handleCreateTicket} disabled={ticketSubmitting} style={{ background: '#ef4444', color: '#fff', border: 'none' }}>
+                  {ticketSubmitting ? 'Oluşturuluyor...' : 'Bilet Oluştur'}
+                </button>
               </div>
             </div>
           </div>

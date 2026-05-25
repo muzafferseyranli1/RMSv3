@@ -20,10 +20,10 @@ async function run() {
   await client.connect();
   try {
     const res = await client.query(`
-      SELECT table_name, column_name, data_type 
+      SELECT column_name, is_nullable 
       FROM information_schema.columns 
-      WHERE data_type IN ('json', 'jsonb')
-      ORDER BY table_name, column_name
+      WHERE table_name = 'loyalty_coupons'
+      ORDER BY column_name
     `);
     console.log(JSON.stringify(res.rows, null, 2));
   } catch (err) {
