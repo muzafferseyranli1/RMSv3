@@ -2,7 +2,7 @@
 chcp 65001 > nul
 
 :: Proje klasörüne geçiş yapılıyor
-cd /d "C:\RMSggl\Dropbox\RMSv3"
+cd /d "%~dp0"
 
 echo =======================================
 echo      GIT MAKINE SENKRONIZASYON ARACI
