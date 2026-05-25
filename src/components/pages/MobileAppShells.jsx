@@ -10,8 +10,8 @@ import StaffPinGate from '@/components/pos/StaffPinGate'
 import { getPersonnelDisplayName } from '@/lib/posStaffAuth'
 import { loadTableByQrToken, loadTableManagementCatalog } from '@/lib/posTableCatalogService'
 import { searchMobileCustomers } from '@/lib/mobileCustomerIdentity'
-import { appendItemsToOpenTableTicket, hydrateOpenTableTicketsFromDb } from '@/lib/posTablePersistence'
-import { createTableServiceRequest, loadActiveTableServiceRequests, summarizeTableServiceRequests, TABLE_REQUEST_TYPES } from '@/lib/tableServiceRequests'
+import { appendItemsToOpenTableTicket, hydrateOpenTableTicketsFromDb, persistOpenTableTicketsToDb } from '@/lib/posTablePersistence'
+import { createTableServiceRequest, loadActiveTableServiceRequests, summarizeTableServiceRequests, TABLE_REQUEST_TYPES, acknowledgeTableServiceRequest, resolveTableServiceRequest } from '@/lib/tableServiceRequests'
 import { clearMobileQrSession, readMobileQrSession, updateMobileQrAdvantage, writeMobileQrSession } from '@/lib/mobileQrSession'
 import { asUuidOrNull, getNextKioskDisplayNo } from '@/lib/kioskSettings'
 import { loadCustomerLoyaltyCategoryIds } from '@/lib/posCustomerLink'
@@ -290,6 +290,9 @@ function resolveMobileCouponDiscount(couponSelection, subtotal) {
   return 0
 }
 
+const STABLE_EMPTY_ARRAY = Object.freeze([])
+const STABLE_EMPTY_OBJECT = Object.freeze({})
+
 function MobileOrderSurface({
   mode = 'waiter',
   branchId,
@@ -301,9 +304,9 @@ function MobileOrderSurface({
   linkedCustomer = null,
   selectedCampaignId = '',
   selectedCouponCode = '',
-  loyaltyCampaigns = [],
-  saleTemplates = [],
-  couponContext = {},
+  loyaltyCampaigns = STABLE_EMPTY_ARRAY,
+  saleTemplates = STABLE_EMPTY_ARRAY,
+  couponContext = STABLE_EMPTY_OBJECT,
   onBack,
   onDone,
 }) {
@@ -390,7 +393,7 @@ function MobileOrderSurface({
     [cart],
   )
   const customerContext = useMemo(() => {
-    if (!linkedCustomer && !customerId && !customerName) return {}
+    if (!linkedCustomer && !customerId && !customerName) return STABLE_EMPTY_OBJECT
     return {
       customerId: linkedCustomer?.customerId || customerId || '',
       customerName: linkedCustomer?.customerName || customerName || '',
@@ -1094,7 +1097,12 @@ function PersonnelPhoneRuntime({
           )}
 
           {activeTab === 'garson' && (
-            <Garson />
+            <MobileGarsonRuntime
+              branchId={branchId}
+              branchName={branchName}
+              activeStaff={activeStaff}
+              onStaffLogout={onStaffLogout}
+            />
           )}
 
           {activeTab === 'orders' && (
@@ -2329,7 +2337,7 @@ function PersonnelManager({ branchId, branchName }) {
                     onClick={() => handleShipmentStatus(s.id, 'rejected')}
                     style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
                   >
-                    Reddet / İade Et
+                    Reddet
                   </button>
                 </div>
               )}
@@ -2352,6 +2360,14 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
   const [activeView, setActiveView] = useState('tables')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
+  // Status filter state: 'all', 'empty', 'occupied', 'call'
+  const [tableFilter, setTableFilter] = useState('all')
+  // Global requests modal state
+  const [showGlobalRequestsModal, setShowGlobalRequestsModal] = useState(false)
+  // Table details bottom sheet state
+  const [showTableDetailModal, setShowTableDetailModal] = useState(false)
+
+  // Polling mechanism removed - only loads on manual refresh / initial mount
   useEffect(() => {
     if (!branchId) {
       setLoading(false)
@@ -2399,11 +2415,66 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
       }
     }
 
-    hydrateRuntime()
+    hydrateRuntime({ background: refreshTrigger > 0 })
+
     return () => {
       cancelled = true
     }
   }, [branchId, refreshTrigger])
+
+  // Acknowledge Table Service Request handler
+  const handleAcknowledgeRequest = async (requestId) => {
+    try {
+      await acknowledgeTableServiceRequest(requestId, activeStaff)
+      setRefreshTrigger(prev => prev + 1)
+      if (typeof showToast === 'function') {
+        showToast('Masa çağrısı kabul edildi.', '#0284c7')
+      }
+    } catch (err) {
+      console.error('Talep kabul hatası:', err)
+      if (typeof showToast === 'function') {
+        showToast('Hata: ' + err.message, '#ef4444')
+      }
+    }
+  }
+
+  // Resolve Table Service Request handler
+  const handleResolveRequest = async (requestId) => {
+    try {
+      await resolveTableServiceRequest(requestId, activeStaff)
+      setRefreshTrigger(prev => prev + 1)
+      if (typeof showToast === 'function') {
+        showToast('Masa çağrısı tamamlandı.', '#22c55e')
+      }
+    } catch (err) {
+      console.error('Talep çözümleme hatası:', err)
+      if (typeof showToast === 'function') {
+        showToast('Hata: ' + err.message, '#ef4444')
+      }
+    }
+  }
+
+  // Settle table ticket payment handler
+  const handleSettlePayment = async (tableId, paymentType) => {
+    try {
+      const nextTickets = { ...tableTickets }
+      const branchTickets = { ...(nextTickets[branchId] || {}) }
+      delete branchTickets[tableId]
+      nextTickets[branchId] = branchTickets
+      
+      await persistOpenTableTicketsToDb(nextTickets, catalog.tables || [])
+      setTableTickets(nextTickets)
+      setRefreshTrigger(prev => prev + 1)
+      if (typeof showToast === 'function') {
+        showToast(`Ödeme alındı (${paymentType === 'cash' ? 'Nakit' : paymentType === 'card' ? 'Kredi Kartı' : 'Sadakat'}). Adisyon kapatıldı.`, '#22c55e')
+      }
+    } catch (err) {
+      console.error('Ödeme alma hatası:', err)
+      if (typeof showToast === 'function') {
+        showToast('Ödeme alınamadı: ' + err.message, '#ef4444')
+      }
+    }
+  }
 
   const activeTables = useMemo(
     () => (catalog.tables || []).filter(table => table.status === 'active' && table.is_active !== false),
@@ -2422,9 +2493,41 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
     }, {}),
     [tableRequests],
   )
+
   const selectedTable = activeTables.find(table => table.id === selectedTableKey) || activeTables[0] || null
   const selectedTicket = branchTickets?.[selectedTable?.id] || { cart: [], orderNote: '', guestCounts: { women: 0, men: 0, children: 0 } }
   const selectedRequestSummary = summarizeTableServiceRequests(requestsByTableKey?.[selectedTable?.id] || [])
+  
+  // Memoized lists for active requests
+  const activeRequestsForSelectedTable = useMemo(
+    () => (tableRequests || []).filter(req => req.tableId === selectedTable?.id),
+    [tableRequests, selectedTable]
+  )
+
+  // Ticket total sum
+  const ticketTotal = useMemo(() => {
+    if (!selectedTicket || !Array.isArray(selectedTicket.cart)) return 0
+    return selectedTicket.cart.reduce((sum, item) => {
+      const price = parseFloat(item.unitPrice || item.price || 0)
+      const qty = parseFloat(item.qty || 0)
+      return sum + (price * qty)
+    }, 0)
+  }, [selectedTicket])
+
+  // Filter tables according to state
+  const filteredTables = useMemo(() => {
+    return activeTables.filter(table => {
+      const ticket = branchTickets?.[table.id] || {}
+      const itemCount = Array.isArray(ticket?.cart) ? ticket.cart.reduce((sum, item) => sum + (parseFloat(item?.qty) || 0), 0) : 0
+      const requestSummary = summarizeTableServiceRequests(requestsByTableKey?.[table.id] || [])
+      
+      if (tableFilter === 'call') return requestSummary.pendingCount > 0
+      if (tableFilter === 'occupied') return itemCount > 0
+      if (tableFilter === 'empty') return itemCount === 0 && requestSummary.pendingCount === 0
+      return true
+    })
+  }, [activeTables, branchTickets, requestsByTableKey, tableFilter])
+
   if (activeView === 'order' && selectedTable) {
     return (
       <MobileOrderSurface
@@ -2464,13 +2567,45 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
     : 0
 
   return (
-    <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto 1fr auto', background: 'linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%)' }}>
+    <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto 1fr', background: 'linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%)', position: 'relative' }}>
       <div style={{ padding: '14px 14px 10px', display: 'grid', gap: 12, borderBottom: '1px solid rgba(226,232,240,.8)', background: 'linear-gradient(180deg, rgba(56,189,248,.14), rgba(255,255,255,.96))' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ color: '#0284c7', fontWeight: 900, fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.08em' }}>{branchName || 'Sube'}</div>
             <div style={{ marginTop: 4, color: '#0f172a', fontWeight: 900, fontSize: '1rem' }}>{getPersonnelDisplayName(activeStaff)}</div>
-            <div style={{ marginTop: 2, color: '#64748b', fontSize: '.74rem' }}>Masa sec, sonra siparisi telefondan al.</div>
+            <div style={{ marginTop: 2, color: '#64748b', fontSize: '.74rem', fontWeight: 700 }}>Masa seç, ardından sipariş al.</div>
+            <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <select
+                id="header-table-select"
+                value={selectedTableKey || ''}
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val) {
+                    setSelectedTableKey(val)
+                    setShowTableDetailModal(true)
+                  }
+                }}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(2, 132, 199, 0.2)',
+                  background: 'rgba(224, 242, 254, 0.6)',
+                  color: '#0284c7',
+                  fontSize: '.74rem',
+                  fontWeight: 900,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '150px'
+                }}
+              >
+                <option value="" style={{ color: '#64748b' }}>Hızlı Masa Seç...</option>
+                {activeTables.map(t => (
+                  <option key={t.id} value={t.id} style={{ color: '#0f172a', fontWeight: 700 }}>
+                    {t.table_name} ({t.table_number})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
@@ -2501,71 +2636,136 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
           </div>
         </div>
 
-        {selectedTable ? (
-          <div style={{ borderRadius: 22, padding: 16, background: 'linear-gradient(135deg, #0f172a, #172554)', color: '#fff', display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 10 }}>
+        {/* Global Active Requests Banner */}
+        {tableRequests.length > 0 && (
+          <div 
+            onClick={() => setShowGlobalRequestsModal(true)}
+            style={{ 
+              padding: '12px 14px', 
+              borderRadius: 16, 
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)', 
+              color: '#fff', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              cursor: 'pointer',
+              boxShadow: '0 8px 20px rgba(239, 68, 68, 0.25)',
+              margin: '2px 0 4px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 999, background: 'rgba(255, 255, 255, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="fa-solid fa-bell fa-bounce" />
+              </div>
               <div>
-                <div style={{ color: '#7dd3fc', fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                  {(selectedTableHall?.name || 'Salon').toUpperCase()} / {(selectedTableSection?.name || 'Bolge').toUpperCase()}
+                <div style={{ fontSize: '.84rem', fontWeight: 900 }}>Müşteri Çağrısı Var ({tableRequests.length})</div>
+                <div style={{ fontSize: '.68rem', color: '#fee2e2' }}>
+                  {tableRequests.filter(r => r.status === 'pending').length} bekleyen talep. Görmek için dokunun.
                 </div>
-                <div style={{ marginTop: 6, fontSize: '1.24rem', fontWeight: 900 }}>{selectedTable.table_name}</div>
-                <div style={{ marginTop: 4, color: '#cbd5e1', fontSize: '.74rem' }}>Masa No: {selectedTable.table_number || '-'} / {selectedTable.capacity || '-'} kisilik</div>
-              </div>
-              <div style={{ padding: '8px 10px', borderRadius: 14, background: 'rgba(255,255,255,.08)', color: '#fbbf24', fontWeight: 900, fontSize: '.74rem' }}>
-                {selectedItemCount} urun
               </div>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              <MobileStatCard label="Adisyon" value={selectedItemCount} icon="fa-receipt" tone="#38bdf8" />
-              <MobileStatCard label="Cagri" value={selectedRequestSummary.pendingCount || 0} icon="fa-bell-concierge" tone="#ef4444" />
-              <MobileStatCard label="Hesap" value={selectedRequestSummary.hasBillRequest ? 1 : 0} icon="fa-money-bill-wave" tone="#f59e0b" />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveView('order')}
-              style={{ minHeight: 54, borderRadius: 18, border: 'none', background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#111827', fontWeight: 900, cursor: 'pointer', fontSize: '.92rem' }}
-            >
-              <i className="fa-solid fa-utensils" style={{ marginRight: 8 }} />
-              Bu masa icin siparis al
-            </button>
+            <i className="fa-solid fa-chevron-right" style={{ fontSize: '.8rem' }} />
           </div>
-        ) : null}
+        )}
       </div>
 
       <div style={{ minHeight: 0, overflowY: 'auto', padding: 14, display: 'grid', gap: 12, alignContent: 'start' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ color: '#0f172a', fontWeight: 900, fontSize: '.92rem' }}>Masalar</div>
-          <div style={{ color: '#64748b', fontSize: '.74rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            {refreshing ? <i className="fa-solid fa-rotate fa-spin" style={{ color: '#0284c7' }} /> : null}
-            {activeTables.length} aktif masa
-          </div>
+        {/* Table Filters Tab bar */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, scrollbarWidth: 'none' }}>
+          {[
+            { key: 'all', label: 'Tümü', count: activeTables.length, tone: '#64748b' },
+            { key: 'call', label: 'Çağrılar', count: activeTables.filter(t => summarizeTableServiceRequests(requestsByTableKey?.[t.id] || []).pendingCount > 0).length, tone: '#ef4444' },
+            { key: 'occupied', label: 'Dolu', count: activeTables.filter(t => (branchTickets?.[t.id]?.cart || []).length > 0).length, tone: '#0284c7' },
+            { key: 'empty', label: 'Boş', count: activeTables.filter(t => !(branchTickets?.[t.id]?.cart || []).length && !summarizeTableServiceRequests(requestsByTableKey?.[t.id] || []).pendingCount).length, tone: '#16a34a' }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setTableFilter(tab.key)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 12,
+                border: 'none',
+                background: tableFilter === tab.key ? tab.tone : '#f1f5f9',
+                color: tableFilter === tab.key ? '#fff' : '#475569',
+                fontSize: '.72rem',
+                fontWeight: 900,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.label}
+              <span style={{ 
+                padding: '2px 6px', 
+                borderRadius: 6, 
+                background: tableFilter === tab.key ? 'rgba(255,255,255,.2)' : 'rgba(15,23,42,.06)', 
+                color: tableFilter === tab.key ? '#fff' : '#64748b',
+                fontSize: '.62rem'
+              }}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {activeTables.map(table => {
+          {filteredTables.map(table => {
             const ticket = branchTickets?.[table.id] || {}
             const itemCount = Array.isArray(ticket?.cart) ? ticket.cart.reduce((sum, item) => sum + (parseFloat(item?.qty) || 0), 0) : 0
             const requestSummary = summarizeTableServiceRequests(requestsByTableKey?.[table.id] || [])
             const hall = hallMap.get(table.hall_id)
             const section = sectionMap.get(table.section_id)
+
+            // Resolve color codes for status
+            let cardBg = '#f8fafc'
+            let cardBorder = '1px solid #e2e8f0'
+            let cardShadow = '0 4px 12px rgba(15,23,42,.04)'
+            let statusTextColor = '#64748b'
+            let statusText = 'Boş / Hazır'
+            
+            if (requestSummary.pendingCount > 0) {
+              cardBg = 'linear-gradient(135deg, #fef2f2, #fee2e2)'
+              cardBorder = selectedTableKey === table.id && showTableDetailModal ? '2px solid #ef4444' : '1px solid #fca5a5'
+              cardShadow = '0 8px 20px rgba(239,68,68,.16)'
+              statusTextColor = '#dc2626'
+              statusText = 'Çağrı Var!'
+            } else if (itemCount > 0) {
+              cardBg = 'linear-gradient(135deg, #f0f9ff, #e0f2fe)'
+              cardBorder = selectedTableKey === table.id && showTableDetailModal ? '2px solid #0284c7' : '1px solid #bae6fd'
+              cardShadow = '0 6px 14px rgba(2,132,199,.08)'
+              statusTextColor = '#0284c7'
+              statusText = 'Dolu'
+            } else {
+              cardBg = 'linear-gradient(135deg, #f0fdf4, #dcfce7)'
+              cardBorder = selectedTableKey === table.id && showTableDetailModal ? '2px solid #22c55e' : '1px solid #bbf7d0'
+              cardShadow = '0 4px 10px rgba(34,197,94,.06)'
+              statusTextColor = '#16a34a'
+              statusText = 'Boş'
+            }
+
             return (
               <button
                 key={table.id}
                 type="button"
-                onClick={() => setSelectedTableKey(table.id)}
+                onClick={() => {
+                  setSelectedTableKey(table.id)
+                  setShowTableDetailModal(true)
+                }}
                 style={{
                   minHeight: 132,
                   borderRadius: 20,
-                  border: selectedTableKey === table.id ? '1px solid rgba(14,165,233,.42)' : '1px solid rgba(226,232,240,.92)',
-                  background: selectedTableKey === table.id ? 'linear-gradient(135deg, rgba(14,165,233,.16), rgba(255,255,255,.98))' : 'rgba(255,255,255,.95)',
-                  boxShadow: requestSummary.pendingCount > 0 ? '0 0 0 2px rgba(248,113,113,.12), 0 12px 24px rgba(248,113,113,.16)' : '0 10px 24px rgba(15,23,42,.06)',
+                  border: cardBorder,
+                  background: cardBg,
+                  boxShadow: cardShadow,
                   padding: 12,
                   display: 'grid',
                   gap: 8,
                   textAlign: 'left',
                   cursor: 'pointer',
+                  position: 'relative',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 8 }}>
@@ -2574,7 +2774,9 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
                     <div style={{ marginTop: 3, color: '#64748b', fontSize: '.68rem' }}>{hall?.name || 'Salon'} / {section?.name || 'Bolge'}</div>
                   </div>
                   {requestSummary.pendingCount > 0 ? (
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: '#ef4444', boxShadow: '0 0 0 6px rgba(239,68,68,.12)' }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: '#ef4444', boxShadow: '0 0 0 6px rgba(239,68,68,.12)', animation: 'pulse 1.5s infinite' }} />
+                  ) : itemCount > 0 ? (
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: '#0284c7', boxShadow: '0 0 0 6px rgba(2,132,199,.12)' }} />
                   ) : (
                     <span style={{ width: 10, height: 10, borderRadius: 999, background: '#22c55e', boxShadow: '0 0 0 6px rgba(34,197,94,.12)' }} />
                   )}
@@ -2586,8 +2788,8 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
                   {requestSummary.hasCallWaiter ? <MiniBadge tone="#ef4444" text="Cagri" /> : null}
                   {requestSummary.hasBillRequest ? <MiniBadge tone="#7c3aed" text="Hesap" /> : null}
                 </div>
-                <div style={{ marginTop: 'auto', color: '#475569', fontSize: '.72rem', fontWeight: 700 }}>
-                  {itemCount > 0 ? 'Adisyon acik' : 'Siparis bekliyor'}
+                <div style={{ marginTop: 'auto', color: statusTextColor, fontSize: '.72rem', fontWeight: 800 }}>
+                  {statusText}
                 </div>
               </button>
             )
@@ -2595,16 +2797,367 @@ function MobileGarsonRuntime({ branchId, branchName, activeStaff, onStaffLogout 
         </div>
       </div>
 
-      <div style={{ padding: 14, borderTop: '1px solid rgba(226,232,240,.84)', background: 'rgba(255,255,255,.92)' }}>
-        <button
-          type="button"
-          onClick={() => selectedTable && setActiveView('order')}
-          disabled={!selectedTable}
-          style={{ width: '100%', minHeight: 50, borderRadius: 18, border: 'none', background: selectedTable ? '#0f172a' : '#cbd5e1', color: '#fff', fontWeight: 900, cursor: selectedTable ? 'pointer' : 'default' }}
-        >
-          {selectedTable ? `${selectedTable.table_name} icin siparis ekranini ac` : 'Once bir masa secin'}
-        </button>
-      </div>
+      {/* Global Table Requests Drawer Modal */}
+      {showGlobalRequestsModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 999,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            maxHeight: '80%',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '24px 20px',
+            boxShadow: '0 -10px 25px rgba(0,0,0,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>Aktif Müşteri Talepleri</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '.76rem', color: '#64748b' }}>Garson veya hesap bekleyen masalar</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGlobalRequestsModal(false)}
+                style={{ width: 36, height: 36, borderRadius: 12, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, display: 'grid', gap: 12, paddingBottom: 16 }}>
+              {tableRequests.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 16px', color: '#64748b' }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 999, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: '1.2rem', color: '#94a3b8' }}>
+                    <i className="fa-solid fa-check" />
+                  </div>
+                  <div style={{ fontSize: '.88rem', fontWeight: 800, color: '#0f172a' }}>Tüm Talepler Karşılandı</div>
+                  <div style={{ fontSize: '.76rem', marginTop: 4 }}>Şu anda bekleyen aktif müşteri çağrısı bulunmuyor.</div>
+                </div>
+              ) : (
+                tableRequests.map(req => {
+                  const table = activeTables.find(t => t.id === req.tableId)
+                  const isPending = req.status === 'pending'
+                  const label = req.requestType === 'call_waiter' ? 'Garson Çağır' : req.requestType === 'bill_request' ? 'Hesap İste' : 'Online Ödeme İlgisi'
+                  const icon = req.requestType === 'call_waiter' ? 'fa-bell-concierge' : req.requestType === 'bill_request' ? 'fa-receipt' : 'fa-credit-card'
+                  const color = req.requestType === 'call_waiter' ? '#ef4444' : '#38bdf8'
+                  
+                  return (
+                    <div 
+                      key={req.id} 
+                      style={{ 
+                        display: 'grid', 
+                        gap: 10, 
+                        padding: 14, 
+                        borderRadius: 18, 
+                        background: '#f8fafc', 
+                        border: isPending ? '1px solid rgba(239,68,68,0.15)' : '1px solid #e2e8f0' 
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 12, background: isPending ? 'rgba(239,68,68,.1)' : 'rgba(148,163,184,.1)', color: isPending ? '#ef4444' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <i className={`fa-solid ${icon}`} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '.9rem', fontWeight: 900, color: '#0f172a' }}>
+                              {table ? table.table_name : `Masa`}
+                            </div>
+                            <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontWeight: 800, color }}>{label}</span>
+                              <span>•</span>
+                              <span>{req.requestedAt ? new Date(req.requestedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <span style={{ 
+                          borderRadius: 999, 
+                          padding: '4px 8px', 
+                          background: isPending ? '#fef3c7' : '#dcfce7', 
+                          color: isPending ? '#d97706' : '#16a34a', 
+                          fontSize: '.62rem', 
+                          fontWeight: 900 
+                        }}>
+                          {isPending ? 'Bekliyor' : 'Kabul Edildi'}
+                        </span>
+                      </div>
+
+                      {req.acknowledgedByStaffName && (
+                        <div style={{ fontSize: '.7rem', color: '#64748b', background: '#fff', padding: '6px 10px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                          İlgilenen Personel: <strong>{req.acknowledgedByStaffName}</strong>
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (table) {
+                              setSelectedTableKey(table.id)
+                              setShowGlobalRequestsModal(false)
+                              setShowTableDetailModal(true)
+                            }
+                          }}
+                          style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 800, fontSize: '.76rem', cursor: 'pointer' }}
+                        >
+                          Masaya Git
+                        </button>
+                        {isPending ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleAcknowledgeRequest(req.id)}
+                              style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', background: '#38bdf8', color: '#0f172a', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                            >
+                              Kabul Et
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleResolveRequest(req.id)}
+                              style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                            >
+                              Tamamla
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleResolveRequest(req.id)}
+                            style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                          >
+                            Tamamlandı İşaretle
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table Detail Bottom Sheet Drawer Modal */}
+      {showTableDetailModal && selectedTable && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 998,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            maxHeight: '90%',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '24px 20px',
+            boxShadow: '0 -10px 25px rgba(0,0,0,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <span style={{ color: '#0284c7', fontSize: '.7rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                  {(selectedTableHall?.name || 'Salon').toUpperCase()} / {(selectedTableSection?.name || 'Bolge').toUpperCase()}
+                </span>
+                <h3 style={{ margin: '4px 0 0', fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
+                  {selectedTable.table_name}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '.74rem', color: '#64748b' }}>
+                  Masa No: {selectedTable.table_number || '-'} / Kapasite: {selectedTable.capacity || '-'} Kişi
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTableDetailModal(false)}
+                style={{ width: 38, height: 38, borderRadius: 12, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, display: 'grid', gap: 16, paddingBottom: 16 }}>
+              {/* Stat Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                <div style={{ borderRadius: 18, padding: '10px 8px', background: '#f0f9ff', border: '1px solid #bae6fd', display: 'grid', gap: 6, justifyItems: 'center' }}>
+                  <span style={{ color: '#0284c7' }}>
+                    <i className="fa-solid fa-receipt" />
+                  </span>
+                  <div style={{ fontSize: '.9rem', fontWeight: 900, color: '#0f172a' }}>{selectedItemCount}</div>
+                  <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Adisyon</div>
+                </div>
+                <div style={{ borderRadius: 18, padding: '10px 8px', background: '#fef2f2', border: '1px solid #fca5a5', display: 'grid', gap: 6, justifyItems: 'center' }}>
+                  <span style={{ color: '#ef4444' }}>
+                    <i className="fa-solid fa-bell-concierge" />
+                  </span>
+                  <div style={{ fontSize: '.9rem', fontWeight: 900, color: '#0f172a' }}>{selectedRequestSummary.pendingCount || 0}</div>
+                  <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Çağrı</div>
+                </div>
+                <div style={{ borderRadius: 18, padding: '10px 8px', background: '#fffbeb', border: '1px solid #fde68a', display: 'grid', gap: 6, justifyItems: 'center' }}>
+                  <span style={{ color: '#d97706' }}>
+                    <i className="fa-solid fa-money-bill-wave" />
+                  </span>
+                  <div style={{ fontSize: '.9rem', fontWeight: 900, color: '#0f172a' }}>{selectedRequestSummary.hasBillRequest ? 1 : 0}</div>
+                  <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Hesap</div>
+                </div>
+              </div>
+
+              {/* Table-Specific Customer Requests List */}
+              {activeRequestsForSelectedTable.length > 0 && (
+                <div style={{ padding: 14, borderRadius: 18, background: '#f8fafc', border: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: '.8rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="fa-solid fa-bell-concierge" style={{ color: '#ef4444' }} />
+                    Aktif Müşteri Talepleri ({activeRequestsForSelectedTable.length})
+                  </div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {activeRequestsForSelectedTable.map(req => {
+                      const isPending = req.status === 'pending'
+                      const label = req.requestType === 'call_waiter' ? 'Garson Çağır' : req.requestType === 'bill_request' ? 'Hesap İste' : 'Online Ödeme İlgisi'
+                      const icon = req.requestType === 'call_waiter' ? 'fa-bell-concierge' : req.requestType === 'bill_request' ? 'fa-receipt' : 'fa-credit-card'
+                      const color = req.requestType === 'call_waiter' ? '#ef4444' : '#38bdf8'
+                      
+                      return (
+                        <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 10, borderRadius: 12, background: '#fff', border: '1px solid #f1f5f9' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <span style={{ color, flexShrink: 0 }}>
+                              <i className={`fa-solid ${icon}`} />
+                            </span>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '.84rem', fontWeight: 800, color: '#0f172a' }}>{label}</div>
+                              {req.acknowledgedByStaffName && (
+                                <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 2 }}>
+                                  İlgilenen: {req.acknowledgedByStaffName}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            {isPending ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcknowledgeRequest(req.id)}
+                                  style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#38bdf8', color: '#0f172a', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
+                                >
+                                  Kabul
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResolveRequest(req.id)}
+                                  style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
+                                >
+                                  Tamamla
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleResolveRequest(req.id)}
+                                style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
+                              >
+                                Tamamla
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Bill Details / Adisyon List */}
+              {selectedItemCount > 0 && (
+                <div style={{ padding: 14, borderRadius: 18, background: '#f8fafc', border: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: '.8rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fa-solid fa-receipt" style={{ color: '#fbbf24' }} />
+                      Masa Adisyon Detayı
+                    </span>
+                    <span style={{ color: '#d97706', fontWeight: 900 }}>{fmtMoney(ticketTotal)}₺</span>
+                  </div>
+                  <div style={{ maxHeight: 150, overflowY: 'auto', display: 'grid', gap: 8, paddingRight: 4 }}>
+                    {selectedTicket.cart.map(item => (
+                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.78rem', color: '#334155' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
+                          <strong>{item.qty}x</strong> {item.name} {item.portion?.name ? `(${item.portion.name})` : ''}
+                        </span>
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{fmtMoney(parseFloat(item.unitPrice || 0) * parseFloat(item.qty || 0))}₺</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Settle Checkout Actions */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSettlePayment(selectedTable.id, 'cash')}
+                      style={{ height: 38, borderRadius: 10, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                    >
+                      Nakit Öde
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSettlePayment(selectedTable.id, 'card')}
+                      style={{ height: 38, borderRadius: 10, border: 'none', background: '#38bdf8', color: '#0f172a', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                    >
+                      Kart Öde
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSettlePayment(selectedTable.id, 'loyalty')}
+                      style={{ height: 38, borderRadius: 10, border: 'none', background: '#a78bfa', color: '#fff', fontWeight: 900, fontSize: '.76rem', cursor: 'pointer' }}
+                    >
+                      Sadakat
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTableDetailModal(false)
+                  setActiveView('order')
+                }}
+                style={{ flex: 2, minHeight: 48, borderRadius: 14, border: 'none', background: '#fbbf24', color: '#111827', fontWeight: 900, cursor: 'pointer', fontSize: '.88rem' }}
+              >
+                <i className="fa-solid fa-utensils" style={{ marginRight: 8 }} />
+                Sipariş Ekle
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTableDetailModal(false)}
+                style={{ flex: 1, minHeight: 48, borderRadius: 14, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer', fontSize: '.88rem' }}
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
