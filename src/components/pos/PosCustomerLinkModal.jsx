@@ -6,6 +6,10 @@ import {
   readPosLoyaltyLinkSession,
 } from '@/lib/posCustomerLink'
 import { db } from '@/lib/db'
+import {
+  lookupCustomerByQrCode,
+  revertExpiredCouponReservations,
+} from '@/lib/mobileCustomerApp'
 
 const QR_POLL_INTERVAL_MS = 3000
 
@@ -30,128 +34,114 @@ export default function PosCustomerLinkModal({
   const [searchError, setSearchError] = useState('')
   const [loadingCategories, setLoadingCategories] = useState(false)
 
-  // QR tab state
-  const [qrSession, setQrSession] = useState(null)
-  const [qrUrl, setQrUrl] = useState('')
-  const [qrLinkUrl, setQrLinkUrl] = useState('')
+  // QR tab state (Scanner)
+  const [scanValue, setScanValue] = useState('')
+  const [qrSearching, setQrSearching] = useState(false)
   const [qrError, setQrError] = useState('')
   const [qrStatus, setQrStatus] = useState('')
-  const [qrInitialized, setQrInitialized] = useState(false)
-  const qrPollRef = useRef(null)
-  const qrActiveRef = useRef(false)
+  const [sampleCustomers, setSampleCustomers] = useState([])
+  const scanInputRef = useRef(null)
 
   // Modal kapanınca temizle
   useEffect(() => {
     if (!open) {
-      stopQrPolling()
       setTab('search')
       setSearchText('')
       setMatches([])
       setSearchStatus('')
       setSearchError('')
-      setQrSession(null)
-      setQrUrl('')
-      setQrLinkUrl('')
+      setScanValue('')
       setQrError('')
       setQrStatus('')
-      setQrInitialized(false)
     }
   }, [open])
 
-  // QR tab aktif olduğunda oturumu başlat
+  // QR tab aktif olduğunda auto-focus & load sample customers
   useEffect(() => {
-    if (open && tab === 'qr' && !qrInitialized) {
-      setQrInitialized(true)
-      initQrSession()
+    if (open && tab === 'qr') {
+      db.from('musteriler')
+        .select('id, ad_soyad, telefon, loyalty_member_no')
+        .is('deleted_at', null)
+        .not('loyalty_member_no', 'is', null)
+        .limit(4)
+        .then(({ data }) => {
+          if (data) setSampleCustomers(data)
+        })
+        .catch(() => {})
+      
+      setTimeout(() => {
+        if (scanInputRef.current) scanInputRef.current.focus()
+      }, 150)
     }
-    if (tab !== 'qr') {
-      stopQrPolling()
-    }
-  }, [open, tab, qrInitialized])
+  }, [open, tab])
 
-  // Temizleme
-  useEffect(() => () => {
-    stopQrPolling()
-  }, [])
-
-  function stopQrPolling() {
-    qrActiveRef.current = false
-    if (qrPollRef.current) {
-      clearInterval(qrPollRef.current)
-      qrPollRef.current = null
+  // Refocus input if cashier clicks elsewhere in QR tab
+  const handleRefocusScan = () => {
+    if (open && tab === 'qr' && scanInputRef.current) {
+      scanInputRef.current.focus()
     }
   }
 
-  async function initQrSession() {
+  async function handleScanCode(code) {
+    if (!code || !code.trim()) return
+    setQrSearching(true)
     setQrError('')
-    setQrStatus('QR hazırlanıyor...')
-    setQrUrl('')
-    setQrLinkUrl('')
+    setQrStatus('Müşteri bulunuyor...')
     try {
-      const session = await createPosLoyaltyLinkSession({
-        branchId,
-        branchName,
-        registerNo,
-        registerLabel,
-        timeoutSec: 300,
-      })
-      setQrSession(session)
-      const qrModule = await import('qrcode')
-      const QRLib = qrModule?.default || qrModule
-      const linkUrl = getPosLoyaltyLinkUrl(session.token)
-      const dataUrl = await QRLib.toDataURL(linkUrl, { width: 360, margin: 1 })
-      setQrUrl(dataUrl)
-      setQrLinkUrl(linkUrl)
-      setQrStatus('')
-      startQrPolling(session.token)
-    } catch (err) {
-      setQrError(err?.message || 'QR oluşturulamadı.')
-      setQrStatus('')
-    }
-  }
-
-  function startQrPolling(token) {
-    stopQrPolling()
-    qrActiveRef.current = true
-    qrPollRef.current = setInterval(async () => {
-      if (!qrActiveRef.current) return
-      try {
-        const next = await readPosLoyaltyLinkSession(token)
-        if (!next || next.status === 'expired' || next.status === 'consumed') {
-          stopQrPolling()
-          return
-        }
-        if (next.status === 'linked' && next.customerId) {
-          stopQrPolling()
-          setQrStatus(`${next.customerName || 'Müşteri'} bağlandı.`)
-          onCustomerLinked?.({
-            customerId: next.customerId,
-            customerName: next.customerName,
-            phone: next.phone,
-            customerCategoryIds: next.customerCategoryIds || [],
-            selectedCampaignId: next.selectedCampaignId || '',
-            selectedCampaignName: next.selectedCampaignName || '',
-            customerCreatedAt: next.customerCreatedAt || null,
-            customerFirstOrderAt: next.customerFirstOrderAt || null,
-          })
-        }
-      } catch {
-        // poll hatalarını sessizce geç
+      const customer = await lookupCustomerByQrCode(code)
+      if (!customer) {
+        setQrError('QR/Kart ile eşleşen müşteri bulunamadı.')
+        setQrStatus('')
+        return
       }
-    }, QR_POLL_INTERVAL_MS)
-  }
 
-  async function refreshQr() {
-    stopQrPolling()
-    setQrSession(null)
-    setQrUrl('')
-    setQrLinkUrl('')
-    setQrStatus('')
-    setQrError('')
-    setQrInitialized(false)
-    // bir sonraki render döngüsünde useEffect tetiklenir
-    setTimeout(() => setQrInitialized(false), 0)
-    initQrSession()
+      await revertExpiredCouponReservations(customer.id)
+      const categoryIds = await loadCustomerLoyaltyCategoryIds(
+        { branchId, branchName },
+        customer.id,
+      )
+
+      // Fetch selections
+      const { data: customerRow } = await db
+        .from('musteriler')
+        .select('metadata')
+        .eq('id', customer.id)
+        .maybeSingle()
+      
+      const metadata = customerRow?.metadata && typeof customerRow.metadata === 'object' ? customerRow.metadata : {}
+      const selectedCampaignIds = Array.isArray(metadata.selectedCampaignIds) ? metadata.selectedCampaignIds : []
+      const selectedCampaignId = selectedCampaignIds[0] || ''
+
+      const { data: reservedCoupons } = await db
+        .from('loyalty_coupons')
+        .select('code')
+        .eq('customer_id', customer.id)
+        .eq('redemption_status', 'reserved')
+        .is('deleted_at', null)
+      const couponCodes = reservedCoupons?.map(c => c.code).join(',') || ''
+      const couponLabel = reservedCoupons?.map(c => c.code).join(', ') || ''
+
+      setQrStatus(`${customer.ad_soyad || 'Müşteri'} başarıyla bağlandı.`)
+      
+      onCustomerLinked?.({
+        customerId: String(customer.id),
+        customerName: customer.ad_soyad || '',
+        phone: `${customer.telefon_ulke || ''}${customer.telefon || ''}`,
+        customerCategoryIds: categoryIds || [],
+        selectedCampaignId,
+        selectedCampaignIds,
+        selectedCouponCode: couponCodes,
+        selectedCouponLabel: couponLabel,
+        customerCreatedAt: customer.created_at || null,
+        customerFirstOrderAt: customer.first_order_at || null,
+      })
+      setScanValue('')
+    } catch (err) {
+      setQrError(err?.message || 'Bağlantı hatası.')
+      setQrStatus('')
+    } finally {
+      setQrSearching(false)
+    }
   }
 
   async function searchCustomers() {
@@ -186,15 +176,41 @@ export default function PosCustomerLinkModal({
     setSearchStatus(`${customer.ad_soyad || 'Müşteri'} yükleniyor...`)
     setSearchError('')
     try {
+      await revertExpiredCouponReservations(customer.id)
       const categoryIds = await loadCustomerLoyaltyCategoryIds(
         { branchId, branchName },
         customer.id,
       )
+
+      // Fetch selections
+      const { data: customerRow } = await db
+        .from('musteriler')
+        .select('metadata')
+        .eq('id', customer.id)
+        .maybeSingle()
+      
+      const metadata = customerRow?.metadata && typeof customerRow.metadata === 'object' ? customerRow.metadata : {}
+      const selectedCampaignIds = Array.isArray(metadata.selectedCampaignIds) ? metadata.selectedCampaignIds : []
+      const selectedCampaignId = selectedCampaignIds[0] || ''
+
+      const { data: reservedCoupons } = await db
+        .from('loyalty_coupons')
+        .select('code')
+        .eq('customer_id', customer.id)
+        .eq('redemption_status', 'reserved')
+        .is('deleted_at', null)
+      const couponCodes = reservedCoupons?.map(c => c.code).join(',') || ''
+      const couponLabel = reservedCoupons?.map(c => c.code).join(', ') || ''
+
       onCustomerLinked?.({
         customerId: String(customer.id),
         customerName: customer.ad_soyad || '',
         phone: `${customer.telefon_ulke || ''}${customer.telefon || ''}`,
         customerCategoryIds: categoryIds || [],
+        selectedCampaignId,
+        selectedCampaignIds,
+        selectedCouponCode: couponCodes,
+        selectedCouponLabel: couponLabel,
         customerCreatedAt: customer.created_at || null,
         customerFirstOrderAt: customer.first_order_at || null,
       })
@@ -417,98 +433,138 @@ export default function PosCustomerLinkModal({
             </>
           ) : (
             <>
-              {/* QR ile Tanı */}
-              <div style={{ display: 'grid', gap: 14 }}>
+              {/* QR / Kart Okut */}
+              <div style={{ display: 'grid', gap: 14 }} onClick={handleRefocusScan}>
                 <div style={{ color: '#94a3b8', fontSize: '.8rem', lineHeight: 1.6 }}>
-                  Musteriye bu QR'i gosterin. Fiziksel telefon gerekmiyorsa ayni mobil loyalty simulasyonunu alttaki linkle dogrudan acabilirsiniz.
+                  Müşterinin mobil uygulamasındaki sadakat QR kodunu tarayıcıya okutun veya üye numarasını girin.
                 </div>
 
+                {/* Hidden/focused Scan Receiver input */}
+                <input
+                  ref={scanInputRef}
+                  type="text"
+                  value={scanValue}
+                  onChange={(e) => setScanValue(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleScanCode(scanValue)}
+                  onBlur={handleRefocusScan}
+                  placeholder="Okutulan kod..."
+                  style={{
+                    position: 'absolute',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                  }}
+                />
+
+                {/* Modern Scanner Animation Box */}
                 <div style={{
                   borderRadius: 20,
-                  border: '1px solid rgba(148,163,184,.14)',
-                  background: 'rgba(255,255,255,.03)',
-                  minHeight: 220,
-                  display: 'grid',
-                  placeItems: 'center',
+                  border: '1px solid rgba(56,189,248,.18)',
+                  background: 'rgba(7,10,19,.9)',
+                  minHeight: 180,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   padding: 16,
+                  position: 'relative',
+                  overflow: 'hidden'
                 }}>
-                  {qrStatus && !qrUrl ? (
-                    <div style={{ color: '#94a3b8', fontWeight: 700 }}>{qrStatus}</div>
-                  ) : qrUrl ? (
-                    <img src={qrUrl} alt="QR kod" style={{ width: '100%', maxWidth: 220, height: 'auto' }} />
-                  ) : qrError ? (
-                    <div style={{ color: '#fca5a5', textAlign: 'center', padding: 8 }}>{qrError}</div>
-                  ) : (
-                    <div style={{ color: '#475569' }}>QR hazırlanıyor...</div>
-                  )}
+                  {/* Laser Sweeper animation */}
+                  <div style={{
+                    position: 'absolute',
+                    left: 0, right: 0, height: 3,
+                    background: 'linear-gradient(90deg, transparent, #38bdf8, transparent)',
+                    boxShadow: '0 0 10px #38bdf8, 0 0 20px #38bdf8',
+                    animation: 'laserSweep 3s infinite linear'
+                  }} />
+                  
+                  <i className="fa-solid fa-qrcode" style={{ color: 'rgba(56,189,248,.15)', fontSize: 72 }} />
+                  
+                  <div style={{ marginTop: 10, color: 'rgba(56,189,248,.8)', fontSize: '.76rem', fontWeight: 900, letterSpacing: '.06em' }}>
+                    TARAYICI BEKLENİYOR
+                  </div>
                 </div>
 
-                {qrSession ? (
-                  <div style={{ padding: '10px 12px', borderRadius: 14, background: 'rgba(56,189,248,.08)', border: '1px solid rgba(56,189,248,.16)' }}>
-                    <div style={{ color: '#7dd3fc', fontSize: '.7rem', fontWeight: 900, textTransform: 'uppercase' }}>Bağlantı kodu</div>
-                    <div style={{ marginTop: 4, color: '#fff', fontWeight: 900, wordBreak: 'break-all', fontSize: '.82rem' }}>
-                      {qrSession.token}
-                    </div>
-                    <div style={{ marginTop: 6, color: '#94a3b8', fontSize: '.72rem' }}>
-                      QR okutulursa musteri app'i acilir. Gerekirse bu kod mobil uygulamadaki giris ekraninda manuel de kullanilabilir.
-                    </div>
-                    {qrLinkUrl ? (
-                      <a
-                        href={qrLinkUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          marginTop: 10,
-                          minHeight: 40,
-                          borderRadius: 12,
-                          background: 'rgba(56,189,248,.12)',
-                          color: '#7dd3fc',
-                          fontWeight: 900,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '0 14px',
-                          textDecoration: 'none',
-                        }}
-                      >
-                        Mobil simulasyonu ac
-                      </a>
-                    ) : null}
+                {/* Manual entry fallback */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#94a3b8' }}>Manuel Kod Girişi</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      value={scanValue}
+                      onChange={(e) => setScanValue(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleScanCode(scanValue)}
+                      placeholder="Ör. RMS-12345678"
+                      style={{
+                        flex: 1, minHeight: 40, borderRadius: 10,
+                        border: '1px solid rgba(148,163,184,.16)',
+                        background: 'rgba(15,23,42,.95)',
+                        color: '#fff', padding: '0 12px', fontSize: '.85rem',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleScanCode(scanValue)}
+                      disabled={qrSearching || !scanValue.trim()}
+                      style={{
+                        minHeight: 40, padding: '0 14px', borderRadius: 10, border: 'none',
+                        background: qrSearching || !scanValue.trim() ? 'rgba(255,255,255,.08)' : '#38bdf8',
+                        color: qrSearching || !scanValue.trim() ? '#64748b' : '#082f49',
+                        fontWeight: 900, cursor: qrSearching || !scanValue.trim() ? 'not-allowed' : 'pointer',
+                        fontSize: '.85rem'
+                      }}
+                    >
+                      Tanımla
+                    </button>
+                  </div>
+                </div>
+
+                {qrError ? (
+                  <div style={{ color: '#fca5a5', fontSize: '.8rem', padding: '8px 12px', borderRadius: 10, background: 'rgba(127,29,29,.18)', border: '1px solid rgba(248,113,113,.2)' }}>
+                    {qrError}
                   </div>
                 ) : null}
 
-                {qrStatus && qrUrl ? (
-                  <div style={{ padding: '10px 12px', borderRadius: 14, background: 'rgba(20,83,45,.2)', border: '1px solid rgba(34,197,94,.24)', color: '#bbf7d0', fontWeight: 800, fontSize: '.82rem' }}>
+                {qrStatus ? (
+                  <div style={{ color: '#bbf7d0', fontSize: '.8rem', padding: '8px 12px', borderRadius: 10, background: 'rgba(20,83,45,.18)', border: '1px solid rgba(34,197,94,.2)' }}>
                     {qrStatus}
                   </div>
                 ) : null}
 
-                {qrError ? (
-                  <button
-                    type="button"
-                    onClick={refreshQr}
-                    style={{
-                      minHeight: 42, borderRadius: 12, border: '1px solid rgba(255,255,255,.12)',
-                      background: 'rgba(255,255,255,.06)', color: '#e2e8f0',
-                      fontWeight: 800, cursor: 'pointer',
-                    }}
-                  >
-                    QR'ı Yenile
-                  </button>
-                ) : qrUrl ? (
-                  <button
-                    type="button"
-                    onClick={refreshQr}
-                    style={{
-                      minHeight: 40, borderRadius: 12, border: '1px solid rgba(255,255,255,.08)',
-                      background: 'transparent', color: '#64748b',
-                      fontWeight: 700, fontSize: '.76rem', cursor: 'pointer',
-                    }}
-                  >
-                    Yeni QR Oluştur
-                  </button>
-                ) : null}
+                {/* Hızlı simülasyon test paneli */}
+                {sampleCustomers.length > 0 && (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,.07)', paddingTop: 12 }}>
+                    <div style={{ color: '#64748b', fontSize: '.7rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                      Test Simülasyonu (Tıklayın)
+                    </div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {sampleCustomers.map(cust => (
+                        <button
+                          key={cust.id}
+                          type="button"
+                          onClick={() => handleScanCode(cust.loyalty_member_no || cust.telefon)}
+                          style={{
+                            padding: '8px 12px', background: 'rgba(255,255,255,.03)',
+                            border: '1px solid rgba(255,255,255,.05)', borderRadius: 10,
+                            color: '#cbd5e1', fontSize: '.78rem', cursor: 'pointer',
+                            textAlign: 'left', display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <strong style={{ color: '#fff' }}>{cust.ad_soyad}</strong>
+                          <span style={{ color: '#64748b', fontSize: '.72rem' }}>{cust.loyalty_member_no || cust.telefon}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+              <style>{`
+                @keyframes laserSweep {
+                  0% { top: 0%; }
+                  50% { top: 100%; }
+                  100% { top: 0%; }
+                }
+              `}</style>
             </>
           )}
         </div>

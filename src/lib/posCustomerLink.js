@@ -52,6 +52,7 @@ function normalizeSession(session = {}) {
     customerFirstOrderAt: normalizeText(session.customerFirstOrderAt || session.first_order_at, ''),
     customerLastVisitAt: normalizeText(session.customerLastVisitAt || session.last_visit_at, ''),
     selectedCampaignId: normalizeText(session.selectedCampaignId, ''),
+    selectedCampaignIds: Array.isArray(session.selectedCampaignIds) ? session.selectedCampaignIds.map(String) : [],
     selectedCampaignName: normalizeText(session.selectedCampaignName, ''),
     selectedCouponCode: normalizeText(session.selectedCouponCode, '').toUpperCase(),
     selectedCouponLabel: normalizeText(session.selectedCouponLabel, ''),
@@ -161,6 +162,7 @@ export async function linkCustomerToPosLoyaltySession(token, customer, {
   selectedCampaignName = '',
   selectedCouponCode = '',
   selectedCouponLabel = '',
+  selectedCampaignIds = [],
 } = {}) {
   const safeToken = String(token || '').trim()
   if (!safeToken) throw new Error('Baglanti kodu bulunamadi.')
@@ -204,6 +206,7 @@ export async function linkCustomerToPosLoyaltySession(token, customer, {
           customerFirstOrderAt: firstOrderAt,
           customerLastVisitAt: lastVisitAt,
           selectedCampaignId: selectedCampaignId || item.selectedCampaignId || '',
+          selectedCampaignIds: selectedCampaignIds.length > 0 ? selectedCampaignIds : (item.selectedCampaignIds || []),
           selectedCampaignName: selectedCampaignName || item.selectedCampaignName || '',
           selectedCouponCode: String(selectedCouponCode || item.selectedCouponCode || '').toUpperCase(),
           selectedCouponLabel: selectedCouponLabel || item.selectedCouponLabel || '',

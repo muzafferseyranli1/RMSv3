@@ -28,3 +28,18 @@ Bu belgede, Sadakat (Loyalty) modülünde yapılan konsolidasyon çalışmaları
   npm run build
   ```
 - **Sonuç**: Derleme işlemi başarıyla tamamlanmıştır (11.00s). Herhangi bir linter veya derleme hatası tespit edilmemiştir.
+
+
+## Son Yapılan Geliştirmeler: Mobil Damga Kartı (Stamp Card) İlerleme Takibi Entegrasyonu
+
+- **Kampanyalar Ekranı Damga Slotları (`CampaignCard`)**:
+  - Kampanya detayında `period_product_quantity` veya `period_order_count` koşulları algılandığında kampanya **Damga Kartı** olarak işaretlenir.
+  - Kartın içine, kazanılan ve kazanılacak damgaları temsil eden yuvarlak slotlardan oluşan bir matris eklendi.
+  - Eğer kampanya adı veya açıklaması "kahve" içeriyorsa, kazanılan damga yuvarlaklarında fincan ikonu (`fa-mug-hot`), aksi halde damga ikonu (`fa-stamp`) görüntülenecek şekilde ayarlandı.
+  - Tamamlanan ödül döngüleri için kazanılan hediye adedini belirten yeşil bir hediye rozeti eklendi.
+
+- **Ana Ekran Dinamik Damga Kartı Özet Kutusu (`HomeScreen` & `MobileHomeDashboard`)**:
+  - Ana sayfadaki üçüncü özet kartı (Seviye / Üyelik kartı) güncellendi.
+  - Eğer müşterinin en az bir adet aktif damga kampanyası varsa, kart başlığı **"Damga"** / **"Damgalarım"** olarak değişir ve içerik olarak damga ilerleme oranları (örn. tekli ise `2/5`, çoklu ise `2/5 | 4/10`) gösterilir.
+  - Bu özet karta tıklanarak doğrudan Kampanyalar sekmesine hızlıca yönlendirilmesi sağlandı.
+  - Aktif damga kampanyası yoksa sistem otomatik olarak eski "Seviye" görünümüne geri döner.

@@ -5766,3 +5766,17 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Commands Run`:
   - `npm run build` (başarılı, 12.11s, 0 hata)
 - `Handoff Contract`: `Dönemlik ürün koşulu ismi 'Dönem içindeki ürün miktarı' olarak geri yüklendi. Wizard koşul editöründe 'Damga Kartı Modu' ve 'Gelişmiş Mod' seçicisi ve oto-gte mantığı eklendi. Mobil acente/geliştirici için damga sayısı okuma kılavuzu LOYALTYMEMORY.md dosyasına işlendi. Build başarılı.`
+
+
+## Entry 131 - 2026-05-25
+- `Timestamp`: `2026-05-25T13:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Damga Kartı Müşteri İlerleme Takibi Mobil Ekranları Entegrasyonu`
+- `Intent`: `Kampanya sihirbazından oluşturulan damga kurgularını müşteri mobil uygulamasında visual stamp slot (damga yuvarlağı) matrisi olarak görüntülemek ve ana sayfadaki Seviye özet kartını dinamik olarak damga kartı durumuna/ilerlemesine dönüştürmek.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+- `Execution details`:
+  - `CampaignCard` güncellendi: Kampanya kurallarında `period_product_quantity` veya `period_order_count` koşulu varsa bu kampanya damga kartı olarak algılanır. `model.progressRows` içinden kampanya bazlı mevcut damga adedi, hedef ve kazanılan döngüler okunur. Kartın içinde, kazanılan damgaları renklendirilmiş (varsa kahve kupası `fa-mug-hot`, yoksa `fa-stamp` ikonuyla) ve kalanları dashed yuvarlaklar olarak gösteren premium damga slot matrisi render edilir. Döngü tamamlandıysa hediye rozeti gösterilir.
+  - `MobileHomeDashboard` (standalone) ve `HomeScreen` (standart) summary tiles güncellendi: Aktif damga kartı kampanyası varsa üçüncü özet tile'ı "Damga" / "Damgalarım" başlığıyla, güncel damga durumlarını gösterecek şekilde (`1/5` veya birden fazla kurgu varsa `1/5 | 2/10`) dinamik duruma geçirildi. Tıklanarak campaigns sekmesine hızlı geçiş sağlandı.
+  - Proje `npm run build` ile başarıyla derlenmiştir.
+- `Handoff Contract`: `Kampanyalar ekranında damga kurguları görsel slot matrisleriyle gösteriliyor. Ana sayfadaki Seviye tile'ı damga varsa dinamik olarak Damgalarım özetine dönüşüyor ve tıklanabilir durumdadır. Proje hatasız derlenmektedir.`

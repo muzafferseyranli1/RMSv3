@@ -3921,6 +3921,20 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
     applicableOffers: [],
     walletReadiness: null,
   })
+  const [acknowledgedWarningCampaignIds, setAcknowledgedWarningCampaignIds] = useState(new Set())
+  const activeWarningOffer = useMemo(() => {
+    const offers = loyaltyCampaignPreview.applicableOffers || []
+    const selectedCampaignId = String(preOrderLinkedCustomer?.selectedCampaignId || '').trim()
+    return offers.find(
+      offer => offer.actionType === 'warning_message' &&
+      (offer.applicationMode === 'auto' || offer.campaignId === selectedCampaignId) &&
+      !acknowledgedWarningCampaignIds.has(String(offer.campaignId))
+    )
+  }, [loyaltyCampaignPreview.applicableOffers, preOrderLinkedCustomer?.selectedCampaignId, acknowledgedWarningCampaignIds])
+
+  useEffect(() => {
+    setAcknowledgedWarningCampaignIds(new Set())
+  }, [preOrderLinkedCustomer?.customerId, activeCart.length === 0])
   const selectedLoyaltyProgramId = useMemo(() => {
     const selectedCampaignId = String(preOrderLinkedCustomer?.selectedCampaignId || '').trim()
     const selectedCampaign = loyaltyCampaignPreview.visibleCampaigns.find(campaign => (
@@ -3960,7 +3974,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
       orderTotal: cartTotal,
       customerContext,
       selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
-      manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+      manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
+      selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
       cartLines: activeCart,
       saleTemplates,
     })
@@ -3972,7 +3987,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
           orderTotal: cartTotal,
           customerContext,
           selectedCampaignId: preOrderLinkedCustomer?.selectedCampaignId || '',
-          manuallyTriggeredCampaignIds: manualTriggeredCampaignIds,
+          manuallyTriggeredCampaignIds: preOrderLinkedCustomer?.selectedCampaignIds || manualTriggeredCampaignIds,
+          selectedCouponCode: preOrderLinkedCustomer?.selectedCouponCode || '',
           programId: selectedLoyaltyProgramId,
           cartLines: activeCart,
           saleTemplates,

@@ -21,7 +21,13 @@ import {
   resolveKioskCategories,
   resolveKioskDeviceStation,
   saveKioskDeviceStationCode,
+  linkCustomerToKioskSession,
 } from '@/lib/kioskSettings'
+import {
+  lookupCustomerByQrCode,
+  revertExpiredCouponReservations,
+} from '@/lib/mobileCustomerApp'
+import { loadCustomerLoyaltyCategoryIds } from '@/lib/posCustomerLink'
 import {
   ensureComboMenuCategory,
   resolveComboMenuCategoryId,
@@ -1281,50 +1287,440 @@ function SuggestionModal({ suggestion, accentColor, onClose, onAction }) {
   )
 }
 
-function LoyaltyModal({ open, qrUrl, linkUrl, customerName, accentColor, onClose }) {
+function LoyaltyModal({
+  open,
+  accentColor,
+  onClose,
+  loyaltySessionToken,
+  branchId,
+  branchName,
+  customerName,
+  onCustomerLinked,
+  onClearCustomer,
+}) {
+  const [isKeypadOpen, setIsKeypadOpen] = useState(false)
+  const [phoneDigits, setPhoneDigits] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [scanInputVal, setScanInputVal] = useState('')
+  const [sampleCustomers, setSampleCustomers] = useState([])
+  const scanInputRef = useRef(null)
+
+  useEffect(() => {
+    if (open) {
+      setIsKeypadOpen(false)
+      setPhoneDigits('')
+      setErrorMsg('')
+      setScanInputVal('')
+      
+      // Load sample customers dynamically
+      db.from('musteriler')
+        .select('id, ad_soyad, telefon, loyalty_member_no, metadata')
+        .is('deleted_at', null)
+        .not('loyalty_member_no', 'is', null)
+        .limit(3)
+        .then(({ data }) => {
+          if (data) setSampleCustomers(data)
+        })
+        .catch(() => {})
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (open && !isKeypadOpen && scanInputRef.current) {
+      scanInputRef.current.focus()
+    }
+  }, [open, isKeypadOpen])
+
   if (!open) return null
+
+  const handleScanChange = (e) => {
+    setScanInputVal(e.target.value)
+  }
+
+  const linkCustomerProcess = async (customer) => {
+    setLoading(true)
+    setErrorMsg('')
+    try {
+      await revertExpiredCouponReservations(customer.id)
+      const categoryIds = await loadCustomerLoyaltyCategoryIds(
+        { branchId, branchName },
+        customer.id
+      )
+      const selectedCampaignIds = customer.metadata?.selectedCampaignIds || []
+      
+      // Reserved coupons
+      const { data: reservedCoupons } = await db
+        .from('loyalty_coupons')
+        .select('code, series_id')
+        .eq('customer_id', customer.id)
+        .eq('redemption_status', 'reserved')
+        .is('deleted_at', null)
+      const couponCodes = reservedCoupons?.map(c => c.code).join(',') || ''
+      const couponLabel = reservedCoupons?.map(c => c.code).join(', ') || ''
+      
+      if (loyaltySessionToken) {
+        await linkCustomerToKioskSession(loyaltySessionToken, customer, {
+          customerCategoryIds: categoryIds,
+          selectedCouponCode: couponCodes,
+          selectedCouponLabel: couponLabel,
+          selectedCampaignId: selectedCampaignIds[0] || '',
+          selectedCampaignIds: selectedCampaignIds,
+        })
+      }
+      
+      onCustomerLinked({
+        customerId: customer.id,
+        customerName: customer.ad_soyad,
+        phone: customer.telefon,
+        customerCategoryIds: categoryIds,
+        selectedCampaignId: selectedCampaignIds[0] || '',
+        selectedCampaignIds: selectedCampaignIds,
+        selectedCouponCode: couponCodes,
+        selectedCouponLabel: couponLabel,
+        status: 'linked',
+      })
+    } catch (err) {
+      setErrorMsg(err?.message || 'Müşteri bağlantısı sırasında bir hata oluştu.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleScanKeyDown = async (e) => {
+    if (e.key === 'Enter') {
+      const code = scanInputVal.trim()
+      setScanInputVal('')
+      if (!code) return
+      
+      setLoading(true)
+      const customer = await lookupCustomerByQrCode(code)
+      if (!customer) {
+        setErrorMsg('QR kodlu müşteri bulunamadı.')
+        setLoading(false)
+        return
+      }
+      await linkCustomerProcess(customer)
+    }
+  }
+
+  const handleScanBlur = () => {
+    if (open && !isKeypadOpen) {
+      setTimeout(() => {
+        if (scanInputRef.current) scanInputRef.current.focus()
+      }, 150)
+    }
+  }
+
+  const handleKeyPress = (char) => {
+    setErrorMsg('')
+    if (phoneDigits.length === 0 && char !== '5') {
+      setErrorMsg('Telefon numarası 5 ile başlamalıdır.')
+      return
+    }
+    if (phoneDigits.length < 10) {
+      setPhoneDigits(prev => prev + char)
+    }
+  }
+
+  const handleBackspace = () => {
+    setErrorMsg('')
+    setPhoneDigits(prev => prev.slice(0, -1))
+  }
+
+  const handleClear = () => {
+    setErrorMsg('')
+    setPhoneDigits('')
+  }
+
+  const handlePhoneSubmit = async () => {
+    if (phoneDigits.length < 10) {
+      setErrorMsg('Lütfen 10 haneli telefon numarasını girin.')
+      return
+    }
+    setLoading(true)
+    const customer = await lookupCustomerByQrCode(phoneDigits)
+    if (!customer) {
+      setErrorMsg('Müşteri bulunamadı.')
+      setLoading(false)
+      return
+    }
+    await linkCustomerProcess(customer)
+  }
+
+  const formatMaskedPhone = (digits) => {
+    const d = digits.replace(/\D/g, '')
+    if (d.length === 0) return ''
+    let parts = '('
+    const p1 = d.substring(0, 3)
+    if (p1.length > 0) {
+      parts += '5'
+      if (p1.length > 1) parts += '•'
+      if (p1.length > 2) parts += '•'
+    }
+    if (d.length > 3) {
+      parts += ') '
+      const p2 = d.substring(3, 6)
+      for (let i = 0; i < p2.length; i++) {
+        parts += '•'
+      }
+    }
+    if (d.length > 6) {
+      parts += ' '
+      const p3 = d.substring(6)
+      if (p3.length === 1) {
+        parts += p3
+      } else if (p3.length >= 2) {
+        parts += p3.slice(-2)
+      }
+    }
+    return parts
+  }
+
+  const handleSimulateSelect = async (cust) => {
+    await linkCustomerProcess(cust)
+  }
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, background: 'rgba(2,6,23,.86)', zIndex: 40,
+      position: 'absolute', inset: 0, background: 'rgba(2,6,23,.88)', zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
     }}>
       <div style={{
-        width: 340, borderRadius: 22, padding: 22, background: '#0f172a',
-        border: '1px solid rgba(148,163,184,.16)', display: 'grid', gap: 16,
+        width: 380, borderRadius: 24, padding: 22, background: '#0f172a',
+        border: '1px solid rgba(148,163,184,.16)', display: 'flex', flexDirection: 'column', gap: 16,
+        boxShadow: '0 24px 60px rgba(0,0,0,.6)', position: 'relative'
       }}>
-        <div style={{ color: '#f8fafc', fontSize: 22, fontWeight: 800 }}>{displayText('Sadakat hesabı bağla')}</div>
-        <div style={{ color: '#94a3b8', lineHeight: 1.6 }}>
-          {displayText('Bu QR mobil musteri simulasyonunu acar. Fiziksel telefon gerekmiyorsa alttaki butonla ayni ekrani dogrudan acabilirsiniz.')}
+        
+        {/* Visual Focus/Input for QR code */}
+        {!isKeypadOpen && (
+          <input
+            ref={scanInputRef}
+            type="text"
+            value={scanInputVal}
+            onChange={handleScanChange}
+            onKeyDown={handleScanKeyDown}
+            onBlur={handleScanBlur}
+            style={{
+              position: 'absolute',
+              opacity: 0,
+              pointerEvents: 'none',
+              top: 0, left: 0
+            }}
+          />
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ color: '#f8fafc', fontSize: 20, fontWeight: 900 }}>
+            {isKeypadOpen ? displayText('Telefonla Devam Et') : displayText('Sadakat hesabı bağla')}
+          </div>
+          {isKeypadOpen && (
+            <button
+              onClick={() => { setIsKeypadOpen(false); setErrorMsg(''); }}
+              style={{
+                background: 'transparent', border: 'none', color: '#64748b',
+                fontSize: '.9rem', fontWeight: 700, cursor: 'pointer'
+              }}
+            >
+              Geri
+            </button>
+          )}
         </div>
-        <div style={{ background: '#fff', borderRadius: 20, minHeight: 220, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-          {qrUrl
-            ? <img src={qrUrl} alt="Sadakat QR" style={{ width: 220, height: 220, objectFit: 'contain' }} />
-            : <i className="fa-solid fa-spinner fa-spin" style={{ color: accentColor, fontSize: 28 }} />}
-        </div>
-        <div style={{
-          borderRadius: 16, padding: '12px 14px',
-          background: customerName ? 'rgba(22,163,74,.16)' : 'rgba(15,23,42,.9)',
-          color: customerName ? '#86efac' : '#94a3b8',
-          border: `1px solid ${customerName ? 'rgba(34,197,94,.25)' : 'rgba(148,163,184,.16)'}`,
-          lineHeight: 1.5,
-        }}>
-          {displayText(customerName, 'Bağlantı bekleniyor...')}
-        </div>
-        {linkUrl ? (
-          <a href={linkUrl} target="_blank" rel="noreferrer" style={{
-            minHeight: 46, borderRadius: 14, textDecoration: 'none',
-            background: 'rgba(56,189,248,.14)', color: '#7dd3fc', fontWeight: 900,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+
+        {errorMsg && (
+          <div style={{
+            color: '#fca5a5', background: 'rgba(127,29,29,.2)',
+            border: '1px solid rgba(248,113,113,.2)', padding: '10px 12px',
+            borderRadius: 12, fontSize: '.8rem', lineHeight: 1.4
           }}>
-            Mobil simulasyonu ac
-          </a>
-        ) : null}
+            {errorMsg}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 40, gap: 12 }}>
+            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: accentColor, fontSize: 32 }} />
+            <div style={{ color: '#94a3b8', fontSize: '.85rem' }}>İşlem yapılıyor...</div>
+          </div>
+        ) : !isKeypadOpen ? (
+          <>
+            {customerName ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{
+                  borderRadius: 16, padding: '14px',
+                  background: 'rgba(22,163,74,.14)',
+                  color: '#86efac',
+                  border: '1px solid rgba(34,197,94,.22)',
+                  textAlign: 'center', fontWeight: 800,
+                  fontSize: '1.05rem',
+                }}>
+                  {customerName} Bağlı
+                </div>
+                <button
+                  onClick={() => {
+                    if (loyaltySessionToken) {
+                      consumeKioskLoyaltyLinkSession(loyaltySessionToken).catch(() => {})
+                    }
+                    onClearCustomer?.()
+                  }}
+                  style={{
+                    minHeight: 46, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: '#ef4444', color: '#fff', fontWeight: 900,
+                  }}
+                >
+                  {displayText('Bağlantıyı Kaldır')}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ color: '#94a3b8', fontSize: '.88rem', lineHeight: 1.5 }}>
+                  {displayText('Uygulamadaki QR kodunuzu veya kartınızı tarayıcıya okutun.')}
+                </div>
+
+                {/* Modern Scanner Animation */}
+                <div style={{
+                  height: 180, background: '#070a13', borderRadius: 20,
+                  border: '1px solid rgba(56,189,248,.18)', position: 'relative',
+                  overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  {/* Laser Sweeper */}
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, height: 3,
+                    background: 'linear-gradient(90deg, transparent, #38bdf8, transparent)',
+                    boxShadow: '0 0 10px #38bdf8, 0 0 20px #38bdf8',
+                    animation: 'laserSweep 3s infinite linear'
+                  }} />
+                  <i className="fa-solid fa-qrcode" style={{ color: 'rgba(56,189,248,.15)', fontSize: 72 }} />
+                  <div style={{ position: 'absolute', bottom: 12, color: 'rgba(56,189,248,.6)', fontSize: '.76rem', fontWeight: 700 }}>
+                    TARAMA BEKLENİYOR
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsKeypadOpen(true)}
+                  style={{
+                    minHeight: 52, borderRadius: 16, border: `1.5px solid ${accentColor}33`,
+                    background: 'rgba(255,255,255,.02)', color: accentColor, fontWeight: 900,
+                    cursor: 'pointer', transition: '.2s',
+                  }}
+                >
+                  {displayText('Telefonla Giriş Yap')}
+                </button>
+              </>
+            )}
+
+            {/* Quick simulation panel for testing */}
+            {sampleCustomers.length > 0 && !customerName && (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,.07)', paddingTop: 12 }}>
+                <div style={{ color: '#64748b', fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                  Test Simülasyonu (Tıklayın)
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {sampleCustomers.map(cust => (
+                    <button
+                      key={cust.id}
+                      onClick={() => handleSimulateSelect(cust)}
+                      style={{
+                        padding: '8px 12px', background: 'rgba(255,255,255,.03)',
+                        border: '1px solid rgba(255,255,255,.05)', borderRadius: 10,
+                        color: '#cbd5e1', fontSize: '.78rem', cursor: 'pointer',
+                        textAlign: 'left', display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <strong style={{ color: '#fff' }}>{cust.ad_soyad}</strong>
+                      <span style={{ color: '#64748b', fontSize: '.72rem' }}>{cust.loyalty_member_no || cust.telefon}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Phone Entry Keypad View */
+          <div style={{ display: 'grid', gap: 14 }}>
+            {/* Phone Display */}
+            <div style={{
+              background: '#070a13', border: '1px solid rgba(148,163,184,.14)',
+              borderRadius: 16, height: 60, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '1.45rem', fontWeight: 900,
+              color: phoneDigits ? '#fff' : '#475569', fontVariantNumeric: 'tabular-nums'
+            }}>
+              {phoneDigits ? formatMaskedPhone(phoneDigits) : '(5__) ___ __ __'}
+            </div>
+
+            {/* Virtual Keypad Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
+                <button
+                  key={num}
+                  onClick={() => handleKeyPress(num)}
+                  style={{
+                    height: 52, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.05)',
+                    color: '#fff', fontSize: '1.25rem', fontWeight: 800, cursor: 'pointer'
+                  }}
+                >
+                  {num}
+                </button>
+              ))}
+              <button
+                onClick={handleClear}
+                style={{
+                  height: 52, borderRadius: 12, border: 'none', background: 'rgba(239,68,68,.1)',
+                  color: '#ef4444', fontSize: '.85rem', fontWeight: 800, cursor: 'pointer'
+                }}
+              >
+                C
+              </button>
+              <button
+                onClick={() => handleKeyPress('0')}
+                style={{
+                  height: 52, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.05)',
+                  color: '#fff', fontSize: '1.25rem', fontWeight: 800, cursor: 'pointer'
+                }}
+              >
+                0
+              </button>
+              <button
+                onClick={handleBackspace}
+                style={{
+                  height: 52, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.05)',
+                  color: '#fff', fontSize: '1.1rem', fontWeight: 800, cursor: 'pointer'
+                }}
+              >
+                ⌫
+              </button>
+            </div>
+
+            <button
+              onClick={handlePhoneSubmit}
+              disabled={phoneDigits.length < 10}
+              style={{
+                minHeight: 52, borderRadius: 16, border: 'none',
+                background: phoneDigits.length === 10 ? accentColor : 'rgba(255,255,255,.03)',
+                color: phoneDigits.length === 10 ? '#111827' : '#475569',
+                fontWeight: 900, fontSize: '1.05rem', cursor: phoneDigits.length === 10 ? 'pointer' : 'default',
+                transition: '.15s'
+              }}
+            >
+              Tamam
+            </button>
+          </div>
+        )}
+
         <button onClick={onClose} style={{
-          minHeight: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
-          background: accentColor, color: '#111827', fontWeight: 900,
+          minHeight: 46, borderRadius: 14, border: 'none', cursor: 'pointer',
+          background: 'rgba(255,255,255,.06)', color: '#cbd5e1', fontWeight: 800,
         }}>{displayText('Kapat')}</button>
       </div>
+
+      <style>{`
+        @keyframes laserSweep {
+          0% { top: 0%; }
+          50% { top: 100%; }
+          100% { top: 0%; }
+        }
+      `}</style>
     </div>
   )
 }
@@ -2511,6 +2907,8 @@ export default function KioskTablet() {
       selectedCampaignId: selectedLoyaltyCampaignId,
       cartLines: cart,
       saleTemplates,
+      manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
+      selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
     })
     const syncCompat = selectedLoyaltyCampaignId
       ? evaluateRuntimeOrderCampaigns(loyaltyCampaignCatalog, {
@@ -2520,6 +2918,8 @@ export default function KioskTablet() {
         selectedCampaignId: selectedLoyaltyCampaignId,
         cartLines: cart,
         saleTemplates,
+        manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
+        selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
       })
       : { visibleCampaigns: [], applicableOffers: [], walletReadiness: null }
 
@@ -2534,6 +2934,8 @@ export default function KioskTablet() {
             programId: selectedLoyaltyProgramId,
             cartLines: cart,
             saleTemplates,
+            manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
+            selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
           }),
           selectedLoyaltyCampaignId
             ? evaluateRuntimeOrderCampaignsAsync(loyaltyCampaignCatalog, {
@@ -2544,6 +2946,8 @@ export default function KioskTablet() {
               programId: selectedLoyaltyProgramId,
               cartLines: cart,
               saleTemplates,
+              manuallyTriggeredCampaignIds: loyaltyCustomer?.selectedCampaignIds || [],
+              selectedCouponCode: loyaltyCustomer?.selectedCouponCode || '',
             })
             : Promise.resolve({ visibleCampaigns: [], applicableOffers: [], walletReadiness: null }),
         ])
@@ -3807,6 +4211,7 @@ export default function KioskTablet() {
 
               {loyaltyQrAvailable && (
                 <div
+                  onClick={() => { if (!loyaltyCustomer && loyaltyQrAvailable) openLoyaltyModal() }}
                   style={{
                     position: 'absolute',
                     right: 24,
@@ -3827,6 +4232,7 @@ export default function KioskTablet() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     gap: 6,
+                    cursor: loyaltyCustomer ? 'default' : 'pointer',
                   }}
                 >
                   {loyaltyCustomer ? (
@@ -3848,26 +4254,28 @@ export default function KioskTablet() {
                         </div>
                       ) : null}
                     </>
-                  ) : idleLoyaltyQrUrl ? (
+                  ) : (
                     <>
-                      {idleLoyaltyQrUrl.startsWith('ERROR:') ? (
-                        <div style={{ color: '#f87171', fontSize: '.58rem', maxWidth: 118, wordBreak: 'break-all', textAlign: 'center' }}>{idleLoyaltyQrUrl}</div>
-                      ) : (
-                        <div style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', padding: 5, lineHeight: 0 }}>
-                          <img src={idleLoyaltyQrUrl} width={92} height={92} alt="Sadakat QR" />
-                        </div>
-                      )}
-                      <div style={{ color: '#fff7ed', fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                      <div style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.06)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        marginBottom: 2
+                      }}>
+                        <i className="fa-solid fa-qrcode" style={{ fontSize: 32, color: accentColor }} />
+                      </div>
+                      <div style={{ color: '#fff7ed', fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', textAlign: 'center' }}>
                         {displayText('Sadakat Bağla')}
                       </div>
                       <div style={{ color: 'rgba(255,255,255,.72)', fontSize: '.54rem', lineHeight: 1.3, textAlign: 'center', maxWidth: 112 }}>
-                        {displayText('Telefonla okut, kampanya ve hesap bağlansın')}
+                        {displayText('Sadakat QR okutun veya Telefon girin')}
                       </div>
                     </>
-                  ) : (
-                    <div style={{ color: 'rgba(255,255,255,.76)', fontSize: '.58rem', fontWeight: 800, textAlign: 'center', lineHeight: 1.35, maxWidth: 112 }}>
-                        {displayText('Sadakat QR hazırlanıyor...')}
-                    </div>
                   )}
                 </div>
               )}
@@ -4553,11 +4961,20 @@ export default function KioskTablet() {
 
         <LoyaltyModal
           open={loyaltyModalOpen}
-          qrUrl={loyaltyQrUrl}
-          linkUrl={loyaltySession?.token ? getKioskLoyaltyUrl(loyaltySession.token) : ''}
-          customerName={maskedLoyaltyCustomerName}
           accentColor={accentColor}
           onClose={() => setLoyaltyModalOpen(false)}
+          loyaltySessionToken={loyaltySession?.token}
+          branchId={branchId}
+          branchName={branchName}
+          customerName={maskedLoyaltyCustomerName}
+          onCustomerLinked={(linkedCust) => {
+            setLoyaltyCustomer(linkedCust)
+            setLoyaltyModalOpen(false)
+          }}
+          onClearCustomer={() => {
+            setLoyaltyCustomer(null)
+            setLoyaltyModalOpen(false)
+          }}
         />
 
       </div>

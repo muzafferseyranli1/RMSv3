@@ -404,6 +404,30 @@ async function markCouponUsed({
 }) {
   if (!couponCode) return null
 
+  const codes = String(couponCode).split(',').map(c => c.trim()).filter(Boolean)
+  if (codes.length === 0) return null
+
+  const results = []
+  for (const code of codes) {
+    const res = await markSingleCouponUsed({
+      couponCode: code,
+      customerId,
+      saleId,
+      sourceChannel,
+    })
+    if (res) results.push(res)
+  }
+  return results.length === 1 ? results[0] : results
+}
+
+async function markSingleCouponUsed({
+  couponCode,
+  customerId,
+  saleId,
+  sourceChannel,
+}) {
+  if (!couponCode) return null
+
   const { data: rows, error: readError } = await db
     .from('loyalty_coupons')
     .select('id,code,redemption_status,is_used')

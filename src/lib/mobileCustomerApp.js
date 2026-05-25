@@ -193,6 +193,12 @@ export function pickDefaultCustomer(customers = []) {
 }
 
 export async function loadCustomerMobileSnapshot(customerId) {
+  try {
+    await revertExpiredCouponReservations(customerId)
+  } catch (err) {
+    console.error('[loadCustomerMobileSnapshot] Failed to revert expired coupon reservations:', err)
+  }
+
   const { data: customerRows, error: customerError } = await db
     .from('musteriler')
     .select('id,ad_soyad,email,telefon,telefon_ulke,adresler,birth_date,gender,preferred_language,loyalty_member_no,loyalty_status,loyalty_enrolled_at,sms_opt_in,email_opt_in,push_opt_in,kvkk_consent_at,marketing_consent_at,acquisition_source,signup_channel,home_branch_id,home_branch_name,first_order_at,last_order_at,last_visit_at,total_order_count,total_order_amount,avg_ticket_amount,tags,external_customer_ref,mobile_app_user_id,referral_code,notlar,metadata,created_at,referred_by_customer_id')
@@ -1449,6 +1455,136 @@ export async function registerCustomer(ad_soyad, telefon, email, referralCode) {
   }
 
   return newCustomer
+}
+
+export async function updateCustomerCampaignSelections(customerId, campaignIds) {
+  if (!customerId) throw new Error('Müşteri ID eksik.')
+  const { data, error: fetchErr } = await db
+    .from('musteriler')
+    .select('metadata')
+    .eq('id', customerId)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+
+  const metadata = data?.metadata && typeof data.metadata === 'object' ? data.metadata : {}
+  metadata.selectedCampaignIds = Array.isArray(campaignIds) ? campaignIds : []
+
+  const { error: updateErr } = await db
+    .from('musteriler')
+    .update({ metadata })
+    .eq('id', customerId)
+  if (updateErr) throw updateErr
+}
+
+export async function updateCouponActivationStatus(couponId, redemptionStatus, activatedAt) {
+  if (!couponId) throw new Error('Kupon ID eksik.')
+  
+  const { data: coupon, error: fetchErr } = await db
+    .from('loyalty_coupons')
+    .select('metadata')
+    .eq('id', couponId)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+
+  const metadata = coupon?.metadata && typeof coupon.metadata === 'object' ? coupon.metadata : {}
+  if (redemptionStatus === 'reserved') {
+    metadata.activated_at = activatedAt || new Date().toISOString()
+  } else {
+    delete metadata.activated_at
+  }
+
+  const { error: updateErr } = await db
+    .from('loyalty_coupons')
+    .update({
+      redemption_status: redemptionStatus,
+      metadata
+    })
+    .eq('id', couponId)
+  if (updateErr) throw updateErr
+}
+
+export async function revertExpiredCouponReservations(customerId) {
+  if (!customerId) return
+  const { data: reservedCoupons, error } = await db
+    .from('loyalty_coupons')
+    .select('id, metadata')
+    .eq('customer_id', customerId)
+    .eq('redemption_status', 'reserved')
+    .is('deleted_at', null)
+  
+  if (error || !reservedCoupons || reservedCoupons.length === 0) return
+
+  const now = Date.now()
+  const oneHourMs = 60 * 60 * 1000
+  const expiredIds = []
+
+  for (const coupon of reservedCoupons) {
+    const activatedAtStr = coupon.metadata?.activated_at
+    if (activatedAtStr) {
+      const activatedAt = new Date(activatedAtStr).getTime()
+      if (Number.isFinite(activatedAt) && (now - activatedAt) >= oneHourMs) {
+        expiredIds.push(coupon.id)
+      }
+    } else {
+      expiredIds.push(coupon.id)
+    }
+  }
+
+  if (expiredIds.length > 0) {
+    for (const id of expiredIds) {
+      const coupon = reservedCoupons.find(c => c.id === id)
+      const nextMetadata = { ...(coupon?.metadata || {}) }
+      delete nextMetadata.activated_at
+      await db
+        .from('loyalty_coupons')
+        .update({
+          redemption_status: 'available',
+          metadata: nextMetadata
+        })
+        .eq('id', id)
+    }
+  }
+}
+
+export async function lookupCustomerByQrCode(code) {
+  const raw = String(code || '').trim()
+  if (!raw) return null
+
+  // 1. Try matching loyalty_member_no directly
+  const { data: byMemberNo } = await db
+    .from('musteriler')
+    .select('id, ad_soyad, telefon, telefon_ulke, created_at, first_order_at, loyalty_member_no, metadata')
+    .eq('loyalty_member_no', raw)
+    .is('deleted_at', null)
+    .maybeSingle()
+    
+  if (byMemberNo) return byMemberNo
+
+  // 2. If it is in RMS-XXXXXXXX format, check phone ending with XXXXXXXX
+  if (raw.startsWith('RMS-')) {
+    const suffix = raw.substring(4)
+    const { data: byPhoneSuffix } = await db
+      .from('musteriler')
+      .select('id, ad_soyad, telefon, telefon_ulke, created_at, first_order_at, loyalty_member_no, metadata')
+      .like('telefon', `%${suffix}`)
+      .is('deleted_at', null)
+      .limit(1)
+    if (byPhoneSuffix?.[0]) return byPhoneSuffix[0]
+  }
+  
+  // 3. Try phone match with cleaned digits
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length >= 8) {
+    const { data: byPhone } = await db
+      .from('musteriler')
+      .select('id, ad_soyad, telefon, telefon_ulke, created_at, first_order_at, loyalty_member_no, metadata')
+      .like('telefon', `%${digits}`)
+      .is('deleted_at', null)
+      .limit(1)
+    if (byPhone?.[0]) return byPhone[0]
+  }
+  
+  return null
 }
 
 

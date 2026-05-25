@@ -1467,8 +1467,11 @@ export function evaluateSingleCondition(condition = {}, orderContext = {}, campa
         }
       }
 
-      const coupon = orderContext.couponDetails
-      if (!coupon || String(coupon.code || '').trim().toLowerCase() !== selectedCode.toLowerCase()) {
+      const coupons = Array.isArray(orderContext.couponDetailsList) && orderContext.couponDetailsList.length > 0
+        ? orderContext.couponDetailsList
+        : (orderContext.couponDetails ? [orderContext.couponDetails] : [])
+
+      if (coupons.length === 0) {
         return {
           matched: false,
           supported: true,
@@ -1476,57 +1479,41 @@ export function evaluateSingleCondition(condition = {}, orderContext = {}, campa
         }
       }
 
-      // Check if coupon is active
-      if (coupon.active === false) {
+      const matchedCoupon = coupons.find(coupon => {
+        if (coupon.active === false) return false
+
+        const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
+        if (coupon.is_used || isUsedStatus) return false
+
+        if (coupon.expires_at) {
+          const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
+            ? orderContext.now
+            : new Date()
+          if (new Date(coupon.expires_at) < referenceDate) return false
+        }
+
+        if (!config.anySeries) {
+          const seriesIds = normalizeStringList(config.seriesIds || config.series_ids)
+          const couponSeriesId = String(coupon.series_id || '').trim().toLowerCase()
+          const matchedSeries = seriesIds.some(id => String(id).trim().toLowerCase() === couponSeriesId)
+          if (!matchedSeries) return false
+        }
+
+        return true
+      })
+
+      if (!matchedCoupon) {
         return {
           matched: false,
           supported: true,
-          reason: `Kupon aktif degil (${selectedCode})`,
-        }
-      }
-
-      // Check if coupon is used
-      const isUsedStatus = ['used', 'expired', 'cancelled'].includes(String(coupon.redemption_status || '').toLowerCase())
-      if (coupon.is_used || isUsedStatus) {
-        return {
-          matched: false,
-          supported: true,
-          reason: `Kupon daha once kullanilmis veya gecersiz (${selectedCode})`,
-        }
-      }
-
-      // Check expiration date
-      if (coupon.expires_at) {
-        const referenceDate = orderContext.now instanceof Date && !isNaN(orderContext.now.getTime())
-          ? orderContext.now
-          : new Date()
-        if (new Date(coupon.expires_at) < referenceDate) {
-          return {
-            matched: false,
-            supported: true,
-            reason: `Kuponun suresi dolmus (${selectedCode})`,
-          }
-        }
-      }
-
-      // Check series match
-      if (!config.anySeries) {
-        const seriesIds = normalizeStringList(config.seriesIds || config.series_ids)
-        const couponSeriesId = String(coupon.series_id || '').trim().toLowerCase()
-        const matchedSeries = seriesIds.some(id => String(id).trim().toLowerCase() === couponSeriesId)
-        if (!matchedSeries) {
-          return {
-            matched: false,
-            supported: true,
-            reason: `Kupon serisi eslesmedi (${selectedCode})`,
-          }
+          reason: `Gecerli ve eslesen bir kupon bulunamadi`,
         }
       }
 
       return {
         matched: true,
         supported: true,
-        reason: `Kupon dogrulandi ve uygulandi (${selectedCode})`,
+        reason: `Kupon dogrulandi ve uygulandi (${matchedCoupon.code})`,
       }
     }
     default:
@@ -1866,6 +1853,7 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
   saleTemplates = [],
   selectedCouponCode = '',
   couponDetails = null,
+  couponDetailsList = [],
 } = {}) {
   const normalizedCartLines = normalizeCartLines(cartLines)
   const normalizedRuntimeChannel = normalizeRuntimeChannelKey(runtimeChannel)
@@ -1888,6 +1876,7 @@ export function evaluateRuntimeOrderCampaigns(campaigns = [], {
       ...normalizedCustomerContext,
       selectedCouponCode,
       couponDetails,
+      couponDetailsList,
     }, normalizedSelectedId))
 
   const eligibleCampaigns = visibleCampaigns
@@ -2081,14 +2070,18 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
   ).trim()
 
   let couponDetails = null
+  let couponDetailsList = []
   if (selectedCouponCode) {
     try {
-      const res = await db.from('loyalty_coupons')
-        .select('id,code,series_id,is_used,active,redemption_status,expires_at')
-        .eq('code', selectedCouponCode)
-        .maybeSingle()
-      if (res && res.data) {
-        couponDetails = res.data
+      const codes = selectedCouponCode.split(',').map(c => c.trim()).filter(Boolean)
+      if (codes.length > 0) {
+        const res = await db.from('loyalty_coupons')
+          .select('id,code,series_id,is_used,active,redemption_status,expires_at')
+          .in('code', codes)
+        if (res && res.data) {
+          couponDetailsList = res.data
+          couponDetails = res.data[0] || null
+        }
       }
     } catch (err) {
       console.error('[evaluateRuntimeOrderCampaignsAsync] Failed to fetch coupon details:', err)
@@ -2268,6 +2261,7 @@ export async function evaluateRuntimeOrderCampaignsAsync(campaigns = [], options
       program: walletReadiness.program || options.program || null,
       selectedCouponCode,
       couponDetails,
+      couponDetailsList,
     }),
     walletReadiness,
   }

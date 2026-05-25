@@ -2309,3 +2309,33 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Yok.
 - `Next Loyalty Step`:
   - Mobile agent/client'ın bu handoff kılavuzunu okuyarak damga kartı ekranını görsel şablonlarla zenginleştirmesi.
+
+
+## Entry 063
+
+- `Timestamp`: `2026-05-25T13:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Focus`: `Damga Kartı Müşteri Entegrasyonu ve Ana Ekran / Kampanya Entegrasyonu`
+- `Trigger`: `Kullanıcı talebi: Kampanyalar ekranında damga slotlarının görselleştirilmesi, ana sayfadaki Seviye tile'ında aktif damga ilerlemelerinin (1/5 gibi, birden fazla kurgu durumunu destekleyecek şekilde) özet olarak gösterilmesi.`
+- `Files Changed`:
+  - `src/components/mobile/CustomerLoyaltyMobileApp.jsx`
+  - `LOYALTYMEMORY.md`
+  - `OperationSync.md`
+- `Current Capability`:
+  - `CampaignCard` artık aktif damga kampanyalarında kazanılan ve bekleyen damgaları yuvarlak slotlar halinde çizer. Kahve kelimesi içeren kampanyalarda kahve fincanı (`fa-mug-hot`), diğerlerinde damga (`fa-stamp`) simgesiyle doluluk görselleştirilir. Tamamlanan döngüler için hediye rozeti eklenmiştir.
+  - Ana sayfa quick summary tiles kısmı (`HomeScreen` ve `MobileHomeDashboard`) güncellendi. Aktif damga kampanyası varsa üçüncü özet tile'ı dinamik olarak "Damga" başlığını alır ve değer olarak `1/5` veya birden fazla kampanya varsa `1/5 | 3/10` şeklinde durumları listeler. Tıklanarak doğrudan kampanyalar tabına yönlendirilir. Aktif damga kartı yoksa eski "Seviye" görünümü ve hesaba yönlendirme korunur.
+- `Gap`:
+  - Yok.
+- `Approved Phase`: `Stamp progress mobile view integration`
+- `Affected Surfaces`:
+  - `Müşteri Mobil Uygulaması Ana Ekran ve Kampanyalar Sekmesi`
+- `Readiness`:
+  - `Stamp progress list visual grid`: `Ready`
+  - `Home screen dynamic stamp tile`: `Ready`
+  - `Tile navigation click triggers`: `Ready`
+- `Decision`:
+  - Birden fazla damga kurgusunun olması durumunda, tile alanına sığabilmesi için en fazla 2 kurgunun durumu aralarına dikey çizgi konularak gösterilecek (`1/5 | 3/10`), daha fazla kurguda sonuna üç nokta eklenecektir.
+- `Risks`:
+  - Yok.
+- `Next Loyalty Step`:
+  - Mobil simülatörde veya POS tarafında örnek bir damga satışı gerçekleştirip ana ekrandaki "Damgalarım" özetinin ve kampanya listesindeki slotların gerçek zamanlı güncellendiğini doğrulamak.

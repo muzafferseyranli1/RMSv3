@@ -17,6 +17,8 @@ import {
   applyReferralCode,
   getReferrerCodes,
   registerCustomer,
+  updateCustomerCampaignSelections,
+  updateCouponActivationStatus,
 } from '@/lib/mobileCustomerApp'
 import {
   clearStoredMobileCustomer,
@@ -241,7 +243,90 @@ function SummaryTile({ label, value, hint, color = '#0f172a' }) {
   )
 }
 
-function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
+function resolveCampaignExclusivity(campaign) {
+  const isStackable = campaign.stackable === true || 
+                     campaign.stackable === 1 || 
+                     campaign.metadata?.stackable === true || 
+                     campaign.metadata?.stackMode === 'stackable';
+  const group = String(
+    campaign.metadata?.conflictGroupId || 
+    campaign.exclusionGroup || 
+    campaign.metadata?.exclusionGroup || 
+    ''
+  ).trim();
+
+  return {
+    id: String(campaign.id),
+    stackable: isStackable,
+    exclusionGroup: group || '__global__',
+    name: campaign.name || 'Kampanya'
+  }
+}
+
+function resolveCouponExclusivity(coupon, campaigns = []) {
+  const associatedCampaign = campaigns.find(camp => {
+    const rules = [
+      ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+      ...(Array.isArray(camp.rules) ? camp.rules : []),
+    ]
+    return rules.some(rule => {
+      const conditions = Array.isArray(rule.conditions) ? rule.conditions : []
+      const matchesCondition = conditions.some(cond => {
+        if (cond.conditionKey !== 'coupon_present') return false
+        const cfg = cond.conditionConfig || cond.config || {}
+        const ids = Array.isArray(cfg.seriesIds) ? cfg.seriesIds : []
+        return ids.some(id => String(id) === String(coupon.series_id))
+      })
+      const singleKey = rule.conditionKey || ''
+      const singleCfg = rule.conditionConfig || rule.condition_json || {}
+      const singleIds = Array.isArray(singleCfg.seriesIds) ? singleCfg.seriesIds : []
+      const matchesSingle = singleKey === 'coupon_present' && singleIds.some(id => String(id) === String(coupon.series_id))
+      return matchesCondition || matchesSingle
+    })
+  }) || campaigns.find(camp => {
+    const rules = [
+      ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+      ...(Array.isArray(camp.rules) ? camp.rules : []),
+    ]
+    return rules.some(rule => {
+      const config = rule.action_json || rule.actionConfig || {}
+      if (String(config.couponSeriesId || '') === String(coupon.series_id) || String(config.seriesId || '') === String(coupon.series_id)) return true
+      const actions = Array.isArray(rule.actions) ? rule.actions : []
+      return actions.some(act => {
+        const ac = act.actionConfig || act.action_json || {}
+        return String(ac.couponSeriesId || '') === String(coupon.series_id) || String(ac.seriesId || '') === String(coupon.series_id)
+      })
+    })
+  }) || campaigns.find(camp => {
+    const meta = camp.metadata || {}
+    return String(meta.couponSeriesId) === String(coupon.series_id) || String(camp.id) === String(coupon.series_id)
+  })
+
+  const isStackable = associatedCampaign 
+    ? (associatedCampaign.stackable === true || 
+       associatedCampaign.stackable === 1 || 
+       associatedCampaign.metadata?.stackable === true || 
+       associatedCampaign.metadata?.stackMode === 'stackable')
+    : false;
+
+  const group = associatedCampaign 
+    ? String(
+        associatedCampaign.metadata?.conflictGroupId || 
+        associatedCampaign.exclusionGroup || 
+        associatedCampaign.metadata?.exclusionGroup || 
+        ''
+      ).trim()
+    : '';
+
+  return {
+    id: String(coupon.id),
+    stackable: isStackable,
+    exclusionGroup: group || '__global__',
+    name: associatedCampaign?.name || coupon.seriesName || 'Kupon'
+  }
+}
+
+function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null, active = false, onClick = null }) {
   const statusMeta = getCouponStatusMeta(coupon.status)
 
   // Find associated campaign to get name, description and image
@@ -366,15 +451,45 @@ function CouponCard({ coupon, index = 0, campaigns = [], appConfig = null }) {
   // Kampanya adı font boyutu — uzun isimlerde küçült
   const titleFontSize = campaignName.length > 20 ? '1.3rem' : campaignName.length > 12 ? '1.6rem' : '2rem'
 
+  const isSelected = active || coupon.status === 'reserved'
+
   return (
-    <div style={{
-      borderRadius: 0,
-      display: 'flex',
-      minHeight: 130,
-      position: 'relative',
-      overflow: 'hidden',
-      backgroundColor: '#ffffff',
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 16,
+        display: 'flex',
+        minHeight: 130,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
+        cursor: 'pointer',
+        border: isSelected ? '3px solid #22c55e' : '1px solid rgba(148,163,184,.14)',
+        boxShadow: isSelected ? '0 0 16px rgba(34,197,94,0.45)' : '0 4px 10px rgba(0,0,0,.03)',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: isSelected ? 'scale(1.02)' : 'none',
+      }}
+    >
+      {isSelected && (
+        <div style={{
+          position: 'absolute',
+          top: 7,
+          left: 14,
+          fontWeight: 900,
+          fontSize: '0.58rem',
+          color: '#fff',
+          background: '#22c55e',
+          padding: '2px 6px',
+          borderRadius: 4,
+          letterSpacing: '0.04em',
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+        }}>
+          <i className="fa-solid fa-circle-check" /> AKTİF
+        </div>
+      )}
       {/* ── Sol Kenar Tırtık (scallop) ── */}
       <div style={{
         position: 'absolute',
@@ -700,6 +815,8 @@ function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
                 index={idx}
                 campaigns={model.campaigns}
                 appConfig={appConfig}
+                active={coupon.status === 'reserved'}
+                onClick={() => onToggleCoupon && onToggleCoupon(coupon.id)}
               />
             </div>
           ))}
@@ -713,33 +830,348 @@ function CouponsScreen({ model, onAddCoupon, appConfig = null }) {
   )
 }
 
-function CampaignCard({ campaign }) {
-  return (
-    <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontWeight: 900, color: '#0f172a' }}>{campaign.name || 'Kampanya'}</div>
-          <div style={{ marginTop: 4, color: '#64748b', fontSize: '.78rem', lineHeight: 1.55 }}>
-            {campaign.description || 'Sadakat programina bagli kampanya.'}
+function CampaignCard({ campaign, model = null, active = false, onClick = null }) {
+  // ── Damga Kampanyası Kontrolü ──
+  const stampRule = useMemo(() => {
+    const rules = [
+      ...(Array.isArray(campaign.applicableRules) ? campaign.applicableRules : []),
+      ...(Array.isArray(campaign.rules) ? campaign.rules : []),
+    ]
+    return rules.find(rule => {
+      const isProductStamp = rule.conditionKey === 'period_product_quantity' && rule.conditionConfig?.isStampMode !== false
+      const isOrderStamp = rule.conditionKey === 'period_order_count'
+      return isProductStamp || isOrderStamp
+    })
+  }, [campaign])
+
+  const isStampCampaign = !!stampRule
+
+  // ── İlerleme Bilgilerini Oku ──
+  const stampProgress = useMemo(() => {
+    if (!isStampCampaign || !model) return null
+    const progressRow = model.progressRows?.find(p => String(p.campaign_id) === String(campaign.id))
+    const current = progressRow?.current_count || 0
+    
+    let target = progressRow?.target_count || 5 // default fallback
+    if (!progressRow?.target_count && stampRule) {
+      const cfg = stampRule.conditionConfig || stampRule.condition_json || {}
+      target = cfg.quantity || cfg.count || cfg.value || target
+    }
+    
+    const completedCycles = progressRow?.completed_cycles || 0
+    return { current, target, completedCycles }
+  }, [isStampCampaign, model, campaign.id, stampRule])
+
+  if (isStampCampaign) {
+    const renderStamps = () => {
+      if (!stampProgress) return null
+      const { current, target, completedCycles } = stampProgress
+      const slots = []
+      const isCoffee = campaign.name?.toLowerCase().includes('kahve') || campaign.description?.toLowerCase().includes('kahve')
+      const iconClass = isCoffee ? 'fa-mug-hot' : 'fa-stamp'
+      
+      for (let i = 0; i < target; i++) {
+        const isEarned = i < current
+        slots.push(
+          <div
+            key={i}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              border: isEarned ? 'none' : '2px dashed rgba(148,163,184,.35)',
+              background: isEarned ? 'linear-gradient(135deg,#f97316,#ea580c)' : '#f8fafc',
+              color: isEarned ? '#ffffff' : '#94a3b8',
+              fontSize: '0.9rem',
+              boxShadow: isEarned ? '0 4px 10px rgba(234,88,12,.25)' : 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {isEarned ? (
+              <i className={`fa-solid ${iconClass}`} />
+            ) : (
+              <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>{i + 1}</span>
+            )}
+          </div>
+        )
+      }
+      
+      return (
+        <div style={{
+          display: 'grid',
+          gap: 8,
+          margin: '6px 0 10px 0',
+          padding: '10px 12px',
+          background: 'rgba(249,115,22,0.04)',
+          borderRadius: 14,
+          border: '1px solid rgba(249,115,22,0.08)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.76rem', fontWeight: 900, color: '#ea580c', letterSpacing: '0.01em' }}>
+              KAZANILAN DAMGALAR ({current} / {target})
+            </span>
+            {completedCycles > 0 && (
+              <span style={{
+                fontSize: '0.65rem',
+                fontWeight: 900,
+                background: '#dcfce7',
+                color: '#15803d',
+                padding: '3px 8px',
+                borderRadius: 20,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}>
+                <i className="fa-solid fa-gift" /> {completedCycles} Hediye
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
+            {slots}
           </div>
         </div>
-        <span style={badgeStyle(campaign.personalized ? '#fee2e2' : '#eff6ff', campaign.personalized ? '#be123c' : '#1d4ed8')}>
-          {getCampaignBucketLabel(campaign.bucket)}
-        </span>
+      )
+    }
+
+    return (
+      <div style={{ ...cardStyle('#fff'), padding: 14, display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontWeight: 900, color: '#0f172a' }}>{campaign.name || 'Kampanya'}</div>
+            <div style={{ marginTop: 4, color: '#64748b', fontSize: '.78rem', lineHeight: 1.55 }}>
+              {campaign.description || 'Sadakat programina bagli kampanya.'}
+            </div>
+          </div>
+          <span style={badgeStyle(campaign.personalized ? '#fee2e2' : '#eff6ff', campaign.personalized ? '#be123c' : '#1d4ed8')}>
+            {getCampaignBucketLabel(campaign.bucket)}
+          </span>
+        </div>
+
+        {renderStamps()}
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span style={badgeStyle('rgba(15,23,42,.06)', '#475569')}>
+            <i className="fa-solid fa-store" />
+            {campaign.mobileEligible ? 'Mobil uyumlu' : 'Kanal sinirli'}
+          </span>
+          <span style={badgeStyle('rgba(15,23,42,.06)', '#475569')}>
+            <i className="fa-solid fa-clock" />
+            {campaign.activeNow ? 'Aktif' : 'Planli'}
+          </span>
+        </div>
+        <div style={{ color: '#64748b', fontSize: '.76rem' }}>
+          Baslangic: {formatMobileDate(campaign.startsAt, { day: '2-digit', month: 'short' })} •
+          Bitis: {formatMobileDate(campaign.endsAt, { day: '2-digit', month: 'short' })}
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <span style={badgeStyle('rgba(15,23,42,.06)', '#475569')}>
-          <i className="fa-solid fa-store" />
-          {campaign.mobileEligible ? 'Mobil uyumlu' : 'Kanal sinirli'}
-        </span>
-        <span style={badgeStyle('rgba(15,23,42,.06)', '#475569')}>
-          <i className="fa-solid fa-clock" />
-          {campaign.activeNow ? 'Aktif' : 'Planli'}
-        </span>
+    )
+  }
+
+  // Premium Ticket Style for standard campaigns
+  const benefitDisplay = useMemo(() => {
+    const allRules = [
+      ...(Array.isArray(campaign.applicableRules) ? campaign.applicableRules : []),
+      ...(Array.isArray(campaign.rules) ? campaign.rules : []),
+    ]
+    for (const rule of allRules) {
+      const actions = Array.isArray(rule.actions) ? rule.actions : []
+      for (const act of actions) {
+        const aType = act.actionType || ''
+        const aCfg = act.actionConfig || act.action_json || {}
+        const result = extractBenefitFromAction(aType, aCfg)
+        if (result) return result
+      }
+      const actionType = rule.actionType || ''
+      const actionCfg = rule.actionConfig || rule.action_json || {}
+      const result = extractBenefitFromAction(actionType, actionCfg)
+      if (result) return result
+    }
+    return 'FIRSAT'
+  }, [campaign])
+
+  const SOLID_COLORS = [
+    '#059669', // Zümrüt Yeşili
+    '#0d8197', // Çivit Mavisi (Teal)
+    '#7c3aed', // Eflatun/Mor
+    '#ea580c', // Turuncu
+    '#dc2626', // Kırmızı
+  ]
+  const index = Math.abs(String(campaign.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0))
+  const solidBg = active ? '#15803d' : SOLID_COLORS[index % SOLID_COLORS.length]
+  const bodyBgColor = '#f8fafc'
+
+  const scR = 6
+  const scD = scR * 2
+  const scGap = 4
+  const scStep = scD + scGap
+
+  const campaignName = campaign.name || 'Sadakat Kampanyası'
+  const titleFontSize = campaignName.length > 20 ? '1.2rem' : campaignName.length > 12 ? '1.5rem' : '1.8rem'
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 16,
+        display: 'flex',
+        minHeight: 120,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
+        cursor: 'pointer',
+        border: active ? '3px solid #22c55e' : '1px solid rgba(148,163,184,.14)',
+        boxShadow: active ? '0 0 16px rgba(34,197,94,0.45)' : '0 4px 10px rgba(0,0,0,.03)',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: active ? 'scale(1.02)' : 'none',
+      }}
+    >
+      {/* Sol Kenar Scallop */}
+      <div style={{
+        position: 'absolute',
+        left: -(scR),
+        top: 0,
+        bottom: 0,
+        width: scD,
+        backgroundImage: `radial-gradient(circle at center, ${bodyBgColor} ${scR}px, transparent ${scR + 0.5}px)`,
+        backgroundSize: `${scD}px ${scStep}px`,
+        backgroundRepeat: 'repeat-y',
+        backgroundPosition: `0 ${scGap / 2}px`,
+        zIndex: 10,
+      }} />
+
+      {/* Sağ Kenar Scallop */}
+      <div style={{
+        position: 'absolute',
+        right: -(scR),
+        top: 0,
+        bottom: 0,
+        width: scD,
+        backgroundImage: `radial-gradient(circle at center, ${bodyBgColor} ${scR}px, transparent ${scR + 0.5}px)`,
+        backgroundSize: `${scD}px ${scStep}px`,
+        backgroundRepeat: 'repeat-y',
+        backgroundPosition: `0 ${scGap / 2}px`,
+        zIndex: 10,
+      }} />
+
+      {/* Sol Koçan */}
+      <div style={{
+        width: 100,
+        backgroundColor: active ? '#ecfdf5' : '#ffffff',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 2,
+        padding: '12px 0',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          transform: 'rotate(-90deg)',
+          whiteSpace: 'nowrap',
+          color: 'transparent',
+          WebkitTextStroke: `1.5px ${solidBg}`,
+          fontWeight: 900,
+          fontFamily: 'sans-serif',
+          fontSize: benefitDisplay.length > 5 ? '2rem' : '2.8rem',
+          letterSpacing: '0.02em',
+          lineHeight: 1,
+        }}>
+          {benefitDisplay}
+        </div>
       </div>
-      <div style={{ color: '#64748b', fontSize: '.76rem' }}>
-        Baslangic: {formatMobileDate(campaign.startsAt, { day: '2-digit', month: 'short' })} •
-        Bitis: {formatMobileDate(campaign.endsAt, { day: '2-digit', month: 'short' })}
+
+      {/* Dikey Kesikli Ayırıcı */}
+      <div style={{
+        width: 0,
+        alignSelf: 'stretch',
+        borderLeft: '2px dashed rgba(15,23,42,0.12)',
+        zIndex: 3,
+      }} />
+
+      {/* Sağ Gövde */}
+      <div style={{
+        flex: 1,
+        background: solidBg,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '14px 18px',
+        minWidth: 0,
+        zIndex: 2,
+        position: 'relative',
+      }}>
+        {active && (
+          <div style={{
+            position: 'absolute',
+            top: 8,
+            right: 14,
+            fontWeight: 900,
+            fontSize: '0.62rem',
+            color: '#fff',
+            background: '#22c55e',
+            padding: '2px 8px',
+            borderRadius: 20,
+            letterSpacing: '0.04em',
+            zIndex: 3,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            boxShadow: '0 2px 8px rgba(34,197,94,0.3)',
+          }}>
+            <i className="fa-solid fa-circle-check" /> AKTİF
+          </div>
+        )}
+
+        <div style={{
+          fontFamily: '"Impact", "Arial Black", sans-serif',
+          fontWeight: 900,
+          fontSize: titleFontSize,
+          lineHeight: 1.15,
+          color: '#ffffff',
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          textShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          maxWidth: '90%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+        }}>
+          {campaignName}
+        </div>
+
+        <div style={{
+          marginTop: 6,
+          fontSize: '0.72rem',
+          color: 'rgba(255,255,255,0.85)',
+          maxWidth: '95%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {campaign.description || 'Sadakat programına bağlı kampanya.'}
+        </div>
+
+        <div style={{
+          marginTop: 8,
+          fontSize: '0.62rem',
+          color: '#ffffff',
+          background: 'rgba(0,0,0,0.14)',
+          padding: '3px 8px',
+          borderRadius: 4,
+          alignSelf: 'flex-start',
+          fontWeight: 700,
+        }}>
+          {campaign.startsAt ? (
+            `${formatMobileDate(campaign.startsAt, { day: '2-digit', month: 'short' })} - ${formatMobileDate(campaign.endsAt, { day: '2-digit', month: 'short' })}`
+          ) : (
+            'Süresiz geçerlidir'
+          )}
+        </div>
       </div>
     </div>
   )
@@ -939,6 +1371,48 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
   const bodyBgColor = branding.bodyBackgroundColor || '#f8fafc'
   const bodyBgImage = branding.bodyBackgroundImageUrl
 
+  const stampProgresses = useMemo(() => {
+    if (!Array.isArray(model.campaigns)) return []
+    const stampCamps = model.campaigns.filter(camp => {
+      const rules = [
+        ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+        ...(Array.isArray(camp.rules) ? camp.rules : []),
+      ]
+      return rules.some(rule => {
+        const isProductStamp = rule.conditionKey === 'period_product_quantity' && rule.conditionConfig?.isStampMode !== false
+        const isOrderStamp = rule.conditionKey === 'period_order_count'
+        return isProductStamp || isOrderStamp
+      })
+    })
+
+    return stampCamps.map(camp => {
+      const progress = model.progressRows?.find(p => String(p.campaign_id) === String(camp.id))
+      const current = progress?.current_count || 0
+      
+      let target = progress?.target_count || 5
+      if (!progress?.target_count) {
+        const rules = [
+          ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+          ...(Array.isArray(camp.rules) ? camp.rules : []),
+        ]
+        const rule = rules.find(r => r.conditionKey === 'period_product_quantity' || r.conditionKey === 'period_order_count')
+        if (rule) {
+          const cfg = rule.conditionConfig || rule.condition_json || {}
+          target = cfg.quantity || cfg.count || cfg.value || target
+        }
+      }
+      return { current, target }
+    })
+  }, [model.campaigns, model.progressRows])
+
+  const hasStamps = stampProgresses.length > 0
+  const stampsDisplay = useMemo(() => {
+    if (stampProgresses.length === 1) {
+      return `${stampProgresses[0].current}/${stampProgresses[0].target}`
+    }
+    return stampProgresses.map(p => `${p.current}/${p.target}`).slice(0, 2).join(' | ') + (stampProgresses.length > 2 ? '...' : '')
+  }, [stampProgresses])
+
   function handleButtonPress(btn) {
     switch (btn.type) {
       case 'phone':
@@ -1074,7 +1548,23 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
 
         {/* Quick summary tiles */}
         <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+          <button
+            type="button"
+            onClick={() => onNavigate('card')}
+            style={{
+              borderRadius: 16,
+              background: 'rgba(255,255,255,.85)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(148,163,184,.12)',
+              padding: '12px 10px',
+              textAlign: 'center',
+              boxShadow: '0 4px 12px rgba(15,23,42,.05)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+              outline: 'none',
+            }}
+          >
             <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Puan</div>
             <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>
               {model.pointBalance > 0 ? (
@@ -1085,15 +1575,56 @@ function MobileHomeDashboard({ model, appConfig, onNavigate, onOrderAction }) {
                 )
               ) : '0'}
             </div>
-          </div>
-          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('coupons')}
+            style={{
+              borderRadius: 16,
+              background: 'rgba(255,255,255,.85)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(148,163,184,.12)',
+              padding: '12px 10px',
+              textAlign: 'center',
+              boxShadow: '0 4px 12px rgba(15,23,42,.05)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+              outline: 'none',
+            }}
+          >
             <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Kupon</div>
             <div style={{ marginTop: 4, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>{model.activeCoupons.length}</div>
-          </div>
-          <div style={{ borderRadius: 16, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(148,163,184,.12)', padding: '12px 10px', textAlign: 'center', boxShadow: '0 4px 12px rgba(15,23,42,.05)' }}>
-            <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>Seviye</div>
-            <div style={{ marginTop: 4, fontSize: '.78rem', fontWeight: 900, color: '#7c3aed' }}>{model.tierSnapshot.currentTier?.name || 'Üyelik'}</div>
-          </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate(hasStamps ? 'campaigns' : 'account')}
+            style={{
+              borderRadius: 16,
+              background: 'rgba(255,255,255,.85)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(148,163,184,.12)',
+              padding: '12px 10px',
+              textAlign: 'center',
+              boxShadow: '0 4px 12px rgba(15,23,42,.05)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+              outline: 'none',
+            }}
+          >
+            <div style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 800 }}>
+              {hasStamps ? 'Damga' : 'Seviye'}
+            </div>
+            <div style={{
+              marginTop: 4,
+              fontSize: hasStamps ? '1rem' : '.78rem',
+              fontWeight: 900,
+              color: hasStamps ? '#ea580c' : '#7c3aed'
+            }}>
+              {hasStamps ? stampsDisplay : (model.tierSnapshot.currentTier?.name || 'Üyelik')}
+            </div>
+          </button>
         </div>
       </div>
     </div>
@@ -1158,6 +1689,49 @@ function OrderTypeModal({ visible, onClose, orderButtonConfig }) {
 
 function HomeScreen({ model, onOpen }) {
   const featuredCampaign = model.campaigns.find(item => item.bucket === 'personalized' && item.activeNow) || model.campaigns[0]
+
+  const stampProgresses = useMemo(() => {
+    if (!Array.isArray(model.campaigns)) return []
+    const stampCamps = model.campaigns.filter(camp => {
+      const rules = [
+        ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+        ...(Array.isArray(camp.rules) ? camp.rules : []),
+      ]
+      return rules.some(rule => {
+        const isProductStamp = rule.conditionKey === 'period_product_quantity' && rule.conditionConfig?.isStampMode !== false
+        const isOrderStamp = rule.conditionKey === 'period_order_count'
+        return isProductStamp || isOrderStamp
+      })
+    })
+
+    return stampCamps.map(camp => {
+      const progress = model.progressRows?.find(p => String(p.campaign_id) === String(camp.id))
+      const current = progress?.current_count || 0
+      
+      let target = progress?.target_count || 5
+      if (!progress?.target_count) {
+        const rules = [
+          ...(Array.isArray(camp.applicableRules) ? camp.applicableRules : []),
+          ...(Array.isArray(camp.rules) ? camp.rules : []),
+        ]
+        const rule = rules.find(r => r.conditionKey === 'period_product_quantity' || r.conditionKey === 'period_order_count')
+        if (rule) {
+          const cfg = rule.conditionConfig || rule.condition_json || {}
+          target = cfg.quantity || cfg.count || cfg.value || target
+        }
+      }
+      return { current, target }
+    })
+  }, [model.campaigns, model.progressRows])
+
+  const hasStamps = stampProgresses.length > 0
+  const stampsDisplay = useMemo(() => {
+    if (stampProgresses.length === 1) {
+      return `${stampProgresses[0].current}/${stampProgresses[0].target}`
+    }
+    return stampProgresses.map(p => `${p.current}/${p.target}`).slice(0, 2).join(' | ') + (stampProgresses.length > 2 ? '...' : '')
+  }, [stampProgresses])
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ ...cardStyle('linear-gradient(150deg, #111827 0%, #312e81 45%, #f97316 100%)', 'rgba(255,255,255,.08)'), padding: 18, color: '#fff', display: 'grid', gap: 14 }}>
@@ -1233,7 +1807,49 @@ function HomeScreen({ model, onOpen }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <SummaryTile label="Mevcut seviye" value={model.tierSnapshot.currentTier?.name || 'Uyelik'} hint={model.tierSnapshot.remainingLabel} color="#7c3aed" />
+        {hasStamps ? (
+          <button
+            type="button"
+            onClick={() => onOpen('campaigns')}
+            style={{
+              ...cardStyle('#fff'),
+              border: 'none',
+              padding: '14px 10px',
+              display: 'grid',
+              gap: 6,
+              textAlign: 'left',
+              cursor: 'pointer',
+              width: '100%',
+              fontFamily: 'inherit',
+            }}
+          >
+            <div style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 800 }}>Damgalarım</div>
+            <div style={{ fontSize: '1.25rem', color: '#ea580c', fontWeight: 900 }}>{stampsDisplay}</div>
+            <div style={{ fontSize: '.72rem', color: '#94a3b8', lineHeight: 1.5 }}>Kampanyalara git</div>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen('tier')}
+            style={{
+              ...cardStyle('#fff'),
+              border: 'none',
+              padding: '14px 10px',
+              display: 'grid',
+              gap: 6,
+              textAlign: 'left',
+              cursor: 'pointer',
+              width: '100%',
+              fontFamily: 'inherit',
+            }}
+          >
+            <div style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 800 }}>Mevcut seviye</div>
+            <div style={{ fontSize: '1.1rem', color: '#7c3aed', fontWeight: 900 }}>{model.tierSnapshot.currentTier?.name || 'Uyelik'}</div>
+            {model.tierSnapshot.remainingLabel ? (
+              <div style={{ fontSize: '.72rem', color: '#94a3b8', lineHeight: 1.5 }}>{model.tierSnapshot.remainingLabel}</div>
+            ) : null}
+          </button>
+        )}
         <SummaryTile label="Favori sube" value={model.homeBranchName} hint={`Son hareket: ${formatMobileRelativeDateLabel(model.latestActivityDate)}`} color="#1d4ed8" />
       </div>
 
@@ -1312,27 +1928,103 @@ function CardScreen({ model }) {
 }
 
 
-function CampaignsScreen({ model }) {
-  const personalized = model.campaigns.filter(item => item.bucket === 'personalized')
-  const publicCampaigns = model.campaigns.filter(item => item.bucket === 'public')
-  const upcoming = model.campaigns.filter(item => item.bucket === 'upcoming')
-  const ending = model.campaigns.filter(item => item.bucket === 'ending')
+function CampaignsScreen({ model, onToggleCampaign }) {
+  const hasCouponCond = (campaign) => {
+    const rules = [
+      ...(Array.isArray(campaign.applicableRules) ? campaign.applicableRules : []),
+      ...(Array.isArray(campaign.rules) ? campaign.rules : []),
+    ]
+    return rules.some(rule => {
+      const conditions = Array.isArray(rule.conditions) ? rule.conditions : []
+      const hasCond = conditions.some(cond => cond.conditionKey === 'coupon_present')
+      const hasSingle = rule.conditionKey === 'coupon_present'
+      return hasCond || hasSingle
+    })
+  }
+
+  const isStampCamp = (campaign) => {
+    const rules = [
+      ...(Array.isArray(campaign.applicableRules) ? campaign.applicableRules : []),
+      ...(Array.isArray(campaign.rules) ? campaign.rules : []),
+    ]
+    return rules.some(rule => {
+      const isProductStamp = rule.conditionKey === 'period_product_quantity' && rule.conditionConfig?.isStampMode !== false
+      const isOrderStamp = rule.conditionKey === 'period_order_count'
+      return isProductStamp || isOrderStamp
+    })
+  }
+
+  const allCampaigns = (model.campaigns || []).filter(c => !hasCouponCond(c))
+
+  const sortByPriority = (arr) => {
+    return [...arr].sort((left, right) => {
+      const pLeft = Number(left.priority ?? left.metadata?.priority ?? 0)
+      const pRight = Number(right.priority ?? right.metadata?.priority ?? 0)
+      if (pLeft !== pRight) return pLeft - pRight
+      return String(left.name || '').localeCompare(String(right.name || ''), 'tr')
+    })
+  }
+
+  const stampCampaigns = sortByPriority(allCampaigns.filter(c => isStampCamp(c)))
+  const standardCampaigns = allCampaigns.filter(c => !isStampCamp(c))
+
+  const personalized = sortByPriority(standardCampaigns.filter(item => item.bucket === 'personalized'))
+  const publicCampaigns = sortByPriority(standardCampaigns.filter(item => item.bucket === 'public'))
+  const upcoming = sortByPriority(standardCampaigns.filter(item => item.bucket === 'upcoming'))
+  const ending = sortByPriority(standardCampaigns.filter(item => item.bucket === 'ending'))
+
+  const selectedIds = model.customer?.metadata?.selectedCampaignIds || []
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {/* Damga kartları */}
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i className="fa-solid fa-stamp" style={{ color: '#ea580c' }} />
+          Damga Kartlarım
+        </div>
+        {stampCampaigns.length ? (
+          stampCampaigns.map(campaign => (
+            <CampaignCard
+              key={campaign.id}
+              campaign={campaign}
+              model={model}
+            />
+          ))
+        ) : (
+          <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
+            Aktif damga kartınız bulunmuyor.
+          </div>
+        )}
+      </div>
+
+      <div style={{ height: 1, background: 'rgba(15,23,42,.06)', margin: '4px 0' }} />
+
+      {/* Standart kampanyalar */}
       {[
-        { title: 'Sana ozel kampanyalar', items: personalized },
-        { title: 'Herkese acik kampanyalar', items: publicCampaigns },
-        { title: 'Yakinda baslayacaklar', items: upcoming },
-        { title: 'Bitmek uzere olanlar', items: ending },
+        { title: 'Sana özel fırsatlar', items: personalized },
+        { title: 'Herkese açık kampanyalar', items: publicCampaigns },
+        { title: 'Yakında başlayacaklar', items: upcoming },
+        { title: 'Bitmek üzere olanlar', items: ending },
       ].map(group => (
         <div key={group.title} style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900, color: '#0f172a' }}>{group.title}</div>
           {group.items.length ? (
-            group.items.map(campaign => <CampaignCard key={campaign.id} campaign={campaign} />)
+            group.items.map(campaign => {
+              const active = selectedIds.includes(String(campaign.id))
+              return (
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  model={model}
+                  active={active}
+                  onClick={() => onToggleCampaign && onToggleCampaign(campaign.id)}
+                />
+              )
+            })
           ) : (
             <div style={{ ...cardStyle('#fff'), padding: 14, color: '#64748b', fontSize: '.8rem' }}>
-              Bu bolumde gosterilecek kampanya bulunmuyor.
+              Bu bölümde gösterilecek kampanya bulunmuyor.
             </div>
           )}
         </div>
@@ -2088,6 +2780,8 @@ function AppViewport({
   onSelectCoupon,
   onConnectLink,
   onAddCoupon,
+  onToggleCampaign,
+  onToggleCoupon,
   standalone = false,
   activePrograms = [],
   referralCodesByProgram = {},
@@ -2208,6 +2902,7 @@ function AppViewport({
             : <HomeScreen model={model} onOpen={target => {
                 if (target === 'card') onTabChange('card')
                 if (target === 'coupons') onTabChange('coupons')
+                if (target === 'campaigns') onTabChange('campaigns')
                 if (target === 'activity') {
                   onTabChange('account')
                   onAccountViewChange('activity')
@@ -2219,8 +2914,8 @@ function AppViewport({
               }} />
         ) : null}
         {activeTab === 'card' ? <CardScreen model={model} /> : null}
-        {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} appConfig={appConfig} /> : null}
-        {activeTab === 'campaigns' ? <CampaignsScreen model={model} /> : null}
+        {activeTab === 'coupons' ? <CouponsScreen model={model} onAddCoupon={onAddCoupon} appConfig={appConfig} onToggleCoupon={onToggleCoupon} /> : null}
+        {activeTab === 'campaigns' ? <CampaignsScreen model={model} onToggleCampaign={onToggleCampaign} /> : null}
         {activeTab === 'account' ? (
           <AccountScreen
             model={model}
@@ -2653,6 +3348,181 @@ export default function CustomerLoyaltyMobileApp({
     }
   }
 
+  async function handleToggleCampaign(campaignId) {
+    if (!selectedCustomerId || !model) return
+    
+    const clickedCampaign = model.campaigns.find(c => String(c.id) === String(campaignId))
+    if (!clickedCampaign) return
+
+    const currentSelectedCampaignIds = model.customer.metadata?.selectedCampaignIds || []
+    const isAlreadyActive = currentSelectedCampaignIds.includes(String(campaignId))
+
+    let nextCampaignIds = []
+    if (isAlreadyActive) {
+      nextCampaignIds = currentSelectedCampaignIds.filter(id => String(id) !== String(campaignId))
+    } else {
+      const excl = resolveCampaignExclusivity(clickedCampaign)
+      nextCampaignIds = currentSelectedCampaignIds.filter(id => {
+        const otherCamp = model.campaigns.find(c => String(c.id) === String(id))
+        if (!otherCamp) return false
+        const otherExcl = resolveCampaignExclusivity(otherCamp)
+        if (excl.stackable || otherExcl.stackable) return true
+        if (excl.exclusionGroup === otherExcl.exclusionGroup) return false
+        return true
+      })
+      nextCampaignIds.push(String(campaignId))
+
+      const conflictingCouponIds = []
+      for (const coupon of model.activeCoupons) {
+        if (coupon.status !== 'reserved') continue
+        const coupExcl = resolveCouponExclusivity(coupon, model.campaigns)
+        if (!excl.stackable && !coupExcl.stackable && excl.exclusionGroup === coupExcl.exclusionGroup) {
+          conflictingCouponIds.push(coupon.id)
+        }
+      }
+      
+      for (const id of conflictingCouponIds) {
+        await updateCouponActivationStatus(id, 'available')
+      }
+    }
+
+    await updateCustomerCampaignSelections(selectedCustomerId, nextCampaignIds)
+    const result = await loadCustomerMobileSnapshot(selectedCustomerId)
+    setSnapshot(result)
+
+    if (sessionState.session && linkSession?.token) {
+      const firstCampId = nextCampaignIds[0] || ''
+      const firstCamp = model.campaigns.find(c => String(c.id) === String(firstCampId))
+      const reservedCoupons = result.coupons.filter(c => c.redemption_status === 'reserved')
+      const couponCodes = reservedCoupons.map(c => c.code).join(',')
+      const couponLabel = reservedCoupons.map(c => c.seriesName || 'Kupon').join(', ')
+
+      if (linkSession.channel === 'kiosk') {
+        await selectCampaignInKioskLoyaltySession(linkSession.token, {
+          campaignId: firstCampId,
+          campaignName: firstCamp?.name || '',
+          couponCode: couponCodes,
+          couponLabel
+        })
+        const customerCategoryIds = await loadCustomerLoyaltyCategoryIds(
+          { branchId: sessionState.session.branchId, branchName: sessionState.session.branchName },
+          selectedCustomerId
+        )
+        await linkCustomerToKioskSession(linkSession.token, result.customer, {
+          customerCategoryIds,
+          selectedCouponCode: couponCodes,
+          selectedCouponLabel: couponLabel,
+          selectedCampaignId: firstCampId,
+          selectedCampaignIds: nextCampaignIds
+        })
+      } else {
+        await selectCampaignInPosLoyaltySession(linkSession.token, {
+          campaignId: firstCampId,
+          campaignName: firstCamp?.name || '',
+          couponCode: couponCodes,
+          couponLabel
+        })
+        await linkCustomerToPosLoyaltySession(linkSession.token, result.customer, {
+          selectedCampaignId: firstCampId,
+          selectedCampaignName: firstCamp?.name || '',
+          selectedCouponCode: couponCodes,
+          selectedCouponLabel: couponLabel,
+          selectedCampaignIds: nextCampaignIds
+        })
+      }
+    }
+  }
+
+  async function handleToggleCoupon(couponId) {
+    if (!selectedCustomerId || !model) return
+
+    const clickedCoupon = model.activeCoupons.find(c => String(c.id) === String(couponId))
+    if (!clickedCoupon) return
+
+    const isAlreadyActive = clickedCoupon.status === 'reserved'
+    
+    if (isAlreadyActive) {
+      await updateCouponActivationStatus(couponId, 'available')
+    } else {
+      const excl = resolveCouponExclusivity(clickedCoupon, model.campaigns)
+      
+      const currentSelectedCampaignIds = model.customer.metadata?.selectedCampaignIds || []
+      const nextCampaignIds = currentSelectedCampaignIds.filter(id => {
+        const camp = model.campaigns.find(c => String(c.id) === String(id))
+        if (!camp) return false
+        const campExcl = resolveCampaignExclusivity(camp)
+        if (excl.stackable || campExcl.stackable) return true
+        if (excl.exclusionGroup === campExcl.exclusionGroup) return false
+        return true
+      })
+
+      if (nextCampaignIds.length !== currentSelectedCampaignIds.length) {
+        await updateCustomerCampaignSelections(selectedCustomerId, nextCampaignIds)
+      }
+
+      const conflictingCouponIds = []
+      for (const coupon of model.activeCoupons) {
+        if (coupon.status !== 'reserved' || String(coupon.id) === String(couponId)) continue
+        const otherExcl = resolveCouponExclusivity(coupon, model.campaigns)
+        if (!excl.stackable && !otherExcl.stackable && excl.exclusionGroup === otherExcl.exclusionGroup) {
+          conflictingCouponIds.push(coupon.id)
+        }
+      }
+
+      for (const id of conflictingCouponIds) {
+        await updateCouponActivationStatus(id, 'available')
+      }
+
+      await updateCouponActivationStatus(couponId, 'reserved')
+    }
+
+    const result = await loadCustomerMobileSnapshot(selectedCustomerId)
+    setSnapshot(result)
+
+    if (sessionState.session && linkSession?.token) {
+      const nextSelectedCampaignIds = result.customer.metadata?.selectedCampaignIds || []
+      const firstCampId = nextSelectedCampaignIds[0] || ''
+      const firstCamp = model.campaigns.find(c => String(c.id) === String(firstCampId))
+      const reservedCoupons = result.coupons.filter(c => c.redemption_status === 'reserved')
+      const couponCodes = reservedCoupons.map(c => c.code).join(',')
+      const couponLabel = reservedCoupons.map(c => c.seriesName || 'Kupon').join(', ')
+
+      if (linkSession.channel === 'kiosk') {
+        await selectCampaignInKioskLoyaltySession(linkSession.token, {
+          campaignId: firstCampId,
+          campaignName: firstCamp?.name || '',
+          couponCode: couponCodes,
+          couponLabel
+        })
+        const customerCategoryIds = await loadCustomerLoyaltyCategoryIds(
+          { branchId: sessionState.session.branchId, branchName: sessionState.session.branchName },
+          selectedCustomerId
+        )
+        await linkCustomerToKioskSession(linkSession.token, result.customer, {
+          customerCategoryIds,
+          selectedCouponCode: couponCodes,
+          selectedCouponLabel: couponLabel,
+          selectedCampaignId: firstCampId,
+          selectedCampaignIds: nextSelectedCampaignIds
+        })
+      } else {
+        await selectCampaignInPosLoyaltySession(linkSession.token, {
+          campaignId: firstCampId,
+          campaignName: firstCamp?.name || '',
+          couponCode: couponCodes,
+          couponLabel
+        })
+        await linkCustomerToPosLoyaltySession(linkSession.token, result.customer, {
+          selectedCampaignId: firstCampId,
+          selectedCampaignName: firstCamp?.name || '',
+          selectedCouponCode: couponCodes,
+          selectedCouponLabel: couponLabel,
+          selectedCampaignIds: nextSelectedCampaignIds
+        })
+      }
+    }
+  }
+
   async function handleAddCoupon(couponCode) {
     if (!selectedCustomerId) throw new Error('Müşteri seçilmemiş.')
     await bindCouponToCustomer(selectedCustomerId, couponCode)
@@ -2746,6 +3616,8 @@ export default function CustomerLoyaltyMobileApp({
         onSelectCoupon={handleSelectLinkCoupon}
         onConnectLink={() => { void connectLinkSession() }}
         onAddCoupon={handleAddCoupon}
+        onToggleCampaign={handleToggleCampaign}
+        onToggleCoupon={handleToggleCoupon}
         standalone={isStandalone}
         activePrograms={activePrograms}
         referralCodesByProgram={referralCodesByProgram}

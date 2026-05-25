@@ -1,4 +1,4 @@
-﻿import { db } from '@/lib/db'
+import { db } from '@/lib/db'
 import { compareSaleCategoryPriority } from '@/lib/comboMenuCategory'
 import { repairTurkishText } from '@/lib/turkishText'
 
@@ -735,6 +735,7 @@ function normalizeLinkSession(session = {}) {
     customerName: normalizeText(session.customerName, ''),
     phone: normalizeText(session.phone, ''),
     selectedCampaignId: normalizeText(session.selectedCampaignId, ''),
+    selectedCampaignIds: Array.isArray(session.selectedCampaignIds) ? session.selectedCampaignIds.map(String) : [],
     selectedCampaignName: normalizeText(session.selectedCampaignName, ''),
     selectedCouponCode: normalizeText(session.selectedCouponCode, '').toUpperCase(),
     selectedCouponLabel: normalizeText(session.selectedCouponLabel, ''),
@@ -786,6 +787,9 @@ export async function linkCustomerToKioskSession(token, customer, {
   customerCategoryIds = [],
   selectedCouponCode = '',
   selectedCouponLabel = '',
+  selectedCampaignId = '',
+  selectedCampaignName = '',
+  selectedCampaignIds = [],
 } = {}) {
   const current = stripExpiredLinkSessions(await readJsonSetting(LOYALTY_LINKS_KEY, []))
   const next = current.map(item => (
@@ -796,6 +800,9 @@ export async function linkCustomerToKioskSession(token, customer, {
           customerName: customer?.ad_soyad || customer?.name || '',
           phone: customer?.telefon || '',
           customerCategoryIds: Array.isArray(customerCategoryIds) ? customerCategoryIds.map(String) : [],
+          selectedCampaignId: selectedCampaignId || item.selectedCampaignId || '',
+          selectedCampaignIds: selectedCampaignIds.length > 0 ? selectedCampaignIds : (item.selectedCampaignIds || []),
+          selectedCampaignName: selectedCampaignName || item.selectedCampaignName || '',
           selectedCouponCode: String(selectedCouponCode || item.selectedCouponCode || '').toUpperCase(),
           selectedCouponLabel: selectedCouponLabel || item.selectedCouponLabel || '',
           status: 'linked',
