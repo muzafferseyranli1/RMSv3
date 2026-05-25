@@ -1,7 +1,7 @@
 import Header from '@/components/layout/Header'
 import CustomerLoyaltyMobileApp from '@/components/mobile/CustomerLoyaltyMobileApp'
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { loadCustomerAppConfig, saveCustomerAppConfig, getDefaultAppConfig } from '@/lib/customerMobileAppConfig'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
@@ -3314,6 +3314,19 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
   return (
     <>
       <Header title={screen.pageTitle} subtitle={screen.pageSubtitle} />
+
+      {/* Mobil Simülatör Seçici Sekmeler */}
+      <div style={{ display: 'flex', gap: 8, background: '#fff', padding: '6px 8px', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(15,23,42,.02)', width: 'fit-content', marginBottom: 12, flexWrap: 'wrap' }}>
+        <Link to="/mobil-app/musteri" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 12, fontSize: '.78rem', fontWeight: 800, textDecoration: 'none', background: isCustomerScreen ? '#fb718518' : 'transparent', color: isCustomerScreen ? '#fb7185' : '#64748b', transition: 'all .2s' }}>
+          <i className="fa-solid fa-user-group" style={{ fontSize: '.86rem' }} /> Müşteri Uygulaması
+        </Link>
+        <Link to="/mobil-app/personel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 12, fontSize: '.78rem', fontWeight: 800, textDecoration: 'none', background: isPersonnelScreen ? '#38bdf818' : 'transparent', color: isPersonnelScreen ? '#0284c7' : '#64748b', transition: 'all .2s' }}>
+          <i className="fa-solid fa-user-tie" style={{ fontSize: '.86rem' }} /> Personel Uygulaması
+        </Link>
+        <Link to="/mobil-app/qr-menu" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 12, fontSize: '.78rem', fontWeight: 800, textDecoration: 'none', background: isQrMenuScreen ? '#f59e0b18' : 'transparent', color: isQrMenuScreen ? '#d97706' : '#64748b', transition: 'all .2s' }}>
+          <i className="fa-solid fa-qrcode" style={{ fontSize: '.86rem' }} /> Masadan QR Menü
+        </Link>
+      </div>
 
       <div style={{ display: 'grid', gap: 20 }}>
         {isCustomerScreen ? (
