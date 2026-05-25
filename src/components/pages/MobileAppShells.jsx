@@ -841,112 +841,268 @@ function MobileOrderSurface({
 
 function PersonnelPhone() {
   const { branchId, branchName } = useWorkspace()
-  const [activeTab, setActiveTab] = useState('garson')
+  const [activeTab, setActiveTab] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
-
-  const menuItems = [
-    { key: 'home', label: 'Ana Sayfa', icon: 'fa-house', subtitle: 'Bugunluk bos' },
-    { key: 'garson', label: 'Garson', icon: 'fa-user-tie', subtitle: 'Uzaktan masa ve adisyon yonetimi' },
-  ]
 
   return (
     <PhoneShellFrame accent="#38bdf8">
-      <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
-        <div style={{ padding: '18px 16px 12px', display: 'grid', gap: 12, background: 'linear-gradient(180deg, rgba(56,189,248,.12), rgba(255,255,255,.98))', borderBottom: '1px solid rgba(226,232,240,.8)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#0f172a', fontSize: '.82rem', fontWeight: 800 }}>
-            <span>09:41</span>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#64748b' }}>
-              <i className="fa-solid fa-signal" />
-              <i className="fa-solid fa-wifi" />
-              <i className="fa-solid fa-battery-three-quarters" />
+      <StaffPinGate
+        storageKey={MOBILE_GARSON_STAFF_SESSION_KEY}
+        branchId={branchId || ''}
+        branchName={branchName || ''}
+        title="Mobil Personel Girişi"
+        subtitle="Uygulamayı kullanmak için PIN giriniz."
+        embeddedPin
+      >
+        {(activeStaff, helpers) => (
+          <PersonnelPhoneRuntime
+            branchId={branchId || ''}
+            branchName={branchName || ''}
+            activeStaff={activeStaff}
+            onStaffLogout={helpers?.logout}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            drawerOpen={drawerOpen}
+            setDrawerOpen={setDrawerOpen}
+          />
+        )}
+      </StaffPinGate>
+    </PhoneShellFrame>
+  )
+}
+
+function PersonnelPhoneRuntime({
+  branchId,
+  branchName,
+  activeStaff,
+  onStaffLogout,
+  activeTab,
+  setActiveTab,
+  drawerOpen,
+  setDrawerOpen,
+}) {
+  // Shared States for Standalone interactivity
+  const [tasks, setTasks] = useState([
+    { id: 1, title: 'Masaları dezenfekte et ve tuzlukları doldur', priority: 'Yüksek', done: false, category: 'Garson' },
+    { id: 2, title: 'Kasa sayımı mutabakatını gerçekleştir', priority: 'Orta', done: false, category: 'Müdür' },
+    { id: 3, title: 'Depoya gelen yeni un çuvallarını diz', priority: 'Düşük', done: false, category: 'Mutfak' },
+    { id: 4, title: 'Mutfak tezgah temizliğini kontrol et', priority: 'Yüksek', done: true, category: 'Mutfak' },
+  ])
+
+  const [pdksStatus, setPdksStatus] = useState('out') // 'in' or 'out'
+  const [pdksSeconds, setPdksSeconds] = useState(0)
+  const [pdksLogs, setPdksLogs] = useState([
+    { id: 1, date: '24.05.2026', checkIn: '09:02', checkOut: '18:04', total: '9 Saat 2 Dk', status: 'completed' },
+    { id: 2, date: '23.05.2026', checkIn: '08:58', checkOut: '18:01', total: '9 Saat 3 Dk', status: 'completed' },
+  ])
+
+  const [announcements] = useState([
+    { id: 1, text: 'Haftalık Vardiya Planı Güncellendi. Lütfen takvim sekmesini kontrol edin.', date: 'Bugün' },
+    { id: 2, text: 'Yeni yazlık menü eğitimi Çarşamba saat 15:00\'te toplantı salonunda yapılacaktır.', date: 'Dün' },
+  ])
+
+  // PDKS timer
+  useEffect(() => {
+    let interval = null
+    if (pdksStatus === 'in') {
+      interval = setInterval(() => {
+        setPdksSeconds(prev => prev + 1)
+      }, 1000)
+    } else {
+      setPdksSeconds(0)
+    }
+    return () => clearInterval(interval)
+  }, [pdksStatus])
+
+  function handlePdksToggle() {
+    const now = new Date()
+    const timeStr = now.toTimeString().split(' ')[0].slice(0, 5)
+    if (pdksStatus === 'out') {
+      setPdksStatus('in')
+      setPdksSeconds(0)
+      showToast('Shift Başlatıldı. Giriş kaydedildi.', '#10b981')
+    } else {
+      const checkInTime = new Date(Date.now() - pdksSeconds * 1000)
+      const checkInStr = checkInTime.toTimeString().split(' ')[0].slice(0, 5)
+      const hours = Math.floor(pdksSeconds / 3600)
+      const minutes = Math.floor((pdksSeconds % 3600) / 60)
+      const elapsedStr = `${hours} Saat ${minutes} Dk`
+      
+      setPdksLogs(prev => [
+        {
+          id: Date.now(),
+          date: now.toLocaleDateString('tr-TR'),
+          checkIn: checkInStr,
+          checkOut: timeStr,
+          total: elapsedStr,
+          status: 'completed',
+        },
+        ...prev,
+      ])
+      setPdksStatus('out')
+      showToast('Shift Bitirildi. Çıkış kaydedildi.', '#ef4444')
+    }
+  }
+
+  // Sidebar Menu Items
+  const menuItems = [
+    { key: 'home', label: 'Ana Sayfa', icon: 'fa-house', subtitle: 'Hızlı bakış ve özetler' },
+    { key: 'calendar', label: 'Takvim & Vardiya', icon: 'fa-calendar-days', subtitle: 'Çalışma günleri ve izinler' },
+    { key: 'tasks', label: 'Görevlerim', icon: 'fa-list-check', subtitle: 'Görev listesi ve yeni görev' },
+    { key: 'pdks', label: 'PDKS Giriş/Çıkış', icon: 'fa-clock', subtitle: 'Giriş-çıkış saatleri ve süre' },
+  ]
+
+  // Role based items
+  const staffRole = activeStaff?.registryNumber?.startsWith('B') || activeStaff?.registryNumber?.startsWith('M')
+    ? 'Müdür'
+    : activeStaff?.registryNumber?.startsWith('K')
+      ? 'Kurye'
+      : 'Garson'
+
+  return (
+    <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto 1fr', background: '#f8fafc' }}>
+      {/* Phone Header */}
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(226,232,240,.9)', background: '#fff', zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            style={{ width: 38, height: 38, borderRadius: 12, border: 'none', background: 'rgba(56,189,248,.12)', color: '#0284c7', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+          >
+            <i className="fa-solid fa-bars" />
+          </button>
+          <div>
+            <div style={{ fontSize: '.88rem', fontWeight: 900, color: '#0f172a' }}>
+              {activeTab === 'home' && 'Ana Sayfa'}
+              {activeTab === 'calendar' && 'Takvim & Vardiya'}
+              {activeTab === 'tasks' && 'Görevlerim'}
+              {activeTab === 'pdks' && 'PDKS Kontrol'}
+              {activeTab === 'garson' && 'Garson Terminali'}
+              {activeTab === 'kurye' && 'Kurye Modülü'}
+              {activeTab === 'yonetici' && 'Yönetici Modülü'}
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                style={{ width: 42, height: 42, borderRadius: 14, border: 'none', background: 'rgba(56,189,248,.16)', color: '#0284c7', cursor: 'pointer' }}
-              >
-                <i className="fa-solid fa-bars" />
-              </button>
-              <div>
-                <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#0f172a' }}>Personel Mobil</div>
-                <div style={{ fontSize: '.76rem', color: '#64748b' }}>
-                  {activeTab === 'home' ? 'Telefon ana sayfa kabugu' : 'Garson modulunun uzaktan uzantisi'}
-                </div>
-              </div>
-            </div>
-            <div style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(2,132,199,.1)', color: '#0284c7', fontSize: '.72rem', fontWeight: 900 }}>
-              Beta
-            </div>
+            <div style={{ fontSize: '.68rem', color: '#64748b' }}>{branchName}</div>
           </div>
         </div>
-
-        <div style={{ position: 'relative', minHeight: 0, background: '#f8fafc' }}>
-          {activeTab === 'home' ? (
-            <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
-              <div style={{ textAlign: 'center', maxWidth: 230 }}>
-                <div style={{ width: 76, height: 76, margin: '0 auto 16px', borderRadius: 24, background: 'rgba(56,189,248,.14)', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' }}>
-                  <i className="fa-solid fa-house" />
-                </div>
-                <div style={{ color: '#0f172a', fontWeight: 900, fontSize: '1rem' }}>Ana sayfa simdilik bos</div>
-                <div style={{ marginTop: 10, color: '#64748b', fontSize: '.84rem', lineHeight: 1.65 }}>
-                  Bugunku gelistirme icin sidebara sadece giris noktasi olarak eklendi. Sonraki fazlarda diger mobil moduller buraya baglanacak.
-                </div>
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {pdksStatus === 'in' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: 'rgba(34,197,94,.1)', color: '#16a34a', fontSize: '.64rem', fontWeight: 900 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: '#22c55e', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              MESAİDE
             </div>
-          ) : (
-            <StaffPinGate
-              storageKey={MOBILE_GARSON_STAFF_SESSION_KEY}
-              branchId={branchId || ''}
-              branchName={branchName || ''}
-              title="Mobil Garson Girisi"
-              subtitle="Telefon ekranini kullanmak icin PIN ile giris yapin."
-              embeddedPin
-            >
-              {(activeStaff, helpers) => (
-                <MobileGarsonRuntime
-                  branchId={branchId || ''}
-                  branchName={branchName || ''}
-                  activeStaff={activeStaff}
-                  onStaffLogout={helpers?.logout}
-                />
-              )}
-            </StaffPinGate>
+          )}
+          <button
+            type="button"
+            onClick={onStaffLogout}
+            style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(239,68,68,.15)', background: 'rgba(254,226,226,.4)', color: '#dc2626', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+            title="Çıkış Yap"
+          >
+            <i className="fa-solid fa-right-from-bracket" />
+          </button>
+        </div>
+      </div>
+
+      {/* Screen Body */}
+      <div style={{ position: 'relative', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ height: '100%', overflowY: activeTab === 'garson' ? 'hidden' : 'auto', padding: activeTab === 'garson' ? 0 : 14 }}>
+          {activeTab === 'home' && (
+            <PersonnelDashboard
+              activeStaff={activeStaff}
+              staffRole={staffRole}
+              tasks={tasks}
+              setTasks={setTasks}
+              announcements={announcements}
+              pdksStatus={pdksStatus}
+              pdksSeconds={pdksSeconds}
+              handlePdksToggle={handlePdksToggle}
+            />
           )}
 
-          {drawerOpen ? (
-            <>
-              <button
-                type="button"
-                aria-label="Drawer kapat"
-                onClick={() => setDrawerOpen(false)}
-                style={{ position: 'absolute', inset: 0, border: 'none', background: 'rgba(15,23,42,.42)', cursor: 'pointer' }}
-              />
-              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 276, background: 'linear-gradient(180deg, #081226, #0f172a)', color: '#fff', padding: 18, display: 'grid', gridTemplateRows: 'auto auto 1fr', gap: 16, boxShadow: '24px 0 50px rgba(2,6,23,.35)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '.74rem', letterSpacing: '.08em', textTransform: 'uppercase', color: '#7dd3fc', fontWeight: 900 }}>Mobil App</div>
-                    <div style={{ marginTop: 6, fontSize: '1.08rem', fontWeight: 900 }}>Personel</div>
+          {activeTab === 'calendar' && (
+            <PersonnelCalendar />
+          )}
+
+          {activeTab === 'tasks' && (
+            <PersonnelTasks
+              tasks={tasks}
+              setTasks={setTasks}
+            />
+          )}
+
+          {activeTab === 'pdks' && (
+            <PersonnelPdks
+              pdksStatus={pdksStatus}
+              pdksSeconds={pdksSeconds}
+              handlePdksToggle={handlePdksToggle}
+              pdksLogs={pdksLogs}
+            />
+          )}
+
+          {activeTab === 'garson' && (
+            <MobileGarsonRuntime
+              branchId={branchId || ''}
+              branchName={branchName || ''}
+              activeStaff={activeStaff}
+              onStaffLogout={onStaffLogout}
+            />
+          )}
+
+          {activeTab === 'kurye' && (
+            <PersonnelKurye />
+          )}
+
+          {activeTab === 'yonetici' && (
+            <PersonnelManager
+              branchId={branchId}
+              branchName={branchName}
+            />
+          )}
+        </div>
+
+        {/* Navigation Sidebar Drawer */}
+        {drawerOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Drawer kapat"
+              onClick={() => setDrawerOpen(false)}
+              style={{ position: 'absolute', inset: 0, border: 'none', background: 'rgba(15,23,42,.45)', cursor: 'pointer', zIndex: 90 }}
+            />
+            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 280, background: 'linear-gradient(180deg, #0f172a, #020617)', color: '#fff', padding: '20px 16px', display: 'grid', gridTemplateRows: 'auto 1fr', gap: 20, boxShadow: '24px 0 60px rgba(0,0,0,.45)', zIndex: 100 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '.68rem', letterSpacing: '.12em', textTransform: 'uppercase', color: '#38bdf8', fontWeight: 900 }}>Remote Control</div>
+                  <div style={{ marginTop: 4, fontSize: '1.05rem', fontWeight: 900 }}>Personel App</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,.08)', color: '#cbd5e1', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: 24, minHeight: 0, overflowY: 'auto', contentVisibility: 'auto', alignContent: 'start' }}>
+                {/* User card */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.06)' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #0284c7, #38bdf8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '.95rem' }}>
+                    {getPersonnelDisplayName(activeStaff).slice(0, 2).toUpperCase()}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(false)}
-                    style={{ width: 36, height: 36, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.08)', color: '#cbd5e1', cursor: 'pointer' }}
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '.84rem', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getPersonnelDisplayName(activeStaff)}</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                      <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(56,189,248,.18)', color: '#38bdf8', fontSize: '.6rem', fontWeight: 900 }}>
+                        {staffRole}
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '.64rem' }}>#{activeStaff?.registryNumber || '0000'}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div style={{ borderRadius: 18, padding: '12px 14px', background: 'rgba(56,189,248,.12)', border: '1px solid rgba(56,189,248,.18)' }}>
-                  <div style={{ fontSize: '.72rem', color: '#7dd3fc', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em' }}>Bugun</div>
-                  <div style={{ marginTop: 8, color: '#e2e8f0', fontSize: '.82rem', lineHeight: 1.6 }}>
-                    Garson sekmesi ile sabit Garson modulunun ayni acik masa ve adisyon verisine uzaktan ulasabilirsiniz.
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gap: 10, alignContent: 'start' }}>
+                {/* Main section links */}
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: '.64rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748b', paddingLeft: 8 }}>Genel</div>
                   {menuItems.map(item => {
                     const active = item.key === activeTab
                     return (
@@ -958,36 +1114,963 @@ function PersonnelPhone() {
                           setDrawerOpen(false)
                         }}
                         style={{
-                          minHeight: 68,
-                          borderRadius: 18,
-                          border: active ? '1px solid rgba(56,189,248,.34)' : '1px solid rgba(255,255,255,.08)',
-                          background: active ? 'linear-gradient(135deg, rgba(56,189,248,.18), rgba(14,165,233,.12))' : 'rgba(255,255,255,.04)',
-                          color: '#fff',
+                          minHeight: 52,
+                          borderRadius: 14,
+                          border: 'none',
+                          background: active ? 'rgba(56,189,248,.15)' : 'transparent',
+                          color: active ? '#38bdf8' : '#94a3b8',
                           cursor: 'pointer',
-                          padding: '12px 14px',
-                          display: 'grid',
-                          gridTemplateColumns: '40px 1fr',
+                          padding: '10px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
                           gap: 12,
                           textAlign: 'left',
+                          width: '100%',
+                          transition: 'all .2s',
                         }}
                       >
-                        <div style={{ width: 40, height: 40, borderRadius: 14, background: active ? 'rgba(56,189,248,.2)' : 'rgba(255,255,255,.08)', color: active ? '#7dd3fc' : '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <i className={`fa-solid ${item.icon}`} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 900, fontSize: '.9rem' }}>{item.label}</div>
-                          <div style={{ marginTop: 4, color: '#94a3b8', fontSize: '.74rem', lineHeight: 1.5 }}>{item.subtitle}</div>
+                        <i className={`fa-solid ${item.icon}`} style={{ width: 18, fontSize: '.98rem', color: active ? '#38bdf8' : '#64748b' }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: '.84rem', color: active ? '#fff' : '#e2e8f0' }}>{item.label}</div>
+                          <div style={{ color: active ? 'rgba(56,189,248,.7)' : '#64748b', fontSize: '.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{item.subtitle}</div>
                         </div>
                       </button>
                     )
                   })}
                 </div>
+
+                {/* Role-based panels section */}
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: 8, paddingRight: 4 }}>
+                    <div style={{ fontSize: '.64rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748b' }}>Rol Bazlı Paneller</div>
+                    <span style={{ fontSize: '.6rem', color: '#38bdf8', fontWeight: 900 }}>Simülasyon</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('garson')
+                      setDrawerOpen(false)
+                    }}
+                    style={{
+                      minHeight: 52,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: activeTab === 'garson' ? 'rgba(56,189,248,.15)' : 'transparent',
+                      color: activeTab === 'garson' ? '#38bdf8' : '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <i className="fa-solid fa-user-tie" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'garson' ? '#38bdf8' : '#64748b' }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'garson' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Garson Terminali
+                        {staffRole === 'Garson' && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Masa sipariş ve çağırma yönetimi</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('kurye')
+                      setDrawerOpen(false)
+                    }}
+                    style={{
+                      minHeight: 52,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: activeTab === 'kurye' ? 'rgba(56,189,248,.15)' : 'transparent',
+                      color: activeTab === 'kurye' ? '#38bdf8' : '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <i className="fa-solid fa-motorcycle" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'kurye' ? '#38bdf8' : '#64748b' }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'kurye' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Kurye Modülü
+                        {staffRole === 'Kurye' && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Aktif teslimatlar ve durum güncelleme</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('yonetici')
+                      setDrawerOpen(false)
+                    }}
+                    style={{
+                      minHeight: 52,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: activeTab === 'yonetici' ? 'rgba(56,189,248,.15)' : 'transparent',
+                      color: activeTab === 'yonetici' ? '#38bdf8' : '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <i className="fa-solid fa-briefcase" style={{ width: 18, fontSize: '.98rem', color: activeTab === 'yonetici' ? '#38bdf8' : '#64748b' }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: '.84rem', color: activeTab === 'yonetici' ? '#fff' : '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Yönetici Paneli
+                        {staffRole === 'Müdür' && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#10b981' }} />}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '.68rem', marginTop: 2 }}>Sipariş verme ve Mal Kabul arayüzü</div>
+                    </div>
+                  </button>
+                </div>
               </div>
-            </>
-          ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function PersonnelDashboard({
+  activeStaff,
+  staffRole,
+  tasks,
+  setTasks,
+  announcements,
+  pdksStatus,
+  pdksSeconds,
+  handlePdksToggle,
+}) {
+  const openTasks = useMemo(() => tasks.filter(t => !t.done).slice(0, 3), [tasks])
+
+  function handleTaskCheckbox(id) {
+    setTasks(prev => prev.map(task => task.id === id ? { ...task, done: !task.done } : task))
+    showToast('Görev güncellendi', '#0284c7')
+  }
+
+  // Format PDKS duration
+  const hours = Math.floor(pdksSeconds / 3600)
+  const minutes = Math.floor((pdksSeconds % 3600) / 60)
+  const seconds = pdksSeconds % 60
+  const durationStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Greeting card */}
+      <div style={{ padding: 16, borderRadius: 20, background: 'linear-gradient(135deg, #0284c7, #0284c7, #38bdf8)', color: '#fff', boxShadow: '0 8px 24px rgba(2,132,199,.15)' }}>
+        <div style={{ fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.1em', color: '#bae6fd' }}>Hoş Geldiniz</div>
+        <div style={{ marginTop: 6, fontSize: '1.2rem', fontWeight: 900 }}>{getPersonnelDisplayName(activeStaff)}</div>
+        <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,.16)', fontSize: '.64rem', fontWeight: 900 }}>{staffRole}</span>
+          <span style={{ fontSize: '.68rem', color: '#bae6fd' }}>Registry: #{activeStaff?.registryNumber || '0000'}</span>
         </div>
       </div>
-    </PhoneShellFrame>
+
+      {/* Announcements */}
+      {announcements.length > 0 && (
+        <div style={{ padding: 14, borderRadius: 18, background: '#fffbeb', border: '1px solid #fde68a', display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b45309', fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            <i className="fa-solid fa-bullhorn" />
+            Duyurular
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {announcements.map(item => (
+              <div key={item.id} style={{ fontSize: '.74rem', color: '#78350f', lineHeight: 1.5, display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
+                <span>• {item.text}</span>
+                <span style={{ fontSize: '.64rem', color: '#b45309', fontWeight: 800 }}>{item.date}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick PDKS Widget */}
+      <div style={{ padding: 14, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, boxShadow: '0 8px 16px rgba(15,23,42,.03)' }}>
+        <div>
+          <div style={{ fontSize: '.68rem', fontWeight: 900, textTransform: 'uppercase', color: '#64748b' }}>PDKS Mesai Durumu</div>
+          <div style={{ marginTop: 4, fontSize: '.9rem', fontWeight: 900, color: pdksStatus === 'in' ? '#16a34a' : '#0f172a' }}>
+            {pdksStatus === 'in' ? `Mesaide / ${durationStr}` : 'Vardiya Dışı'}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handlePdksToggle}
+          style={{
+            padding: '8px 14px',
+            borderRadius: 12,
+            border: 'none',
+            background: pdksStatus === 'in' ? 'linear-gradient(135deg, #ef4444, #b91c1c)' : 'linear-gradient(135deg, #22c55e, #15803d)',
+            color: '#fff',
+            fontWeight: 900,
+            fontSize: '.72rem',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(15,23,42,.08)',
+          }}
+        >
+          {pdksStatus === 'in' ? 'Mesaiden Çık' : 'Mesaiyi Başlat'}
+        </button>
+      </div>
+
+      {/* Working Hours / Shift Schedule */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ fontSize: '.78rem', fontWeight: 900, color: '#0f172a', paddingLeft: 2 }}>Çalışma Planı (Vardiya)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ padding: 10, borderRadius: 14, background: '#e0f2fe', border: '1px solid #bae6fd', textAlign: 'center' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 900, textTransform: 'uppercase', color: '#0284c7' }}>Bugün</div>
+            <div style={{ marginTop: 6, fontSize: '.76rem', fontWeight: 900, color: '#0369a1' }}>09:00 - 18:00</div>
+            <div style={{ marginTop: 2, fontSize: '.58rem', color: '#0284c7' }}>Gündüz</div>
+          </div>
+          <div style={{ padding: 10, borderRadius: 14, background: '#fef3c7', border: '1px solid #fde68a', textAlign: 'center' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 900, textTransform: 'uppercase', color: '#d97706' }}>Yarın</div>
+            <div style={{ marginTop: 6, fontSize: '.76rem', fontWeight: 900, color: '#b45309' }}>12:00 - 21:00</div>
+            <div style={{ marginTop: 2, fontSize: '.58rem', color: '#d97706' }}>Orta</div>
+          </div>
+          <div style={{ padding: 10, borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', textAlign: 'center' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 900, textTransform: 'uppercase', color: '#6b7280' }}>Öbür Gün</div>
+            <div style={{ marginTop: 6, fontSize: '.76rem', fontWeight: 900, color: '#374151' }}>15:00 - 24:00</div>
+            <div style={{ marginTop: 2, fontSize: '.58rem', color: '#6b7280' }}>Kapanış</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Top 3 Tasks */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ fontSize: '.78rem', fontWeight: 900, color: '#0f172a', paddingLeft: 2 }}>En Önemli 3 Göreviniz</div>
+        {openTasks.length === 0 ? (
+          <div style={{ padding: 16, borderRadius: 16, border: '1px dashed #cbd5e1', background: '#fff', textAlign: 'center', color: '#64748b', fontSize: '.76rem' }}>
+            Harika! Yapılacak aktif göreviniz bulunmuyor.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {openTasks.map(task => (
+              <div
+                key={task.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 16,
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  boxShadow: '0 4px 10px rgba(15,23,42,.02)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={task.done}
+                  onChange={() => handleTaskCheckbox(task.id)}
+                  style={{ width: 18, height: 18, borderRadius: 6, border: '1px solid #cbd5e1', accentColor: '#0284c7', cursor: 'pointer' }}
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '.74rem', color: '#0f172a', fontWeight: 800, textDecoration: task.done ? 'line-through' : 'none' }}>
+                    {task.title}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                    <span style={{
+                      padding: '1px 5px',
+                      borderRadius: 4,
+                      background: task.priority === 'Yüksek' ? 'rgba(239,68,68,.12)' : task.priority === 'Orta' ? 'rgba(245,158,11,.12)' : 'rgba(100,116,139,.12)',
+                      color: task.priority === 'Yüksek' ? '#ef4444' : task.priority === 'Orta' ? '#f59e0b' : '#64748b',
+                      fontSize: '.54rem',
+                      fontWeight: 900,
+                    }}>
+                      {task.priority}
+                    </span>
+                    <span style={{ fontSize: '.6rem', color: '#64748b' }}>Sorumlu: {task.category}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PersonnelCalendar() {
+  const [selectedDay, setSelectedDay] = useState(25)
+
+  // Quick Calendar Month Grid Mock
+  const daysInMonth = 31
+  const firstDayIndex = 5 // Friday start for May 2026
+  const gridCells = []
+
+  // Fill padding cells
+  for (let i = 0; i < firstDayIndex; i++) {
+    gridCells.push(null)
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    gridCells.push(i)
+  }
+
+  // Highlight days with shifts
+  const shiftDays = new Set([1, 2, 4, 5, 6, 8, 9, 11, 12, 13, 15, 16, 18, 19, 20, 22, 23, 25, 26, 27, 29, 30])
+
+  const currentShift = useMemo(() => {
+    if (!selectedDay) return null
+    if (!shiftDays.has(selectedDay)) {
+      return { off: true, label: 'HAFTALIK İZİN', hours: 'İzinli', role: 'Vardiya Yok', manager: '-' }
+    }
+    const shiftHours = selectedDay % 3 === 0 
+      ? '15:00 - 24:00' 
+      : selectedDay % 3 === 1 
+        ? '09:00 - 18:00' 
+        : '12:00 - 21:00'
+    const shiftType = selectedDay % 3 === 0
+      ? 'Kapanış Vardiyası'
+      : selectedDay % 3 === 1
+        ? 'Açılış Vardiyası'
+        : 'Orta Vardiya'
+
+    return {
+      off: false,
+      label: shiftType,
+      hours: shiftHours,
+      role: 'Garson',
+      manager: 'Ahmet Yılmaz (Müdür)',
+      branch: 'Merkez Şube',
+    }
+  }, [selectedDay])
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Month Header */}
+      <div style={{ padding: '10px 12px', borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 8px 16px rgba(15,23,42,.02)' }}>
+        <button type="button" style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer' }}><i className="fa-solid fa-chevron-left" /></button>
+        <span style={{ fontWeight: 900, color: '#0f172a', fontSize: '.84rem' }}>Mayıs 2026</span>
+        <button type="button" style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer' }}><i className="fa-solid fa-chevron-right" /></button>
+      </div>
+
+      {/* Calendar Grid */}
+      <div style={{ padding: 12, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(15,23,42,.03)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, textAlign: 'center', fontSize: '.68rem', fontWeight: 900, color: '#64748b', marginBottom: 8 }}>
+          <span>Pt</span><span>Sa</span><span>Ça</span><span>Pe</span><span>Cu</span><span style={{ color: '#dc2626' }}>Ct</span><span style={{ color: '#dc2626' }}>Pz</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {gridCells.map((day, idx) => {
+            if (day === null) return <div key={`pad-${idx}`} />
+            const isSelected = day === selectedDay
+            const hasShift = shiftDays.has(day)
+            return (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setSelectedDay(day)}
+                style={{
+                  height: 38,
+                  borderRadius: 10,
+                  border: isSelected ? '2px solid #0284c7' : 'none',
+                  background: isSelected 
+                    ? '#0284c7' 
+                    : hasShift 
+                      ? '#f0f9ff' 
+                      : '#f8fafc',
+                  color: isSelected 
+                    ? '#fff' 
+                    : hasShift 
+                      ? '#0369a1' 
+                      : '#94a3b8',
+                  fontWeight: isSelected || hasShift ? 900 : 500,
+                  fontSize: '.74rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+              >
+                {day}
+                {hasShift && !isSelected && (
+                  <span style={{ width: 4, height: 4, borderRadius: 999, background: '#0284c7', position: 'absolute', bottom: 4 }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Shift Detail Card */}
+      {currentShift && (
+        <div style={{ padding: 14, borderRadius: 18, background: currentShift.off ? '#f8fafc' : '#fff', border: currentShift.off ? '1px dashed #cbd5e1' : '1px solid #e2e8f0', display: 'grid', gap: 10, boxShadow: '0 10px 24px rgba(15,23,42,.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '.72rem', fontWeight: 900, color: '#64748b' }}>Vardiya Bilgisi (Mayıs {selectedDay})</span>
+            <span style={{
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: currentShift.off ? '#f1f5f9' : 'rgba(56,189,248,.12)',
+              color: currentShift.off ? '#64748b' : '#0284c7',
+              fontSize: '.62rem',
+              fontWeight: 900,
+            }}>
+              {currentShift.off ? 'İzinli' : 'Aktif'}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: '1rem', fontWeight: 900, color: currentShift.off ? '#64748b' : '#0f172a' }}>{currentShift.label}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569', marginTop: 4 }}>
+              <i className="fa-solid fa-clock" style={{ color: '#64748b' }} />
+              Çalışma Saatleri: <strong>{currentShift.hours}</strong>
+            </div>
+            {!currentShift.off && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569' }}>
+                  <i className="fa-solid fa-store" style={{ color: '#64748b' }} />
+                  Görev Alanı: <strong>{currentShift.branch}</strong>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569' }}>
+                  <i className="fa-solid fa-user-shield" style={{ color: '#64748b' }} />
+                  Nöbetçi Müdür: <strong>{currentShift.manager}</strong>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PersonnelTasks({ tasks, setTasks }) {
+  const [taskFilter, setTaskFilter] = useState('todo') // 'all', 'todo', 'done'
+  const [newTitle, setNewTitle] = useState('')
+  const [newPriority, setNewPriority] = useState('Orta')
+  const [newCategory, setNewCategory] = useState('Garson')
+  const [showAddForm, setShowAddForm] = useState(false)
+
+  const filteredTasks = useMemo(() => {
+    if (taskFilter === 'todo') return tasks.filter(t => !t.done)
+    if (taskFilter === 'done') return tasks.filter(t => t.done)
+    return tasks
+  }, [tasks, taskFilter])
+
+  function handleToggle(id) {
+    setTasks(prev => prev.map(task => task.id === id ? { ...task, done: !task.done } : task))
+    showToast('Görev güncellendi', '#0284c7')
+  }
+
+  function handleCreateTask(e) {
+    e.preventDefault()
+    if (!newTitle.trim()) {
+      showToast('Lütfen görev başlığı girin.', '#ef4444')
+      return
+    }
+    const newTask = {
+      id: Date.now(),
+      title: newTitle.trim(),
+      priority: newPriority,
+      done: false,
+      category: newCategory,
+    }
+    setTasks(prev => [newTask, ...prev])
+    setNewTitle('')
+    setShowAddForm(false)
+    showToast('Görev başarıyla açıldı', '#10b981')
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Filters & New Button */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(15,23,42,.05)', padding: 4, borderRadius: 10, flex: 1 }}>
+          <button
+            type="button"
+            onClick={() => setTaskFilter('todo')}
+            style={{ flex: 1, border: 'none', background: taskFilter === 'todo' ? '#fff' : 'transparent', color: taskFilter === 'todo' ? '#0f172a' : '#64748b', fontSize: '.7rem', fontWeight: 900, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
+          >
+            Yapılacak
+          </button>
+          <button
+            type="button"
+            onClick={() => setTaskFilter('done')}
+            style={{ flex: 1, border: 'none', background: taskFilter === 'done' ? '#fff' : 'transparent', color: taskFilter === 'done' ? '#0f172a' : '#64748b', fontSize: '.7rem', fontWeight: 900, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
+          >
+            Tamamlandı
+          </button>
+          <button
+            type="button"
+            onClick={() => setTaskFilter('all')}
+            style={{ flex: 1, border: 'none', background: taskFilter === 'all' ? '#fff' : 'transparent', color: taskFilter === 'all' ? '#0f172a' : '#64748b', fontSize: '.7rem', fontWeight: 900, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
+          >
+            Tümü
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddForm(prev => !prev)}
+          style={{ width: 38, height: 38, borderRadius: 10, border: 'none', background: showAddForm ? '#ef4444' : '#0284c7', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+        >
+          <i className={`fa-solid ${showAddForm ? 'fa-xmark' : 'fa-plus'}`} />
+        </button>
+      </div>
+
+      {/* Task Creation Form Inline */}
+      {showAddForm && (
+        <form onSubmit={handleCreateTask} style={{ padding: 14, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', display: 'grid', gap: 10, boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+          <div style={{ fontSize: '.76rem', fontWeight: 900, color: '#0f172a' }}>Yeni Görev Aç</div>
+          
+          <input
+            type="text"
+            placeholder="Görev başlığı girin..."
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            style={{ width: '100%', height: 38, borderRadius: 10, border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '.76rem', outline: 'none' }}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <label style={{ fontSize: '.62rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Öncelik</label>
+              <select
+                value={newPriority}
+                onChange={e => setNewPriority(e.target.value)}
+                style={{ height: 36, borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '.74rem', padding: '0 6px', background: '#fff' }}
+              >
+                <option value="Yüksek">Yüksek</option>
+                <option value="Orta">Orta</option>
+                <option value="Düşük">Düşük</option>
+              </select>
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <label style={{ fontSize: '.62rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Alan / Rol</label>
+              <select
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                style={{ height: 36, borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '.74rem', padding: '0 6px', background: '#fff' }}
+              >
+                <option value="Garson">Garson</option>
+                <option value="Kurye">Kurye</option>
+                <option value="Müdür">Müdür</option>
+                <option value="Mutfak">Mutfak</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" style={{ height: 40, borderRadius: 10, border: 'none', background: '#0284c7', color: '#fff', fontWeight: 900, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
+            Görev Tanımla
+          </button>
+        </form>
+      )}
+
+      {/* Task List */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {filteredTasks.length === 0 ? (
+          <div style={{ padding: 24, borderRadius: 16, border: '1px dashed #cbd5e1', background: '#fff', textAlign: 'center', color: '#64748b', fontSize: '.76rem' }}>
+            Filtreye uygun görev bulunamadı.
+          </div>
+        ) : (
+          filteredTasks.map(task => (
+            <div
+              key={task.id}
+              style={{
+                padding: 12,
+                borderRadius: 16,
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                boxShadow: '0 4px 12px rgba(15,23,42,.02)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={task.done}
+                onChange={() => handleToggle(task.id)}
+                style={{ width: 18, height: 18, borderRadius: 6, border: '1px solid #cbd5e1', accentColor: '#0284c7', cursor: 'pointer' }}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '.76rem', color: task.done ? '#64748b' : '#0f172a', fontWeight: 800, textDecoration: task.done ? 'line-through' : 'none', lineHeight: 1.4 }}>
+                  {task.title}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+                  <span style={{
+                    padding: '1px 5px',
+                    borderRadius: 4,
+                    background: task.priority === 'Yüksek' ? 'rgba(239,68,68,.12)' : task.priority === 'Orta' ? 'rgba(245,158,11,.12)' : 'rgba(100,116,139,.12)',
+                    color: task.priority === 'Yüksek' ? '#ef4444' : task.priority === 'Orta' ? '#f59e0b' : '#64748b',
+                    fontSize: '.54rem',
+                    fontWeight: 900,
+                  }}>
+                    {task.priority}
+                  </span>
+                  <span style={{ fontSize: '.6rem', color: '#64748b' }}>Grup: {task.category}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PersonnelPdks({ pdksStatus, pdksSeconds, handlePdksToggle, pdksLogs }) {
+  // Current Live Clock
+  const [time, setTime] = useState(new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const clockString = time.toTimeString().split(' ')[0]
+
+  const hours = Math.floor(pdksSeconds / 3600)
+  const minutes = Math.floor((pdksSeconds % 3600) / 60)
+  const seconds = pdksSeconds % 60
+  const durationStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Real-time interactive Clock */}
+      <div style={{ padding: 20, borderRadius: 20, background: '#fff', border: '1px solid #e2e8f0', textAlign: 'center', display: 'grid', gap: 12, boxShadow: '0 8px 24px rgba(15,23,42,.02)' }}>
+        <div style={{ fontSize: '.7rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748b' }}>
+          Dijital Saat
+        </div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', letterSpacing: 2 }}>{clockString}</div>
+        <div style={{ fontSize: '.66rem', color: '#64748b' }}>{time.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+
+        {/* Pulsating Visual Indicator */}
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+          <div style={{
+            width: 90,
+            height: 90,
+            borderRadius: 999,
+            background: pdksStatus === 'in' ? 'rgba(34,197,94,.1)' : 'rgba(100,116,139,.08)',
+            border: pdksStatus === 'in' ? '3px solid #22c55e' : '3px solid #cbd5e1',
+            display: 'grid',
+            placeItems: 'center',
+            fontSize: '1.4rem',
+            color: pdksStatus === 'in' ? '#16a34a' : '#64748b',
+            boxShadow: pdksStatus === 'in' ? '0 0 20px rgba(34,197,94,.2)' : 'none',
+          }}>
+            <i className={`fa-solid ${pdksStatus === 'in' ? 'fa-person-running' : 'fa-hand'}`} />
+          </div>
+        </div>
+
+        {pdksStatus === 'in' && (
+          <div style={{ fontSize: '.82rem', fontWeight: 900, color: '#16a34a' }}>
+            Mesaidesiniz • Süre: {durationStr}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handlePdksToggle}
+          style={{
+            minHeight: 48,
+            borderRadius: 14,
+            border: 'none',
+            background: pdksStatus === 'in' ? 'linear-gradient(135deg, #ef4444, #b91c1c)' : 'linear-gradient(135deg, #22c55e, #15803d)',
+            color: '#fff',
+            fontWeight: 900,
+            fontSize: '.84rem',
+            cursor: 'pointer',
+            boxShadow: '0 6px 16px rgba(15,23,42,.1)',
+          }}
+        >
+          {pdksStatus === 'in' ? 'Mesaiden Çık (Çıkış Kaydet)' : 'Mesafe Başla (Giriş Kaydet)'}
+        </button>
+      </div>
+
+      {/* PDKS Logs Table */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ fontSize: '.78rem', fontWeight: 900, color: '#0f172a', paddingLeft: 2 }}>Mesai Geçmişi (Bu Hafta)</div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {pdksLogs.map(log => (
+            <div key={log.id} style={{ padding: 12, borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.74rem', boxShadow: '0 4px 10px rgba(15,23,42,.02)' }}>
+              <div>
+                <div style={{ fontWeight: 900, color: '#0f172a' }}>{log.date}</div>
+                <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 3 }}>
+                  Giriş: {log.checkIn} | Çıkış: {log.checkOut}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 900, color: '#0284c7' }}>{log.total}</div>
+                <span style={{ fontSize: '.58rem', padding: '1px 5px', borderRadius: 4, background: '#dcfce7', color: '#166534', fontWeight: 900, display: 'inline-block', marginTop: 4 }}>Başarılı</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PersonnelKurye() {
+  const [deliveries, setDeliveries] = useState([
+    { id: 101, customer: 'Ahmet Karakoç', address: 'Moda Cd. Lale Sk. No: 14', payment: 'Nakit', amount: 280, status: 'ready', distance: 1.2 },
+    { id: 102, customer: 'Melisa Aktaş', address: 'Rıhtım Sk. Saray Apt. No: 4', payment: 'Online', amount: 190, status: 'transit', distance: 2.5 },
+    { id: 103, customer: 'Hakan Şahin', address: 'Bahariye Cd. Defne Sk. No: 9', payment: 'Kredi Kartı', amount: 410, status: 'delivered', distance: 0.8 },
+  ])
+
+  function updateStatus(id, newStatus) {
+    setDeliveries(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d))
+    showToast('Teslimat durumu güncellendi', '#0284c7')
+  }
+
+  // Active delivery coordinates for our mock map animation
+  const activeDelivery = useMemo(() => deliveries.find(d => d.status === 'transit'), [deliveries])
+  const courierX = activeDelivery ? 100 + (Date.now() % 4000) / 100 : 80
+  const courierY = activeDelivery ? 90 + (Date.now() % 4000) / 200 : 120
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Mock Delivery Tracking Map */}
+      <div style={{ padding: 10, borderRadius: 20, background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(15,23,42,.02)' }}>
+        <div style={{ fontSize: '.72rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>
+          Kurye Canlı Harita Takibi
+        </div>
+        <div style={{ height: 130, borderRadius: 14, background: '#eef2f6', border: '1px solid #cbd5e1', position: 'relative', overflow: 'hidden' }}>
+          {/* Simple Vector Mock Grid Map */}
+          <svg style={{ width: '100%', height: '100%' }}>
+            <path d="M 0,40 L 400,40 M 0,80 L 400,80 M 0,120 L 400,120 M 60,0 L 60,160 M 160,0 L 160,160 M 260,0 L 260,160" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 4" />
+            <path d="M 30,30 Q 120,60 210,30 T 320,110" fill="none" stroke="#93c5fd" strokeWidth="6" strokeLinecap="round" />
+            
+            {/* Restaurant */}
+            <circle cx="30" cy="30" r="10" fill="#0284c7" />
+            <text x="30" y="24" textAnchor="middle" fill="#0369a1" fontSize="8" fontWeight="bold">Merkez Şube</text>
+            
+            {/* Active Delivery Destination */}
+            {activeDelivery && (
+              <>
+                <circle cx="320" cy="110" r="8" fill="#e11d48" />
+                <text x="320" y="102" textAnchor="middle" fill="#9f1239" fontSize="8" fontWeight="bold">#{activeDelivery.id}</text>
+              </>
+            )}
+
+            {/* Courier Position */}
+            <circle cx={courierX} cy={courierY} r="7" fill="#fbbf24" stroke="#d97706" strokeWidth="2" />
+          </svg>
+          <div style={{ position: 'absolute', bottom: 8, left: 8, padding: '3px 8px', borderRadius: 6, background: 'rgba(15,23,42,.85)', color: '#fff', fontSize: '.58rem', fontWeight: 900 }}>
+            {activeDelivery ? `Teslimata Gidiliyor: #${activeDelivery.id}` : 'Şubede Bekliyor'}
+          </div>
+        </div>
+      </div>
+
+      {/* Deliveries list */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ fontSize: '.78rem', fontWeight: 900, color: '#0f172a', paddingLeft: 2 }}>Aktif Siparişler</div>
+        {deliveries.map(d => (
+          <div key={d.id} style={{ padding: 12, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', display: 'grid', gap: 8, boxShadow: '0 4px 10px rgba(15,23,42,.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '.76rem', fontWeight: 900, color: '#0f172a' }}>Sipariş #{d.id}</span>
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: d.status === 'ready' ? '#dbeafe' : d.status === 'transit' ? '#fef3c7' : '#dcfce7',
+                color: d.status === 'ready' ? '#2563eb' : d.status === 'transit' ? '#d97706' : '#16a34a',
+                fontSize: '.62rem',
+                fontWeight: 900,
+              }}>
+                {d.status === 'ready' && 'Paket Hazır'}
+                {d.status === 'transit' && 'Yolda'}
+                {d.status === 'delivered' && 'Teslim Edildi'}
+              </span>
+            </div>
+
+            <div style={{ fontSize: '.72rem', color: '#475569', display: 'grid', gap: 4 }}>
+              <div>Alıcı: <strong>{d.customer}</strong></div>
+              <div>Adres: <strong>{d.address}</strong> ({d.distance} km)</div>
+              <div>Ödeme / Tutar: <strong>{d.payment} ({fmtMoney(d.amount)})</strong></div>
+            </div>
+
+            {d.status !== 'delivered' && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                {d.status === 'ready' && (
+                  <button
+                    type="button"
+                    onClick={() => updateStatus(d.id, 'transit')}
+                    style={{ flex: 1, height: 36, borderRadius: 10, border: 'none', background: '#0284c7', color: '#fff', fontWeight: 900, fontSize: '.74rem', cursor: 'pointer' }}
+                  >
+                    Yola Çık (Transit Yap)
+                  </button>
+                )}
+                {d.status === 'transit' && (
+                  <button
+                    type="button"
+                    onClick={() => updateStatus(d.id, 'delivered')}
+                    style={{ flex: 1, height: 36, borderRadius: 10, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.74rem', cursor: 'pointer' }}
+                  >
+                    Teslim Et (Kapat)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PersonnelManager({ branchId, branchName }) {
+  const [managerTab, setManagerTab] = useState('order') // 'order', 'accept'
+  
+  // Toptan Sipariş (Remote Supplier Ordering) state
+  const [supplierItems, setSupplierItems] = useState([
+    { id: 1, name: 'Burger Ekmeği (Koli)', price: 340, qty: 0, supplier: 'Öz Gıda' },
+    { id: 2, name: 'Dana Kıyma (10 Kg)', price: 4200, qty: 0, supplier: 'Metro Toptan' },
+    { id: 3, name: 'Sos Çeşitleri (Set)', price: 450, qty: 0, supplier: 'Metro Toptan' },
+    { id: 4, name: 'Kola / Meşrubat (Kasa)', price: 780, qty: 0, supplier: 'Efes Dağıtım' },
+  ])
+
+  // Mal Kabul Checklist state
+  const [shipments, setShipments] = useState([
+    { id: 'REC-091', date: '25.05.2026', sender: 'Metro Toptan', details: 'Dana Kıyma & Soslar', status: 'pending' },
+    { id: 'REC-090', date: '24.05.2026', sender: 'Öz Gıda', details: 'Burger Ekmekleri (5 Koli)', status: 'accepted' },
+  ])
+
+  function handleQty(id, delta) {
+    setSupplierItems(prev => prev.map(item => item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item))
+  }
+
+  function handleSendOrder() {
+    const ordered = supplierItems.filter(item => item.qty > 0)
+    if (ordered.length === 0) {
+      showToast('Lütfen en az bir ürün seçin.', '#ef4444')
+      return
+    }
+    showToast('Tedarikçi Sipariş Talebi Başarıyla Gönderildi', '#10b981')
+    setSupplierItems(prev => prev.map(item => ({ ...item, qty: 0 })))
+  }
+
+  function handleShipmentStatus(id, newStatus) {
+    setShipments(prev => prev.map(s => s.id === id ? { ...s, status: newStatus } : s))
+    if (newStatus === 'accepted') {
+      showToast('Sevkiyat Kabul Edildi (Stoka İşlendi)', '#10b981')
+    } else {
+      showToast('Sevkiyat Reddedildi / İade Açıldı', '#ef4444')
+    }
+  }
+
+  const selectedTotal = supplierItems.reduce((sum, item) => sum + item.qty * item.price, 0)
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {/* Manager Sub-tabs */}
+      <div style={{ display: 'flex', gap: 4, background: 'rgba(15,23,42,.05)', padding: 4, borderRadius: 10 }}>
+        <button
+          type="button"
+          onClick={() => setManagerTab('order')}
+          style={{ flex: 1, border: 'none', background: managerTab === 'order' ? '#fff' : 'transparent', color: managerTab === 'order' ? '#0f172a' : '#64748b', fontSize: '.7rem', fontWeight: 900, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
+        >
+          Tedarikçi Siparişi
+        </button>
+        <button
+          type="button"
+          onClick={() => setManagerTab('accept')}
+          style={{ flex: 1, border: 'none', background: managerTab === 'accept' ? '#fff' : 'transparent', color: managerTab === 'accept' ? '#0f172a' : '#64748b', fontSize: '.7rem', fontWeight: 900, padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
+        >
+          Mal Kabul Arayüzü
+        </button>
+      </div>
+
+      {managerTab === 'order' ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {/* Supplier Orders list */}
+          <div style={{ display: 'grid', gap: 8 }}>
+            {supplierItems.map(item => (
+              <div key={item.id} style={{ padding: 12, borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(15,23,42,.01)' }}>
+                <div>
+                  <div style={{ fontSize: '.78rem', fontWeight: 900, color: '#0f172a' }}>{item.name}</div>
+                  <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 3 }}>
+                    Fiyat: {fmtMoney(item.price)} | Tedarikçi: {item.supplier}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button type="button" onClick={() => handleQty(item.id, -1)} style={{ width: 26, height: 26, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff' }}>-</button>
+                  <span style={{ fontSize: '.76rem', fontWeight: 900, color: '#0f172a', minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
+                  <button type="button" onClick={() => handleQty(item.id, 1)} style={{ width: 26, height: 26, borderRadius: 999, border: 'none', background: '#0284c7', color: '#fff' }}>+</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Supplier Checkout button */}
+          <div style={{ padding: 12, borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.84rem', fontWeight: 900, color: '#0f172a' }}>
+              <span>Tahmini Toplam</span>
+              <span>{fmtMoney(selectedTotal)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleSendOrder}
+              disabled={selectedTotal === 0}
+              style={{ minHeight: 44, borderRadius: 12, border: 'none', background: selectedTotal === 0 ? '#cbd5e1' : '#0284c7', color: '#fff', fontWeight: 900, fontSize: '.82rem', cursor: selectedTotal === 0 ? 'default' : 'pointer' }}
+            >
+              Sipariş Talebini İlet
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {/* Shipments List */}
+          {shipments.map(s => (
+            <div key={s.id} style={{ padding: 12, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', display: 'grid', gap: 8, boxShadow: '0 4px 10px rgba(15,23,42,.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '.76rem', fontWeight: 900, color: '#0f172a' }}>Fatura/Fiş #{s.id}</span>
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: s.status === 'pending' ? '#fef3c7' : s.status === 'accepted' ? '#dcfce7' : '#fee2e2',
+                  color: s.status === 'pending' ? '#d97706' : s.status === 'accepted' ? '#16a34a' : '#dc2626',
+                  fontSize: '.62rem',
+                  fontWeight: 900,
+                }}>
+                  {s.status === 'pending' && 'Sevkiyat Yolda'}
+                  {s.status === 'accepted' && 'Kabul Edildi'}
+                  {s.status === 'rejected' && 'Reddedildi'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '.72rem', color: '#475569', display: 'grid', gap: 4 }}>
+                <div>Tedarikçi: <strong>{s.sender}</strong></div>
+                <div>İçerik: <strong>{s.details}</strong></div>
+                <div>Tarih: <strong>{s.date}</strong></div>
+              </div>
+
+              {s.status === 'pending' && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleShipmentStatus(s.id, 'accepted')}
+                    style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
+                  >
+                    Kabul Et (Stoka Al)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleShipmentStatus(s.id, 'rejected')}
+                    style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 900, fontSize: '.72rem', cursor: 'pointer' }}
+                  >
+                    Reddet / İade Et
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
