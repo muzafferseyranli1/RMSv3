@@ -1077,7 +1077,7 @@ function PersonnelPhoneRuntime({
           )}
 
           {activeTab === 'calendar' && (
-            <ShiftPlanner />
+            <PersonnelCalendar activeStaff={activeStaff} />
           )}
 
           {activeTab === 'tasks' && (
@@ -1628,144 +1628,189 @@ function PersonnelDashboard({
   )
 }
 
-function PersonnelCalendar() {
-  const [selectedDay, setSelectedDay] = useState(25)
+function toMobileDateKey(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
 
-  // Quick Calendar Month Grid Mock
-  const daysInMonth = 31
-  const firstDayIndex = 5 // Friday start for May 2026
-  const gridCells = []
+function PersonnelCalendar({ activeStaff }) {
+  const [weekStartDate, setWeekStartDate] = useState(() => {
+    const current = new Date()
+    const day = current.getDay()
+    const diff = current.getDate() - day + (day === 0 ? -6 : 1) // Monday start
+    return new Date(current.setDate(diff))
+  })
+  
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  // Fill padding cells
-  for (let i = 0; i < firstDayIndex; i++) {
-    gridCells.push(null)
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    gridCells.push(i)
-  }
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const d = new Date(weekStartDate)
+      d.setDate(weekStartDate.getDate() + index)
+      return d
+    })
+  }, [weekStartDate])
 
-  // Highlight days with shifts
-  const shiftDays = new Set([1, 2, 4, 5, 6, 8, 9, 11, 12, 13, 15, 16, 18, 19, 20, 22, 23, 25, 26, 27, 29, 30])
+  const loadWeeklyShifts = useCallback(async () => {
+    if (!activeStaff?.id) return
+    setLoading(true)
+    setError('')
+    
+    const mondayKey = toMobileDateKey(weekDays[0])
+    const sundayKey = toMobileDateKey(weekDays[6])
 
-  const currentShift = useMemo(() => {
-    if (!selectedDay) return null
-    if (!shiftDays.has(selectedDay)) {
-      return { off: true, label: 'HAFTALIK İZİN', hours: 'İzinli', role: 'Vardiya Yok', manager: '-' }
+    try {
+      const { data, error: dbErr } = await db
+        .from('branch_shift_schedule_entries')
+        .select('*')
+        .eq('personnel_id', String(activeStaff.id))
+        .gte('schedule_date', mondayKey)
+        .lte('schedule_date', sundayKey)
+
+      if (dbErr) throw dbErr
+      setEntries(data || [])
+    } catch (err) {
+      console.error('Error fetching weekly shifts:', err)
+      setError('Vardiya planı yüklenemedi.')
+    } finally {
+      setLoading(false)
     }
-    const shiftHours = selectedDay % 3 === 0 
-      ? '15:00 - 24:00' 
-      : selectedDay % 3 === 1 
-        ? '09:00 - 18:00' 
-        : '12:00 - 21:00'
-    const shiftType = selectedDay % 3 === 0
-      ? 'Kapanış Vardiyası'
-      : selectedDay % 3 === 1
-        ? 'Açılış Vardiyası'
-        : 'Orta Vardiya'
+  }, [activeStaff, weekDays])
 
-    return {
-      off: false,
-      label: shiftType,
-      hours: shiftHours,
-      role: 'Garson',
-      manager: 'Ahmet Yılmaz (Müdür)',
-      branch: 'Merkez Şube',
-    }
-  }, [selectedDay])
+  useEffect(() => {
+    loadWeeklyShifts()
+  }, [loadWeeklyShifts])
+
+  const navigateWeek = (weeks) => {
+    setWeekStartDate(prev => {
+      const next = new Date(prev)
+      next.setDate(prev.getDate() + weeks * 7)
+      return next
+    })
+  }
+
+  const resetToToday = () => {
+    const current = new Date()
+    const day = current.getDay()
+    const diff = current.getDate() - day + (day === 0 ? -6 : 1)
+    setWeekStartDate(new Date(current.setDate(diff)))
+  }
+
+  const formatWeekRange = () => {
+    const start = weekDays[0]
+    const end = weekDays[6]
+    const opt = { day: 'numeric', month: 'short' }
+    return `${start.toLocaleDateString('tr-TR', opt)} - ${end.toLocaleDateString('tr-TR', opt)} ${end.getFullYear()}`
+  }
+
+  const getDayName = (date) => {
+    return date.toLocaleDateString('tr-TR', { weekday: 'long' })
+  }
+
+  const getFormattedDate = (date) => {
+    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
+  }
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      {/* Month Header */}
-      <div style={{ padding: '10px 12px', borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 8px 16px rgba(15,23,42,.02)' }}>
-        <button type="button" style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer' }}><i className="fa-solid fa-chevron-left" /></button>
-        <span style={{ fontWeight: 900, color: '#0f172a', fontSize: '.84rem' }}>Mayıs 2026</span>
-        <button type="button" style={{ border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer' }}><i className="fa-solid fa-chevron-right" /></button>
+      {/* Navigation Header */}
+      <div style={{ padding: '12px 14px', borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 8px 16px rgba(15,23,42,.03)' }}>
+        <button
+          type="button"
+          onClick={() => navigateWeek(-1)}
+          style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+        >
+          <i className="fa-solid fa-chevron-left" />
+        </button>
+        <div style={{ textAlign: 'center', display: 'grid', gap: 2 }}>
+          <span style={{ fontWeight: 900, color: '#0f172a', fontSize: '.84rem' }}>{formatWeekRange()}</span>
+          <button
+            type="button"
+            onClick={resetToToday}
+            style={{ border: 'none', background: 'transparent', color: '#0284c7', fontSize: '.68rem', fontWeight: 900, cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Bugün
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigateWeek(1)}
+          style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+        >
+          <i className="fa-solid fa-chevron-right" />
+        </button>
       </div>
 
-      {/* Calendar Grid */}
-      <div style={{ padding: 12, borderRadius: 18, background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(15,23,42,.03)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, textAlign: 'center', fontSize: '.68rem', fontWeight: 900, color: '#64748b', marginBottom: 8 }}>
-          <span>Pt</span><span>Sa</span><span>Ça</span><span>Pe</span><span>Cu</span><span style={{ color: '#dc2626' }}>Ct</span><span style={{ color: '#dc2626' }}>Pz</span>
+      {/* Shifts List */}
+      {loading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: '.8rem' }}>
+          <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} /> Yükleniyor...
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-          {gridCells.map((day, idx) => {
-            if (day === null) return <div key={`pad-${idx}`} />
-            const isSelected = day === selectedDay
-            const hasShift = shiftDays.has(day)
+      ) : error ? (
+        <div style={{ padding: 24, textAlign: 'center', color: '#ef4444', fontSize: '.8rem' }}>{error}</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {weekDays.map(date => {
+            const dateKey = toMobileDateKey(date)
+            const entry = entries.find(e => e.schedule_date === dateKey)
+            const isToday = toMobileDateKey(new Date()) === dateKey
+
             return (
-              <button
-                key={day}
-                type="button"
-                onClick={() => setSelectedDay(day)}
+              <div
+                key={dateKey}
                 style={{
-                  height: 38,
-                  borderRadius: 10,
-                  border: isSelected ? '2px solid #0284c7' : 'none',
-                  background: isSelected 
-                    ? '#0284c7' 
-                    : hasShift 
-                      ? '#f0f9ff' 
-                      : '#f8fafc',
-                  color: isSelected 
-                    ? '#fff' 
-                    : hasShift 
-                      ? '#0369a1' 
-                      : '#94a3b8',
-                  fontWeight: isSelected || hasShift ? 900 : 500,
-                  fontSize: '.74rem',
+                  padding: '14px 16px',
+                  borderRadius: 18,
+                  background: isToday ? '#f0f9ff' : '#fff',
+                  border: isToday ? '1px solid #bae6fd' : '1px solid #e2e8f0',
+                  boxShadow: '0 4px 12px rgba(15,23,42,.02)',
                   display: 'flex',
-                  flexDirection: 'column',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                  cursor: 'pointer',
+                  gap: 12,
                 }}
               >
-                {day}
-                {hasShift && !isSelected && (
-                  <span style={{ width: 4, height: 4, borderRadius: 999, background: '#0284c7', position: 'absolute', bottom: 4 }} />
-                )}
-              </button>
+                <div>
+                  <div style={{ fontSize: '.84rem', fontWeight: 900, color: isToday ? '#0369a1' : '#0f172a' }}>
+                    {getDayName(date)}
+                    {isToday && (
+                      <span style={{ marginLeft: 6, padding: '1px 5px', borderRadius: 4, background: '#0284c7', color: '#fff', fontSize: '.58rem', fontWeight: 900 }}>BUGÜN</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '.72rem', color: '#64748b', marginTop: 4 }}>{getFormattedDate(date)}</div>
+                </div>
+
+                <div>
+                  {entry ? (
+                    <div style={{ display: 'grid', justifyItems: 'end', gap: 4 }}>
+                      {entry.shift_kind === 'working' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: 'rgba(56,189,248,.12)', color: '#0284c7', fontWeight: 900, fontSize: '.76rem' }}>
+                          <i className="fa-solid fa-clock" />
+                          {entry.shift_start_time?.slice(0, 5)} - {entry.shift_end_time?.slice(0, 5)}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', fontWeight: 900, fontSize: '.76rem' }}>
+                          <i className="fa-solid fa-couch" />
+                          {entry.shift_name || 'İzinli'}
+                        </div>
+                      )}
+                      {entry.shift_name && entry.shift_kind === 'working' && (
+                        <span style={{ fontSize: '.62rem', color: '#64748b' }}>{entry.shift_name}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '6px 12px', color: '#94a3b8', fontSize: '.74rem', fontStyle: 'italic' }}>
+                      Plan Yok
+                    </div>
+                  )}
+                </div>
+              </div>
             )
           })}
-        </div>
-      </div>
-
-      {/* Shift Detail Card */}
-      {currentShift && (
-        <div style={{ padding: 14, borderRadius: 18, background: currentShift.off ? '#f8fafc' : '#fff', border: currentShift.off ? '1px dashed #cbd5e1' : '1px solid #e2e8f0', display: 'grid', gap: 10, boxShadow: '0 10px 24px rgba(15,23,42,.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '.72rem', fontWeight: 900, color: '#64748b' }}>Vardiya Bilgisi (Mayıs {selectedDay})</span>
-            <span style={{
-              padding: '2px 8px',
-              borderRadius: 999,
-              background: currentShift.off ? '#f1f5f9' : 'rgba(56,189,248,.12)',
-              color: currentShift.off ? '#64748b' : '#0284c7',
-              fontSize: '.62rem',
-              fontWeight: 900,
-            }}>
-              {currentShift.off ? 'İzinli' : 'Aktif'}
-            </span>
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontSize: '1rem', fontWeight: 900, color: currentShift.off ? '#64748b' : '#0f172a' }}>{currentShift.label}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569', marginTop: 4 }}>
-              <i className="fa-solid fa-clock" style={{ color: '#64748b' }} />
-              Çalışma Saatleri: <strong>{currentShift.hours}</strong>
-            </div>
-            {!currentShift.off && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569' }}>
-                  <i className="fa-solid fa-store" style={{ color: '#64748b' }} />
-                  Görev Alanı: <strong>{currentShift.branch}</strong>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.76rem', color: '#475569' }}>
-                  <i className="fa-solid fa-user-shield" style={{ color: '#64748b' }} />
-                  Nöbetçi Müdür: <strong>{currentShift.manager}</strong>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       )}
     </div>
