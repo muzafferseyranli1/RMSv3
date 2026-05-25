@@ -80,13 +80,14 @@ const KioskTablet = lazy(() => import('@/components/pages/KioskTablet'))
 const KioskBackupPreview = lazy(() => import('@/components/pages/KioskBackupPreview'))
 const KioskManagementDesktop = lazy(() => import('@/components/pages/KioskManagementDesktop'))
 const CustomerMobileAppPage = lazy(() => import('@/components/pages/CustomerMobileAppPage'))
+const PersonnelMobileAppPage = lazy(() => import('@/components/pages/PersonnelMobileAppPage'))
 const KDS = lazy(() => import('@/components/pages/KDS'))
 const PickupScreen = lazy(() => import('@/components/pages/PickupScreen'))
 const QueueScreen = lazy(() => import('@/components/pages/QueueScreen'))
 const ScreenFrame = lazy(() => import('@/components/pos/ScreenFrame'))
 const DesignDemo = lazy(() => import('@/components/pages/DesignDemo'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -298,6 +299,7 @@ function AppShell() {
               <Route path="/kiosk-link/:token" element={<CustomerMobileAppPage linkChannel="kiosk" />} />
               <Route path="/pos-loyalty-link" element={<CustomerMobileAppPage />} />
               <Route path="/pos-loyalty-link/:token" element={<CustomerMobileAppPage linkChannel="pos" />} />
+              <Route path="/personel-app" element={<WorkspaceBranchScope><WorkspaceGate><PersonnelMobileAppPage /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/kds" element={<WorkspaceBranchScope><WorkspaceGate><KDS /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup" element={<WorkspaceBranchScope><WorkspaceGate><PickupScreen /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/queue" element={<WorkspaceBranchScope><WorkspaceGate><QueueScreen /></WorkspaceGate></WorkspaceBranchScope>} />

@@ -839,7 +839,7 @@ function MobileOrderSurface({
   )
 }
 
-function PersonnelPhone() {
+export function PersonnelPhone() {
   const { branchId, branchName } = useWorkspace()
   const [activeTab, setActiveTab] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -3336,14 +3336,43 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
               padding: 18,
               borderColor: `${screen.accent}33`,
               background: `linear-gradient(135deg, ${screen.accent}10, rgba(255,255,255,.98))`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 10,
             }}
           >
             <div style={{ fontSize: '.75rem', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase', color: screen.accent }}>
               Mobil App Musteri
             </div>
-            <div style={{ marginTop: 8, fontSize: '.96rem', color: '#475569', lineHeight: 1.7 }}>
+            <div style={{ fontSize: '.96rem', color: '#475569', lineHeight: 1.7 }}>
               Bu ekran bos shell degil; musteri sadakat deneyimini cuzdan, kupon, kampanya ve capraz kanal kullanim mantigi ile simule eder.
             </div>
+            <a
+              href="/musteri-app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-p"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 6,
+                padding: '8px 16px',
+                borderRadius: 12,
+                background: '#fb7185',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: '.82rem',
+                textDecoration: 'none',
+                boxShadow: '0 4px 12px rgba(251,113,133,.24)',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all .2s',
+              }}
+            >
+              <i className="fa-solid fa-up-right-from-square" /> Standalone Müşteri Uygulamasını Aç (Yeni Sekme)
+            </a>
           </div>
         ) : (
           <div
@@ -3352,18 +3381,74 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
               padding: 18,
               borderColor: `${screen.accent}33`,
               background: `linear-gradient(135deg, ${screen.accent}10, rgba(255,255,255,.98))`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 10,
             }}
           >
             <div style={{ fontSize: '.75rem', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase', color: screen.accent }}>
               Mobil App
             </div>
-            <div style={{ marginTop: 8, fontSize: '.96rem', color: '#475569', lineHeight: 1.7 }}>
+            <div style={{ fontSize: '.96rem', color: '#475569', lineHeight: 1.7 }}>
               {isPersonnelScreen
                 ? 'Telefon icinde drawer tabanli personel shell kuruldu; Garson sekmesi mevcut Garson runtimeina uzaktan erisim saglar.'
                 : isQrMenuScreen
                   ? 'QR menusu artik masa tanima, telefon onerisi ve 4 aksiyonlu giris ekrani ile calisir.'
                   : 'Bu yuzey simdilik rol bazli bos telefon ekrani olarak korunuyor.'}
             </div>
+            {isPersonnelScreen && (
+              <a
+                href="/personel-app"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 6,
+                  padding: '8px 16px',
+                  borderRadius: 12,
+                  background: '#0284c7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.82rem',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(2,132,199,.24)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all .2s',
+                }}
+              >
+                <i className="fa-solid fa-up-right-from-square" /> Standalone Personel Uygulamasını Aç (Yeni Sekme)
+              </a>
+            )}
+            {isQrMenuScreen && (
+              <a
+                href="/musteri-app/pos/demo_table_token"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 6,
+                  padding: '8px 16px',
+                  borderRadius: 12,
+                  background: '#f59e0b',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.82rem',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(245,158,11,.24)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all .2s',
+                }}
+              >
+                <i className="fa-solid fa-up-right-from-square" /> Standalone QR Menüyü Aç (Yeni Sekme)
+              </a>
+            )}
           </div>
         )}
 
