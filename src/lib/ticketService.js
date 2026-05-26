@@ -64,7 +64,7 @@ export async function createManualTicket({ branchId, categoryId, feedbackId, pri
   const slaDeadline = new Date(Date.now() + deadlineMinutes * 60_000).toISOString()
 
   const { data: ticket, error } = await db.from('tickets').insert({
-    branch_id: branchId,
+    branch_id: branchId || null,
     origin_type: 'manual',
     category_id: categoryId || null,
     feedback_id: feedbackId || null,

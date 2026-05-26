@@ -176,6 +176,7 @@ function WorkspacePickerModal({
           pin: pinEmployee.pin,
           defaultBranchId: pinEmployee.defaultBranchId,
           role: pinEmployee.role,
+          positionId: pinEmployee.positionId || '',
         }))
       } catch { /* ignore */ }
     }

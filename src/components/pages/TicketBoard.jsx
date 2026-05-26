@@ -36,10 +36,22 @@ export default function TicketBoard() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const [newTicketForm, setNewTicketForm] = useState({ categoryId: '', priority: 'normal', description: '' })
-  const { branchId } = useWorkspace()
-  const { user } = useAuth()
+  const [newTicketForm, setNewTicketForm] = useState({ categoryId: '', priority: 'normal', description: '', branchId: '' })
+  const { branchId, branches } = useWorkspace()
   const toast = useToast()
+
+  const getActiveUser = () => {
+    try {
+      return JSON.parse(sessionStorage.getItem('rms_active_user') || 'null')
+    } catch {
+      return null
+    }
+  }
+
+  const getBranchName = (bId) => {
+    if (!bId) return 'Genel Merkez'
+    return branches.find(b => b.id === bId)?.name || bId
+  }
 
   const loadTickets = useCallback(async () => {
     setLoading(true)
@@ -64,14 +76,16 @@ export default function TicketBoard() {
   }
 
   const handleStatusChange = async (ticketId, newStatus) => {
+    const activeStaff = getActiveUser()
+    const actorId = activeStaff?.id || 'system'
     if (newStatus === 'resolved') {
       const note = window.prompt('Çözüm notu:')
       if (!note) return
-      await resolveTicket(ticketId, user?.id, note)
+      await resolveTicket(ticketId, actorId, note)
     } else if (newStatus === 'closed') {
-      await closeTicket(ticketId, user?.id)
+      await closeTicket(ticketId, actorId)
     } else {
-      await updateTicketStatus(ticketId, newStatus, user?.id)
+      await updateTicketStatus(ticketId, newStatus, actorId)
     }
     toast('Durum güncellendi', 'success')
     loadTickets()
@@ -80,14 +94,19 @@ export default function TicketBoard() {
 
   const handleAddComment = async () => {
     if (!commentText.trim() || !selectedTicket) return
-    await addTicketComment(selectedTicket.id, user?.id || 'system', commentText)
+    const activeStaff = getActiveUser()
+    await addTicketComment(selectedTicket.id, activeStaff?.id || 'system', commentText)
     setCommentText('')
     toast('Yorum eklendi', 'success')
     openDetail(selectedTicket.id)
   }
 
   const handleCreateTask = async (ticket) => {
-    const result = await createTaskFromTicket(ticket, { id: user?.id, name: user?.email })
+    const activeStaff = getActiveUser()
+    const result = await createTaskFromTicket(ticket, {
+      id: activeStaff?.id || 'system',
+      name: activeStaff ? `${activeStaff.firstName} ${activeStaff.lastName}` : 'system',
+    })
     if (result?.error) return toast('Görev oluşturulamadı', 'error')
     toast('Görev oluşturuldu', 'success')
     loadTickets()
@@ -96,17 +115,19 @@ export default function TicketBoard() {
 
   const handleCreateManualTicket = async () => {
     if (!newTicketForm.description.trim()) return toast('Açıklama gerekli', 'warning')
+    const activeStaff = getActiveUser()
+    const targetBranch = branchId || newTicketForm.branchId || null
     const { error } = await createManualTicket({
-      branchId,
+      branchId: targetBranch,
       categoryId: newTicketForm.categoryId || null,
       priority: newTicketForm.priority,
       description: newTicketForm.description,
-      actorId: user?.id,
+      actorId: activeStaff?.id || 'system',
     })
     if (error) return toast('Bilet oluşturulamadı', 'error')
     toast('Bilet oluşturuldu', 'success')
     setShowCreate(false)
-    setNewTicketForm({ categoryId: '', priority: 'normal', description: '' })
+    setNewTicketForm({ categoryId: '', priority: 'normal', description: '', branchId: '' })
     loadTickets()
   }
 
@@ -172,6 +193,29 @@ export default function TicketBoard() {
         <div className="card" style={{ padding: 20, marginBottom: 16, borderLeft: '4px solid #6366f1' }}>
           <div style={{ fontWeight: 700, fontSize: '.85rem', marginBottom: 12, color: 'var(--text-strong)' }}>Yeni Bilet Oluştur</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="f-label">Şube / Alan</label>
+              {branchId ? (
+                <input
+                  type="text"
+                  value={branches.find(b => b.id === branchId)?.name || 'Şube'}
+                  className="f-input"
+                  disabled
+                  style={{ background: 'var(--surface-2)', opacity: 0.8 }}
+                />
+              ) : (
+                <div className="sel-wrap">
+                  <select
+                    value={newTicketForm.branchId}
+                    onChange={e => setNewTicketForm(p => ({ ...p, branchId: e.target.value }))}
+                    className="f-input"
+                  >
+                    <option value="">Genel Merkez</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
             <div>
               <label className="f-label">Kategori</label>
               <div className="sel-wrap">
@@ -290,7 +334,10 @@ export default function TicketBoard() {
                           )}
                         </div>
                         <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                          {getCategoryName(ticket.category_id)} • {origin.label} • {new Date(ticket.created_at).toLocaleDateString('tr-TR')}
+                          <span style={{ color: ticket.branch_id ? 'var(--text-strong)' : '#8b5cf6', fontWeight: 600 }}>
+                            {getBranchName(ticket.branch_id)}
+                          </span>
+                          {' • '}{getCategoryName(ticket.category_id)} • {origin.label} • {new Date(ticket.created_at).toLocaleDateString('tr-TR')}
                         </div>
                       </div>
                     </div>
@@ -340,6 +387,7 @@ export default function TicketBoard() {
 
                 {/* Detail fields */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '.78rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+                  <div><strong style={{ color: 'var(--text-strong)' }}>Şube / Alan:</strong> {getBranchName(selectedTicket.branch_id)}</div>
                   <div><strong style={{ color: 'var(--text-strong)' }}>Durum:</strong> {(STATUS_MAP[selectedTicket.status] || STATUS_MAP.open).label}</div>
                   <div><strong style={{ color: 'var(--text-strong)' }}>Öncelik:</strong> {(PRIORITY_MAP[selectedTicket.priority] || PRIORITY_MAP.normal).label}</div>
                   <div><strong style={{ color: 'var(--text-strong)' }}>Kategori:</strong> {getCategoryName(selectedTicket.category_id)}</div>

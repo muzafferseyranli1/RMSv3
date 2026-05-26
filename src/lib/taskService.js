@@ -191,7 +191,12 @@ export async function fetchTaskOptions(actor) {
 
 export async function createTask(form, actor, uploadedFiles = []) {
   const context = await loadTaskContext()
-  const branchNodeId = String(form.locationId || actor?.branchId || '')
+  const actorId = actor?.id || 'system'
+  const employee = context.employeesById.get(String(actorId))
+  const positionId = employee?.positionId || actor?.positionId || null
+  const actorBranchId = employee?.defaultBranchId || actor?.branchId || ''
+
+  const branchNodeId = String(form.locationId || actorBranchId || '')
   const organizationNodeId = context.findLegalEntityId(branchNodeId)
   const recurrencePayload = buildRecurrencePayload(form)
   let recurrenceRuleId = null
@@ -210,12 +215,12 @@ export async function createTask(form, actor, uploadedFiles = []) {
     .map(id => context.employeesById.get(String(id)))
     .filter(Boolean)
 
-  const requiresAssignmentApproval = assignees.some(assignee => canReject(actor?.positionId, assignee.positionId, context.positions))
+  const requiresAssignmentApproval = assignees.some(assignee => canReject(positionId, assignee.positionId, context.positions))
   const taskInsert = await db.from('tasks').insert({
     organization_node_id: organizationNodeId || null,
     branch_node_id: branchNodeId || null,
-    created_by_personnel_id: actor.id,
-    created_by_position_id: actor.positionId || null,
+    created_by_personnel_id: actorId,
+    created_by_position_id: positionId,
     title: form.title,
     description: form.description || '',
     status: requiresAssignmentApproval ? TASK_STATUS.pendingApproval : TASK_STATUS.open,

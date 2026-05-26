@@ -5909,3 +5909,72 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `Mobil garson hızlı masa seçim dropdown'ı ve manuel arka plan yenilemesi entegre edildi. Sonsuz render döngüsü çözüldü, sipariş ekleme ekranı anında ve donmadan açılmaktadır. Üretim derlemesi hatasız çalışıyor.`
 
 
+## Entry 136 - 2026-05-26
+
+- `Timestamp`: `2026-05-26T13:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Form Şablonları / Denetim Formları Tablolarının Veritabanında Oluşturulması`
+- `Intent`: `Form şablonları ekranında şablon oluşturulamaması sorununu, schema-railway-master.sql dosyasında yer alan fakat canlı veritabanında eksik olan form_templates, form_submissions ve ilişkili diğer modül tablolarını oluşturarak çözmek.`
+- `Files Read`:
+  - `C:\RMSv3\schema-railway-master.sql`
+  - `C:\RMSv3\src\components\pages\FormTemplates.jsx`
+  - `C:\RMSv3\src\lib\formService.js`
+  - `C:\RMSv3\server\index.js`
+- `Files Changed`:
+  - `C:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `node C:\RMSv3\scratch\check_db_tables.cjs` (Veritabanındaki eksik tabloları denetlemek için)
+  - `node C:\RMSv3\scratch\apply_form_schema.cjs` (Eksik SQL şemasını uygulamak için)
+- `Findings`:
+  - `form_templates`, `form_submissions`, `form_submission_photos`, `tickets`, `ticket_categories`, `ticket_comments`, `ticket_audit_log` ve `sla_policies` tablolarının `schema-railway-master.sql` dosyasında tanımlanmış olmasına rağmen canlı Railway Postgres veritabanında oluşturulmadığı tespit edildi.
+  - Şablon oluşturma/kaydetme işlemi sırasında veritabanı tablo eksikliği hatası (Relation does not exist) döndüğü için işlem başarısız oluyordu.
+- `Decisions`:
+  - `schema-railway-master.sql` üzerindeki tüm form ve ticket modülü tablolarını, indekslerini ve `table_feedback` tablosuna ait kolon genişletmelerini kapsayan SQL şeması Node.js tabanlı geçici bir migration betiği ile doğrudan Railway Postgres veritabanına uygulandı.
+  - Tablo varlığı ve veri ekleme/çıkarma testleri script seviyesinde başarıyla doğrulandı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kullanıcının `http://localhost:5173/form-sablonlari` adresinden yeni form şablonu oluşturabildiğini teyit etmesini beklemek.
+- `Handoff Contract`: `Form şablonları, teslimatları ve bilet sistemine ait eksik tablolar canlı Railway Postgres veritabanına sorunsuz bir şekilde yansıtıldı. Kod veya build akışlarında herhangi bir değişiklik yapılmamıştır.`
+
+
+## Entry 137 - 2026-05-26
+
+- `Timestamp`: `2026-05-26T13:42:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Biletlerin Şubeye Atanması/Bölümlenmesi ve Bilet Üzerinden Görev Oluşturma Hatasının Giderilmesi`
+- `Intent`: `Genel Merkez ile Şube bilet ayrımını yapmak, bilet oluştururken şube seçimine izin vermek, ve biletler üzerinden görev oluşturulmaya çalışıldığında oluşan 'Görev oluşturulamadı' hatasını çözmek.`
+- `Files Read`:
+  - `C:\RMSv3\src\components\pages\TicketBoard.jsx`
+  - `C:\RMSv3\src\lib\ticketService.js`
+  - `C:\RMSv3\src\lib\taskService.js`
+  - `C:\RMSv3\src\context\WorkspaceContext.jsx`
+  - `C:\RMSv3\schema-railway-master.sql`
+- `Files Changed`:
+  - `C:\RMSv3\src\components\pages\TicketBoard.jsx`
+  - `C:\RMSv3\src\lib\ticketService.js`
+  - `C:\RMSv3\src\lib\taskService.js`
+  - `C:\RMSv3\src\context\WorkspaceContext.jsx`
+  - `C:\RMSv3\schema-railway-master.sql`
+  - `C:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `node C:\RMSv3\scratch\alter_tickets_branch_id.cjs` (tickets.branch_id alanından NOT NULL kısıtını kaldırmak için)
+  - `npm.cmd run build` (Derleme doğrulama için)
+- `Findings`:
+  - Biletlerin genel merkez (şube dışı) veya belirli bir şubeye ait olması için `tickets` tablosundaki `branch_id` alanının NULL olabilmesi gerekiyordu. `ALTER TABLE` komutu ile `NOT NULL` kısıtlaması kaldırıldı ve şema dosyasına yansıtıldı.
+  - Biletlerden görev oluşturulduğunda "Görev oluşturulamadı" hatası alınmasının sebebinin, auth-bypass durumunda `useAuth()`'tan dönen `user` nesnesinin `null` olmasından ötürü `created_by_personnel_id` alanının veritabanına `null`/`undefined` gitmesi ve `NOT NULL` kısıtlamasına takılması olduğu anlaşıldı.
+- `Decisions`:
+  - `TicketBoard.jsx` içerisindeki tüm `user` referansları, PIN oturumuyla belirlenen `sessionStorage`'daki `rms_active_user` değerini okuyacak şekilde güncellendi.
+  - `WorkspaceContext.jsx` oturumu kaydedilirken `positionId` alanının da oturum nesnesine eklenmesi sağlandı.
+  - `taskService.js` içerisindeki `createTask` fonksiyonuna eklenen otomatik lookup katmanı sayesinde, aktörün sadece `id` bilgisi gelse bile personelin veritabanındaki `positionId` ve `defaultBranchId` gibi tüm detayları otomatik çözümlenerek dayanıklılık sağlandı.
+  - Yeni bilet oluşturma modalına "Şube / Alan" seçimi eklendi. Genel Merkez çalışanları tüm şubeleri veya Genel Merkez'i seçebilirken, Şube çalışanlarının seçimleri aktif şubelerine kilitlendi.
+  - Arayüzde (bilet listesinde ve detay panelinde) ilgili biletin Genel Merkez'e mi yoksa hangi şubeye mi ait olduğu netleştirildi.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kullanıcının `http://localhost:5173/bilet-yonetimi` sayfasını yenileyerek hem Genel Merkez/Şube seçimini hem de bilet üzerinden görev oluşturma butonunu test etmesini sağlamak.
+- `Handoff Contract`: `Biletlerin şube bazlı bölümlenmesi (branch_id nullable) sağlandı. Auth bypass ortamında biletlerden görev oluşturulabilmesi için kullanıcı bağlamı sessionStorage/DB üzerinden çözümlenerek hata giderildi. Derleme başarılıdır.`
+
+
+
+

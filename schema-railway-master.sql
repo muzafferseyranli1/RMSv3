@@ -3443,7 +3443,7 @@ CREATE TABLE IF NOT EXISTS public.sla_policies (
 
 CREATE TABLE IF NOT EXISTS public.tickets (
   id                  UUID DEFAULT gen_random_uuid() NOT NULL,
-  branch_id           TEXT NOT NULL,
+  branch_id           TEXT,
   feedback_id         UUID,
   form_submission_id  UUID,
   task_id             UUID,
