@@ -416,11 +416,23 @@ function AppShell() {
               <Route path="/mal-kabul" element={<WorkspaceBranchScope><MalKabul /></WorkspaceBranchScope>} />
               <Route path="/kiosk-management" element={<KioskManagementDesktop />} />
               <Route path="/musteri-yorumlari" element={<FeedbackManagement />} />
-              <Route path="/geribildirimler" element={<TicketBoard />} />
-              <Route path="/geribildirimler/:ticketId" element={<TicketDetail />} />
-              <Route path="/kalite-raporlari" element={<QualityReports />} />
+              <Route path="/geribildirimler" element={<TicketBoard mode="center" />} />
+              <Route path="/geribildirimler/:ticketId" element={<TicketDetail mode="center" />} />
+              <Route path="/kalite-raporlari" element={<QualityReports mode="center" />} />
+
+              {/* Şube Geri Bildirim ve Kalite */}
+              <Route path="/sube-geribildirimler" element={<WorkspaceBranchScope><TicketBoard mode="branch" /></WorkspaceBranchScope>} />
+              <Route path="/sube-geribildirimler/:ticketId" element={<WorkspaceBranchScope><TicketDetail mode="branch" /></WorkspaceBranchScope>} />
+              <Route path="/sube-kalite-raporlari" element={<WorkspaceBranchScope><QualityReports mode="branch" /></WorkspaceBranchScope>} />
+              <Route path="/sube-formlar" element={<WorkspaceBranchScope><FormSubmissions /></WorkspaceBranchScope>} />
+
+              {/* Merkez Depo / Üretim Geri Bildirim ve Kalite */}
+              <Route path="/merkez-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><TicketBoard mode="warehouse" /></WarehouseBranchRoute>} />
+              <Route path="/merkez-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><TicketDetail mode="warehouse" /></WarehouseBranchRoute>} />
+              <Route path="/merkez-kalite-raporlari" element={<WarehouseBranchRoute title="Kalite Raporları"><QualityReports mode="warehouse" /></WarehouseBranchRoute>} />
+              <Route path="/merkez-depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions /></WarehouseBranchRoute>} />
               <Route path="/form-sablonlari" element={<FormTemplates />} />
-              <Route path="/form-yanitlari" element={<FormSubmissions />} />
+              <Route path="/formlar" element={<FormSubmissions />} />
               <Route path="/geribildirim-kategorileri" element={<TicketCategories />} />
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
               <Route path="/merkez-orders" element={<Placeholder title="Siparişler" icon="fa-receipt" />} />

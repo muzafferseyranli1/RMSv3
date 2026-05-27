@@ -10,7 +10,7 @@ import { useSidebar } from '@/context/SidebarContext'
 
 const NAV = [
   {
-    section: 'Merkez Ä°ÅŸlemleri',
+    section: 'Merkez',
     icon: 'fa-building-columns',
     items: [
       { label: 'Åirket KuruluÅŸu', path: '/company', icon: 'fa-sitemap', color: '#f472b6', bg: 'rgba(244,114,182,.18)' },
@@ -110,14 +110,14 @@ const NAV = [
           { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
           { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Form Şablonları', path: '/form-sablonlari', icon: 'fa-clipboard-list', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
-          { label: 'Form Yanıtları', path: '/form-yanitlari', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
+          { label: 'Formlar', path: '/formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
         ],
       },
       { label: 'DÃ¶nem KapanÄ±ÅŸÄ±', path: '/donem-kapanis', icon: 'fa-calendar-check', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
     ],
   },
   {
-    section: 'Åube Ä°ÅŸlemleri',
+    section: 'Şube',
     icon: 'fa-store',
     items: [
       { label: 'Tahmin', path: '/forecast', icon: 'fa-chart-line', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
@@ -160,8 +160,9 @@ const NAV = [
           { label: 'Transfer', path: '/sube-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Zayi KaydÄ±', path: '/sube-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Serbest KullanÄ±m KaydÄ±', path: '/sube-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-          { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
-          { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Geribildirimler', path: '/sube-geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Kalite Raporları', path: '/sube-kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Formlar', path: '/sube-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
         ],
       },
       { label: 'Ãœretim', path: '/uretim', icon: 'fa-industry', color: '#4ade80', bg: 'rgba(74,222,128,.18)' },
@@ -205,7 +206,7 @@ const NAV = [
     ],
   },
   {
-    section: 'Merkez Depo / Ãœretim',
+    section: 'Merkez Depo/Mutfak',
     icon: 'fa-warehouse',
     items: [
       { label: 'SipariÅŸler', path: '/merkez-orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
@@ -220,8 +221,9 @@ const NAV = [
           { label: 'Transfer', path: '/merkez-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Zayi KaydÄ±', path: '/merkez-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Serbest KullanÄ±m KaydÄ±', path: '/merkez-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-          { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
-          { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Geribildirimler', path: '/merkez-geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Kalite Raporları', path: '/merkez-kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Formlar', path: '/merkez-depo-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
         ],
       },
       {
@@ -342,6 +344,14 @@ function getFirstChildPath(item) {
     }
   }
   return null
+}
+
+const SECTION_COLORS = {
+  'Merkez': '#60a5fa',         // Blue
+  'Şube': '#ef4444',           // Red
+  'POS ve Ekranlar': '#c084fc', // Purple
+  'Merkez Depo/Mutfak': '#34d399', // Green
+  'Ayarlar': '#f59e0b',         // Yellow/Orange
 }
 
 export default function Sidebar() {
@@ -687,18 +697,35 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isIconOnly ? '4px 0' : '0 0 8px' }}>
-          {visibleSections.map(section => (
-            <div key={section.section}>
-              {!isIconOnly && (
-                <div className="sec-lbl">
-                  <i className={`fa-solid ${section.icon}`} style={{ fontSize: '.6rem' }} />
-                  <span>{fixMojibakeText(section.section)}</span>
-                  <div className="sec-lbl-line" />
-                </div>
-              )}
-              {isIconOnly && <div style={{ height: 8 }} />}
+          {visibleSections.map(section => {
+            const secName = fixMojibakeText(section.section)
+            const sectionColor = SECTION_COLORS[secName] || '#888888'
+            return (
+              <div key={section.section} style={!isIconOnly ? {
+                borderLeft: `3px solid ${sectionColor}`,
+                background: `linear-gradient(90deg, ${sectionColor}05, transparent)`,
+                marginBottom: '16px',
+              } : {}}>
+                {!isIconOnly && (
+                  <div className="sec-lbl" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 14px 6px',
+                    color: sectionColor,
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                  }}>
+                    <i className={`fa-solid ${section.icon}`} style={{ fontSize: '0.75rem', color: sectionColor }} />
+                    <span>{secName}</span>
+                    <div className="sec-lbl-line" style={{ background: `linear-gradient(90deg, ${sectionColor}22, transparent)` }} />
+                  </div>
+                )}
+                {isIconOnly && <div style={{ height: 8 }} />}
 
-              {fixMojibakeText(section.section) === 'Şube İşlemleri' && branchName && !isIconOnly && (
+              {fixMojibakeText(section.section) === 'Şube' && branchName && !isIconOnly && (
                 <button type="button" onClick={openWorkspacePicker} title="Çalışma bağlamını değiştir"
                   style={{ width: '100%', margin: '2px 0 8px', padding: '6px 10px', border: '1px solid rgba(245,166,35,.2)', background: 'rgba(245,166,35,.06)', color: '#f5a623', display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', textAlign: 'left', borderRadius: 0 }}>
                   <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,166,35,.15)', color: '#f5a623', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -800,7 +827,7 @@ export default function Sidebar() {
                 )
               ))}
             </div>
-          ))}
+          )})}
         </nav>
 
         {/* Bottom bar */}

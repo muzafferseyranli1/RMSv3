@@ -23,11 +23,12 @@ export default function FormSubmissions() {
   const [showFillForm, setShowFillForm] = useState(false)
   const [fillTemplateId, setFillTemplateId] = useState('')
   const [answers, setAnswers] = useState([])
+  const [activeNotes, setActiveNotes] = useState({})
   const [formStartTime, setFormStartTime] = useState(null)
   const [showPrintReport, setShowPrintReport] = useState(null)
   const [uploadingFields, setUploadingFields] = useState({})
   const formContainerRef = useRef(null)
-  const { branchId, branches } = useWorkspace()
+  const { scope, branchId, branches } = useWorkspace()
   const { user } = useAuth()
   const toast = useToast()
 
@@ -58,14 +59,19 @@ export default function FormSubmissions() {
   const loadSubmissions = useCallback(async () => {
     setLoading(true)
     const [subResult, tplResult] = await Promise.all([
-      fetchFormSubmissions({ branchId, templateId: filter.templateId || undefined, status: filter.status || undefined }),
+      fetchFormSubmissions({ 
+        branchId, 
+        templateId: filter.templateId || undefined, 
+        status: filter.status || undefined,
+        activeScope: scope
+      }),
       fetchFormTemplates({ activeOnly: false }),
     ])
     if (subResult.error) toast('Yanıtlar yüklenemedi', 'error')
     setSubmissions(subResult.data || [])
     setTemplates(tplResult.data || [])
     setLoading(false)
-  }, [branchId, filter.templateId, filter.status, toast])
+  }, [branchId, filter.templateId, filter.status, scope, toast])
 
   useEffect(() => { loadSubmissions() }, [loadSubmissions])
 
@@ -93,6 +99,7 @@ export default function FormSubmissions() {
       }
     }
     setAnswers(initialAnswers)
+    setActiveNotes({})
     setFormStartTime(Date.now())
     setShowFillForm(true)
 
@@ -130,6 +137,14 @@ export default function FormSubmissions() {
 
   const updateAnswer = (fieldId, value) => {
     setAnswers(prev => prev.map(a => a.field_id === fieldId ? { ...a, value } : a))
+  }
+
+  const toggleNote = (fieldId) => {
+    setActiveNotes(prev => ({ ...prev, [fieldId]: !prev[fieldId] }))
+  }
+
+  const updateNote = (fieldId, note) => {
+    setAnswers(prev => prev.map(a => a.field_id === fieldId ? { ...a, note } : a))
   }
 
   const handlePhotoUpload = async (fieldId, file) => {
@@ -238,7 +253,7 @@ export default function FormSubmissions() {
       submittedBy: activeUser?.id || 'anonymous',
       answersJson: answers,
       completionTimeSeconds,
-      metadata,
+      metadata: { ...(metadata || {}), creator_scope: scope },
       photos: submissionPhotos,
     })
 
@@ -284,6 +299,7 @@ export default function FormSubmissions() {
     setShowFillForm(false)
     setFillTemplateId('')
     setAnswers([])
+    setActiveNotes({})
     loadSubmissions()
   }
 
@@ -294,6 +310,9 @@ export default function FormSubmissions() {
   const avgScore = totalCount > 0
     ? (submissions.reduce((sum, s) => sum + (Number(s.score_percentage) || 0), 0) / totalCount).toFixed(1)
     : '—'
+
+  const filteredTemplate = filter.templateId ? templates.find(t => t.id === filter.templateId) : null
+  const isFilterChecklist = filteredTemplate?.form_type === 'checklist'
 
   // ─── Fill Form Modal ───
   if (showFillForm) {
@@ -328,11 +347,13 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           </div>
 
 {/* Overall Score Summary */}
-<div className="card" style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)' }}>
-  <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6' }}>
-    Toplam Puan: {totalScoredPoints}/{totalMaxPoints} <span style={{ color: '#8b5cf6', fontWeight: 800 }}> %{overallPercentage}</span>
+{template.form_type !== 'checklist' && (
+  <div className="card" style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)' }}>
+    <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6' }}>
+      Toplam Puan: {totalScoredPoints}/{totalMaxPoints} <span style={{ color: '#8b5cf6', fontWeight: 800 }}> %{overallPercentage}</span>
+    </div>
   </div>
-</div>
+)}
         {template.form_type === 'inspection' && (
           <div className="card" style={{ padding: 18, marginBottom: 16, borderLeft: '4px solid #06b6d4', background: 'var(--surface)' }}>
             <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#06b6d4', marginBottom: 14 }}>
@@ -553,7 +574,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                 gap: 8
               }}>
                 <span>{sIdx + 1}. {section.title}</span>
-                {sectionMaxPoints > 0 && (
+                {template.form_type !== 'checklist' && sectionMaxPoints > 0 && (
                   <span style={{ 
                     fontSize: '.75rem', 
                     color: '#fff', 
@@ -574,181 +595,376 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                 const isFieldCritical = !!field.is_critical
 
                 return (
-                  <div key={field.id} style={{ marginBottom: 14 }}>
-                    <label className="f-label" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span>{field.label}</span>
-                      {field.required && <span style={{ color: 'var(--danger)', marginLeft: 4 }}>*</span>}
-                      {field.max_points > 0 && (
-                        <span style={{ 
-                          fontSize: '.72rem', 
-                          marginLeft: 10, 
-                          fontWeight: 700, 
-                          color: currentScore === null ? 'var(--text-muted)' : (currentScore === 0 ? '#ef4444' : (currentScore < field.max_points ? '#f59e0b' : '#10b981')),
-                          background: currentScore === null ? 'transparent' : (currentScore === 0 ? 'rgba(239,68,68,0.08)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)')),
-                          padding: currentScore === null ? '0' : '2px 6px',
-                          borderRadius: '4px',
-                          border: currentScore === null ? 'none' : `1px solid ${currentScore === 0 ? 'rgba(239,68,68,0.2)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')}`,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}>
-                          {isFieldCritical && <span style={{ color: '#ef4444', fontWeight: 900 }}>[KRİTİK]</span>}
-                          <span>{scoreText}</span>
-                        </span>
-                      )}
-                    </label>
-
-                    {field.type === 'yes_no' && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {[true, false].map(v => (
+                  <div key={field.id} style={{ 
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    background: 'rgba(255,255,255,0.02)',
+                    padding: '12px 16px',
+                    marginBottom: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8
+                  }}>
+                    {/* Row Container (Horizontal on wide screens, wraps nicely) */}
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      flexWrap: 'wrap'
+                    }}>
+                      {/* Left Block: Question, Critical Badge, Points, Note Button */}
+                      <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                          <span style={{ fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)' }}>
+                            {field.label}
+                          </span>
+                          {field.required && <span style={{ color: 'var(--danger)' }}>*</span>}
+                          {template.form_type !== 'checklist' && field.max_points > 0 && (
+                            <span style={{ 
+                              fontSize: '.72rem', 
+                              fontWeight: 700, 
+                              color: currentScore === null ? 'var(--text-muted)' : (currentScore === 0 ? '#ef4444' : (currentScore < field.max_points ? '#f59e0b' : '#10b981')),
+                              background: currentScore === null ? 'transparent' : (currentScore === 0 ? 'rgba(239,68,68,0.08)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)')),
+                              padding: currentScore === null ? '0' : '2px 6px',
+                              borderRadius: '4px',
+                              border: currentScore === null ? 'none' : `1px solid ${currentScore === 0 ? 'rgba(239,68,68,0.2)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')}`,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}>
+                              {isFieldCritical && <span style={{ color: '#ef4444', fontWeight: 900 }}>[KRİTİK]</span>}
+                              <span>{scoreText}</span>
+                            </span>
+                          )}
                           <button
-                            key={String(v)}
                             type="button"
-                            className={answer?.value === v ? 'btn-p' : 'btn-o'}
-                            onClick={() => updateAnswer(field.id, v)}
-                            style={{ flex: 1, padding: '8px 16px', fontSize: '.82rem' }}
-                          >
-                            {v ? '✓ Evet' : '✗ Hayır'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {field.type === 'checkbox' && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${answer?.value ? '#3b82f6' : 'var(--border)'}`, background: answer?.value ? 'rgba(59,130,246,.06)' : 'var(--surface-2)', cursor: 'pointer', userSelect: 'none', transition: 'all .15s' }}>
-                        <input
-                          type="checkbox"
-                          checked={!!answer?.value}
-                          onChange={e => updateAnswer(field.id, e.target.checked)}
-                          style={{ accentColor: '#3b82f6', width: 18, height: 18, cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '.84rem', fontWeight: 700, color: answer?.value ? '#1d4ed8' : 'var(--text-muted)' }}>
-                          {answer?.value ? '✓ İşaretlendi' : 'İşaretlenmedi'}
-                        </span>
-                      </label>
-                    )}
-
-                    {field.type === 'rating' && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {[1, 2, 3, 4, 5].map(r => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => updateAnswer(field.id, r)}
+                            onClick={() => toggleNote(field.id)}
                             style={{
-                              width: 40, height: 40, borderRadius: 10, border: '2px solid',
-                              borderColor: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--border)',
-                              background: (answer?.value || 0) >= r ? 'rgba(245,158,11,.2)' : 'var(--surface-2)',
-                              color: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--text-muted)',
-                              fontWeight: 800, fontSize: '.9rem', cursor: 'pointer',
+                              background: 'transparent',
+                              border: 'none',
+                              color: answer?.note ? '#8b5cf6' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: '.72rem',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              transition: 'all 0.15s',
+                              fontWeight: 600,
                             }}
                           >
-                            {r}
+                            <i className={answer?.note ? "fa-solid fa-comment-dots" : "fa-regular fa-comment"} />
+                            <span>{answer?.note ? 'Notu Düzenle' : 'Not Ekle'}</span>
                           </button>
-                        ))}
+                        </div>
                       </div>
-                    )}
 
-                    {(field.type === 'number' || field.type === 'temperature') && (
-                      <input
-                        type="number"
-                        value={answer?.value ?? ''}
-                        onChange={e => updateAnswer(field.id, e.target.value === '' ? '' : Number(e.target.value))}
-                        placeholder={field.type === 'temperature' ? 'Sıcaklık değeri girin' : 'Sayı girin'}
-                        className="f-input"
-                      />
-                    )}
-
-                    {field.type === 'text' && (
-                      <textarea
-                        value={answer?.value || ''}
-                        onChange={e => updateAnswer(field.id, e.target.value)}
-                        placeholder="Açıklama girin..."
-                        rows={2}
-                        className="f-input"
-                      />
-                    )}
-
-                    {field.type === 'select' && (
-                      <div className="sel-wrap">
-                        <select
-                          value={answer?.value || ''}
-                          onChange={e => updateAnswer(field.id, e.target.value)}
-                          className="f-input"
-                        >
-                          <option value="">Seçiniz</option>
-                          {(field.options || []).map((opt, i) => {
-                            const val = typeof opt === 'object' ? opt.label : opt
-                            return <option key={i} value={val}>{val}</option>
-                          })}
-                        </select>
-                      </div>
-                    )}
-
-                    {field.type === 'photo' && (() => {
-                      const isUploading = !!uploadingFields[field.id]
-                      const photoUrl = answer?.value
-
-                      if (isUploading) {
-                        return (
-                          <div style={{ padding: 20, border: '2px dashed var(--border)', borderRadius: 10, textAlign: 'center', background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
-                            <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8, fontSize: '1.2rem', color: '#8b5cf6' }} />
-                            <span style={{ fontSize: '.8rem', fontWeight: 600 }}>Fotoğraf Yükleniyor...</span>
+                      {/* Right Block: Input Controls */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+                        {field.type === 'yes_no' && (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {[true, false].map(v => (
+                              <button
+                                key={String(v)}
+                                type="button"
+                                className={answer?.value === v ? 'btn-p' : 'btn-o'}
+                                onClick={() => updateAnswer(field.id, v)}
+                                style={{ padding: '6px 14px', fontSize: '.8rem' }}
+                              >
+                                {v ? '✓ Evet' : '✗ Hayır'}
+                              </button>
+                            ))}
                           </div>
-                        )
-                      }
+                        )}
 
-                      if (photoUrl) {
-                        return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)' }}>
-                            <div style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
-                              <img src={buildApiUrl(photoUrl)} alt="Yüklenen Görsel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                {photoUrl.split('/').pop() || 'photo.jpg'}
-                              </div>
-                              <div style={{ fontSize: '.7rem', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <i className="fa-solid fa-circle-check" /> Yüklendi
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn-danger"
-                              onClick={() => updateAnswer(field.id, '')}
-                              style={{ padding: '6px 12px', fontSize: '.75rem' }}
-                            >
-                              Sil
-                            </button>
-                          </div>
-                        )
-                      }
-
-                      return (
-                        <label style={{ 
-                          display: 'block', 
-                          padding: '24px 16px', 
-                          border: '2px dashed var(--border)', 
-                          borderRadius: 10, 
-                          textAlign: 'center', 
-                          color: 'var(--text-muted)', 
-                          cursor: 'pointer',
-                          background: 'var(--surface-2)',
-                          transition: 'all 0.2s',
-                        }} className="photo-upload-label">
-                          <i className="fa-solid fa-camera" style={{ fontSize: '1.4rem', color: '#8b5cf6', marginBottom: 6, display: 'block' }} />
-                          <span style={{ fontSize: '.78rem', fontWeight: 600, display: 'block', marginBottom: 2 }}>Fotoğraf Yükle veya Çek</span>
-                          <span style={{ fontSize: '.68rem', opacity: 0.7 }}>RMS-API-Volume üzerinde saklanır</span>
+                        {field.type === 'checkbox' && (
                           <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            onChange={e => handlePhotoUpload(field.id, e.target.files?.[0])}
-                            style={{ display: 'none' }}
+                            type="checkbox"
+                            checked={!!answer?.value}
+                            onChange={e => updateAnswer(field.id, e.target.checked)}
+                            style={{ accentColor: '#3b82f6', width: 22, height: 22, cursor: 'pointer' }}
                           />
-                        </label>
-                      )
-                    })()}
+                        )}
+
+                        {field.type === 'rating' && (
+                          <div style={{ display: 'flex', gap: 6, fontSize: '1.4rem' }}>
+                            {[1, 2, 3, 4, 5].map(r => (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => updateAnswer(field.id, r)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  transition: 'transform 0.15s',
+                                  transform: (answer?.value || 0) === r ? 'scale(1.15)' : 'none',
+                                }}
+                              >
+                                <i
+                                  className={(answer?.value || 0) >= r ? "fa-solid fa-star" : "fa-regular fa-star"}
+                                  style={{ color: (answer?.value || 0) >= r ? '#ffb300' : 'var(--text-muted)' }}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {field.type === 'rating_10' && (
+                          <div style={{ display: 'flex', gap: 4, fontSize: '1.25rem', flexWrap: 'wrap' }}>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => updateAnswer(field.id, r)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  transition: 'transform 0.15s',
+                                  transform: (answer?.value || 0) === r ? 'scale(1.15)' : 'none',
+                                }}
+                              >
+                                <i
+                                  className={(answer?.value || 0) >= r ? "fa-solid fa-star" : "fa-regular fa-star"}
+                                  style={{ color: (answer?.value || 0) >= r ? '#ffb300' : 'var(--text-muted)' }}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {field.type === 'emoji_rating' && (
+                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                            {[
+                              { val: 'sad', icon: 'fa-face-frown', color: '#ef4444', label: 'Memnun Değilim' },
+                              { val: 'neutral', icon: 'fa-face-meh', color: '#f59e0b', label: 'Kararsızım' },
+                              { val: 'happy', icon: 'fa-face-smile', color: '#10b981', label: 'Memnunum' },
+                            ].map(item => {
+                              const isActive = answer?.value === item.val
+                              return (
+                                <button
+                                  key={item.val}
+                                  type="button"
+                                  onClick={() => updateAnswer(field.id, item.val)}
+                                  title={item.label}
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    background: isActive ? `${item.color}15` : 'var(--surface-2)',
+                                    border: '2px solid',
+                                    borderColor: isActive ? item.color : 'var(--border)',
+                                    borderRadius: 12,
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    transform: isActive ? 'scale(1.08)' : 'none',
+                                    color: isActive ? item.color : 'var(--text-muted)',
+                                    minWidth: 80,
+                                  }}
+                                >
+                                  <i className={`fa-solid ${item.icon}`} style={{ fontSize: '1.6rem', color: isActive ? item.color : 'var(--text-muted)' }} />
+                                  <span style={{ fontSize: '.68rem', fontWeight: 700 }}>{item.label}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {field.type === 'slider' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', maxWidth: 280 }}>
+                            <input
+                              type="range"
+                              min="1"
+                              max="10"
+                              value={answer?.value ?? 5}
+                              onChange={e => updateAnswer(field.id, Number(e.target.value))}
+                              style={{
+                                flex: 1,
+                                height: 6,
+                                accentColor: '#8b5cf6',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                              }}
+                            />
+                            <span style={{
+                              minWidth: 44,
+                              textAlign: 'center',
+                              fontSize: '.85rem',
+                              fontWeight: 800,
+                              background: 'rgba(139,92,246,0.12)',
+                              color: '#8b5cf6',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              border: '1px solid rgba(139,92,246,0.2)'
+                            }}>
+                              {answer?.value ?? 5} / 10
+                            </span>
+                          </div>
+                        )}
+
+                        {field.type === 'nps' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => {
+                                const isActive = answer?.value === val
+                                const isDetractor = val <= 6
+                                const isPassive = val === 7 || val === 8
+                                const activeColor = isDetractor ? '#ef4444' : (isPassive ? '#f59e0b' : '#10b981')
+                                
+                                return (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    onClick={() => updateAnswer(field.id, val)}
+                                    style={{
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: 6,
+                                      border: '1.5px solid',
+                                      borderColor: isActive ? activeColor : 'var(--border)',
+                                      background: isActive ? `${activeColor}22` : 'var(--surface-2)',
+                                      color: isActive ? activeColor : 'var(--text-strong)',
+                                      fontWeight: 800,
+                                      fontSize: '.75rem',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    {val}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.64rem', color: 'var(--text-muted)', fontWeight: 600, padding: '0 2px' }}>
+                              <span>Hiç Tavsiye Etmem (0)</span>
+                              <span>Kesinlikle Tavsiye Ederim (10)</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {(field.type === 'number' || field.type === 'temperature') && (
+                          <input
+                            type="number"
+                            value={answer?.value ?? ''}
+                            onChange={e => updateAnswer(field.id, e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder={field.type === 'temperature' ? 'Sıcaklık' : 'Sayı'}
+                            className="f-input"
+                            style={{ width: 100, padding: '6px 10px', fontSize: '.8rem' }}
+                          />
+                        )}
+
+                        {field.type === 'text' && (
+                          <textarea
+                            value={answer?.value || ''}
+                            onChange={e => updateAnswer(field.id, e.target.value)}
+                            placeholder="Açıklama girin..."
+                            rows={1}
+                            className="f-input"
+                            style={{ minWidth: 200, maxWidth: 300, padding: '6px 10px', fontSize: '.8rem', resize: 'vertical' }}
+                          />
+                        )}
+
+                        {field.type === 'select' && (
+                          <div className="sel-wrap" style={{ width: 150 }}>
+                            <select
+                              value={answer?.value || ''}
+                              onChange={e => updateAnswer(field.id, e.target.value)}
+                              className="f-input"
+                              style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                            >
+                              <option value="">Seçiniz</option>
+                              {(field.options || []).map((opt, i) => {
+                                const val = typeof opt === 'object' ? opt.label : opt
+                                return <option key={i} value={val}>{val}</option>
+                              })}
+                            </select>
+                          </div>
+                        )}
+
+                        {field.type === 'photo' && (() => {
+                          const isUploading = !!uploadingFields[field.id]
+                          const photoUrl = answer?.value
+
+                          if (isUploading) {
+                            return (
+                              <div style={{ padding: '6px 12px', border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                                <i className="fa-solid fa-spinner fa-spin" style={{ color: '#8b5cf6' }} />
+                                <span style={{ fontSize: '.75rem' }}>Yükleniyor...</span>
+                              </div>
+                            )
+                          }
+
+                          if (photoUrl) {
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
+                                <div style={{ width: 32, height: 32, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                  <img src={buildApiUrl(photoUrl)} alt="Yüklenen" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn-danger"
+                                  onClick={() => updateAnswer(field.id, '')}
+                                  style={{ padding: '4px 8px', fontSize: '.72rem' }}
+                                >
+                                  Sil
+                                </button>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <label style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '6px 12px', 
+                              border: '1px dashed var(--border)', 
+                              borderRadius: 8, 
+                              color: 'var(--text-muted)', 
+                              cursor: 'pointer',
+                              background: 'var(--surface-2)',
+                              fontSize: '.75rem',
+                              fontWeight: 600
+                            }}>
+                              <i className="fa-solid fa-camera" style={{ color: '#8b5cf6' }} />
+                              <span>Fotoğraf Yükle</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={e => handlePhotoUpload(field.id, e.target.files?.[0])}
+                                style={{ display: 'none' }}
+                              />
+                            </label>
+                          )
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Note input field (inside the same box border) */}
+                    {(activeNotes[field.id] || answer?.note) && (
+                      <div style={{ marginTop: 4 }}>
+                        <textarea
+                          value={answer?.note || ''}
+                          onChange={e => updateNote(field.id, e.target.value)}
+                          placeholder="Bu değerlendirme satırı için not giriniz..."
+                          rows={2}
+                          className="f-input"
+                          style={{ fontSize: '.78rem', background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', width: '100%' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -783,26 +999,35 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
       </div>
 
       {/* Quick Fill Buttons */}
-      {templates.filter(t => t.active && !t.deleted_at).length > 0 && (
-        <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-            <i className="fa-solid fa-pen-to-square" style={{ marginRight: 6 }} /> Form Doldur:
-          </span>
-          {templates.filter(t => t.active && !t.deleted_at).map(t => (
-            <button key={t.id} className="btn-o" onClick={() => startFillForm(t.id)} style={{ fontSize: '.75rem' }}>
-              {t.title}
-            </button>
-          ))}
-        </div>
-      )}
+      {(() => {
+        const activeTemplates = templates.filter(t => {
+          if (!t.active || t.deleted_at) return false
+          if (scope === 'admin') return true
+          const allowed = t.allowed_contexts || ['center', 'branch', 'warehouse']
+          return allowed.includes(scope)
+        })
+        if (activeTemplates.length === 0) return null
+        return (
+          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-pen-to-square" style={{ marginRight: 6 }} /> Form Doldur:
+            </span>
+            {activeTemplates.map(t => (
+              <button key={t.id} className="btn-o" onClick={() => startFillForm(t.id)} style={{ fontSize: '.75rem' }}>
+                {t.title}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isFilterChecklist ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Toplam', value: totalCount, icon: 'fa-file-lines', color: '#3b82f6' },
           { label: 'Tamamlanan', value: completedCount, icon: 'fa-check-circle', color: '#10b981' },
           { label: 'Anomali', value: anomalyCount, icon: 'fa-exclamation-triangle', color: '#ef4444' },
-          { label: 'Ort. Puan', value: avgScore + '%', icon: 'fa-chart-simple', color: '#f59e0b' },
+          ...(!isFilterChecklist ? [{ label: 'Ort. Puan', value: avgScore + '%', icon: 'fa-chart-simple', color: '#f59e0b' }] : []),
         ].map(stat => (
           <div key={stat.label} className="card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 36, height: 36, borderRadius: 10, background: `${stat.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -826,7 +1051,9 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             style={{ width: 'auto', minWidth: 160 }}
           >
             <option value="">Tüm Şablonlar</option>
-            {templates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+            {templates
+              .filter(t => scope === 'admin' || (t.allowed_contexts || ['center', 'branch', 'warehouse']).includes(scope))
+              .map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
         </div>
         <div className="sel-wrap">
@@ -857,10 +1084,12 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {submissions.map(sub => {
-                const isCriticalFailed = !!sub.metadata?.failed_critical
+                const tpl = templates.find(t => t.id === sub.template_id)
+                const isChecklist = tpl?.form_type === 'checklist'
+                const isCriticalFailed = !isChecklist && !!sub.metadata?.failed_critical
                 const status = STATUS_MAP[sub.status] || STATUS_MAP.draft
                 const isSelected = selectedSub?.id === sub.id
-                const isAnomaly = sub.status === 'anomaly'
+                const isAnomaly = !isChecklist && sub.status === 'anomaly'
                 
                 const badgeLabel = isCriticalFailed ? 'Kabul Edilemez' : status.label
                 const badgeColor = isCriticalFailed ? '#ef4444' : status.color
@@ -879,16 +1108,23 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     onClick={() => openDetail(sub.id)}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {/* Score Circle */}
+                      {/* Score Circle / Checklist Icon */}
                       <div style={{
                         width: 44, height: 44, borderRadius: 12, border: '2px solid',
-                        borderColor: scoreColor,
+                        borderColor: isChecklist ? '#8b5cf6' : scoreColor,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column',
+                        background: isChecklist ? 'rgba(139,92,246,0.06)' : undefined
                       }}>
-                        <div style={{ fontSize: '.85rem', fontWeight: 900, color: scoreColor }}>
-                          {sub.score_percentage != null ? Math.round(sub.score_percentage) : '—'}
-                        </div>
-                        <div style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>%</div>
+                        {isChecklist ? (
+                          <i className="fa-solid fa-list-check" style={{ color: '#8b5cf6', fontSize: '1.1rem' }} />
+                        ) : (
+                          <>
+                            <div style={{ fontSize: '.85rem', fontWeight: 900, color: scoreColor }}>
+                              {sub.score_percentage != null ? Math.round(sub.score_percentage) : '—'}
+                            </div>
+                            <div style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>%</div>
+                          </>
+                        )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -936,16 +1172,20 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                 <span style={{ fontSize: '.9rem', fontWeight: 600 }}>Yükleniyor...</span>
               </div>
             ) : (() => {
-              const isCritical = !!selectedSub.metadata?.failed_critical
+              const template = templates.find(t => t.id === selectedSub.template_id)
+              const isChecklist = template?.form_type === 'checklist'
+              const isCritical = !isChecklist && !!selectedSub.metadata?.failed_critical
               const scoreNum = Number(selectedSub.score_percentage) || 0
-              const isGood = !isCritical && scoreNum >= 70
-              const hasAnomaly = (selectedSub.metadata?.anomalies?.length || 0) > 0
-              const accentColor = isCritical ? '#ef4444' : (isGood ? '#10b981' : '#f59e0b')
-              const gradientBg = isCritical
-                ? 'linear-gradient(135deg, #1a0808 0%, #2d0f0f 50%, #1e0a0a 100%)'
-                : isGood
-                  ? 'linear-gradient(135deg, #071a12 0%, #0d2e1e 50%, #091a12 100%)'
-                  : 'linear-gradient(135deg, #1a1208 0%, #2d2010 50%, #1a1208 100%)'
+              const isGood = !isChecklist && !isCritical && scoreNum >= 70
+              const hasAnomaly = !isChecklist && (selectedSub.metadata?.anomalies?.length || 0) > 0
+              const accentColor = isChecklist ? '#8b5cf6' : (isCritical ? '#ef4444' : (isGood ? '#10b981' : '#f59e0b'))
+              const gradientBg = isChecklist
+                ? 'linear-gradient(135deg, #120c1f 0%, #1e1336 50%, #120c1f 100%)'
+                : isCritical
+                  ? 'linear-gradient(135deg, #1a0808 0%, #2d0f0f 50%, #1e0a0a 100%)'
+                  : isGood
+                    ? 'linear-gradient(135deg, #071a12 0%, #0d2e1e 50%, #091a12 100%)'
+                    : 'linear-gradient(135deg, #1a1208 0%, #2d2010 50%, #1a1208 100%)'
               return (
                 <>
                   {/* ── HERO HEADER ── */}
@@ -963,24 +1203,41 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     </button>
 
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-                      {/* Score Ring */}
-                      <div style={{ flexShrink: 0, textAlign: 'center' }}>
-                        <div style={{
-                          width: 88, height: 88, borderRadius: '50%',
-                          border: `4px solid ${accentColor}`,
-                          boxShadow: `0 0 24px ${accentColor}55, inset 0 0 24px ${accentColor}11`,
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                          background: `${accentColor}11`
-                        }}>
-                          <div style={{ fontSize: '1.7rem', fontWeight: 900, color: accentColor, lineHeight: 1 }}>
-                            {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) : '—'}
+                      {/* Score Ring / Checklist Icon */}
+                      {isChecklist ? (
+                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                          <div style={{
+                            width: 88, height: 88, borderRadius: '50%',
+                            border: `4px solid #8b5cf6`,
+                            boxShadow: `0 0 24px rgba(139,92,246,0.35), inset 0 0 24px rgba(139,92,246,0.11)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: `rgba(139,92,246,0.11)`
+                          }}>
+                            <i className="fa-solid fa-list-check" style={{ color: '#8b5cf6', fontSize: '2rem' }} />
                           </div>
-                          <div style={{ fontSize: '.65rem', color: accentColor, fontWeight: 700, opacity: 0.8 }}>PUAN%</div>
+                          <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
+                            Kontrol Listesi
+                          </div>
                         </div>
-                        <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
-                          {selectedSub.total_score ?? '—'}/{selectedSub.max_possible_score ?? '—'} p
+                      ) : (
+                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                          <div style={{
+                            width: 88, height: 88, borderRadius: '50%',
+                            border: `4px solid ${accentColor}`,
+                            boxShadow: `0 0 24px ${accentColor}55, inset 0 0 24px ${accentColor}11`,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            background: `${accentColor}11`
+                          }}>
+                            <div style={{ fontSize: '1.7rem', fontWeight: 900, color: accentColor, lineHeight: 1 }}>
+                              {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) : '—'}
+                            </div>
+                            <div style={{ fontSize: '.65rem', color: accentColor, fontWeight: 700, opacity: 0.8 }}>PUAN%</div>
+                          </div>
+                          <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
+                            {selectedSub.total_score ?? '—'}/{selectedSub.max_possible_score ?? '—'} p
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Title area */}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -992,10 +1249,12 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {/* Status badge */}
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 700, background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
-                            <i className={`fa-solid ${isCritical ? 'fa-circle-xmark' : isGood ? 'fa-circle-check' : 'fa-triangle-exclamation'}`} />
-                            {isCritical ? 'KABUL EDİLEMEZ' : isGood ? 'BAŞARILI' : 'ANOMALİ'}
-                          </span>
+                          {!isChecklist && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 700, background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+                              <i className={`fa-solid ${isCritical ? 'fa-circle-xmark' : isGood ? 'fa-circle-check' : 'fa-triangle-exclamation'}`} />
+                              {isCritical ? 'KABUL EDİLEMEZ' : isGood ? 'BAŞARILI' : 'ANOMALİ'}
+                            </span>
+                          )}
                           {/* Date badge */}
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
                             <i className="fa-regular fa-calendar" />
@@ -1031,7 +1290,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
                     {/* Critical Failure Alert */}
-                    {isCritical && (
+                    {!isChecklist && isCritical && (
                       <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
                         <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#ef4444', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <i className="fa-solid fa-circle-xmark" style={{ fontSize: '1rem' }} /> KABUL EDİLEMEZ – KRİTİK SORU BAŞARISIZ
@@ -1049,7 +1308,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     )}
 
                     {/* Anomaly Alert */}
-                    {!isCritical && hasAnomaly && (
+                    {!isChecklist && !isCritical && hasAnomaly && (
                       <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
                         <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#f59e0b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '1rem' }} /> ANOMALİ TESPİT EDİLDİ
@@ -1168,7 +1427,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                       <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#8b5cf6' }}>
                                         <i className="fa-solid fa-layer-group" style={{ marginRight: 6, opacity: 0.7 }} />{sIdx + 1}. {section.title}
                                       </span>
-                                      {sectionMaxPoints > 0 && (
+                                      {!isChecklist && sectionMaxPoints > 0 && (
                                         <span style={{ fontSize: '.72rem', fontWeight: 800, color: sectionPercentage >= 70 ? '#10b981' : '#ef4444', background: sectionPercentage >= 70 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)', padding: '3px 10px', borderRadius: 99 }}>
                                           {sectionScoredPoints}/{sectionMaxPoints} — %{sectionPercentage}
                                         </span>
@@ -1193,32 +1452,81 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                             padding: '10px 16px',
                                             borderTop: fIdx > 0 ? '1px solid var(--border)' : undefined,
                                             background: isAnsNegative ? 'rgba(239,68,68,0.04)' : 'transparent',
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12
+                                            display: 'flex', flexDirection: 'column', gap: 4
                                           }}>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                              {field.is_critical && (
-                                                <span style={{ fontSize: '.62rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 6px', borderRadius: 4, marginRight: 6 }}>KRİTİK</span>
-                                              )}
-                                              <span style={{ fontSize: '.78rem', color: 'var(--text-strong)', fontWeight: 600 }}>{field.label}</span>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                                              <div style={{ flex: 1, minWidth: 0 }}>
+                                                {field.is_critical && (
+                                                  <span style={{ fontSize: '.62rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 6px', borderRadius: 4, marginRight: 6 }}>KRİTİK</span>
+                                                )}
+                                                <span style={{ fontSize: '.78rem', color: 'var(--text-strong)', fontWeight: 600 }}>{field.label}</span>
+                                              </div>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                                {field.type === 'photo' && ans.value ? (
+                                                  <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer"
+                                                    style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)', display: 'block' }}>
+                                                    <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                  </a>
+                                                ) : field.type === 'rating' && ans.value ? (
+                                                  <div style={{ display: 'flex', gap: 2, fontSize: '.9rem' }}>
+                                                    {[1, 2, 3, 4, 5].map(r => (
+                                                      <i key={r} className="fa-solid fa-star" style={{ color: Number(ans.value) >= r ? '#ffb300' : 'var(--border)' }} />
+                                                    ))}
+                                                  </div>
+                                                ) : field.type === 'rating_10' && ans.value ? (
+                                                  <div style={{ display: 'flex', gap: 2, fontSize: '.85rem' }}>
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
+                                                      <i key={r} className="fa-solid fa-star" style={{ color: Number(ans.value) >= r ? '#ffb300' : 'var(--border)' }} />
+                                                    ))}
+                                                  </div>
+                                                ) : field.type === 'emoji_rating' && ans.value ? (
+                                                  (() => {
+                                                    const emojiMap = {
+                                                      sad: { icon: 'fa-face-frown', color: '#ef4444', label: 'Memnun Değilim' },
+                                                      neutral: { icon: 'fa-face-meh', color: '#f59e0b', label: 'Kararsızım' },
+                                                      happy: { icon: 'fa-face-smile', color: '#10b981', label: 'Memnunum' }
+                                                    }
+                                                    const info = emojiMap[ans.value]
+                                                    if (!info) return <span>{displayValue}</span>
+                                                    return (
+                                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.78rem', fontWeight: 700, color: info.color }}>
+                                                        <i className={`fa-solid ${info.icon}`} /> {info.label}
+                                                      </span>
+                                                    )
+                                                  })()
+                                                ) : field.type === 'slider' && ans.value ? (
+                                                  <span style={{ fontSize: '.78rem', fontWeight: 800, color: '#8b5cf6', background: 'rgba(139,92,246,0.1)', padding: '2px 8px', borderRadius: 6 }}>
+                                                    {ans.value} / 10
+                                                  </span>
+                                                ) : field.type === 'nps' && ans.value !== undefined ? (
+                                                  (() => {
+                                                    const val = Number(ans.value)
+                                                    const color = val <= 6 ? '#ef4444' : (val <= 8 ? '#f59e0b' : '#10b981')
+                                                    return (
+                                                      <span style={{ fontSize: '.78rem', fontWeight: 800, color, background: `${color}15`, padding: '2px 8px', borderRadius: 6, border: `1px solid ${color}33` }}>
+                                                        NPS: {val}
+                                                      </span>
+                                                    )
+                                                  })()
+                                                ) : (
+                                                  <span style={{
+                                                    fontSize: '.8rem', fontWeight: 800,
+                                                    color: isAnsNegative ? '#ef4444' : (ans.value === true ? '#10b981' : ans.value === false ? '#ef4444' : 'var(--text-strong)')
+                                                  }}>{displayValue}</span>
+                                                )}
+                                                {!isChecklist && scoreText && (
+                                                  <span style={{ fontSize: '.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: score === 0 ? 'rgba(239,68,68,0.1)' : score < field.max_points ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', color: score === 0 ? '#ef4444' : score < field.max_points ? '#f59e0b' : '#10b981' }}>
+                                                    {scoreText}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                              {field.type === 'photo' && ans.value ? (
-                                                <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer"
-                                                  style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)', display: 'block' }}>
-                                                  <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                </a>
-                                              ) : (
-                                                <span style={{
-                                                  fontSize: '.8rem', fontWeight: 800,
-                                                  color: isAnsNegative ? '#ef4444' : (ans.value === true ? '#10b981' : ans.value === false ? '#ef4444' : 'var(--text-strong)')
-                                                }}>{displayValue}</span>
-                                              )}
-                                              {scoreText && (
-                                                <span style={{ fontSize: '.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: score === 0 ? 'rgba(239,68,68,0.1)' : score < field.max_points ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', color: score === 0 ? '#ef4444' : score < field.max_points ? '#f59e0b' : '#10b981' }}>
-                                                  {scoreText}
-                                                </span>
-                                              )}
-                                            </div>
+                                            {ans.note && (
+                                              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '6px 10px', borderRadius: 6, borderLeft: '3px solid #8b5cf6', marginTop: 2, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                                <i className="fa-regular fa-comment-dots" style={{ marginTop: 2, color: '#8b5cf6' }} />
+                                                <div style={{ flex: 1 }}>{ans.note}</div>
+                                              </div>
+                                            )}
                                           </div>
                                         )
                                       })}
@@ -1349,7 +1657,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
       <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="fa-solid fa-file-invoice" style={{ color: '#8b5cf6' }} />
-          Denetim Raporu Önizleme
+          {template?.form_type === 'checklist' ? 'Kontrol Listesi Önizleme' : 'Denetim Raporu Önizleme'}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn-p" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1372,7 +1680,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isCriticalFailed ? '#ef4444' : '#1e293b' }}>
-              {isCriticalFailed ? 'KRİTİK HATA RAPORU' : 'DENETİM RAPORU'}
+              {isCriticalFailed ? 'KRİTİK HATA RAPORU' : (template?.form_type === 'checklist' ? 'KONTROL LİSTESİ' : 'DENETİM RAPORU')}
             </div>
             <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '4px' }}>Tarih: {createdDateStr}</div>
           </div>
@@ -1387,50 +1695,52 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
         </div>
 
         {/* Score & Verdict Card */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', marginBottom: '32px' }}>
-          <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Denetim Skoru</div>
-            <div style={{ fontSize: '3rem', fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
-              {submission.score_percentage != null ? Math.round(submission.score_percentage) : '—'}
-              <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>%</span>
+        {template?.form_type !== 'checklist' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', marginBottom: '32px' }}>
+            <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Denetim Skoru</div>
+              <div style={{ fontSize: '3rem', fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
+                {submission.score_percentage != null ? Math.round(submission.score_percentage) : '—'}
+                <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>%</span>
+              </div>
+              <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '8px' }}>
+                {submission.total_score} / {submission.max_possible_score} Toplam Puan
+              </div>
             </div>
-            <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '8px' }}>
-              {submission.total_score} / {submission.max_possible_score} Toplam Puan
-            </div>
-          </div>
 
-          <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Denetim Değerlendirmesi</div>
-            {isCriticalFailed ? (
-              <div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <i className="fa-solid fa-circle-xmark" /> KABUL EDİLEMEZ
+            <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Denetim Değerlendirmesi</div>
+              {isCriticalFailed ? (
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="fa-solid fa-circle-xmark" /> KABUL EDİLEMEZ
+                  </div>
+                  <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                    Denetimde kritik öneme sahip sorularda olumsuz sonuç alındığı için başarı oranı gözetilmeksizlik genel sonuç doğrudan <strong>KABUL EDİLEMEZ (BAŞARISIZ)</strong> olarak değerlendirilmiştir.
+                  </p>
                 </div>
-                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
-                  Denetimde kritik öneme sahip sorularda olumsuz sonuç alındığı için başarı oranı gözetilmeksizlik genel sonuç doğrudan <strong>KABUL EDİLEMEZ (BAŞARISIZ)</strong> olarak değerlendirilmiştir.
-                </p>
-              </div>
-            ) : (Number(submission.score_percentage) || 0) >= (template?.scoring?.pass_threshold || 70) ? (
-              <div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <i className="fa-solid fa-circle-check" /> UYGUN (GEÇTİ)
+              ) : (Number(submission.score_percentage) || 0) >= (template?.scoring?.pass_threshold || 70) ? (
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="fa-solid fa-circle-check" /> UYGUN (GEÇTİ)
+                  </div>
+                  <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                    Bu denetim başarı barajını (%{template?.scoring?.pass_threshold || 70}) aşarak standartlara uygun bir şekilde tamamlanmıştır.
+                  </p>
                 </div>
-                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
-                  Bu denetim başarı barajını (%{template?.scoring?.pass_threshold || 70}) aşarak standartlara uygun bir şekilde tamamlanmıştır.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <i className="fa-solid fa-triangle-exclamation" /> YETERSİZ (KALDI)
+              ) : (
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="fa-solid fa-triangle-exclamation" /> YETERSİZ (KALDI)
+                  </div>
+                  <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                    Denetim sonucu başarı barajının (%{template?.scoring?.pass_threshold || 70}) altında kaldığı için yetersiz olarak değerlendirilmiştir.
+                  </p>
                 </div>
-                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
-                  Denetim sonucu başarı barajının (%{template?.scoring?.pass_threshold || 70}) altında kaldığı için yetersiz olarak değerlendirilmiştir.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Inspection Details Metadata Grid */}
         <div style={{ marginBottom: '32px' }}>
@@ -1518,7 +1828,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
         {/* Questionnaire Results Table */}
         <div style={{ marginBottom: '32px' }}>
           <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '16px' }}>
-            DENETİM SORULARI VE YANITLAR
+            {template?.form_type === 'checklist' ? 'KONTROL LİSTESİ SORULARI VE YANITLAR' : 'DENETİM SORULARI VE YANITLAR'}
           </h3>
 
           {(template?.schema_json?.sections || []).map((section, sIdx) => {
@@ -1557,7 +1867,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                   alignItems: 'center'
                 }}>
                   <span>{sIdx + 1}. {section.title}</span>
-                  {sectionMaxPoints > 0 && (
+                  {template?.form_type !== 'checklist' && sectionMaxPoints > 0 && (
                     <span style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700 }}>
                       {sectionScoredPoints}/{sectionMaxPoints} <span style={{ color: '#4f46e5' }}>%{sectionPercentage}</span>
                     </span>
@@ -1568,8 +1878,10 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
                       <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569' }}>Soru</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '20%' }}>Yanıt</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '15%', textAlign: 'center' }}>Puan</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: template?.form_type === 'checklist' ? '30%' : '20%' }}>Yanıt</th>
+                      {template?.form_type !== 'checklist' && (
+                        <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '15%', textAlign: 'center' }}>Puan</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1578,16 +1890,26 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                       if (!ans) return null
 
                       let displayValue = String(ans.value ?? '—')
-                      if (ans.value === true) displayValue = field.type === 'checkbox' ? '☑ İşaretlendi' : 'Evet'
-                      if (ans.value === false) displayValue = field.type === 'checkbox' ? '☐ İşaretlenmedi' : 'Hayır'
+                      if (ans.value === true) displayValue = field.type === 'checkbox' ? '☑' : 'Evet'
+                      if (ans.value === false) displayValue = field.type === 'checkbox' ? '☐' : 'Hayır'
 
                       const isNeg = submission.metadata?.failed_critical_fields?.some(f => f.id === field.id)
                       
                       let ptsAwarded = '0'
                       if (field.type === 'yes_no') {
                         ptsAwarded = (ans.value === true || ans.value === 'yes') ? String(field.max_points) : '0'
-                      } else if (field.type === 'rating') {
-                        ptsAwarded = String(Math.min((Number(ans.value) / 5) * field.max_points, field.max_points))
+                      } else if (field.type === 'rating' || field.type === 'rating_10' || field.type === 'slider' || field.type === 'nps') {
+                        const val = Number(ans.value) || 0
+                        const divisor = field.type === 'rating' ? 5 : 10
+                        ptsAwarded = String(Math.min((val / divisor) * field.max_points, field.max_points))
+                      } else if (field.type === 'emoji_rating') {
+                        if (ans.value === 'happy') {
+                          ptsAwarded = String(field.max_points)
+                        } else if (ans.value === 'neutral') {
+                          ptsAwarded = String(field.max_points / 2)
+                        } else {
+                          ptsAwarded = '0'
+                        }
                       } else if (field.type === 'temperature') {
                         const temp = Number(ans.value)
                         const inRange = temp >= Number(field.min_value) && temp <= Number(field.max_value)
@@ -1610,19 +1932,39 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                               <span style={{ color: '#ef4444', fontWeight: 800, marginRight: '6px' }}>[KRİTİK]</span>
                             )}
                             {field.label}
+                            {ans.note && (
+                              <div style={{ fontSize: '.72rem', color: '#475569', background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', borderLeft: '2px solid #8b5cf6', marginTop: '4px', fontStyle: 'italic' }}>
+                                Not: {ans.note}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '8px 12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#1e293b' }}>
                             {field.type === 'photo' && ans.value ? (
                               <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', width: 60, height: 60, borderRadius: 6, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
                                 <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               </a>
+                            ) : field.type === 'rating' && ans.value ? (
+                              <span style={{ color: '#ffb300' }}>{'★'.repeat(Number(ans.value)) + '☆'.repeat(5 - Number(ans.value))}</span>
+                            ) : field.type === 'rating_10' && ans.value ? (
+                              <span style={{ color: '#ffb300' }}>{'★'.repeat(Number(ans.value)) + '☆'.repeat(10 - Number(ans.value))}</span>
+                            ) : field.type === 'emoji_rating' && ans.value ? (
+                              (() => {
+                                const labels = { sad: '😢 Memnun Değilim', neutral: '😐 Kararsızım', happy: '😊 Memnunum' }
+                                return labels[ans.value] || displayValue
+                              })()
+                            ) : field.type === 'slider' && ans.value ? (
+                              `${ans.value} / 10`
+                            ) : field.type === 'nps' && ans.value !== undefined ? (
+                              `NPS: ${ans.value}`
                             ) : (
                               displayValue
                             )}
                           </td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: isNeg ? '#ef4444' : '#475569' }}>
-                            {ptsAwarded} / {field.max_points}
-                          </td>
+                          {template?.form_type !== 'checklist' && (
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: isNeg ? '#ef4444' : '#475569' }}>
+                              {ptsAwarded} / {field.max_points}
+                            </td>
+                          )}
                         </tr>
                       )
                     })}
@@ -1679,9 +2021,15 @@ function calculateFieldScore(field, value) {
   const maxPoints = Number(field.max_points) || 0
   if (maxPoints <= 0) return 0
 
-  if (field.type === 'rating') {
+  if (field.type === 'rating' || field.type === 'rating_10' || field.type === 'slider' || field.type === 'nps') {
     const val = Number(value) || 0
-    return Math.min((val / 5) * maxPoints, maxPoints)
+    const divisor = field.type === 'rating' ? 5 : 10
+    return Math.min((val / divisor) * maxPoints, maxPoints)
+  }
+  if (field.type === 'emoji_rating') {
+    if (value === 'happy') return maxPoints
+    if (value === 'neutral') return maxPoints / 2
+    return 0
   }
   if (field.type === 'yes_no' || field.type === 'checkbox') {
     return (value === true || value === 'yes') ? maxPoints : 0

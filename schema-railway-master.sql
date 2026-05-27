@@ -2311,6 +2311,27 @@ AS $function$
   order by sale_day, branch_name;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.get_sales_count_by_branch_day(p_start timestamp with time zone, p_end timestamp with time zone)
+ RETURNS TABLE(branch_id uuid, branch_name text, sale_day date, sale_count bigint)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select
+    s.branch_id,
+    s.branch_name,
+    date(timezone('Europe/Istanbul', s.sale_datetime)) as sale_day,
+    count(s.id) as sale_count
+  from sales s
+  where s.sale_datetime >= p_start
+    and s.sale_datetime <= p_end
+  group by
+    s.branch_id,
+    s.branch_name,
+    date(timezone('Europe/Istanbul', s.sale_datetime))
+  order by sale_day, branch_name;
+$function$;
+
+
 CREATE OR REPLACE FUNCTION public.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
@@ -3522,6 +3543,7 @@ CREATE TABLE IF NOT EXISTS public.form_templates (
   form_type                TEXT DEFAULT 'inspection',
   schema_json              JSONB NOT NULL,
   target_branches          JSONB DEFAULT '[]'::jsonb,
+  allowed_contexts         JSONB DEFAULT '["center", "branch", "warehouse"]'::jsonb,
   scoring                  JSONB DEFAULT '{}'::jsonb,
   recurrence               JSONB,
   min_completion_seconds   INTEGER,

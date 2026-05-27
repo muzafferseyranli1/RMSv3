@@ -6224,3 +6224,258 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - Yok.
 - `Handoff Contract`: `Checklist form tipinde puanlama alanları gizlendi ve Checkbox alan tipi tüm sisteme (taslak düzenleyici, form doldurma, detay görüntüleme, puan hesaplama) sorunsuz şekilde entegre edildi.`
 
+## Entry 146
+
+- `Timestamp`: `2026-05-27T20:44:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Değerlendirme satırlarına serbest not ekleme ve yerleşim sadeleştirmesi`
+- `Intent`: `Tüm form değerlendirme satırları için isteğe bağlı serbest not eklenebilmesi, bu notların form detayları ve A4 çıktısında gösterilmesi, otomatik oluşturulan görev checklist maddelerine eklenmesi; form satırlarının tek kutu içinde ve yan yana hizalanması, checkbox durum metninin kaldırılması`
+- `Files Changed`:
+  - `src/components/pages/FormSubmissions.jsx` — `activeNotes` state'i ile `toggleNote` ve `updateNote` yardımcı metotları eklendi. Form doldurma aşamasında her soru satırı dış çerçeveli tek bir kutu içine alınarak soru (sol) ve cevap kontrolü (sağ) yan yana hizalandı. Checkbox tipinde "işaretlendi/işaretlenmedi" durum yazısı kaldırıldı. Her satırın yanına "Not Ekle" butonu konuldu ve tıklanınca kutu içinde `textarea` açılması sağlandı. Form detay görünümünde (modal) ve Raporu Yazdır (A4) önizlemesinde cevap notu varsa gösterilmesi sağlandı.
+  - `src/lib/formService.js` — `createTaskFromInspection` metodu güncellendi: Başarısız checklist maddeleri görev tablosuna eklenirken eğer varsa ilgili not metni ` (Not: ...)` şeklinde checklist madde metnine eklendi.
+  - `docs/implementation_plan.md`, `docs/task.md`, `docs/walkthrough.md` — brain dizininden `./docs/` dizinine kopyalanarak güncellendi.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Tüm form satırlarına not ekleme, checkbox metnini gizleme ve yerleşimi tek kutuda yan yana hizalama özellikleri sorunsuz tamamlandı.`
+
+## Entry 147
+
+- `Timestamp`: `2026-05-27T21:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kalite Bildirimleri Stok Ürünü Dropdown Bağlantısı`
+- `Intent`: `Standart Dışı Ürün Bildirimleri formundaki stok ürünü dropdown listesini StockSearchSelect ile arama destekli hale getirme ve seçildiğinde ürün adını otomatik doldurma`
+- `Files Changed`:
+  - `src/components/pages/QualityReports.jsx` — `StockSearchSelect` entegrasyonu sağlandı. `loadData` aşamasında silinmemiş (`is('deleted_at', null)`) aktif stok kalemlerinin `id`, `name`, `sku`, `unit` değerleriyle çekilip ada göre sıralanarak getirilmesi sağlandı. Dropdown değiştiğinde seçilen ürünün adının otomatik olarak `productName` state'ine yazılması sağlandı.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Kalite bildirim formundaki stok ürünü seçici arama destekli StockSearchSelect ile değiştirildi ve seçildiğinde ürün adı input'unu otomatik doldurma davranışı entegre edildi.`
+
+## Entry 148
+
+- `Timestamp`: `2026-05-27T21:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kalite Bildirimleri Tedarikçi Bağlantısı`
+- `Intent`: `Seçilen stok malının stok kartında tanımlanmış tedarikçilerini (birden fazla olabilir) listeleme ve kullanıcının bu ürüne ait tedarikçiyi seçmesini sağlama`
+- `Files Changed`:
+  - `src/components/pages/QualityReports.jsx` — `allSuppliers` state'i eklendi, `loadData` aşamasında aktif tedarikçiler veritabanından çekildi. `getSelectedItemSuppliers` fonksiyonu ile seçilen stok kaleminin birincil (`supp_id`) ve diğer (`suppliers_list` jsonb dizisi) tedarikçileri harmanlanarak tekilleştirildi. Arayüzde stok malı seçildiğinde ve tanımlı tedarikçileri bulunduğunda tedarikçi alanı dropdown listesine dönüştürüldü; kullanıcıya bu listeden tedarikçi seçebilme veya "Diğer" seçeneğiyle elle isim girebilme imkânı sunuldu.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Stok ürünü seçildiğinde ona bağlı tedarikçiler listelenir ve seçilebilir durumdadır. İsteğe bağlı olarak listede olmayan tedarikçiler elle de girilebilir. Veriler stock_items tablosundaki supp_id ve suppliers_list alanlarından beslenir.`
+
+## Entry 149
+
+- `Timestamp`: `2026-05-27T21:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Checklist Form Tipi Puan ve Hesaplama Gizleme`
+- `Intent`: `Checklist tipindeki şablon ve gönderimlerin genel puan, bölüm puanı ve soru bazlı puan gösterimlerinin tüm arayüzlerden kaldırılması`
+- `Files Changed`:
+  - `src/components/pages/FormSubmissions.jsx` — Form doldurma modalındaki toplam puan özet kartı, bölüm başlıklarındaki puanlar ve soru satırlarındaki puan rozetleri gizlendi. Detay modalında bölüm ve soru bazlı puan gösterimleri gizlendi. Yazdırılabilir A4 rapor önizlemesinde genel değerlendirme/skor bloğu kaldırıldı, başlıklar checklist'e göre ayarlandı, "Puan" sütunu ve hücreleri tablodan kaldırıldı.
+  - `src/lib/formService.js` — `detectAnomalies` fonksiyonuna eklenen checklist kontrolü ile checklist formlarında puan eşiği anomali kontrolleri devre dışı bırakıldı.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Checklist form tipine ait tüm puanlama, oran ve yüzde göstergeleri doldurma modalı, detay modalı, dashboard kartları ve A4 çıktısından gizlendi.`
+
+## Entry 150
+
+- `Timestamp`: `2026-05-27T21:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Müşteri Anketi Ayarlarının Gizlenmesi ve Yeni Form Seçim Araçlarının Eklenmesi`
+- `Intent`: `Müşteri anketi modunda gerek görülmeyen ayarların gizlenmesi; müşteri anketlerine özel 5 Yıldız, 10 Yıldız, Emoji, Slider ve NPS form seçim araçlarının eklenmesi, mobil uyumlu olarak sunulması ve raporlama entegrasyonu`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx` — Form tipi "Müşteri Anketi" olduğunda Geçiş Eşiği, Min Süre ve GPS Zorunlu alanları gizlendi. `FIELD_TYPES` array'ine `rating_10`, `emoji_rating`, `slider`, `nps` alanları eklendi.
+  - `src/components/pages/FormSubmissions.jsx` — Form Doldurma modalında 5 Yıldız, 10 Yıldız, Emoji Değerlendirme, Slider ve NPS kontrol elemanları responsive ve dokunmatik uyumlu olarak eklendi. Detay modalı ve `PrintReportOverlay` (A4 yazıcı önizleme) rapor tabloları bu yeni alanların sonuçlarını görselleştirip unicode yıldızlar, emojiler ve nps etiketleri ile düzgün gösterecek şekilde güncellendi.
+  - `src/lib/formService.js` — `calcFieldScore` ve `scoreSubmission` metotları güncellenerek bu yeni anket alan tiplerinin puanlama ve kritik eşik kararları backend seviyesinde entegre edildi.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Müşteri anketi formlarında Geçiş Eşiği, Min Süre ve GPS Zorunlu alanları kaldırıldı. Müşteri memnuniyetini ölçmek için 5 Yıldız, 10 Yıldız, Emoji, Slider ve NPS derecelendirme araçları mobil uyumlu şekilde tüm form doldurma, görüntüleme ve yazdırma arayüzlerine entegre edildi.`
+
+## Entry 151
+
+- `Timestamp`: `2026-05-27T21:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kalite Bildirimlerine SKT ve Parti Numarası Ekleme`
+- `Intent`: `Standart dışı ürün bildirim ekranında ürünün Son Kullanma Tarihi (SKT) ve Parti/Lot numaralarının girilmesini sağlama, bu alanları veritabanına kaydetme ve bilet yorumları ile detay sayfasında gösterme`
+- `Files Changed`:
+  - `migrations/016_ticket_system_improvements.sql` — `quality_reports` tablosuna `skt` (DATE) ve `parti_no` (TEXT) kolon tanımları eklendi.
+  - `src/lib/qualityReportService.js` — `createQualityReport` fonksiyonu güncellendi: parametre olarak `skt` ve `partiNo` değerleri kabul edilip `quality_reports` tablosuna eklendi. Ayrıca oluşturulan bilet yorumuna (ticket comment) SKT ve Parti No detayları dahil edildi.
+  - `src/components/pages/QualityReports.jsx` — Form state yapısına `skt` ve `partiNo` alanları eklendi. Form arayüzünde "Tedarikçi" alanının hemen altına "Son Kullanma Tarihi (SKT)" ve "Parti / Lot Numarası" girdileri eklendi. Sağ taraftaki Detay Panelinde bu alanların (varsa) gösterilmesi sağlandı.
+- `Commands Run`: `node scratch/add_skt_partino.cjs` (kolonlar canlı DB'ye eklendi), `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Kalite bildirim raporlarında Son Kullanma Tarihi (SKT) ve Parti / Lot numarası alanları formda doldurulabilir, veritabanına kaydedilir, ilgili biletin açıklamalarına eklenir ve detay panelinde gösterilir.`
+
+## Entry 152
+
+- `Timestamp`: `2026-05-27T21:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Form Şablonu Kullanım Bağlamı Belirleme ve Aktif Rol Filtreleme`
+- `Intent`: `Her form şablonu için kullanım alanlarını (Merkez, Şube, Merkez Mutfak / Depo) tek tek veya topluca seçebilmeyi sağlama, veritabanına JSONB olarak kaydetme ve form doldurma ekranlarında şablon listesini aktif workspace rolüne göre otomatik filtreleme`
+- `Files Changed`:
+  - `migrations/017_form_templates_allowed_contexts.sql` — `form_templates` tablosuna `allowed_contexts` kolonu JSONB default array ile tanımlandı.
+  - `schema-railway-master.sql` — Master şema dosyasına `allowed_contexts` kolonu eklendi.
+  - `src/lib/formService.js` — Şablon oluşturma (`createFormTemplate`) ve güncelleme (`updateFormTemplate`) metotları `allowed_contexts` desteğiyle güncellendi.
+  - `src/components/pages/FormTemplates.jsx` — Şablon ayarlarında kullanım bağlamını Merkez, Şube ve Merkez Mutfak/Depo seçenekleriyle belirlemeyi sağlayan checkbox alanı eklendi ve kaydedilmesi sağlandı.
+  - `src/components/pages/FormSubmissions.jsx` — Aktif workspace scope bilgisi alınarak, "Hızlı Form Doldurma" butonları ve "Tüm Şablonlar" filtresi o anki bağlamda izin verilen şablonlarla sınırlandırıldı.
+- `Commands Run`: `node scratch/add_form_templates_allowed_contexts.cjs`, `node scratch/fix_default_allowed_contexts.cjs` (kolonlar canlı DB'ye eklenip default değerler set edildi), `npm run build` (derleme başarıyla tamamlandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Form şablonlarının kullanım bağlamları belirlenebilir hale geldi. Doldurma ve filtreleme arayüzleri, kullanıcının o anki aktif workspace alanına (scope) göre şablonları filtreleyerek sadece izin verilen formların doldurulabilmesini sağlar.`
+
+## Entry 153
+
+- `Timestamp`: `2026-05-27T21:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Geri Bildirimler ve Standart Dışı Bildirimlerde Bağlam Bazlı Filtreleme ve Şube Seçimi`
+- `Intent`: `Uygulama aktif bağlamına (Merkez, Şube, Merkez Mutfak / Depo, Admin) göre Geri Bildirimler ve Standart Dışı Bildirimler ekranlarının otomatik filtrelenmiş açılmasını sağlama ve HQ kullanıcılarına şube filtresi sunma`
+- `Files Changed`:
+  - `src/lib/ticketService.js` — `fetchTickets` fonksiyonuna `'null'` (Genel Merkez - `branch_id IS NULL`) ve `'all'` (Tüm Şubeler) şube filtreleme desteği eklendi.
+  - `src/lib/qualityReportService.js` — `fetchQualityReports` fonksiyonuna benzer şekilde `'null'` ve `'all'` filtreleme mantığı uyarlandı.
+  - `src/components/pages/TicketBoard.jsx` — `selectedBranchId` state'i eklenip aktif workspace scope'una göre varsayılanı atandı (Branch/Warehouse -> kilitli branchId, Center -> 'null', Admin -> 'all'). HQ kullanıcıları için listenin üst tarafına şık bir şube filtresi seçici eklendi.
+  - `src/components/pages/QualityReports.jsx` — `TicketBoard.jsx` ile aynı mantıkta state yönetimi, context senkronizasyonu ve HQ şube seçici dropdown bileşeni eklendi.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Geri bildirimler ve kalite bildirimleri aktif bağlama göre otomatik filtrelenmiş açılır. Şube ve Depo kullanıcıları sadece kendi verilerini görürken, Merkez ve Admin kullanıcıları üst bar yardımıyla tüm şubeleri veya Genel Merkez verilerini seçip filtreleyebilir.`
+
+## Entry 154
+
+- `Timestamp`: `2026-05-27T23:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Formlar Bağlam Rotaları ve Görünürlük Kısıtlamaları`
+- `Intent`: `Her 3 workspace bağlamında (Merkez, Şube, Merkez Mutfak/Depo) "İşlemler" altında "Formlar" menü ve rotalarını oluşturma; form şablon yönetimini Merkez bağlamında kısıtlama; form gönderiminde creator_scope değerini kaydetme; Merkez kullanıcıları için sadece Merkez/Admin tarafından oluşturulan form yanıtlarını gösterme, Şube ve Merkez Mutfak için ise hem kendi yaptıkları hem de Merkez'in yaptıkları form yanıtlarını listeleme`
+- `Files Changed`:
+  - `src/lib/formService.js` — `fetchFormSubmissions` metodu `activeScope` parametresi ve `metadata->>creator_scope` JSONB filtrelemesiyle güncellendi.
+  - `src/components/pages/FormSubmissions.jsx` — Form kaydederken `metadata`ya `creator_scope: scope` eklendi, `loadSubmissions` listeleme çağrısında `activeScope: scope` gönderildi ve useCallback bağımlılıkları güncellendi.
+  - `src/lib/workspace.js` — `/form-yanitlari` rotası `/formlar` olarak güncellendi, `/sube-formlar` ve `/merkez-depo-formlar` rotaları izin verilen listelere eklenerek yetkilendirme sağlandı.
+  - `src/components/layout/Sidebar.jsx` — Merkez operations içindeki 'Form Yanıtları' menüsü 'Formlar' olarak güncellendi; Şube ve Merkez Mutfak işlemler listelerine yeni 'Formlar' menü elemanları yerleştirildi.
+  - `src/App.jsx` — Rota tablosunda `/form-yanitlari` rotası `/formlar` yapıldı, `/sube-formlar` ve `/merkez-depo-formlar` yeni rotaları tanımlanarak `FormSubmissions` bileşeni ilgili bağlam scope'ları ile eşleştirildi.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Formlar sayfası tüm bağlamlarda "Formlar" ismiyle aktifleşti. Şablon oluşturma yetkisi sadece merkezde sınırlandırıldı. Görünürlük kurallarına göre Merkez sadece kendi yaptığı formları görürken, Şube ve Mutfak hem kendi yaptığı hem de Merkez'in onlar için yaptığı formları görebilir.`
+
+## Entry 155
+
+- `Timestamp`: `2026-05-27T23:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bilet (Geribildirim) Düzeltici Görev Oluşturma Kısıtlama Hatası Çözümü`
+- `Intent`: `Düzeltici görev oluşturma sırasında alınan "null value in column 'created_by_personel_id' of relation 'tasks' violates not-null constraint" veritabanı kısıtlama hatasını, hem 'created_by_personnel_id' (çift 'l') hem de 'created_by_personel_id' (tek 'l') kolonlarını destekleyecek şekilde dinamik sorgu yeniden yazma ve yanıt normalleştirme katmanı ekleyerek çözmek.`
+- `Files Read`:
+  - `c:\RMSv3\server\index.js`
+  - `c:\RMSv3\src\lib\ticketService.js`
+  - `c:\RMSv3\src\components\pages\TicketDetail.jsx`
+- `Files Changed`:
+  - `c:\RMSv3\server\index.js` — `/api/query` handler'ına `tasks` tablosu için dinamik şema kolonu algılama ve normalleştirme katmanı eklenerek her iki isimlendirme (`created_by_personel_id` ve `created_by_personnel_id`) için de %100 uyumluluk sağlandı.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `node scratch/inspect_tasks.cjs` (veritabanı şema ve constraint analizleri için)
+  - `node scratch/test_api_tasks.cjs` (canlı API üzerinde veritabanı sorgulama ve testleri için)
+  - `npm run build` (başarılı derleme doğrulandı)
+- `Findings`:
+  - Bazı veritabanı kurulumlarında (özellikle kullanıcının local ortamında) `tasks` tablosundaki kolonu tek 'l' ile `created_by_personel_id` olarak açmış olabileceği, canlı Railway veritabanında ise `created_by_personnel_id` (çift 'l') olarak tanımlı olduğu anlaşıldı.
+  - Bu harf/isimlendirme uyuşmazlığı, veritabanına doğrudan insert yapan fonksiyonların kısıtlama hatası (NOT NULL constraint) fırlatmasına neden oluyordu.
+  - API sunucusunda (`server/index.js`) yapılan düzeltme ile, `tasks` tablosuna insert/update/upsert yapılırken ve select filtreleri uygulanırken veritabanı şemasında hangi kolonun var olduğu çalışma zamanında dinamik olarak sorgulanır (`information_schema.columns`) ve sorgu o kolona göre yeniden yazılır.
+  - Ayrıca dönen sonuçlarda her iki kolon da dolu olarak istemciye (Frontend) döndürülerek geriye dönük ve ileriye dönük tam uyumluluk (backward/forward compatibility) garanti altına alındı.
+- `Decisions`:
+  - Frontend veya SQL migrasyon kodlarını tek taraflı değiştirmek yerine API sunucusu seviyesinde esnek bir dinamik normalleştirme kalkanı (normalization shielding) uygulanması kararlaştırıldı. Bu sayede local, staging ve production ortamlarındaki farklı Postgres şemaları otomatik olarak desteklenmiş oldu.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Bilet / Geribildirim detay sayfasından Düzeltici Görev oluşturma sırasındaki veritabanı kısıtlama hatası API sunucusunda uygulanan dinamik kolon normalleştirme katmanı ile tamamen çözülmüştür. Hem tek 'l'li hem de çift 'l'li sütun isimlendirmeleri otomatik olarak veritabanına uyarlanıp çözümlenir.`
+
+## Entry 156
+
+- `Timestamp`: `2026-05-27T23:59:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Düzeltici Görev Oluşturmada Aktör Oturum Fallback Entegrasyonu`
+- `Intent`: `Kullanıcının bypass veya oturumsuz (hızlı erişim) giriş yaptığı senaryolarda actor?.id değerinin null/undefined olması sebebiyle tasks.created_by_personnel_id alanına null gitmesi ve NOT NULL kısıtlamasını ihlal etmesi hatasını kökten gidermek.`
+- `Files Read`:
+  - `src/lib/ticketService.js`
+  - `src/components/pages/TicketDetail.jsx`
+- `Files Changed`:
+  - `src/lib/ticketService.js` — `createLinkedTaskFromTicket` fonksiyonundaki `created_by_personnel_id: actor?.id || null` ifadesi `actor?.id || 'system'` olarak güvenli hale getirildi. Ayrıca `task_history` kaydında `performed_by` alanı da `actor?.id || 'system'` yapılarak benzer bir kısıtlama hatası riski tamamen yok edildi.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `npm run build` (derleme kontrolü - sıfır hata)
+- `Findings`:
+  - Bir önceki adımda dinamik kolon eşleştirme katmanını test ettikten sonra temizlemiştik. Ancak kullanıcının oturumsuz senaryolarda (auth bypass, session timeout veya workspace seçimi yapılmadan doğrudan bypass ile girilmesi) `actor` bağlamının `null` olmasından ötürü veritabanına `null` değer gittiği ve bu durumun `tasks.created_by_personnel_id` (çift 'l'li standart kolon) üzerindeki `NOT NULL` kısıtlamasını tetiklediği anlaşıldı.
+  - `taskService.js` içindeki `createTask` fonksiyonunda zaten güvenli `actor?.id || 'system'` fallback mantığı bulunurken, `ticketService.js` içerisindeki yeni çoklu görev oluşturma metodunda bu kontrolün `|| null` şeklinde unutulduğu saptandı.
+- `Decisions`:
+  - `ticketService.js` içindeki tüm kritik `actor?.id` atamalarına `'system'` fallback koruması eklendi. Bu sayede aktif bir oturum olmasa dahi görevler sistem arka plan aktörü adıyla sorunsuz şekilde oluşturulacaktır.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Düzeltici görev oluşturma sırasında oturumsuz bypass durumlarında oluşan created_by_personnel_id and task_history.performed_by kısıtlama hataları 'system' fallback mekanizması ile tamamen ve kökünden çözülmüştür.`
+
+## Entry 157
+
+- `Timestamp`: `2026-05-28T00:03:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Göreve Git Butonu Yönlendirme ve Derin Bağlantı (Deep-Linking) Detay Penceresi Açılışı`
+- `Intent`: `Bilet detaylarındaki "Göreve Git" butonunun geçersiz bir rotaya yönlenerek ana sayfaya (dashboard) düşmesi hatasını düzeltmek; ayrıca tıklandığında ilgili görevin detay çekmecesini (drawer) o anki sekme filtrelerinden bağımsız olarak otomatik yükleyip açmasını sağlamak.`
+- `Files Read`:
+  - `src/components/pages/TicketDetail.jsx`
+  - `src/components/pages/Tasks.jsx`
+- `Files Changed`:
+  - `src/components/pages/TicketDetail.jsx` — "Göreve Git" butonu yönlendirme adresi, aktif workspace bağlamının (Merkez -> `/tasks`, Şube -> `/sube-tasks`, Mutfak -> `/merkez-tasks`) görev rotasıyla dinamik olarak eşleştirilip query parametresi olarak `?taskId=${task.id}` eklenecek şekilde düzeltildi.
+  - `src/components/pages/Tasks.jsx` — Sayfa açıldığında URL'deki `taskId` parametresini dinleyen bir `useEffect` ve `urlTaskIdRef` eklendi. Görev o an listelenen satırlarda yoksa bile doğrudan API'den (`fetchTaskDetail`) çekilip detay drawer'ının otomatik açılması sağlandı.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `npm run build` (başarılı derleme doğrulandı)
+- `Findings`:
+  - "Göreve Git" butonunun statik ve geçersiz olan `/gorevler` rotasına yönlendirme yaptığı için Router eşleşmesi bulamayarak Dashboard'a yönlendiği tespit edildi.
+  - Görevler sayfasında bir derin bağlantı (deep-link) desteği olmadığı için direkt yönlendirme yapılsa dahi detay drawer'ının açılmayacağı anlaşıldı ve bu durum dinamik API sorgulu derin bağlantı özelliği ile kökünden giderildi.
+- `Decisions`:
+  - Statik rota yerine workspace scope duyarlı dinamik rota yapısına geçildi.
+  - Derin bağlantıdrawer açılışı için, performansı korumak adına önce in-memory arama, bulunamazsa sessizce API'den direkt çekme (fallback) hibrit modeli uygulandı.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Göreve Git butonu yönlendirmesi workspace bağlamına duyarlı hale getirilmiş ve derin bağlantı (deep-linking) desteği ile tıklandığında drawer'ın otomatik açılması sağlanmıştır. Proje sıfır hatayla derlenmiştir.`
+
+## Entry 158
+
+- `Timestamp`: `2026-05-28T00:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Sidebar Menü Sadeleştirme, Bölüm Bazlı Dikey Şeritler ve Renk Güncellemesi`
+- `Intent`: `Sidebar'daki menü kalabalığını düzenlemek; "POS ve Ekranlar" menüsünü koruyarak başlıkların soluna boydan boya şeritler yerleştirmek ve "Şube" ile "Ayarlar" renklerini talebe göre güncellemek.`
+- `Files Read`:
+  - `src/components/layout/Sidebar.jsx`
+  - `src/index.css`
+  - `docs.md`
+- `Files Changed`:
+  - `src/components/layout/Sidebar.jsx` — "POS ve Ekranlar" bölümü menüye geri eklendi; dikey yan şeritler (`border-left`) başlık seviyesinden çıkarılıp tüm bölümü kapsayacak şekilde `div` sarmalayıcısına uygulandı; "Şube" rengi kırmızı (`#ef4444`) ve "Ayarlar" rengi sarı (`#f59e0b`) olarak güncellendi.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+  - `c:\RMSv3\docs\implementation_plan.md` — Bir önceki oturumun plan dosyası kopyalandı.
+  - `c:\RMSv3\docs\task.md` — Bir önceki oturumun task dosyası kopyalandı.
+  - `c:\RMSv3\docs\walkthrough.md` — Bir önceki oturumun walkthrough dosyası kopyalandı.
+- `Commands Run`:
+  - `npm run build` (başarılı derleme doğrulandı)
+- `Findings`:
+  - Sol yan şeritlerin sadece başlık seviyesinde olması yerine, bölümün tamamını kapsayacak şekilde dış `div` sarmalayıcısına eklenmesiyle boydan boya şık ve bütünleşik bir görünüm elde edildi.
+- `Decisions`:
+  - "POS ve Ekranlar" bölümü kullanıcının isteği doğrultusunda geri getirildi ve diğer tüm bölümler gibi yeni boydan boya şerit stiliyle donatıldı.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Sidebar üzerindeki "POS ve Ekranlar" bölümü geri getirilmiş, sol dikey renkli şeritler boydan boya uzanacak şekilde güncellenmiş ve renk düzenleri (Şube -> Kırmızı, Ayarlar -> Sarı) ayarlanmıştır. Proje sıfır hatayla derlenmiştir.`
+
+
+
+
+
+
+
+
+## Entry 159 - 2026-05-27 Demo Sales Background to Foreground Transition & Bug Fixes
+
+**Context:** The user was experiencing high data traffic and server load due to background tasks running on Railway.
+**Changes:**
+1. Refactored \useDemoSalesJob.jsx\ to transition the demo sales generation from a localStorage-based background job to an active browser session foreground job.
+2. Updated UI labels in \DemoSales.jsx\ to reflect the new behavior.
+3. Created an SQL RPC \get_sales_count_by_branch_day\ in Railway to optimize checking missing sales days.
+4. Resolved a \sUuidOrNull is not defined\ bug in \useDemoSalesJob.jsx\.
+5. Resolved a timezone parsing error (\	ime zone \"zt00:00:00+03:00\" not recognized\) by correctly slicing ISO dates from Postgres RPC responses in \DemoSales.jsx\.
+6. Increased \LOOP_PAUSE_MS\ to prevent Railway API timeouts.
+

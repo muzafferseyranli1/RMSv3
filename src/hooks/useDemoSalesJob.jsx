@@ -1,4 +1,4 @@
-﻿import { useMemo, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { db } from '@/lib/db'
 import { normalizeDemoSalesSettings } from '@/lib/demoSalesSettings'
 import {
@@ -8,14 +8,13 @@ import {
   prepareDemoGeneration,
 } from '@/lib/demoSalesGenerator'
 
-const JOB_STORAGE_KEY = 'suitable_demo_sales_job_v1'
-const SALES_INSERT_CHUNK = 40
-const LINES_INSERT_CHUNK = 80
-const PAYMENTS_INSERT_CHUNK = 60
-const MOVEMENTS_INSERT_CHUNK = 120
-const SALE_ID_QUERY_CHUNK = 50
+const SALES_INSERT_CHUNK = 20
+const LINES_INSERT_CHUNK = 40
+const PAYMENTS_INSERT_CHUNK = 30
+const MOVEMENTS_INSERT_CHUNK = 60
+const SALE_ID_QUERY_CHUNK = 20
 const SALE_ID_DELETE_CHUNK = 10
-const LOOP_PAUSE_MS = 450
+const LOOP_PAUSE_MS = 2000
 
 const IDLE_JOB = {
   id: null,
@@ -47,29 +46,11 @@ function sleep(ms) {
 }
 
 function readStoredJob() {
-  if (typeof window === 'undefined') return IDLE_JOB
-  try {
-    const raw = window.localStorage.getItem(JOB_STORAGE_KEY)
-    if (!raw) return IDLE_JOB
-    const parsed = JSON.parse(raw)
-    return {
-      ...IDLE_JOB,
-      ...parsed,
-      queue: Array.isArray(parsed?.queue) ? parsed.queue : [],
-      branches: Array.isArray(parsed?.branches) ? parsed.branches : [],
-    }
-  } catch {
-    return IDLE_JOB
-  }
+  return IDLE_JOB
 }
 
 function writeStoredJob(job) {
-  if (typeof window === 'undefined') return
-  if (!job || job.status === 'idle') {
-    window.localStorage.removeItem(JOB_STORAGE_KEY)
-    return
-  }
-  window.localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(job))
+  // Foreground only, no persistence
 }
 
 function normalizeText(value) {
@@ -77,6 +58,11 @@ function normalizeText(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+function asUuidOrNull(value) {
+  const str = String(value || '').trim()
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str) ? str : null
 }
 
 function chunkArray(list, size) {
@@ -363,6 +349,7 @@ async function generateBranchDay(branchItem, runtime) {
   const receipts = buildBranchDayReceipts({
     branch,
     isoDay: branchItem.isoDay,
+    existingCount: branchItem.existingCount || 0,
     generator: runtime.generator,
   })
 

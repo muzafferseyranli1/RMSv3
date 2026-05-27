@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { useToast } from '@/hooks/useToast'
 import { useDemoSalesJob } from '@/hooks/useDemoSalesJob'
@@ -119,8 +119,9 @@ function buildBranchSummaryResult({
   movementStatusRows,
   startIsoDay,
   endIsoDay,
+  settings,
 }) {
-  const summary = buildMissingSalesSummary(branches, salesRows, startIsoDay, endIsoDay)
+  const summary = buildMissingSalesSummary(branches, salesRows, startIsoDay, endIsoDay, settings)
   const branchByKey = new Map(
     branches
       .map(branch => [normalizeBranchKey(branch.branchId, branch.branchName), branch])
@@ -134,7 +135,7 @@ function buildBranchSummaryResult({
       return {
         branchId: branch.branchId,
         branchName: branch.branchName,
-        isoDay: row.sale_day,
+        isoDay: String(row.sale_day || '').slice(0, 10),
       }
     })
     .filter(Boolean)
@@ -180,7 +181,7 @@ export default function DemoSales() {
   const DEMO_SALES_BASE_DATE = activeScanWindow.startIsoDay
 
   async function fetchSalesPresenceChunk(startIsoDay, endIsoDay) {
-    const { data, error } = await db.rpc('get_sales_presence_by_branch_day', {
+    const { data, error } = await db.rpc('get_sales_count_by_branch_day', {
       p_start: `${startIsoDay}T00:00:00+03:00`,
       p_end: `${endIsoDay}T23:59:59+03:00`,
     })
@@ -191,6 +192,7 @@ export default function DemoSales() {
       branch_id: row.branch_id,
       branch_name: row.branch_name,
       sale_datetime: `${row.sale_day}T12:00:00+03:00`,
+      sale_count: Number(row.sale_count) || 0,
     }))
   }
 
@@ -370,6 +372,7 @@ export default function DemoSales() {
         movementStatusRows: fallback.movementStatusRows,
         startIsoDay,
         endIsoDay,
+        settings: currentSettings,
       })
     }
 
@@ -393,6 +396,7 @@ export default function DemoSales() {
       movementStatusRows,
       startIsoDay,
       endIsoDay,
+      settings: currentSettings,
     })
   }
 
@@ -489,7 +493,7 @@ export default function DemoSales() {
     <div>
       <Header
         title="Demo Satış Yap"
-        subtitle="Eksik günler ve eksik stok hareketleri için arka planda demo satış kuyruğu çalıştırın"
+        subtitle="Eksik günler ve eksik stok hareketleri için satış kuyruğu çalıştırın"
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-o" onClick={rescan} disabled={scanState.loading || progress.running}>
@@ -511,8 +515,7 @@ export default function DemoSales() {
             <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Çalışma Mantığı</div>
             <div style={{ color: '#475569', lineHeight: 1.65, fontSize: '.92rem' }}>
               Bu araç <strong>{formatDisplayDate(DEMO_SALES_BASE_DATE)}</strong> tarihinden bugüne kadar tüm şubeleri tarar, eksik kalan şube-günleri
-              ve stok hareketi olmayan demo satış günlerini bulur. Başlattığınız anda iş kuyruğa alınır; siz başka sayfaya
-              geçseniz de aynı tarayıcı oturumunda arka planda küçük parçacıklar halinde devam eder.
+              ve stok hareketi olmayan demo satış günlerini bulur. Başlattığınız anda iş kuyruğa alınır; işlem <strong>sadece bu sayfa açık kaldığı sürece</strong> devam eder. Sekmeyi kapatırsanız işlem durur. Sunucuyu yormamak adına küçük parçacıklar halinde ilerler.
             </div>
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
@@ -661,7 +664,7 @@ export default function DemoSales() {
                     <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#b45309' }}>{scanState.summary?.repairBranchDayCount || 0}</div>
                   </div>
                   <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontSize: '.76rem', color: '#64748b' }}>Toplam arka plan işi</div>
+                    <div style={{ fontSize: '.76rem', color: '#64748b' }}>Toplam İşlem</div>
                     <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>{scanState.summary?.totalWorkCount || 0}</div>
                   </div>
                 </div>
@@ -670,12 +673,12 @@ export default function DemoSales() {
                   {progress.status === 'running' ? (
                     <button className="btn-p" onClick={pauseJob}>
                       <i className="fa-solid fa-pause" style={{ marginRight: 6 }} />
-                      Arka Planı Duraklat
+                      İşlemi Duraklat
                     </button>
                   ) : (
                     <button className="btn-p" onClick={generateDemoSales} disabled={scanState.loading || !!scanState.error}>
                       <i className="fa-solid fa-wand-magic-sparkles" style={{ marginRight: 6 }} />
-                      Arka Planda Başlat
+                      Üretimi Başlat
                     </button>
                   )}
 
@@ -694,9 +697,9 @@ export default function DemoSales() {
                   )}
                 </div>
 
-                <div style={{ fontSize: '.8rem', color: '#64748b', lineHeight: 1.6 }}>
-                  Başlattıktan sonra bu sayfada kalmanız gerekmez. Üretim arka planda küçük parçalar halinde ilerler;
-                  mevcut satışı olan günler yeniden yazılmaz, stok hareketi eksik olan günler onarılır.
+                <div style={{ fontSize: '.8rem', color: '#dc2626', lineHeight: 1.6, fontWeight: 600 }}>
+                  DİKKAT: Üretimin devam etmesi için bu sayfayı AÇIK TUTMANIZ gerekmektedir. Sayfadan ayrılırsanız işlem durur.
+                  Mevcut satışı olan günler yeniden yazılmaz (eksiklik varsa üzerine eklenir), stok hareketi eksik olan günler onarılır.
                 </div>
               </div>
             )}

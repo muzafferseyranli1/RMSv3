@@ -257,6 +257,7 @@ export default function Tasks({ scope = 'center' }) {
   const [searchParams] = useSearchParams()
   const workspace = useWorkspace()
   const taskPrefillAppliedRef = useRef(false)
+  const urlTaskIdRef = useRef(null)
   const [actor, setActor] = useState(null)
   const [actorError, setActorError] = useState('')
   const [branchOptions, setBranchOptions] = useState([])
@@ -421,6 +422,28 @@ export default function Tasks({ scope = 'center' }) {
     })
     setCreateOpen(true)
   }, [actor, searchParams])
+
+  useEffect(() => {
+    const tid = searchParams.get('taskId')
+    if (tid && urlTaskIdRef.current !== tid) {
+      // Find in local rows first
+      const found = taskRows.find(t => String(t.id) === tid)
+      if (found) {
+        urlTaskIdRef.current = tid
+        openTask(found)
+      } else if (taskRows.length > 0) {
+        // If local rows are loaded but task is not found, fetch it directly
+        urlTaskIdRef.current = tid
+        setDetailLoading(true)
+        fetchTaskDetail(tid).then(result => {
+          if (!result.error && result.data) {
+            setSelectedTask(result.data)
+          }
+          setDetailLoading(false)
+        })
+      }
+    }
+  }, [searchParams, taskRows])
 
   async function openTask(task) {
     setDetailLoading(true)

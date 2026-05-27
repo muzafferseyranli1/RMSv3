@@ -704,7 +704,11 @@ function pickProductForReceipt(random, poolProfile, selectedProductIds) {
     return productId ? !selectedProductIds.has(productId) : true
   })
 
-  const picked = pickWeighted(random, fresh.length ? fresh : poolProfile.items, entry => entry.weight)
+  const picked = pickWeighted(random, fresh.length ? fresh : poolProfile.items, entry => {
+    // Ürün çeşitliliğini artırmak için ağırlıklara rastgele dalgalanma (jitter) ekliyoruz
+    const jitter = 0.4 + (random() * 1.6) // 0.4x ile 2.0x arası dalgalanma
+    return entry.weight * jitter
+  })
   return picked?.productCtx || null
 }
 
@@ -970,17 +974,20 @@ export function resolveScanWindow(settingsOrEndDate = {}, maybeEndDate = new Dat
   }
 }
 
-export function buildMissingSalesSummary(branches, salesRows, startIsoDay, endIsoDay) {
+export function buildMissingSalesSummary(branches, salesRows, startIsoDay, endIsoDay, settings) {
+  const safeSettings = normalizeDemoSalesSettings(settings || {})
+  const minRequiredSales = Math.max(1, Math.round(Number(safeSettings.receiptCountMin) * 0.4))
+  
   const allDays = listIsoDays(startIsoDay, endIsoDay)
-  const existing = new Set(
-    (salesRows || [])
-      .map(row => {
-        const branchKey = getBranchPresenceKey(row?.branch_id, row?.branch_name)
-        if (!branchKey || !row?.sale_datetime) return null
-        return `${branchKey}::${formatIsoDay(new Date(row.sale_datetime))}`
-      })
-      .filter(Boolean)
-  )
+  const existingCounts = new Map()
+  
+  ;(salesRows || []).forEach(row => {
+    const branchKey = getBranchPresenceKey(row?.branch_id, row?.branch_name)
+    if (!branchKey || !row?.sale_datetime) return
+    const key = `${branchKey}::${formatIsoDay(new Date(row.sale_datetime))}`
+    const count = Number(row.sale_count) || 1
+    existingCounts.set(key, (existingCounts.get(key) || 0) + count)
+  })
 
   const missingBranchDays = []
   const missingByBranch = new Map()
@@ -991,8 +998,18 @@ export function buildMissingSalesSummary(branches, salesRows, startIsoDay, endIs
     if (!branchKey) return
     allDays.forEach(isoDay => {
       const key = `${branchKey}::${isoDay}`
-      if (existing.has(key)) return
-      missingBranchDays.push({ branchId: branch.branchId, branchName: branch.branchName, isoDay })
+      const currentCount = existingCounts.get(key) || 0
+      
+      // If it has enough sales, skip it
+      if (currentCount >= minRequiredSales) return
+      
+      missingBranchDays.push({ 
+        branchId: branch.branchId, 
+        branchName: branch.branchName, 
+        isoDay,
+        existingCount: currentCount 
+      })
+      
       missingByBranch.set(branch.branchId, {
         branch,
         count: (missingByBranch.get(branch.branchId)?.count || 0) + 1,
@@ -1160,14 +1177,18 @@ export function findFastSalesChannel(channels) {
   return list.find(channel => normalizeText(channel?.name).includes('hizli')) || list[0] || null
 }
 
-export function buildBranchDayReceipts({ branch, isoDay, generator }) {
+export function buildBranchDayReceipts({ branch, isoDay, existingCount = 0, generator }) {
   const branchProfile = generator.branchProfiles.get(branch.branchId)
   if (!branchProfile) return []
 
   branchProfile.settings = generator.settings
   const menuProfile = buildBranchDayMenuProfile(branch, isoDay, generator.categoryPools)
   const { receiptCount, receiptAverage } = getDailyReceiptPlan(branchProfile, isoDay, generator.settings)
-  const targets = buildReceiptTargets(branchProfile, receiptCount, receiptAverage, `${branch.branchId}:${isoDay}`)
+  
+  const targetCount = Math.max(0, receiptCount - existingCount)
+  if (targetCount <= 0) return []
+
+  const targets = buildReceiptTargets(branchProfile, targetCount, receiptAverage, `${branch.branchId}:${isoDay}`)
 
   return targets
     .filter(amount => amount > 0)

@@ -6,7 +6,11 @@ import { useToast } from '@/hooks/useToast'
 const FIELD_TYPES = [
   { value: 'yes_no', label: 'Evet/Hayır', icon: 'fa-toggle-on' },
   { value: 'checkbox', label: 'Onay Kutusu', icon: 'fa-square-check' },
-  { value: 'rating', label: 'Puan (1-5)', icon: 'fa-star' },
+  { value: 'rating', label: '5 Yıldız Değerlendirme', icon: 'fa-star' },
+  { value: 'rating_10', label: '10 Yıldız Değerlendirme', icon: 'fa-star-half-stroke' },
+  { value: 'emoji_rating', label: 'Emoji Değerlendirme', icon: 'fa-face-smile' },
+  { value: 'slider', label: 'Slider Kaydırıcı', icon: 'fa-sliders' },
+  { value: 'nps', label: 'NPS Değerlendirme (0-10)', icon: 'fa-gauge-high' },
   { value: 'number', label: 'Sayı', icon: 'fa-hashtag' },
   { value: 'temperature', label: 'Sıcaklık', icon: 'fa-temperature-half' },
   { value: 'text', label: 'Metin', icon: 'fa-font' },
@@ -77,6 +81,7 @@ export default function FormTemplates() {
       require_geo: false,
       min_completion_seconds: null,
       scoring: { pass_threshold: 70 },
+      allowed_contexts: ['center', 'branch', 'warehouse'],
     })
     setSchemaJson({ sections: [EMPTY_SECTION()] })
   }
@@ -90,6 +95,7 @@ export default function FormTemplates() {
       require_geo: template.require_geo || false,
       min_completion_seconds: template.min_completion_seconds,
       scoring: template.scoring || { pass_threshold: 70 },
+      allowed_contexts: template.allowed_contexts || ['center', 'branch', 'warehouse'],
     })
     
     // Normalize max_points for select fields to be the sum of option points
@@ -135,6 +141,7 @@ export default function FormTemplates() {
       requireGeo: editing.require_geo,
       minCompletionSeconds: editing.min_completion_seconds || null,
       createdBy: user?.id,
+      allowedContexts: editing.allowed_contexts || ['center', 'branch', 'warehouse'],
     }
 
     if (editing.id) {
@@ -146,6 +153,7 @@ export default function FormTemplates() {
         scoring: payload.scoring,
         require_geo: payload.requireGeo,
         min_completion_seconds: payload.minCompletionSeconds,
+        allowed_contexts: payload.allowedContexts,
       })
       if (error) return toast('Güncelleme başarısız', 'error')
       toast('Şablon güncellendi', 'success')
@@ -366,7 +374,7 @@ export default function FormTemplates() {
               style={{ resize: 'vertical' }}
             />
           </div>
-          {editing.form_type !== 'checklist' && (
+          {editing.form_type !== 'checklist' && editing.form_type !== 'customer_survey' && (
           <div>
             <label className="f-label">Geçiş Eşiği (%)</label>
             <input
@@ -378,6 +386,7 @@ export default function FormTemplates() {
             />
           </div>
           )}
+          {editing.form_type !== 'customer_survey' && (
           <div>
             <label className="f-label">Min. Süre (saniye)</label>
             <input
@@ -388,9 +397,45 @@ export default function FormTemplates() {
               className="f-input"
             />
           </div>
+          )}
+          {editing.form_type !== 'customer_survey' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
             <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
+          </div>
+          )}
+
+          <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+            <label className="f-label" style={{ marginBottom: 8, display: 'block' }}>Kullanım Bağlamı / Alanı</label>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {[
+                { val: 'center', label: 'Merkez' },
+                { val: 'branch', label: 'Şube' },
+                { val: 'warehouse', label: 'Merkez Mutfak / Depo' }
+              ].map(ctx => {
+                const allowedList = editing.allowed_contexts || ['center', 'branch', 'warehouse']
+                const isChecked = allowedList.includes(ctx.val)
+                return (
+                  <label key={ctx.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: 'var(--text-strong)' }}>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={e => {
+                        let newList = [...allowedList]
+                        if (e.target.checked) {
+                          if (!newList.includes(ctx.val)) newList.push(ctx.val)
+                        } else {
+                          newList = newList.filter(item => item !== ctx.val)
+                        }
+                        setEditing(p => ({ ...p, allowed_contexts: newList }))
+                      }}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                    />
+                    <span>{ctx.label}</span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

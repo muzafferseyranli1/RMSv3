@@ -1,11 +1,5 @@
-# Müşteri Arama ve Kayıt Görev Listesi
-
-- [x] Autocomplete state ve handlers tanımı (`CallCenter.jsx`)
-- [x] Telefon ve Ad Soyad input alanlarına autocomplete önerileri eklenmesi (`CallCenter.jsx`)
-- [x] Mükerrer kayıt engelleme ve yeni müşteri kaydetme akışı (`CallCenter.jsx`)
-- [x] Müşterilerin "Geri Bildirimden Gelen" kategorisine atanması (`CallCenter.jsx`)
-- [x] "Geri Bildirimden Gelen" kategorisinin UI üzerinde listenin sonunda eksikse gösterilmesi (`LoyaltyCustomerCategories.jsx`)
-- [x] Kategori silme ve düzenleme engellerinin kontrolü
-- [x] Çağrı Merkezi sipariş listesi filtresine büyüteç ikonlu arama butonu eklenmesi (`CallCenter.jsx`)
-- [x] Şube yöneticisi bağlamında görünmeyen "Şube İşlemleri" menüsünün mojibake düzeltmesi ile görünür kılınması (`Sidebar.jsx`)
-- [x] `npm run build:web` ile derleme doğrulaması
+- `[x]` 1. Veritabanında (Railway) satış sayılarını döndüren `get_sales_count_by_branch_day` RPC fonksiyonunu oluşturmak için gerekli SQL'in tespit edilip/uygulanması.
+- `[x]` 2. `DemoSales.jsx` dosyasında arka plan iş mantığının kaldırılarak, işlemi ekranda tutan (foreground) React state tabanlı mekanizmanın yazılması.
+- `[x]` 3. `useDemoSalesJob.jsx` kancasının (hook) yeniden yazılarak `localStorage` ve arka plan döngüsünden temizlenmesi, `chunk` boyutlarının küçültülmesi.
+- `[x]` 4. `demoSalesGenerator.js` dosyasında eksik günleri (top-up) hesaplayan algoritmanın uygulanması ve ürün çeşitliliğinin (variety) artırılması.
+- `[x]` 5. Değişikliklerin test edilmesi ve `walkthrough.md` ile doğrulanması.

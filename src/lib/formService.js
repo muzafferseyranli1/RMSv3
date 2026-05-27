@@ -25,13 +25,14 @@ export async function fetchFormTemplateDetail(templateId) {
   return db.from('form_templates').select('*').eq('id', templateId).maybeSingle()
 }
 
-export async function createFormTemplate({ title, description, formType = 'inspection', schemaJson, targetBranches = [], scoring = {}, recurrence, minCompletionSeconds, requireGeo = false, createdBy }) {
+export async function createFormTemplate({ title, description, formType = 'inspection', schemaJson, targetBranches = [], allowedContexts = ['center', 'branch', 'warehouse'], scoring = {}, recurrence, minCompletionSeconds, requireGeo = false, createdBy }) {
   return db.from('form_templates').insert({
     title,
     description: description || null,
     form_type: formType,
     schema_json: schemaJson,
     target_branches: targetBranches,
+    allowed_contexts: allowedContexts,
     scoring,
     recurrence: recurrence || null,
     min_completion_seconds: minCompletionSeconds || null,
@@ -46,6 +47,7 @@ export async function updateFormTemplate(templateId, updates) {
   // Prevent overwriting keys not explicitly provided
   if (!('schema_json' in updates)) delete payload.schema_json
   if (!('target_branches' in updates)) delete payload.target_branches
+  if (!('allowed_contexts' in updates)) delete payload.allowed_contexts
   if (!('scoring' in updates)) delete payload.scoring
   return db.from('form_templates').update(payload).eq('id', templateId).select().maybeSingle()
 }
@@ -56,11 +58,16 @@ export async function softDeleteFormTemplate(templateId) {
 
 // ─── Form Submissions ───────────────────────────────────────
 
-export async function fetchFormSubmissions({ branchId, templateId, status, limit = 100, offset = 0 } = {}) {
+export async function fetchFormSubmissions({ branchId, templateId, status, activeScope, limit = 100, offset = 0 } = {}) {
   let query = db.from('form_submissions').select('*').order('created_at', { ascending: false })
   if (branchId) query = query.eq('branch_id', branchId)
   if (templateId) query = query.eq('template_id', templateId)
   if (status) query = query.eq('status', status)
+  
+  if (activeScope === 'center' || activeScope === 'admin') {
+    query = query.or('metadata->>creator_scope.is.null,metadata->>creator_scope.eq.center,metadata->>creator_scope.eq.admin')
+  }
+
   query = query.range(offset, offset + limit - 1)
   const { data, error } = await query
   return { data: toArray(data), error }
@@ -117,11 +124,22 @@ export function scoreSubmission(schemaJson, answersJson) {
       let pointsAwarded = 0
       let isNegative = false
 
-      if (field.type === 'rating') {
-        const ratingValue = Number(answer.value) || 0
-        pointsAwarded = Math.min((ratingValue / 5) * maxPoints, maxPoints)
-        if (field.is_critical && ratingValue < 3) {
+      if (field.type === 'rating' || field.type === 'rating_10' || field.type === 'slider' || field.type === 'nps') {
+        const val = Number(answer.value) || 0
+        const divisor = field.type === 'rating' ? 5 : 10
+        pointsAwarded = Math.min((val / divisor) * maxPoints, maxPoints)
+        const criticalThreshold = field.type === 'rating' ? 3 : 6
+        if (field.is_critical && val < criticalThreshold) {
           isNegative = true
+        }
+      } else if (field.type === 'emoji_rating') {
+        if (answer.value === 'happy') {
+          pointsAwarded = maxPoints
+        } else if (answer.value === 'neutral') {
+          pointsAwarded = maxPoints / 2
+        } else {
+          pointsAwarded = 0
+          if (field.is_critical) isNegative = true
         }
       } else if (field.type === 'yes_no') {
         const isYes = answer.value === true || answer.value === 'yes'
@@ -205,6 +223,8 @@ export function scoreSubmission(schemaJson, answersJson) {
 
 export function detectAnomalies(template, submission) {
   const anomalies = []
+  if (template.form_type === 'checklist') return anomalies
+
 
   // Pencil-whipping: too fast completion
   if (template.min_completion_seconds && submission.completion_time_seconds) {
@@ -330,7 +350,15 @@ function calcFieldScore(field, value) {
   if (value === null || value === undefined || value === '') return null
   const maxPoints = Number(field.max_points) || 0
   if (maxPoints <= 0) return 0
-  if (field.type === 'rating') return Math.min((Number(value) || 0) / 5 * maxPoints, maxPoints)
+  if (field.type === 'rating' || field.type === 'rating_10' || field.type === 'slider' || field.type === 'nps') {
+    const divisor = field.type === 'rating' ? 5 : 10
+    return Math.min((Number(value) || 0) / divisor * maxPoints, maxPoints)
+  }
+  if (field.type === 'emoji_rating') {
+    if (value === 'happy') return maxPoints
+    if (value === 'neutral') return maxPoints / 2
+    return 0
+  }
   if (field.type === 'yes_no' || field.type === 'checkbox') return (value === true || value === 'yes') ? maxPoints : 0
   if (field.type === 'temperature') {
     const temp = Number(value), minV = Number(field.min_value), maxV = Number(field.max_value)
@@ -371,7 +399,8 @@ async function createTaskFromInspection(template, submission, answersJson, meta)
       const answer = answersMap.get(field.id)
       const score = calcFieldScore(field, answer?.value)
       if (score !== null && score < maxPoints) {
-        checklistItems.push(`${field.label} — ${Math.round(score)}/${maxPoints} puan`)
+        const noteText = answer?.note ? ` (Not: ${answer.note})` : ''
+        checklistItems.push(`${field.label} — ${Math.round(score)}/${maxPoints} puan${noteText}`)
       }
     }
   }

@@ -431,6 +431,7 @@ app.all('/api/query', rateLimiter, async (req, res) => {
   const isReadOnly = rpc || operation === 'select'
   const key = cacheKey(body)
 
+
   if (isReadOnly && process.env.NODE_ENV !== 'test') {
     const cached = cacheGet(key)
     if (cached) return res.json(cached)
@@ -579,6 +580,7 @@ app.all('/api/query', rateLimiter, async (req, res) => {
 
     throw new Error(`Unknown operation: ${operation}`)
   }
+
 
   if (isReadOnly) {
     const promise = executeQuery().finally(() => {

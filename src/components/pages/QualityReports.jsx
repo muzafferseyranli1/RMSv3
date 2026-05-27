@@ -4,6 +4,7 @@ import { createQualityReport, fetchQualityReports, updateQualityReportStatus } f
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useToast } from '@/hooks/useToast'
+import StockSearchSelect from '@/components/ui/StockSearchSelect'
 
 const SEVERITY_MAP = {
   low: { label: 'Düşük', color: '#94a3b8', bg: 'rgba(148,163,184,.1)' },
@@ -19,17 +20,63 @@ const STATUS_MAP = {
   closed: { label: 'Kapatıldı', color: '#64748b', bg: 'rgba(100,116,139,.15)' },
 }
 
-export default function QualityReports() {
+export default function QualityReports({ mode }) {
   const navigate = useNavigate()
   const toast = useToast()
   const { branchId, branchName, branches, scope } = useWorkspace()
 
+  // Resolve active mode
+  const activeMode = mode || (scope === 'branch' ? 'branch' : (scope === 'warehouse' ? 'warehouse' : 'center'))
+
   const [reports, setReports] = useState([])
   const [stockItems, setStockItems] = useState([])
   const [allNodes, setAllNodes] = useState([])
+  const [allSuppliers, setAllSuppliers] = useState([])
+  const [showCustomSupplier, setShowCustomSupplier] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('list') // 'list' | 'create'
   const [filterStatus, setFilterStatus] = useState(null)
+
+  // Branch context filter state based on workspace scope/mode
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    if (activeMode === 'branch' || activeMode === 'warehouse') {
+      return branchId || ''
+    }
+    if (activeMode === 'center') {
+      return 'null'
+    }
+    return 'all'
+  })
+
+  useEffect(() => {
+    if (activeMode === 'branch' || activeMode === 'warehouse') {
+      setSelectedBranchId(branchId || '')
+    } else if (activeMode === 'center') {
+      setSelectedBranchId('null')
+    } else {
+      setSelectedBranchId('all')
+    }
+  }, [branchId, activeMode])
+
+  const getHeaderTitle = () => {
+    if (activeMode === 'branch') {
+      return `Şube Standart Dışı Bildirimleri${branchName ? ` (${branchName})` : ''}`
+    }
+    if (activeMode === 'warehouse') {
+      return `Merkez Depo Standart Dışı Bildirimleri${branchName ? ` (${branchName})` : ''}`
+    }
+    return 'Standart Dışı Ürün Bildirimleri'
+  }
+
+  const getHeaderSubtitle = () => {
+    if (activeMode === 'branch') {
+      return 'Bu şubeden yapılan kalite, porsiyonlama ve ürün standart sapma ihbarlarını görün.'
+    }
+    if (activeMode === 'warehouse') {
+      return 'Ana depo / merkez mutfağa ait standart dışı ürün bildirimlerini görün.'
+    }
+    return 'Şubelerden kalite, porsiyonlama veya tedarikçi bazlı standart sapma ihbarlarını yönetin.'
+  }
   
   // Create Form State
   const [form, setForm] = useState({
@@ -40,6 +87,8 @@ export default function QualityReports() {
     description: '',
     severity: 'normal',
     photoUrls: [],
+    skt: '',
+    partiNo: '',
   })
   
   const [uploading, setUploading] = useState(false)
@@ -54,35 +103,58 @@ export default function QualityReports() {
     }
   }
 
-  const isHQUser = scope === 'center' || scope === 'admin'
+  const isHQUser = activeMode === 'center' || activeMode === 'admin'
+
+  const getSelectedItemSuppliers = () => {
+    if (!form.stockItemId) return []
+    const selectedItem = stockItems.find(x => x.id === form.stockItemId)
+    if (!selectedItem) return []
+
+    const ids = new Set()
+    if (selectedItem.supp_id) ids.add(selectedItem.supp_id)
+    const list = Array.isArray(selectedItem.suppliers_list)
+      ? selectedItem.suppliers_list
+      : (typeof selectedItem.suppliers_list === 'string'
+          ? JSON.parse(selectedItem.suppliers_list || '[]')
+          : [])
+    list.forEach(s => {
+      if (s.supp_id) ids.add(s.supp_id)
+    })
+
+    return Array.from(ids).map(id => {
+      const s = allSuppliers.find(sup => sup.id === id)
+      return { id, name: s ? s.name : `Tedarikçi #${id.slice(0, 8)}` }
+    })
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const qParams = {}
-      if (!isHQUser) {
-        qParams.branchId = branchId || 'UNAUTHORIZED_EMPTY_BRANCH'
+      const qParams = {
+        branchId: selectedBranchId
       }
       if (filterStatus) {
         qParams.status = filterStatus
       }
 
-      const [reportsRes, stockRes, nodesRes] = await Promise.all([
+      const [reportsRes, stockRes, nodesRes, suppliersRes] = await Promise.all([
         fetchQualityReports(qParams),
-        db.from('stock_items').select('id,name').limit(150),
-        db.from('company_nodes').select('id,name')
+        db.from('stock_items').select('id,name,sku,unit,supp_id,suppliers_list').is('deleted_at', null).order('name'),
+        db.from('company_nodes').select('id,name'),
+        db.from('suppliers').select('id,name').eq('active', true).order('name')
       ])
 
       setReports(reportsRes.data || [])
       setStockItems(stockRes.data || [])
       setAllNodes(nodesRes.data || [])
+      setAllSuppliers(suppliersRes.data || [])
     } catch (e) {
       console.error(e)
       toast('Veriler yüklenirken hata oluştu', 'error')
     } finally {
       setLoading(false)
     }
-  }, [branchId, filterStatus, isHQUser, toast])
+  }, [selectedBranchId, filterStatus, toast])
 
   useEffect(() => {
     loadData()
@@ -134,6 +206,8 @@ export default function QualityReports() {
         description: form.description,
         severity: form.severity,
         photoUrls: form.photoUrls,
+        skt: form.skt || null,
+        partiNo: form.partiNo || null,
       }, activeStaff?.id)
 
       if (error) throw error
@@ -147,6 +221,8 @@ export default function QualityReports() {
         description: '',
         severity: 'normal',
         photoUrls: [],
+        skt: '',
+        partiNo: '',
       })
       setActiveTab('list')
       loadData()
@@ -201,10 +277,10 @@ export default function QualityReports() {
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <i className="fa-solid fa-square-poll-horizontal" style={{ color: '#ef4444', fontSize: '1.1rem' }} />
             </span>
-            Standart Dışı Ürün Bildirimleri
+            {getHeaderTitle()}
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>
-            Şubelerden kalite, porsiyonlama veya tedarikçi bazlı standart sapma ihbarlarını yönetin.
+            {getHeaderSubtitle()}
           </p>
         </div>
         
@@ -258,16 +334,20 @@ export default function QualityReports() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label className="f-label">Stok Ürünü Seçin (Varsa)</label>
-                <div className="sel-wrap">
-                  <select
-                    value={form.stockItemId}
-                    onChange={e => setForm(p => ({ ...p, stockItemId: e.target.value }))}
-                    className="f-input"
-                  >
-                    <option value="">Serbest Metin Girişi Yapacağım</option>
-                    {stockItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                </div>
+                <StockSearchSelect
+                  value={form.stockItemId}
+                  onChange={val => {
+                    const selectedItem = stockItems.find(x => x.id === val)
+                    setForm(p => ({
+                      ...p,
+                      stockItemId: val,
+                      productName: selectedItem ? selectedItem.name : '',
+                      supplierName: ''
+                    }))
+                    setShowCustomSupplier(false)
+                  }}
+                  stockItems={stockItems}
+                />
               </div>
               <div>
                 <label className="f-label">Ürün Adı (Seçmediyseniz Yazın)</label>
@@ -287,13 +367,63 @@ export default function QualityReports() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label className="f-label">Tedarikçi Firma / Kişi (Opsiyonel)</label>
-                <input
-                  type="text"
-                  placeholder="Tedarikçi firma adı..."
-                  value={form.supplierName}
-                  onChange={e => setForm(p => ({ ...p, supplierName: e.target.value }))}
-                  className="f-input"
-                />
+                {form.stockItemId && getSelectedItemSuppliers().length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {!showCustomSupplier ? (
+                      <div className="sel-wrap">
+                        <select
+                          value={form.supplierName}
+                          onChange={e => {
+                            if (e.target.value === '__custom__') {
+                              setShowCustomSupplier(true)
+                              setForm(p => ({ ...p, supplierName: '' }))
+                            } else {
+                              setForm(p => ({ ...p, supplierName: e.target.value }))
+                            }
+                          }}
+                          className="f-input"
+                        >
+                          <option value="">Tedarikçi Seçiniz (Opsiyonel)</option>
+                          {getSelectedItemSuppliers().map(s => (
+                            <option key={s.id} value={s.name}>{s.name}</option>
+                          ))}
+                          <option value="__custom__">✍ Diğer (Elle Yazacağım)...</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          type="text"
+                          placeholder="Tedarikçi adı yazın..."
+                          value={form.supplierName}
+                          onChange={e => setForm(p => ({ ...p, supplierName: e.target.value }))}
+                          className="f-input"
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-o"
+                          onClick={() => {
+                            setShowCustomSupplier(false)
+                            setForm(p => ({ ...p, supplierName: '' }))
+                          }}
+                          style={{ padding: '0 12px' }}
+                          title="Listeye Geri Dön"
+                        >
+                          <i className="fa-solid fa-list" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Tedarikçi firma adı..."
+                    value={form.supplierName}
+                    onChange={e => setForm(p => ({ ...p, supplierName: e.target.value }))}
+                    className="f-input"
+                  />
+                )}
               </div>
               <div>
                 <label className="f-label">Kritiklik / Hasar Derecesi</label>
@@ -308,6 +438,29 @@ export default function QualityReports() {
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
+
+            {/* SKT & Batch Number */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label className="f-label">Son Kullanma Tarihi (SKT)</label>
+                <input
+                  type="date"
+                  value={form.skt}
+                  onChange={e => setForm(p => ({ ...p, skt: e.target.value }))}
+                  className="f-input"
+                />
+              </div>
+              <div>
+                <label className="f-label">Parti / Lot Numarası</label>
+                <input
+                  type="text"
+                  placeholder="Parti no giriniz..."
+                  value={form.partiNo}
+                  onChange={e => setForm(p => ({ ...p, partiNo: e.target.value }))}
+                  className="f-input"
+                />
               </div>
             </div>
 
@@ -378,28 +531,50 @@ export default function QualityReports() {
           {/* List side */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Status quick filters */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button
-                className="btn-o"
-                onClick={() => setFilterStatus(null)}
-                style={{ fontSize: '.75rem', fontWeight: !filterStatus ? 700 : 500, borderColor: !filterStatus ? '#6366f1' : undefined }}
-              >
-                Tümü
-              </button>
-              {Object.entries(STATUS_MAP).map(([key, val]) => (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                  key={key}
                   className="btn-o"
-                  onClick={() => setFilterStatus(key)}
-                  style={{
-                    fontSize: '.75rem', fontWeight: filterStatus === key ? 700 : 500,
-                    color: filterStatus === key ? val.color : undefined,
-                    borderColor: filterStatus === key ? val.color : undefined,
-                  }}
+                  onClick={() => setFilterStatus(null)}
+                  style={{ fontSize: '.75rem', fontWeight: !filterStatus ? 700 : 500, borderColor: !filterStatus ? '#6366f1' : undefined }}
                 >
-                  {val.label}
+                  Tümü
                 </button>
-              ))}
+                {Object.entries(STATUS_MAP).map(([key, val]) => (
+                  <button
+                    key={key}
+                    className="btn-o"
+                    onClick={() => setFilterStatus(key)}
+                    style={{
+                      fontSize: '.75rem', fontWeight: filterStatus === key ? 700 : 500,
+                      color: filterStatus === key ? val.color : undefined,
+                      borderColor: filterStatus === key ? val.color : undefined,
+                    }}
+                  >
+                    {val.label}
+                  </button>
+                ))}
+              </div>
+
+              {(activeMode === 'center' || activeMode === 'admin') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Şube:</span>
+                  <div className="sel-wrap" style={{ minWidth: 180 }}>
+                    <select
+                      value={selectedBranchId}
+                      onChange={e => setSelectedBranchId(e.target.value)}
+                      className="f-input"
+                      style={{ fontSize: '.75rem', height: 32, padding: '0 8px' }}
+                    >
+                      <option value="all">Tüm Şubeler</option>
+                      <option value="null">Genel Merkez</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
 
             {loading ? (
@@ -494,6 +669,8 @@ export default function QualityReports() {
                 <div><strong style={{ color: 'var(--text-strong)' }}>Şube:</strong> {getBranchName(selectedReport.branch_id)}</div>
                 <div><strong style={{ color: 'var(--text-strong)' }}>Ürün:</strong> {selectedReport.product_name}</div>
                 {selectedReport.supplier_name && <div><strong style={{ color: 'var(--text-strong)' }}>Tedarikçi:</strong> {selectedReport.supplier_name}</div>}
+                {selectedReport.skt && <div><strong style={{ color: 'var(--text-strong)' }}>Son Kullanma Tarihi (SKT):</strong> {new Date(selectedReport.skt).toLocaleDateString('tr-TR')}</div>}
+                {selectedReport.parti_no && <div><strong style={{ color: 'var(--text-strong)' }}>Parti / Lot No:</strong> {selectedReport.parti_no}</div>}
                 <div><strong style={{ color: 'var(--text-strong)' }}>Önem Seviyesi:</strong> {SEVERITY_MAP[selectedReport.severity]?.label || selectedReport.severity}</div>
                 <div><strong style={{ color: 'var(--text-strong)' }}>Durum:</strong> {STATUS_MAP[selectedReport.status]?.label || selectedReport.status}</div>
                 <div><strong style={{ color: 'var(--text-strong)' }}>Oluşturulma:</strong> {new Date(selectedReport.created_at).toLocaleString('tr-TR')}</div>
@@ -503,7 +680,10 @@ export default function QualityReports() {
                    <div style={{ marginTop: 6 }}>
                      <strong style={{ color: 'var(--text-strong)' }}>İlişkili Geribildirim: </strong>
                      <button
-                       onClick={() => navigate(`/geribildirimler/${selectedReport.ticket_id}`)}
+                       onClick={() => {
+                         const ticketBase = activeMode === 'branch' ? '/sube-geribildirimler' : (activeMode === 'warehouse' ? '/merkez-geribildirimler' : '/geribildirimler')
+                         navigate(`${ticketBase}/${selectedReport.ticket_id}`)
+                       }}
                        className="btn-o"
                        style={{ padding: '2px 8px', fontSize: '.7rem', color: '#3b82f6', borderColor: '#3b82f6' }}
                      >

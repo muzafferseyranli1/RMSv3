@@ -35,7 +35,11 @@ async function getEmployeeNameAndRecord(personnelId) {
 
 export async function fetchTickets({ branchId, status, priority, originType, limit = 100, offset = 0, assignedTo }) {
   let query = db.from('tickets').select('*').order('created_at', { ascending: false })
-  if (branchId) query = query.eq('branch_id', branchId)
+  if (branchId === 'null') {
+    query = query.is('branch_id', null)
+  } else if (branchId && branchId !== 'all') {
+    query = query.eq('branch_id', branchId)
+  }
   if (status) query = query.eq('status', status)
   if (priority) query = query.eq('priority', priority)
   if (originType) query = query.eq('origin_type', originType)
@@ -353,7 +357,7 @@ export async function createLinkedTaskFromTicket(ticketId, taskForm, actor) {
 
   const taskInsert = await db.from('tasks').insert({
     branch_node_id: taskForm.locationId || null,
-    created_by_personnel_id: actor?.id || null,
+    created_by_personnel_id: actor?.id || 'system',
     title: taskForm.title,
     description: taskForm.description || '',
     status: 'open',
@@ -402,7 +406,7 @@ export async function createLinkedTaskFromTicket(ticketId, taskForm, actor) {
   // Chat thread + system note
   const threadRes = await db.from('task_chat_threads').insert({ task_id: task.id }).select().maybeSingle()
   if (threadRes.data?.id) {
-    await db.from('task_history').insert({ task_id: task.id, action: 'created', performed_by: actor?.id || null, metadata: { title: task.title } })
+    await db.from('task_history').insert({ task_id: task.id, action: 'created', performed_by: actor?.id || 'system', metadata: { title: task.title } })
     await db.from('task_chat_messages').insert({
       thread_id: threadRes.data.id,
       task_id: task.id,

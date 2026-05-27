@@ -213,11 +213,16 @@ function CreateTaskModal({ ticket, employeeOptions, branchName, onClose, onCreat
 
 // ── Ana Bileşen ──────────────────────────────────────────────
 
-export default function TicketDetail() {
+export default function TicketDetail({ mode }) {
   const { ticketId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
   const { branchId: workspaceBranchId, scope, branches } = useWorkspace()
+
+  // Resolve active mode
+  const activeMode = mode || (scope === 'branch' ? 'branch' : (scope === 'warehouse' ? 'warehouse' : 'center'))
+
+  const listPath = activeMode === 'branch' ? '/sube-geribildirimler' : (activeMode === 'warehouse' ? '/merkez-geribildirimler' : '/geribildirimler')
 
   const [ticket, setTicket] = useState(null)
   const [employees, setEmployees] = useState([])
@@ -244,10 +249,10 @@ export default function TicketDetail() {
         readSettingArray(PERSONNEL_SETTINGS_KEYS.positions, normalizePositionRecord),
         db.from('company_nodes').select('id,name'),
       ])
-      if (ticketRes.error) { toast('Geribildirim yüklenemedi', 'error'); navigate('/geribildirimler'); return }
-      const isHQUser = scope === 'center' || scope === 'admin'
+      if (ticketRes.error) { toast('Geribildirim yüklenemedi', 'error'); navigate(listPath); return }
+      const isHQUser = activeMode === 'center' || activeMode === 'admin'
       if (!isHQUser && ticketRes.data.branch_id !== workspaceBranchId) {
-        toast('Bu geribildirimi görüntüleme yetkiniz yok.', 'error'); navigate('/geribildirimler'); return
+        toast('Bu geribildirimi görüntüleme yetkiniz yok.', 'error'); navigate(listPath); return
       }
       setTicket(ticketRes.data)
       setEmployees(empRes || [])
@@ -361,7 +366,7 @@ export default function TicketDetail() {
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       {/* Üst Başlık */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button onClick={() => navigate('/geribildirimler')} className="btn-o" style={{ padding: '8px 12px' }}>
+        <button onClick={() => navigate(listPath)} className="btn-o" style={{ padding: '8px 12px' }}>
           <i className="fa-solid fa-arrow-left" /> Geri Dön
         </button>
         <div>
@@ -488,7 +493,10 @@ export default function TicketDetail() {
                       </div>
                       {/* Göreve Git */}
                       <button
-                        onClick={() => navigate(`/gorevler?taskId=${task.id}`)}
+                        onClick={() => {
+                          const tasksPath = activeMode === 'branch' ? '/sube-tasks' : (activeMode === 'warehouse' ? '/merkez-tasks' : '/tasks')
+                          navigate(`${tasksPath}?taskId=${task.id}`)
+                        }}
                         style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#3b82f6', fontWeight: 700, fontSize: '.76rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
                       >
                         <i className="fa-solid fa-arrow-up-right-from-square" />Göreve Git

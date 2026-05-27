@@ -52,10 +52,10 @@ export const DEFAULT_PATH_BY_SCOPE = {
 }
 
 const SECTION_ACCESS = {
-  'Merkez İşlemleri': [WORKSPACE_SCOPE.center, WORKSPACE_SCOPE.admin],
-  'Şube İşlemleri': [WORKSPACE_SCOPE.branch, WORKSPACE_SCOPE.admin],
+  'Merkez': [WORKSPACE_SCOPE.center, WORKSPACE_SCOPE.admin],
+  'Şube': [WORKSPACE_SCOPE.branch, WORKSPACE_SCOPE.admin],
   'POS ve Ekranlar': [WORKSPACE_SCOPE.branch, WORKSPACE_SCOPE.admin],
-  'Merkez Depo / Üretim': [WORKSPACE_SCOPE.warehouse, WORKSPACE_SCOPE.admin],
+  'Merkez Depo/Mutfak': [WORKSPACE_SCOPE.warehouse, WORKSPACE_SCOPE.admin],
   Ayarlar: [WORKSPACE_SCOPE.center, WORKSPACE_SCOPE.admin],
 }
 
@@ -114,14 +114,14 @@ const CENTER_PATHS = new Set([
   '/tasks',
   '/musteri-yorumlari',
   '/form-sablonlari',
-  '/form-yanitlari',
+  '/formlar',
   '/geribildirim-kategorileri',
+  '/geribildirimler',
+  '/kalite-raporlari',
 ])
 
 const SHARED_PATHS = new Set([
   '/hesap-cizelgesi',
-  '/geribildirimler',
-  '/kalite-raporlari',
 ])
 
 function pathMatchesSet(path, pathSet) {
@@ -165,6 +165,9 @@ const BRANCH_PATHS = new Set([
   '/garson-screen',
   '/kds-screen',
   '/pickup-screen',
+  '/sube-geribildirimler',
+  '/sube-kalite-raporlari',
+  '/sube-formlar',
 ])
 
 const WAREHOUSE_PATHS = new Set([
@@ -178,6 +181,9 @@ const WAREHOUSE_PATHS = new Set([
   '/merkez-time-tracking/timers',
   '/merkez-time-tracking/timers/presets',
   '/merkez-tasks',
+  '/merkez-geribildirimler',
+  '/merkez-kalite-raporlari',
+  '/merkez-depo-formlar',
 ])
 
 export function normalizeWorkspaceScope(value) {

@@ -1,25 +1,28 @@
-# Müşteri Arama ve Kayıt Değişiklik Özeti
+# Demo Satış Yeniden Yapılandırması
 
-Bu çalışma, Çağrı Merkezi geribildirim oluşturma modalı içinden kayıtlı müşterilere ulaşılmasını, yoksa girilen bilgilerle yeni müşteri oluşturulmasını ve bu müşterilerin gömülü "Geri Bildirimden Gelen" kategorisine atanmasını sağlar. Ayrıca sipariş listesi filtresine bir arama butonu eklenmiş ve Şube yöneticileri için Sidebar'da görünmeyen "Şube İşlemleri" izin hatası giderilmiştir.
+Seçtiğimiz **Seçenek A** (tam sayım yöntemi) ve talepleriniz doğrultusunda arka planda çalışan, çok fazla yük bindiren ve eksik günleri tam olarak algılayamayan demo satış mekanizması tamamen refactor (yeniden yapılandırma) edilmiştir.
 
 ## Yapılan Değişiklikler
 
-1. **Arama ve Öneri Listesi (`CallCenter.jsx`)**:
-   - `ticketPhoneSuggestions` ve `ticketNameSuggestions` state'leri ile autocomplete arama altyapısı kuruldu.
-   - Telefon veya isim alanlarına en az 3 karakter girildiğinde veritabanından eşleşen aktif müşteriler listelenir ve tıklandığında form alanlarını otomatik doldurur.
+### 1. Ön Plan (Foreground) Çalışma Mantığı
+`useDemoSalesJob.jsx` dosyasındaki `localStorage` kullanımı kaldırıldı. Artık işlem başladıktan sonra, ilerleme durumu sadece o sekme açık kaldığı sürece `DemoSales.jsx` bileşeni tarafından kontrol edilecek ve ekranda görünecektir. Sekmeyi kapattığınızda veya duraklattığınızda Railway'e gönderilen devasa arka plan işleri iptal olacaktır.
 
-2. **Kayıt ve Kategori İlişkilendirme (`CallCenter.jsx`)**:
-   - Kayıt sırasında girilen telefon numarası veritabanında taranarak mükerrer müşteri kaydı oluşması önlenir.
-   - Müşteri mevcut değilse yeni kayıt açılır ve sadakat kategorisi olarak `'feedback_source'` (Geri Bildirimden Gelen) ataması otomatik yapılır.
+### 2. İşlem Yükü (Chunking) Azaltıldı
+Railway veritabanına binen yükü hafifletmek için tek seferde atılan kayıt blokları küçültüldü:
+*   Satış (Sale) oluşturma bloğu 40'tan 20'ye düşürüldü.
+*   Fiş satırı bloğu 80'den 40'a düşürüldü.
+*   Ödeme ve stok hareketi blokları da yarı yarıya azaltılarak sunucu nefes alacak şekilde yeniden yapılandırıldı (Bekleme süreleri artırıldı).
 
-3. **Gömülü Kategori Yönetimi (`LoyaltyCustomerCategories.jsx`)**:
-   - Veritabanı sıfırlanmış veya boş olsa dahi `'feedback_source'` kategorisi listede daima gösterilir ve silme/düzenleme işlemleri engellenir.
+### 3. Eksik Günlerin Tespiti ve Satış Tamamlama (Top-up)
+Artık sistem, günde hedeflenen fiş sayısının %40'ı veya daha az satış yapılmış günleri **eksik gün** kabul edecek. 
+Örneğin o gün hedeflenen satış 50, ancak sistemde (POS vb. denemelerden) 5 gerçek satış varsa, sistem bu 5 satışı koruyacak ve sadece üzerine 45 yeni demo satış ekleyerek günü tamamlayacaktır. Bu özellik `demoSalesGenerator.js` içerisinde kodlandı.
 
-4. **Arama Butonu (`CallCenter.jsx`)**:
-   - Sipariş no, müşteri, masa, not aramak için kullanılan `hubSearch` alanının yanına `fa-magnifying-glass` (büyüteç) ikonlu modern bir arama butonu konumlandırılmıştır.
+### 4. Ürün Çeşitliliğinde Rastgelelik (Jitter)
+Satış fişleri oluşturulurken hep aynı ürünlerin seçilmesini engellemek adına algoritmanın çekirdek fonksiyonu olan `pickProductForReceipt` metoduna bir ağırlık sarsma (jitter) tekniği eklendi. Rastgele bir dalgalanma katsayısı kullanılarak daha önce hiç seçilmemiş veya düşük ağırlıklı ürünlerin de satılması sağlandı.
 
-5. **Şube Yetkilisi İzin/Gösterim Düzeltmesi (`Sidebar.jsx`)**:
-   - Sidebar'da menülerin yetki kontrollerinde (`canAccessSection`) kullanılan `section.section` ismi mojibake karakterlerden arındırılarak (`fixMojibakeText` fonksiyonuna tabi tutularak) kontrol edilmiş ve şube yetkilileri için "Şube İşlemleri" menüsünün görünmeme hatası çözülmüştür.
+## Veritabanı Güncellemesi (Otomatik Uygulandı)
 
-## Doğrulama ve Test Sonuçları
-- `npm run build:web` çalıştırılarak tüm frontend dosyalarının sıfır hatayla derlendiği gözlemlenmiştir.
+Sistemin düzgün çalışabilmesi için gereken `get_sales_count_by_branch_day` RPC fonksiyonunu Railway veritabanınıza **otomatik olarak uyguladım**. 
+Sizin herhangi bir manuel SQL sorgusu çalıştırmanıza gerek kalmadı.
+
+**Şimdi sadece `http://localhost:5173/demo-sales` sayfasını yenileyerek (F5) "Tekrar Tara" diyebilir ve yeni özellikleri test edebilirsiniz.**

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { db } from '@/lib/db'
 import { useWorkspace } from '@/context/WorkspaceContext'
@@ -588,8 +588,9 @@ function buildDetailedActualMixByDate(lineRows) {
       byItem.set(itemKey, currentSaleItem)
     }
 
-    const selectedOptions = parseJsonValue(row.options_json, [])
-    for (const option of selectedOptions || []) {
+    const parsedOptions = parseJsonValue(row.options_json, [])
+    const selectedOptions = Array.isArray(parsedOptions) ? parsedOptions : []
+    for (const option of selectedOptions) {
       const itemKey = createOptionMixKey(option?.id, option?.name)
       if (!itemKey) continue
 

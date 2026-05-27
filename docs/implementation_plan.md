@@ -1,32 +1,47 @@
-# Müşteri Arama, Kayıt ve Gömülü Kategori Planı
+# Refactor Demo Sales Generation
 
-Bu plan, çağrı merkezi üzerinden geribildirim oluşturulurken kayıtlı müşterilere ulaşılabilmesini, kaydı olmayan müşterilerin ise otomatik olarak sisteme kaydedilmesini ve bu müşterilerin sistemde silinemez/düzenlenemez olarak işaretlenmiş "Geri Bildirimden Gelen" kategorisine otomatik atanmasını sağlar. Ayrıca, Çağrı Merkezi sipariş listesi arama girdisine bir arama butonu eklenmesini ve Şube yetkili kullanıcılarının şube bağlamında "Şube İşlemleri" menüsünü görememe hatasının giderilmesini içerir.
+Mevcut durumda `DemoSales.jsx` modülü arka planda çalışan ve `localStorage` kullanan bir iş kuyruğu sistemine dayanıyor. Kullanıcının talebi doğrultusunda bu süreç tamamen ön plana alınacak ve tamamlanmamış (eksik satışlı) günlerin üzerine ekleme yapılacak şekilde güncellenecektir. Ayrıca Railway veritabanındaki yükü azaltmak için işlem yığınları küçültülecektir.
 
-## Yapılan Değişiklikler
+## Proposed Changes
 
-### 1. Müşteri Arama ve Autocomplete (`CallCenter.jsx`)
-- Müşteri Telefonu ve Müşteri Ad Soyad alanlarına autocomplete önerileri eklendi.
-- Kullanıcı en az 3 karakter girdiğinde veritabanından (`musteriler` tablusundan) eşleşen müşteriler listelenir.
-- Müşteri seçildiğinde telefon ve isim alanları otomatik dolar ve seçilen müşteri ID'si (`customerId`) saklanır.
-- Input alanından çıkıldığında (onBlur) öneri listesi kapatılır.
+### 1. `src/hooks/useDemoSalesJob.jsx` (Kaldırılacak / Yeniden Yazılacak)
+- `localStorage` (örneğin `JOB_STORAGE_KEY`) kullanımı tamamen kaldırılacak.
+- Zamanlanmış arka plan görev döngüsü (`scheduleLoop`, `setTimeout(..., LOOP_PAUSE_MS)`) kaldırılacak.
+- Bunun yerine, yalnızca sayfa açıkken (component mount durumundayken) çalışan ve React state kullanan foreground (ön plan) bir süreç yazılacak. İşlem duraklatılırsa veya sayfa kapatılırsa, kuyruk baştan alınabilecek veya sadece eksik kalanlar tekrar hesaplanabilecek.
+- İşlem yığınları (chunk) küçültülecek:
+  - `SALES_INSERT_CHUNK` = 20 (önceki 40)
+  - `LINES_INSERT_CHUNK` = 40 (önceki 80)
+  - `MOVEMENTS_INSERT_CHUNK` = 60 (önceki 120)
 
-### 2. Otomatik Kayıt ve Kategori Atama (`CallCenter.jsx`)
-- Geribildirim kaydedilirken eğer seçilen bir `customerId` yoksa, girilen telefon numarası veritabanında taranarak mükerrer kayıt oluşması engellenir.
-- Eğer veritabanında bu numarayla kayıtlı bir müşteri bulunamazsa, yeni müşteri kaydı oluşturulur (`acquisition_source` ve `signup_channel` alanları `'feedback_source'` olarak set edilir).
-- Yeni müşteri `'feedback_source'` (Geri Bildirimden Gelen) müşteri kategorisine otomatik atanır (`saveLoyaltyCustomerCategoryAssignments` kullanılarak).
+### 2. `src/components/pages/DemoSales.jsx`
+- Sayfadaki indikatörler güçlendirilecek: İşlem çalışırken ekranda belirgin bir ilerleme durumu (örneğin "Şube X için Y günü işleniyor... %Z tamamlandı") gösterilecek.
+- Veri tarama mantığı (`fetchSalesPresenceChunk`) güncellenerek, bir günde kaç adet fiş/satış olduğu kontrol edilecek. Eğer o gün için az sayıda (örn. belirlenen günlük hedefin %50'sinden az veya sadece 3-5 tane) satış varsa, bu gün **"tamamlanmamış"** sayılacak ve o günün satış hedefine ulaşacak kadar "tamamlama (top-up)" satışı üretilecek. 
+- Tamamlanmış (yeterli satışı olan) günler pas geçilecek.
 
-### 3. Gömülü Kategori Koruma (`LoyaltyCustomerCategories.jsx`)
-- Sistemde `'feedback_source'` ID'li bir kategori yoksa, liste yüklenirken bu kategori dinamik olarak listeye eklenir.
-- Bu kategorinin silinmesi ve ad/kod alanlarının düzenlenmesi UI seviyesinde tamamen engellenmiştir.
-- Kategori kaydedilirken veya müşteri atanırken tablonun varlığı kontrol edilerek olası veritabanı sıfırlamalarına karşı dinamik olarak veritabanına eklenmesi (`ensureFeedbackSourceCategory`) sağlanmıştır.
+### 3. `src/lib/demoSalesGenerator.js`
+- `buildMissingSalesSummary` fonksiyonu, veritabanından dönen satış adetlerini (eğer varsa) veya ciro tutarlarını inceleyerek o günün tam mı yoksa eksik mi olduğuna karar veren algoritmaya göre güncellenecek.
+- `buildReceiptLines` içindeki ürün seçme (çeşitlilik) algoritması iyileştirilecek. Hep aynı ürünlerin satılmasını engellemek için daha önceden rastgele seçilmiş ürünlerin havuzdaki ağırlığı azaltılacak (penalty) veya her fiş için farklı kombinasyonlar denenmeye zorlanacak.
 
-### 4. Arama Butonu Ekleme (`CallCenter.jsx`)
-- Çağrı Merkezi ana sayfasındaki sipariş arama input alanı (`hubSearch`) flex yapısına alınarak yanına büyüteç ikonlu mavi bir "Ara" butonu eklenmiştir.
+## Open Questions
+> [!IMPORTANT]
+> **Sorunuzun Cevabı ve Açıklaması:**
+> Belirttiğiniz Seçenek A ve Seçenek B, **satışların nasıl üretileceği ile ilgili DEĞİLDİR.** Bu seçenekler sadece *sistemin o güne ait ne kadar gerçek satış olduğunu nasıl sayacağı* ile ilgilidir. Üretilecek olan yeni demo satışlar, her halükarda stok hareketlerini (inventory_movements), fiş satırlarını ve ödemeleri eksiksiz olarak oluşturmaya devam edecektir (mevcut sistemde olduğu gibi). Bu konuda hiçbir bozulma olmayacaktır.
+> 
+> **Seçenek A (Yeni RPC/SQL Fonksiyonu):**
+> *   **Nasıl Çalışır:** Sistem, doğrudan `sales` (satışlar) tablosuna giderek o günkü organik ve demo satışların toplam adetini o an canlı olarak sayar.
+> *   **Avantajı:** %100 kesin ve anlık sonuç verir. Eğer 5 satış varsa tam 5 olarak görür ve hedefe (örn. 50) ulaşmak için 45 adet yeni "stok hareketli" satış üretir.
+> *   **Dezavantajı:** Railway veritabanında ufak bir yeni fonksiyon (RPC) tanımlamamız gerekir.
+> 
+> **Seçenek B (`daily_sales` Özet Tablosu):**
+> *   **Nasıl Çalışır:** Her satış yapıldığında arka planda tetikleyicilerle güncellendiği varsayılan `daily_sales` isimli günlük ciro özet tablosuna bakar.
+> *   **Avantajı:** Veritabanına yeni bir fonksiyon eklememize gerek kalmaz, okuması hızlıdır.
+> *   **Dezavantajı:** Eğer `daily_sales` tablosu anlık olarak anında güncellenmiyorsa (gecikme varsa), sistem o günü 0 satışlı sanabilir ve gereğinden fazla üretim yapabilir.
+> 
+> Kesinlik açısından **Seçenek A'nın** kullanılmasını şiddetle tavsiye ederim. Veritabanına gerekli küçük sayma fonksiyonunu kod ile ben ekleyebilirim. Seçenek A ile ilerlememi onaylıyor musunuz?
 
-### 5. Şube Yetkilileri İçin Menü İzin Hatası Giderme (`Sidebar.jsx`)
-- Sidebar bileşenindeki `visibleSections` filtresinde, mojibake karakterlerden ötürü `canAccessSection` çağrısına giden `'Åžube Ä°ÅŸlemleri'` başlığı `fixMojibakeText` fonksiyonundan geçirilerek düzeltilmiştir.
-- Şube bağlam göstergesi ve şube değiştirme butonu (`section.section === 'Sube Islemleri'`) koşulu da çözülmüş Türkçe karakterli `'Şube İşlemleri'` başlığına uyumlu hale getirilmiştir.
-- Bu sayede şube yetkilisi (örneğin Arda Işık) sisteme kendi şubesi bağlamında giriş yaptığında "Şube İşlemleri" sekmesini eksiksiz görebilmektedir.
-
-## Doğrulama Planı
-- `npm run build:web` komutuyla Vite derleme testi tamamlanmış ve 0 hata alınmıştır.
+## Verification Plan
+### Manual Verification
+- `http://localhost:5173/demo-sales` sayfasına girilecek.
+- Tekrar Tara dendiğinde, içinde 1-2 satış olan günlerin "Eksik Gün" olarak algılandığı teyit edilecek.
+- Üretimi Başlat dendiğinde işlemin sadece sekme açıkken çalıştığı, ilerlemenin ekranda görüldüğü test edilecek.
+- Railway veri trafiğinin daha yavaş/düşük paketler halinde gidip gitmediği ağ sekmesinden doğrulanacak.

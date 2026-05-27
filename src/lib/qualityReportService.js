@@ -23,7 +23,7 @@ function nowIso() {
  * @param {string} actorId - Active employee user ID
  */
 export async function createQualityReport(report, actorId) {
-  const { branchId, reportedBy, productName, stockItemId, supplierName, description, severity = 'normal', photoUrls = [] } = report
+  const { branchId, reportedBy, productName, stockItemId, supplierName, description, severity = 'normal', photoUrls = [], skt = null, partiNo = null } = report
 
   // 1. Insert Quality Report record first
   const { data: qualityReport, error: qError } = await db
@@ -40,6 +40,8 @@ export async function createQualityReport(report, actorId) {
       photo_urls: photoUrls,
       status: 'open',
       assigned_to: 'emp_kalite_sorumlusu', // Kemal Kaliteci
+      skt: skt || null,
+      parti_no: partiNo || null,
       created_at: nowIso(),
       updated_at: nowIso()
     })
@@ -105,7 +107,7 @@ export async function createQualityReport(report, actorId) {
   await db.from('ticket_comments').insert({
     ticket_id: ticket.id,
     author_id: actorId || 'system',
-    body: `[Standart Dışı Ürün Bildirimi] Ürün: ${productName}. ${supplierName ? `Tedarikçi: ${supplierName}. ` : ''}Açıklama: ${description}`,
+    body: `[Standart Dışı Ürün Bildirimi] Ürün: ${productName}. ${supplierName ? `Tedarikçi: ${supplierName}. ` : ''}${skt ? `SKT: ${skt}. ` : ''}${partiNo ? `Parti No: ${partiNo}. ` : ''}Açıklama: ${description}`,
     visibility: 'internal'
   })
 
@@ -127,7 +129,11 @@ export async function createQualityReport(report, actorId) {
  */
 export async function fetchQualityReports({ branchId, status, limit = 50 } = {}) {
   let query = db.from('quality_reports').select('*').order('created_at', { ascending: false })
-  if (branchId) query = query.eq('branch_id', branchId)
+  if (branchId === 'null') {
+    query = query.is('branch_id', null)
+  } else if (branchId && branchId !== 'all') {
+    query = query.eq('branch_id', branchId)
+  }
   if (status) query = query.eq('status', status)
   query = query.limit(limit)
 

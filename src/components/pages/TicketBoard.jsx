@@ -31,10 +31,13 @@ const ORIGIN_MAP = {
   google_review: { label: 'Google Yorumu', icon: 'fa-google', color: '#ea4335' },
 }
 
-export default function TicketBoard() {
+export default function TicketBoard({ mode }) {
   const navigate = useNavigate()
   const toast = useToast()
   const { branchId, branchName, branches, scope } = useWorkspace()
+
+  // Resolve active mode
+  const activeMode = mode || (scope === 'branch' ? 'branch' : (scope === 'warehouse' ? 'warehouse' : 'center'))
 
   const [tickets, setTickets] = useState([])
   const [categories, setCategories] = useState([])
@@ -45,6 +48,47 @@ export default function TicketBoard() {
   const [activeTab, setActiveTab] = useState('all')
   const [statusFilter, setStatusFilter] = useState(null)
   const [priorityFilter, setPriorityFilter] = useState(null)
+
+  // Branch context filter state based on workspace scope/mode
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    if (activeMode === 'branch' || activeMode === 'warehouse') {
+      return branchId || ''
+    }
+    if (activeMode === 'center') {
+      return 'null'
+    }
+    return 'all'
+  })
+
+  useEffect(() => {
+    if (activeMode === 'branch' || activeMode === 'warehouse') {
+      setSelectedBranchId(branchId || '')
+    } else if (activeMode === 'center') {
+      setSelectedBranchId('null')
+    } else {
+      setSelectedBranchId('all')
+    }
+  }, [branchId, activeMode])
+
+  const getHeaderTitle = () => {
+    if (activeMode === 'branch') {
+      return `Şube Geri Bildirim Yönetimi${branchName ? ` (${branchName})` : ''}`
+    }
+    if (activeMode === 'warehouse') {
+      return `Merkez Depo Geri Bildirimleri${branchName ? ` (${branchName})` : ''}`
+    }
+    return 'Geri Bildirim Yönetimi'
+  }
+
+  const getHeaderSubtitle = () => {
+    if (activeMode === 'branch') {
+      return 'Şubeye ait şikayet, denetim, kalite ve geri bildirimleri izleyin.'
+    }
+    if (activeMode === 'warehouse') {
+      return 'Ana depo ve üretim alanındaki geri bildirimleri yönetin.'
+    }
+    return 'Şikayet, denetim, kalite ve manuel geribildirimlerin yaşam döngüsünü yönetin.'
+  }
   
   const [showCreate, setShowCreate] = useState(false)
   const [newTicketForm, setNewTicketForm] = useState({ categoryId: '', priority: 'normal', description: '', branchId: '' })
@@ -65,11 +109,10 @@ export default function TicketBoard() {
   const loadTickets = useCallback(async () => {
     setLoading(true)
     const activeStaff = getActiveUser()
-    const isHQUser = scope === 'center' || scope === 'admin'
     
     // Fetch query params
     const params = {
-      branchId: !isHQUser ? (branchId || 'UNAUTHORIZED_EMPTY_BRANCH') : null,
+      branchId: selectedBranchId,
       status: statusFilter,
       priority: priorityFilter,
     }
@@ -103,7 +146,7 @@ export default function TicketBoard() {
     } finally {
       setLoading(false)
     }
-  }, [branchId, scope, statusFilter, priorityFilter, activeTab, toast])
+  }, [selectedBranchId, statusFilter, priorityFilter, activeTab, toast])
 
   useEffect(() => {
     loadTickets()
@@ -112,7 +155,7 @@ export default function TicketBoard() {
   const handleCreateManualTicket = async () => {
     if (!newTicketForm.description.trim()) return toast('Açıklama gerekli', 'warning')
     const activeStaff = getActiveUser()
-    const isHQUser = scope === 'center' || scope === 'admin'
+    const isHQUser = activeMode === 'center' || activeMode === 'admin'
     const targetBranch = !isHQUser ? branchId : (newTicketForm.branchId || null)
     
     const { error } = await createManualTicket({
@@ -153,9 +196,9 @@ export default function TicketBoard() {
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <i className="fa-solid fa-comments" style={{ color: '#ef4444', fontSize: '1rem' }} />
             </span>
-            Geribildirim Yönetimi
+            {getHeaderTitle()}
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>Şikayet, denetim, kalite ve manuel geribildirimlerin yaşam döngüsünü yönetin.</p>
+          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>{getHeaderSubtitle()}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-o" onClick={handleSlaCheck} style={{ fontSize: '.78rem' }}>
@@ -291,24 +334,46 @@ export default function TicketBoard() {
       </div>
 
       {/* Filters & Search */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button
-          className="btn-o"
-          onClick={() => setStatusFilter(null)}
-          style={{ fontSize: '.78rem', fontWeight: !statusFilter ? 700 : 500, borderColor: !statusFilter ? 'var(--accent-primary)' : undefined, background: !statusFilter ? 'var(--sidebar-active-bg)' : undefined }}
-        >
-          Tüm Durumlar
-        </button>
-        {Object.entries(STATUS_MAP).map(([key, val]) => (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
-            key={key}
             className="btn-o"
-            onClick={() => setStatusFilter(key)}
-            style={{ fontSize: '.78rem', fontWeight: statusFilter === key ? 700 : 500, color: statusFilter === key ? val.color : undefined, borderColor: statusFilter === key ? val.color : undefined, background: statusFilter === key ? `${val.color}11` : undefined }}
+            onClick={() => setStatusFilter(null)}
+            style={{ fontSize: '.78rem', fontWeight: !statusFilter ? 700 : 500, borderColor: !statusFilter ? 'var(--accent-primary)' : undefined, background: !statusFilter ? 'var(--sidebar-active-bg)' : undefined }}
           >
-            {val.label}
+            Tüm Durumlar
           </button>
-        ))}
+          {Object.entries(STATUS_MAP).map(([key, val]) => (
+            <button
+              key={key}
+              className="btn-o"
+              onClick={() => setStatusFilter(key)}
+              style={{ fontSize: '.78rem', fontWeight: statusFilter === key ? 700 : 500, color: statusFilter === key ? val.color : undefined, borderColor: statusFilter === key ? val.color : undefined, background: statusFilter === key ? `${val.color}11` : undefined }}
+            >
+              {val.label}
+            </button>
+          ))}
+        </div>
+
+        {(activeMode === 'center' || activeMode === 'admin') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>Şube:</span>
+            <div className="sel-wrap" style={{ minWidth: 180 }}>
+              <select
+                value={selectedBranchId}
+                onChange={e => setSelectedBranchId(e.target.value)}
+                className="f-input"
+                style={{ fontSize: '.78rem', height: 34, padding: '0 8px' }}
+              >
+                <option value="all">Tüm Şubeler</option>
+                <option value="null">Genel Merkez</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Ticket List View (Full Width) */}
@@ -335,7 +400,10 @@ export default function TicketBoard() {
                 <div
                   key={ticket.id}
                   className="card"
-                  onClick={() => navigate(`/geribildirimler/${ticket.id}`)}
+                  onClick={() => {
+                    const ticketBase = activeMode === 'branch' ? '/sube-geribildirimler' : (activeMode === 'warehouse' ? '/merkez-geribildirimler' : '/geribildirimler')
+                    navigate(`${ticketBase}/${ticket.id}`)
+                  }}
                   style={{
                     padding: '16px 20px',
                     cursor: 'pointer',

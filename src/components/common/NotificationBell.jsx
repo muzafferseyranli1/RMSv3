@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useWorkspace } from '@/context/WorkspaceContext'
 import { fetchMyNotifications, markAsRead, markAllAsRead, getUnreadCount } from '@/lib/notificationService'
 
 export default function NotificationBell() {
@@ -8,6 +9,7 @@ export default function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
+  const { scope } = useWorkspace()
 
   const [activeUser] = useState(() => {
     try {
@@ -119,24 +121,27 @@ export default function NotificationBell() {
 
   // Notification türüne göre yönlendirme URL'si
   const getNavigationUrl = (notif) => {
+    const isBranch = scope === 'branch'
+    const isWarehouse = scope === 'warehouse'
+
     switch (notif.reference_type) {
       case 'ticket':
-        return notif.reference_id ? `/geribildirimler/${notif.reference_id}` : '/geribildirimler'
+        const ticketBase = isBranch ? '/sube-geribildirimler' : (isWarehouse ? '/merkez-geribildirimler' : '/geribildirimler')
+        return notif.reference_id ? `${ticketBase}/${notif.reference_id}` : ticketBase
       case 'quality_report':
-        return '/kalite-raporlari'
+        return isBranch ? '/sube-kalite-raporlari' : (isWarehouse ? '/merkez-kalite-raporlari' : '/kalite-raporlari')
       case 'task':
-        return '/tasks'
       case 'announcement':
-        return '/tasks'
+        return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
       default:
         // Bildirim türüne göre fallback
         if (notif.type === 'task_assigned' || notif.type === 'task_comment' || notif.type === 'task_status_changed') {
-          return '/tasks'
+          return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
         }
         if (notif.type === 'announcement') {
-          return '/tasks'
+          return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
         }
-        return '/geribildirimler'
+        return isBranch ? '/sube-geribildirimler' : (isWarehouse ? '/merkez-geribildirimler' : '/geribildirimler')
     }
   }
 

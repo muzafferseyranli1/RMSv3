@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS public.quality_reports (
   assigned_to TEXT,                     -- Kalite/satınalma personel ID
   resolution_note TEXT,                 -- Çözüm notu
   ticket_id UUID,                       -- Oluşturulan bilet ID
+  skt DATE,                             -- Son kullanma tarihi
+  parti_no TEXT,                        -- Parti numarası
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
