@@ -17,7 +17,7 @@ import {
   getRuntimeChannelLabel,
   loadCachedRuntimeLoyaltyCampaignCatalog,
 } from '@/lib/posLoyalty'
-import { loadLoyaltyCustomerCategoryAssignments } from '@/lib/loyalty'
+import { loadLoyaltyCustomerCategoryAssignments, saveLoyaltyCustomerCategoryAssignments } from '@/lib/loyalty'
 import { postSaleLoyaltyValueLedger } from '@/lib/loyaltyValueLedger'
 import {
   buildCallCenterOrderNote,
@@ -139,6 +139,35 @@ function addressLabel(address) {
     address?.floor_no ? `${address.floor_no}. kat` : '',
     address?.door_no ? `Daire ${address.door_no}` : '',
   ].filter(Boolean).join(', ')
+}
+
+async function ensureFeedbackSourceCategory() {
+  try {
+    const { data, error } = await db.from('loyalty_customer_categories')
+      .select('id')
+      .eq('id', 'feedback_source')
+      .maybeSingle()
+
+    if (error) throw error
+
+    if (!data) {
+      const { error: insertError } = await db.from('loyalty_customer_categories')
+        .insert({
+          id: 'feedback_source',
+          scope_type: 'global',
+          name: 'Geri Bildirimden Gelen',
+          code: 'FEEDBACK_SOURCE',
+          description: 'Geri bildirim (destek/şikayet) oluşturulurken otomatik kaydedilen müşteriler.',
+          color: '#ef4444',
+          active: true,
+          sort_order: 0,
+          updated_at: new Date().toISOString()
+        })
+      if (insertError) throw insertError
+    }
+  } catch (err) {
+    console.error("Failed to ensure system category 'feedback_source':", err)
+  }
 }
 
 
@@ -401,8 +430,10 @@ export default function OrderHub() {
   // Ticket creation states
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [ticketCategories, setTicketCategories] = useState([])
-  const [ticketForm, setTicketForm] = useState({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', description: '' })
+  const [ticketForm, setTicketForm] = useState({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', customerId: null, description: '' })
   const [ticketSubmitting, setTicketSubmitting] = useState(false)
+  const [ticketPhoneSuggestions, setTicketPhoneSuggestions] = useState([])
+  const [ticketNameSuggestions, setTicketNameSuggestions] = useState([])
   const [orderTab, setOrderTab] = useState('menu')
   const [fulfillmentType, setFulfillmentType] = useState('delivery')
   const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM)
@@ -1392,26 +1423,77 @@ export default function OrderHub() {
       .filter(row => row.qty > 0))
   }
 
+  const handleTicketPhoneChange = async (val) => {
+    setTicketForm(p => ({ ...p, customerPhone: val, customerId: null }))
+    const phone = normalizePhone(val)
+    if (phone.length >= 3) {
+      const { data, error } = await db.from('musteriler')
+        .select('id,ad_soyad,telefon,telefon_ulke')
+        .is('deleted_at', null)
+        .ilike('normalized_phone', `%${phone}%`)
+        .limit(5)
+      if (!error) {
+        setTicketPhoneSuggestions(data || [])
+      }
+    } else {
+      setTicketPhoneSuggestions([])
+    }
+  }
+
+  const handleTicketNameChange = async (val) => {
+    setTicketForm(p => ({ ...p, customerName: val, customerId: null }))
+    const text = val.trim()
+    if (text.length >= 3) {
+      const { data, error } = await db.from('musteriler')
+        .select('id,ad_soyad,telefon,telefon_ulke')
+        .is('deleted_at', null)
+        .ilike('ad_soyad', `%${text}%`)
+        .limit(5)
+      if (!error) {
+        setTicketNameSuggestions(data || [])
+      }
+    } else {
+      setTicketNameSuggestions([])
+    }
+  }
+
+  const selectTicketCustomer = (cust) => {
+    setTicketForm(p => ({
+      ...p,
+      customerPhone: cust.telefon ? `+90 ${cust.telefon}` : '',
+      customerName: cust.ad_soyad || '',
+      customerId: cust.id
+    }))
+    setTicketPhoneSuggestions([])
+    setTicketNameSuggestions([])
+  }
+
   const handleOpenTicketModal = (customer = null) => {
     let initialPhone = ''
     let initialName = ''
+    let initialCustomerId = null
     if (customer) {
       initialPhone = customer.telefon ? `+90 ${customer.telefon}` : (customer.phone || '')
       initialName = customer.ad_soyad || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || ''
+      initialCustomerId = customer.id || null
     } else if (selectedCustomer) {
       initialPhone = selectedCustomer.telefon ? `+90 ${selectedCustomer.telefon}` : ''
       initialName = selectedCustomer.ad_soyad || ''
+      initialCustomerId = selectedCustomer.id || null
     } else if (customerForm && customerForm.phone && customerForm.phone !== '+90 ') {
       initialPhone = customerForm.phone
       initialName = [customerForm.firstName, customerForm.lastName].filter(Boolean).join(' ')
     }
 
+    setTicketPhoneSuggestions([])
+    setTicketNameSuggestions([])
     setTicketForm({
       categoryId: ticketCategories[0]?.id || '',
       priority: 'normal',
       branchId: selectedBranchId || branches[0]?.id || '',
       customerPhone: initialPhone,
       customerName: initialName,
+      customerId: initialCustomerId,
       description: '',
     })
     setShowTicketModal(true)
@@ -1427,18 +1509,71 @@ export default function OrderHub() {
 
     setTicketSubmitting(true)
     try {
-      let feedbackId = null
+      let customerId = ticketForm.customerId
       const cleanPhone = normalizePhone(ticketForm.customerPhone)
 
-      // If customer details are provided, create a table_feedback entry first to maintain the connection
-      if (cleanPhone || ticketForm.customerName.trim()) {
+      // Search by normalized phone first if no customerId is linked yet
+      if (!customerId && cleanPhone) {
+        const { data: existingCust, error: lookupErr } = await db.from('musteriler')
+          .select('id')
+          .is('deleted_at', null)
+          .eq('normalized_phone', cleanPhone)
+          .maybeSingle()
+        if (!lookupErr && existingCust) {
+          customerId = existingCust.id
+        }
+      }
+
+      // Auto-register new customer if not found/selected
+      if (!customerId && (cleanPhone || ticketForm.customerName.trim())) {
+        await ensureFeedbackSourceCategory()
+
+        const adSoyad = ticketForm.customerName.trim() || 'Geri Bildirim Müşterisi'
+        let phoneDigits = cleanPhone
+        if (phoneDigits) {
+          if (phoneDigits.startsWith('900')) {
+            phoneDigits = '90' + phoneDigits.slice(3)
+          } else if (phoneDigits.startsWith('0')) {
+            phoneDigits = phoneDigits.slice(1)
+          }
+          if (phoneDigits.length === 10 && phoneDigits.startsWith('5')) {
+            phoneDigits = '90' + phoneDigits
+          }
+        }
+
+        const { data: newCust, error: insertErr } = await db.from('musteriler').insert({
+          ad_soyad: adSoyad,
+          telefon: phoneDigits ? phoneDigits.slice(-10) : null,
+          telefon_ulke: '+90',
+          normalized_phone: phoneDigits || null,
+          signup_channel: 'feedback_source',
+          acquisition_source: 'feedback_source',
+          metadata: { source: 'feedback_source' },
+        }).select('id').single()
+
+        if (insertErr) throw insertErr
+
+        if (newCust) {
+          customerId = newCust.id
+          try {
+            await saveLoyaltyCustomerCategoryAssignments({}, customerId, ['feedback_source'])
+          } catch (assignErr) {
+            console.error("Loyalty category assignment failed:", assignErr)
+          }
+        }
+      }
+
+      let feedbackId = null
+
+      // If customer details are resolved or provided, create a table_feedback entry first to maintain the connection
+      if (customerId || cleanPhone || ticketForm.customerName.trim()) {
         const feedbackRes = await createManualFeedback({
           branchId: ticketForm.branchId,
           source: 'call_center',
           rating: 3, // neutral rating
-          comment: `[Çağrı Merkezi Manuel Bilet] ${ticketForm.description}`,
+          comment: `[Çağrı Merkezi Manuel Geribildirim] ${ticketForm.description}`,
           customerPhone: cleanPhone || null,
-          customerId: selectedCustomer?.id || null,
+          customerId: customerId || null,
           staffId: user?.id || null,
           metadata: {
             customer_name: ticketForm.customerName.trim(),
@@ -1464,12 +1599,14 @@ export default function OrderHub() {
 
       if (error) throw error
 
-      toast('Bilet başarıyla oluşturuldu.', 'success')
+      toast('Geribildirim başarıyla oluşturuldu.', 'success')
       setShowTicketModal(false)
       // Reset form
-      setTicketForm({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', description: '' })
+      setTicketForm({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', customerId: null, description: '' })
+      setTicketPhoneSuggestions([])
+      setTicketNameSuggestions([])
     } catch (err) {
-      toast(`Bilet oluşturulamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
+      toast(`Geribildirim oluşturulamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setTicketSubmitting(false)
     }
@@ -2090,7 +2227,7 @@ export default function OrderHub() {
               <i className="fa-solid fa-rotate-right" />
             </button>
             <button className="btn-o" onClick={() => handleOpenTicketModal(null)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <i className="fa-solid fa-ticket" style={{ color: '#ef4444' }} /> Bilet Aç
+              <i className="fa-solid fa-comments" style={{ color: '#ef4444' }} /> Geribildirim Aç
             </button>
             <button className="btn-p" onClick={() => {
               resetComposer()
@@ -2730,7 +2867,7 @@ export default function OrderHub() {
                 onClick={() => handleOpenTicketModal(selectedCustomer)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.76rem', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', marginTop: 4 }}
               >
-                <i className="fa-solid fa-ticket" /> Müşteri İçin Bilet Aç
+                <i className="fa-solid fa-comments" /> Müşteri İçin Geribildirim Aç
               </button>
             )}
           </div>
@@ -2828,12 +2965,33 @@ export default function OrderHub() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10 }}>
-            <input
-              className="f-input"
-              value={hubSearch}
-              onChange={event => setHubSearch(event.target.value)}
-              placeholder="Siparis no, musteri, masa, not ara"
-            />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="f-input"
+                value={hubSearch}
+                onChange={event => setHubSearch(event.target.value)}
+                placeholder="Siparis no, musteri, masa, not ara"
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn-p"
+                type="button"
+                style={{
+                  padding: '0 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer'
+                }}
+                title="Ara"
+              >
+                <i className="fa-solid fa-magnifying-glass" />
+              </button>
+            </div>
             <select className="f-input" value={hubSourceFilter} onChange={event => setHubSourceFilter(event.target.value)}>
               <option value="all">Tum Kanallar</option>
               {hubSourceOptions.map(option => (
@@ -3008,16 +3166,17 @@ export default function OrderHub() {
       )}
       {showTicketModal && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)',
-          zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center'
+          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(4px)',
+          zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
           <div className="card" style={{
             width: 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', padding: 22,
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', borderLeft: '4px solid #ef4444'
+            background: '#ffffff',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)', borderLeft: '4px solid #ef4444'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="fa-solid fa-ticket" style={{ color: '#ef4444' }} /> Yeni Destek / Şikayet Bileti
+                <i className="fa-solid fa-comments" style={{ color: '#ef4444' }} /> Yeni Destek / Şikayet Geribildirimi
               </div>
               <button className="btn-g" onClick={() => setShowTicketModal(false)} style={{ padding: '4px 8px' }}>
                 <i className="fa-solid fa-xmark" />
@@ -3027,7 +3186,7 @@ export default function OrderHub() {
             <div style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label className="f-label">Bilet Kategorisi *</label>
+                  <label className="f-label">Geribildirim Kategorisi *</label>
                   <div className="sel-wrap">
                     <select
                       value={ticketForm.categoryId}
@@ -3070,25 +3229,103 @@ export default function OrderHub() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
+                <div style={{ position: 'relative' }}>
                   <label className="f-label">Müşteri Telefon</label>
                   <input
                     type="text"
                     value={ticketForm.customerPhone}
-                    onChange={e => setTicketForm(p => ({ ...p, customerPhone: e.target.value }))}
+                    onChange={e => handleTicketPhoneChange(e.target.value)}
+                    onBlur={() => setTimeout(() => setTicketPhoneSuggestions([]), 200)}
                     className="f-input"
                     placeholder="+90 5xx xxx xx xx"
                   />
+                  {ticketPhoneSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                      zIndex: 50,
+                      maxHeight: '160px',
+                      overflowY: 'auto',
+                      marginTop: '4px',
+                    }}>
+                      {ticketPhoneSuggestions.map(cust => (
+                        <div
+                          key={cust.id}
+                          onClick={() => selectTicketCustomer(cust)}
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #e2e8f0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{cust.ad_soyad}</span>
+                          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                            {cust.telefon ? `+90 ${cust.telefon}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
+                <div style={{ position: 'relative' }}>
                   <label className="f-label">Müşteri Ad Soyad</label>
                   <input
                     type="text"
                     value={ticketForm.customerName}
-                    onChange={e => setTicketForm(p => ({ ...p, customerName: e.target.value }))}
+                    onChange={e => handleTicketNameChange(e.target.value)}
+                    onBlur={() => setTimeout(() => setTicketNameSuggestions([]), 200)}
                     className="f-input"
                     placeholder="Müşteri Adı Soyadı"
                   />
+                  {ticketNameSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                      zIndex: 50,
+                      maxHeight: '160px',
+                      overflowY: 'auto',
+                      marginTop: '4px',
+                    }}>
+                      {ticketNameSuggestions.map(cust => (
+                        <div
+                          key={cust.id}
+                          onClick={() => selectTicketCustomer(cust)}
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #e2e8f0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{cust.ad_soyad}</span>
+                          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                            {cust.telefon ? `+90 ${cust.telefon}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3107,7 +3344,7 @@ export default function OrderHub() {
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
                 <button className="btn-o" onClick={() => setShowTicketModal(false)} disabled={ticketSubmitting}>İptal</button>
                 <button className="btn-p" onClick={handleCreateTicket} disabled={ticketSubmitting} style={{ background: '#ef4444', color: '#fff', border: 'none' }}>
-                  {ticketSubmitting ? 'Oluşturuluyor...' : 'Bilet Oluştur'}
+                  {ticketSubmitting ? 'Oluşturuluyor...' : 'Geribildirim Oluştur'}
                 </button>
               </div>
             </div>

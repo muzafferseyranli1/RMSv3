@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { fetchTickets, fetchTicketDetail, assignTicket, updateTicketStatus, resolveTicket, closeTicket, addTicketComment, attachWinbackCoupon, createTaskFromTicket, createManualTicket, checkAndMarkSlaBreaches } from '@/lib/ticketService'
+import { useNavigate } from 'react-router-dom'
+import { fetchTickets, checkAndMarkSlaBreaches, createManualTicket } from '@/lib/ticketService'
 import { fetchTicketCategories } from '@/lib/feedbackService'
 import { useWorkspace } from '@/context/WorkspaceContext'
-import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
+import { db } from '@/lib/db'
 
 const STATUS_MAP = {
   open: { label: 'Açık', color: '#3b82f6', bg: 'rgba(59,130,246,.15)' },
@@ -25,20 +26,28 @@ const ORIGIN_MAP = {
   feedback: { label: 'Geri Bildirim', icon: 'fa-comment-dots', color: '#f472b6' },
   inspection: { label: 'Denetim', icon: 'fa-clipboard-check', color: '#8b5cf6' },
   manual: { label: 'Manuel', icon: 'fa-hand', color: '#f59e0b' },
+  quality: { label: 'Standart Dışı Ürün', icon: 'fa-utensils', color: '#ef4444' },
+  social_media: { label: 'Sosyal Medya', icon: 'fa-share-nodes', color: '#06b6d4' },
+  google_review: { label: 'Google Yorumu', icon: 'fa-google', color: '#ea4335' },
 }
 
 export default function TicketBoard() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const { branchId, branchName, branches, scope } = useWorkspace()
+
   const [tickets, setTickets] = useState([])
   const [categories, setCategories] = useState([])
+  const [allNodes, setAllNodes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState({ status: null, priority: null })
-  const [selectedTicket, setSelectedTicket] = useState(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [commentText, setCommentText] = useState('')
+  
+  // Tabs: 'all' | 'my_tickets' | 'unassigned'
+  const [activeTab, setActiveTab] = useState('all')
+  const [statusFilter, setStatusFilter] = useState(null)
+  const [priorityFilter, setPriorityFilter] = useState(null)
+  
   const [showCreate, setShowCreate] = useState(false)
   const [newTicketForm, setNewTicketForm] = useState({ categoryId: '', priority: 'normal', description: '', branchId: '' })
-  const { branchId, branches } = useWorkspace()
-  const toast = useToast()
 
   const getActiveUser = () => {
     try {
@@ -50,73 +59,62 @@ export default function TicketBoard() {
 
   const getBranchName = (bId) => {
     if (!bId) return 'Genel Merkez'
-    return branches.find(b => b.id === bId)?.name || bId
+    return allNodes.find(n => n.id === bId)?.name || branches.find(b => b.id === bId)?.name || bId
   }
 
   const loadTickets = useCallback(async () => {
     setLoading(true)
-    const [ticketResult, catResult] = await Promise.all([
-      fetchTickets({ branchId, status: filter.status, priority: filter.priority }),
-      fetchTicketCategories(),
-    ])
-    if (ticketResult.error) toast('Biletler yüklenemedi', 'error')
-    setTickets(ticketResult.data || [])
-    setCategories(catResult.data || [])
-    setLoading(false)
-  }, [branchId, filter.status, filter.priority, toast])
-
-  useEffect(() => { loadTickets() }, [loadTickets])
-
-  const openDetail = async (ticketId) => {
-    setDetailLoading(true)
-    const { data, error } = await fetchTicketDetail(ticketId)
-    setDetailLoading(false)
-    if (error) return toast('Detay yüklenemedi', 'error')
-    setSelectedTicket(data)
-  }
-
-  const handleStatusChange = async (ticketId, newStatus) => {
     const activeStaff = getActiveUser()
-    const actorId = activeStaff?.id || 'system'
-    if (newStatus === 'resolved') {
-      const note = window.prompt('Çözüm notu:')
-      if (!note) return
-      await resolveTicket(ticketId, actorId, note)
-    } else if (newStatus === 'closed') {
-      await closeTicket(ticketId, actorId)
-    } else {
-      await updateTicketStatus(ticketId, newStatus, actorId)
+    const isHQUser = scope === 'center' || scope === 'admin'
+    
+    // Fetch query params
+    const params = {
+      branchId: !isHQUser ? (branchId || 'UNAUTHORIZED_EMPTY_BRANCH') : null,
+      status: statusFilter,
+      priority: priorityFilter,
     }
-    toast('Durum güncellendi', 'success')
-    loadTickets()
-    if (selectedTicket?.id === ticketId) openDetail(ticketId)
-  }
 
-  const handleAddComment = async () => {
-    if (!commentText.trim() || !selectedTicket) return
-    const activeStaff = getActiveUser()
-    await addTicketComment(selectedTicket.id, activeStaff?.id || 'system', commentText)
-    setCommentText('')
-    toast('Yorum eklendi', 'success')
-    openDetail(selectedTicket.id)
-  }
+    if (activeTab === 'my_tickets' && activeStaff?.id) {
+      params.assignedTo = activeStaff.id
+    }
 
-  const handleCreateTask = async (ticket) => {
-    const activeStaff = getActiveUser()
-    const result = await createTaskFromTicket(ticket, {
-      id: activeStaff?.id || 'system',
-      name: activeStaff ? `${activeStaff.firstName} ${activeStaff.lastName}` : 'system',
-    })
-    if (result?.error) return toast('Görev oluşturulamadı', 'error')
-    toast('Görev oluşturuldu', 'success')
+    try {
+      const [ticketResult, catResult, nodesResult] = await Promise.all([
+        fetchTickets(params),
+        fetchTicketCategories(),
+        db.from('company_nodes').select('id,name')
+      ])
+
+      if (ticketResult.error) toast('Geribildirimler yüklenemedi', 'error')
+      
+      let loadedTickets = ticketResult.data || []
+      
+      // Unassigned client side filter
+      if (activeTab === 'unassigned') {
+        loadedTickets = loadedTickets.filter(t => !t.assigned_to)
+      }
+
+      setTickets(loadedTickets)
+      setCategories(catResult.data || [])
+      setAllNodes(nodesResult.data || [])
+    } catch (err) {
+      console.error(err)
+      toast('Veriler yüklenirken hata oluştu', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, scope, statusFilter, priorityFilter, activeTab, toast])
+
+  useEffect(() => {
     loadTickets()
-    if (selectedTicket?.id === ticket.id) openDetail(ticket.id)
-  }
+  }, [loadTickets])
 
   const handleCreateManualTicket = async () => {
     if (!newTicketForm.description.trim()) return toast('Açıklama gerekli', 'warning')
     const activeStaff = getActiveUser()
-    const targetBranch = branchId || newTicketForm.branchId || null
+    const isHQUser = scope === 'center' || scope === 'admin'
+    const targetBranch = !isHQUser ? branchId : (newTicketForm.branchId || null)
+    
     const { error } = await createManualTicket({
       branchId: targetBranch,
       categoryId: newTicketForm.categoryId || null,
@@ -124,8 +122,9 @@ export default function TicketBoard() {
       description: newTicketForm.description,
       actorId: activeStaff?.id || 'system',
     })
-    if (error) return toast('Bilet oluşturulamadı', 'error')
-    toast('Bilet oluşturuldu', 'success')
+    
+    if (error) return toast('Geribildirim oluşturulamadı', 'error')
+    toast('Geribildirim oluşturuldu', 'success')
     setShowCreate(false)
     setNewTicketForm({ categoryId: '', priority: 'normal', description: '', branchId: '' })
     loadTickets()
@@ -134,54 +133,54 @@ export default function TicketBoard() {
   const handleSlaCheck = async () => {
     const { count, error } = await checkAndMarkSlaBreaches()
     if (error) return toast('SLA kontrolü başarısız', 'error')
-    toast(`${count} bilet SLA ihlali olarak işaretlendi`, count > 0 ? 'warning' : 'info')
+    toast(`${count} geribildirim SLA ihlali olarak işaretlendi`, count > 0 ? 'warning' : 'info')
     loadTickets()
   }
 
   const getCategoryName = (catId) => categories.find(c => c.id === catId)?.name || '—'
 
-  // Stats
+  // Stats (based on loaded tickets)
   const openCount = tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length
   const breachedCount = tickets.filter(t => t.sla_breached).length
   const resolvedToday = tickets.filter(t => t.resolved_at && new Date(t.resolved_at).toDateString() === new Date().toDateString()).length
 
   return (
-    <div style={{ maxWidth: 1200 }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <i className="fa-solid fa-ticket" style={{ color: '#ef4444', fontSize: '1rem' }} />
+              <i className="fa-solid fa-comments" style={{ color: '#ef4444', fontSize: '1rem' }} />
             </span>
-            Bilet Yönetimi
+            Geribildirim Yönetimi
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>Şikayet, denetim ve manuel biletlerin yaşam döngüsünü yönetin.</p>
+          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>Şikayet, denetim, kalite ve manuel geribildirimlerin yaşam döngüsünü yönetin.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-o" onClick={handleSlaCheck} style={{ fontSize: '.78rem' }}>
             <i className="fa-solid fa-clock" style={{ marginRight: 6 }} /> SLA Kontrol
           </button>
           <button className="btn-p" onClick={() => setShowCreate(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <i className="fa-solid fa-plus" /> Yeni Bilet
+            <i className="fa-solid fa-plus" /> Yeni Geribildirim
           </button>
         </div>
       </div>
 
       {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: 'Toplam', value: tickets.length, icon: 'fa-ticket', color: '#3b82f6' },
+          { label: 'Gösterilen Geribildirimler', value: tickets.length, icon: 'fa-comments', color: '#3b82f6' },
           { label: 'Açık / İşlemde', value: openCount, icon: 'fa-folder-open', color: '#f59e0b' },
           { label: 'SLA İhlali', value: breachedCount, icon: 'fa-triangle-exclamation', color: '#ef4444' },
           { label: 'Bugün Çözülen', value: resolvedToday, icon: 'fa-check-circle', color: '#10b981' },
         ].map(stat => (
-          <div key={stat.label} className="card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ width: 36, height: 36, borderRadius: 10, background: `${stat.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <i className={`fa-solid ${stat.icon}`} style={{ color: stat.color, fontSize: '.9rem' }} />
+          <div key={stat.label} className="card" style={{ padding: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 10, background: `${stat.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={`fa-solid ${stat.icon}`} style={{ color: stat.color, fontSize: '.95rem' }} />
             </span>
             <div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-strong)' }}>{stat.value}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-strong)' }}>{stat.value}</div>
               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{stat.label}</div>
             </div>
           </div>
@@ -190,15 +189,15 @@ export default function TicketBoard() {
 
       {/* Create Modal */}
       {showCreate && (
-        <div className="card" style={{ padding: 20, marginBottom: 16, borderLeft: '4px solid #6366f1' }}>
-          <div style={{ fontWeight: 700, fontSize: '.85rem', marginBottom: 12, color: 'var(--text-strong)' }}>Yeni Bilet Oluştur</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="card" style={{ padding: 24, marginBottom: 20, borderLeft: '4px solid #6366f1' }}>
+          <div style={{ fontWeight: 800, fontSize: '.9rem', marginBottom: 16, color: 'var(--text-strong)' }}>Yeni Geribildirim Oluştur</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <div>
               <label className="f-label">Şube / Alan</label>
               {branchId ? (
                 <input
                   type="text"
-                  value={branches.find(b => b.id === branchId)?.name || 'Şube'}
+                  value={branchName || 'Şube'}
                   className="f-input"
                   disabled
                   style={{ background: 'var(--surface-2)', opacity: 0.8 }}
@@ -247,214 +246,167 @@ export default function TicketBoard() {
                 value={newTicketForm.description}
                 onChange={e => setNewTicketForm(p => ({ ...p, description: e.target.value }))}
                 rows={3}
-                placeholder="Bileti açıklayın..."
+                placeholder="Geribildirimi açıklayın..."
                 className="f-input"
                 style={{ resize: 'vertical' }}
               />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
             <button className="btn-o" onClick={() => setShowCreate(false)}>İptal</button>
             <button className="btn-p" onClick={handleCreateManualTicket}>Oluştur</button>
           </div>
         </div>
       )}
 
-      {/* Filters */}
+      {/* Tabs Menu */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
+        {[
+          { key: 'all', label: 'Tüm Geribildirimler', icon: 'fa-list' },
+          { key: 'my_tickets', label: 'Bana Atananlar', icon: 'fa-user-check' },
+          { key: 'unassigned', label: 'Atanmamış Geribildirimler', icon: 'fa-user-slash' }
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '12px 20px',
+              border: 'none',
+              borderBottom: activeTab === tab.key ? '2px solid #6366f1' : '2px solid transparent',
+              background: 'none',
+              color: activeTab === tab.key ? '#6366f1' : 'var(--text-muted)',
+              fontWeight: activeTab === tab.key ? 800 : 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <i className={`fa-solid ${tab.icon}`} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters & Search */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <button
           className="btn-o"
-          onClick={() => setFilter(p => ({ ...p, status: null }))}
-          style={{ fontSize: '.78rem', fontWeight: !filter.status ? 700 : 500, borderColor: !filter.status ? 'var(--accent-primary)' : undefined, background: !filter.status ? 'var(--sidebar-active-bg)' : undefined }}
+          onClick={() => setStatusFilter(null)}
+          style={{ fontSize: '.78rem', fontWeight: !statusFilter ? 700 : 500, borderColor: !statusFilter ? 'var(--accent-primary)' : undefined, background: !statusFilter ? 'var(--sidebar-active-bg)' : undefined }}
         >
-          Tümü
+          Tüm Durumlar
         </button>
         {Object.entries(STATUS_MAP).map(([key, val]) => (
           <button
             key={key}
             className="btn-o"
-            onClick={() => setFilter(p => ({ ...p, status: key }))}
-            style={{ fontSize: '.78rem', fontWeight: filter.status === key ? 700 : 500, color: filter.status === key ? val.color : undefined, borderColor: filter.status === key ? val.color : undefined, background: filter.status === key ? `${val.color}11` : undefined }}
+            onClick={() => setStatusFilter(key)}
+            style={{ fontSize: '.78rem', fontWeight: statusFilter === key ? 700 : 500, color: statusFilter === key ? val.color : undefined, borderColor: statusFilter === key ? val.color : undefined, background: statusFilter === key ? `${val.color}11` : undefined }}
           >
             {val.label}
           </button>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 16 }}>
-        {/* Ticket List */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {loading ? (
-            <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
-              <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} /> Yükleniyor...
-            </div>
-          ) : tickets.length === 0 ? (
-            <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-              <i className="fa-solid fa-ticket" style={{ fontSize: '2rem', marginBottom: 12, display: 'block', opacity: .4 }} />
-              <div style={{ fontWeight: 700 }}>Bilet bulunamadı</div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {tickets.map(ticket => {
-                const status = STATUS_MAP[ticket.status] || STATUS_MAP.open
-                const priority = PRIORITY_MAP[ticket.priority] || PRIORITY_MAP.normal
-                const origin = ORIGIN_MAP[ticket.origin_type] || ORIGIN_MAP.manual
-                const isBreached = ticket.sla_breached
-                const isSelected = selectedTicket?.id === ticket.id
-                return (
-                  <div
-                    key={ticket.id}
-                    className="card"
-                    style={{
-                      padding: 14, cursor: 'pointer',
-                      borderColor: isSelected ? '#6366f1' : isBreached ? 'rgba(239,68,68,.3)' : undefined,
-                      background: isSelected ? 'rgba(99,102,241,.06)' : isBreached ? 'rgba(239,68,68,.03)' : undefined,
-                    }}
-                    onClick={() => openDetail(ticket.id)}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 8, background: origin.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <i className={`fa-solid ${origin.icon}`} style={{ color: origin.color, fontSize: '.75rem' }} />
+      {/* Ticket List View (Full Width) */}
+      <div>
+        {loading ? (
+          <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+            <i className="fa-solid fa-spinner fa-spin fa-2x" style={{ marginBottom: 12 }} />
+            <div>Yükleniyor...</div>
+          </div>
+        ) : tickets.length === 0 ? (
+          <div className="card" style={{ padding: 64, textAlign: 'center', color: 'var(--text-muted)' }}>
+            <i className="fa-solid fa-comments fa-3x" style={{ marginBottom: 16, opacity: .3 }} />
+            <div style={{ fontWeight: 700, fontSize: '.95rem' }}>Geribildirim Bulunmamaktadır</div>
+            <p style={{ margin: '8px 0 0', fontSize: '.8rem' }}>Seçilen filtreler ve sekmeye uygun herhangi bir geribildirim bulunmuyor.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {tickets.map(ticket => {
+              const status = STATUS_MAP[ticket.status] || STATUS_MAP.open
+              const priority = PRIORITY_MAP[ticket.priority] || PRIORITY_MAP.normal
+              const origin = ORIGIN_MAP[ticket.origin_type] || ORIGIN_MAP.manual
+              
+              return (
+                <div
+                  key={ticket.id}
+                  className="card"
+                  onClick={() => navigate(`/geribildirimler/${ticket.id}`)}
+                  style={{
+                    padding: '16px 20px',
+                    cursor: 'pointer',
+                    borderColor: ticket.sla_breached ? 'rgba(239,68,68,.35)' : undefined,
+                    background: ticket.sla_breached ? 'rgba(239,68,68,.02)' : undefined,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-1px)'
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'
+                    e.currentTarget.style.borderColor = '#6366f1'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none'
+                    e.currentTarget.style.boxShadow = 'none'
+                    e.currentTarget.style.borderColor = ticket.sla_breached ? 'rgba(239,68,68,.35)' : 'var(--border)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+                      
+                      {/* Icon */}
+                      <span style={{ width: 40, height: 40, borderRadius: 10, background: origin.bg || 'rgba(100,116,139,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <i className={`fa-solid ${origin.icon}`} style={{ color: origin.color, fontSize: '1rem' }} />
                       </span>
+
+                      {/* Content */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                          <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)' }}>
                             #{String(ticket.id).slice(0, 8)}
                           </span>
-                          <span style={{ fontSize: '.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: status.bg, color: status.color }}>
+                          <span style={{ fontSize: '.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: status.bg, color: status.color }}>
                             {status.label}
                           </span>
-                          <span style={{ fontSize: '.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: `${priority.color}15`, color: priority.color }}>
-                            <i className={`fa-solid ${priority.icon}`} style={{ marginRight: 3, fontSize: '.55rem' }} />{priority.label}
+                          <span style={{ fontSize: '.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: `${priority.color}15`, color: priority.color }}>
+                            <i className={`fa-solid ${priority.icon}`} style={{ marginRight: 3, fontSize: '.55rem' }} />
+                            {priority.label}
                           </span>
-                          {isBreached && (
-                            <span style={{ fontSize: '.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(239,68,68,.15)', color: '#ef4444' }}>
-                              SLA İhlali
+                          {ticket.sla_breached && (
+                            <span style={{ fontSize: '.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: 'rgba(239,68,68,.15)', color: '#ef4444' }}>
+                              SLA Aşıldı
+                            </span>
+                          )}
+                          {ticket.escalated && (
+                            <span style={{ fontSize: '.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: 'rgba(220,38,38,.15)', color: '#dc2626' }}>
+                              Eskale (HQ)
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                          <span style={{ color: ticket.branch_id ? 'var(--text-strong)' : '#8b5cf6', fontWeight: 600 }}>
-                            {getBranchName(ticket.branch_id)}
-                          </span>
-                          {' • '}{getCategoryName(ticket.category_id)} • {origin.label} • {new Date(ticket.created_at).toLocaleDateString('tr-TR')}
+                        <div style={{ fontSize: '.76rem', color: 'var(--text-muted)' }}>
+                          <strong style={{ color: 'var(--text-strong)' }}>{getBranchName(ticket.branch_id)}</strong>
+                          {' • '}{getCategoryName(ticket.category_id)}
+                          {ticket.assigned_to_name && (
+                            <span> • Görevli: <strong style={{ color: '#f59e0b' }}>{ticket.assigned_to_name}</strong></span>
+                          )}
+                          <span> • Oluşturulma: {new Date(ticket.created_at).toLocaleDateString('tr-TR')}</span>
                         </div>
                       </div>
+
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Detail Panel */}
-        {selectedTicket && (
-          <div className="card" style={{ width: 380, padding: 20, flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: 24 }}>
-            {detailLoading ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <i className="fa-solid fa-spinner fa-spin" /> Yükleniyor...
-              </div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ fontSize: '.9rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                    #{String(selectedTicket.id).slice(0, 8)}
-                  </div>
-                  <button className="btn-g" onClick={() => setSelectedTicket(null)} style={{ padding: '4px 8px' }}>
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-
-                {/* Status Actions */}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                  {selectedTicket.status !== 'resolved' && selectedTicket.status !== 'closed' && (
-                    <button className="btn-o" onClick={() => handleStatusChange(selectedTicket.id, 'resolved')} style={{ fontSize: '.72rem', color: '#10b981' }}>
-                      <i className="fa-solid fa-check" style={{ marginRight: 4 }} /> Çözüldü
-                    </button>
-                  )}
-                  {selectedTicket.status === 'resolved' && (
-                    <button className="btn-o" onClick={() => handleStatusChange(selectedTicket.id, 'closed')} style={{ fontSize: '.72rem', color: '#64748b' }}>
-                      <i className="fa-solid fa-lock" style={{ marginRight: 4 }} /> Kapat
-                    </button>
-                  )}
-                  {!selectedTicket.task_id && selectedTicket.status !== 'closed' && (
-                    <button className="btn-o" onClick={() => handleCreateTask(selectedTicket)} style={{ fontSize: '.72rem', color: '#3b82f6' }}>
-                      <i className="fa-solid fa-list-check" style={{ marginRight: 4 }} /> Görev Oluştur
-                    </button>
-                  )}
-                </div>
-
-                {/* Detail fields */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '.78rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Şube / Alan:</strong> {getBranchName(selectedTicket.branch_id)}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Durum:</strong> {(STATUS_MAP[selectedTicket.status] || STATUS_MAP.open).label}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Öncelik:</strong> {(PRIORITY_MAP[selectedTicket.priority] || PRIORITY_MAP.normal).label}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Kategori:</strong> {getCategoryName(selectedTicket.category_id)}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Kaynak:</strong> {(ORIGIN_MAP[selectedTicket.origin_type] || ORIGIN_MAP.manual).label}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>SLA:</strong> {selectedTicket.sla_level} {selectedTicket.sla_breached && <span style={{ color: '#ef4444', fontWeight: 700 }}>• İHLAL</span>}</div>
-                  {selectedTicket.sla_deadline_at && <div><strong style={{ color: 'var(--text-strong)' }}>Son Tarih:</strong> {new Date(selectedTicket.sla_deadline_at).toLocaleString('tr-TR')}</div>}
-                  {selectedTicket.resolution_note && <div><strong style={{ color: 'var(--text-strong)' }}>Çözüm:</strong> {selectedTicket.resolution_note}</div>}
-                  {selectedTicket.task_id && <div><strong style={{ color: 'var(--text-strong)' }}>Görev:</strong> #{String(selectedTicket.task_id).slice(0, 8)}</div>}
-                </div>
-
-                {/* Related Feedback */}
-                {selectedTicket.feedback && (
-                  <div style={{ padding: 10, borderRadius: 8, background: 'rgba(244,114,182,.06)', border: '1px solid rgba(244,114,182,.15)', marginBottom: 12 }}>
-                    <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#f472b6', marginBottom: 4 }}>Bağlı Geri Bildirim</div>
-                    <div style={{ fontSize: '.78rem', color: 'var(--text-strong)' }}>
-                      ⭐ {selectedTicket.feedback.rating}/5 — {selectedTicket.feedback.comment || 'Yorum yok'}
+                    
+                    {/* Action Link Arrow */}
+                    <div style={{ color: 'var(--text-muted)', fontSize: '1rem', paddingLeft: 12 }}>
+                      <i className="fa-solid fa-chevron-right" />
                     </div>
-                  </div>
-                )}
 
-                {/* Comments */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>
-                    Yorumlar ({selectedTicket.comments?.length || 0})
-                  </div>
-                  <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {(selectedTicket.comments || []).map(c => (
-                      <div key={c.id} style={{ padding: 8, borderRadius: 6, background: 'var(--surface-2)', fontSize: '.75rem' }}>
-                        <div style={{ color: 'var(--text-muted)', marginBottom: 2 }}>
-                          <strong>{c.author_id}</strong> • {new Date(c.created_at).toLocaleString('tr-TR')}
-                        </div>
-                        <div style={{ color: 'var(--text-strong)' }}>{c.body}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <input
-                      value={commentText}
-                      onChange={e => setCommentText(e.target.value)}
-                      placeholder="Yorum ekle..."
-                      onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-                      className="f-input"
-                      style={{ flex: 1 }}
-                    />
-                    <button className="btn-p" onClick={handleAddComment} style={{ padding: '6px 12px', fontSize: '.75rem' }}>
-                      <i className="fa-solid fa-paper-plane" />
-                    </button>
                   </div>
                 </div>
-
-                {/* Audit Log */}
-                {selectedTicket.auditLog?.length > 0 && (
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 12 }}>
-                    <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>Geçmiş</div>
-                    <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {selectedTicket.auditLog.map(log => (
-                        <div key={log.id} style={{ fontSize: '.68rem', color: 'var(--text-muted)', display: 'flex', gap: 6 }}>
-                          <span style={{ color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleString('tr-TR')}</span>
-                          <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{log.action}</span>
-                          {log.new_value && <span>→ {log.new_value}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+              )
+            })}
           </div>
         )}
       </div>

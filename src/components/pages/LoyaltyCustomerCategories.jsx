@@ -130,6 +130,7 @@ function CategoryModal({ open, draft, saving, isNew, onClose, onChange, onSave, 
                 value={draft.name}
                 onChange={event => onChange('name', event.target.value)}
                 placeholder="Kategori adi"
+                disabled={draft.id === 'feedback_source'}
               />
             </div>
 
@@ -140,6 +141,7 @@ function CategoryModal({ open, draft, saving, isNew, onClose, onChange, onSave, 
                 value={draft.code}
                 onChange={event => onChange('code', event.target.value)}
                 placeholder="Kod"
+                disabled={draft.id === 'feedback_source'}
               />
             </div>
 
@@ -208,7 +210,7 @@ function CategoryModal({ open, draft, saving, isNew, onClose, onChange, onSave, 
           background: '#fff',
         }}>
           <div>
-            {!isNew && (
+            {!isNew && draft.id !== 'feedback_source' && (
               <button
                 className="btn-o"
                 type="button"
@@ -263,7 +265,20 @@ export default function LoyaltyCustomerCategories() {
 
         setSchemaReady(result.schemaReady)
         setDatabaseUnavailable(Boolean(result.databaseUnavailable))
-        setCategories((result.categories || []).map(normalizeCustomerCategory))
+        const loadedList = (result.categories || []).map(normalizeCustomerCategory)
+        const hasFeedbackSource = loadedList.some(c => c.id === 'feedback_source')
+        if (!hasFeedbackSource) {
+          loadedList.push(normalizeCustomerCategory({
+            id: 'feedback_source',
+            name: 'Geri Bildirimden Gelen',
+            code: 'FEEDBACK_SOURCE',
+            description: 'Geri bildirim (destek/şikayet) oluşturulurken otomatik kaydedilen müşteriler.',
+            color: '#ef4444',
+            active: true,
+            sortOrder: 0
+          }))
+        }
+        setCategories(loadedList)
       } catch (error) {
         if (!cancelled) toast(error?.message || 'Musteri kategorileri yuklenemedi', 'error')
       } finally {
@@ -356,6 +371,11 @@ export default function LoyaltyCustomerCategories() {
   }
 
   async function handleDeleteCategory(category) {
+    if (category.id === 'feedback_source') {
+      toast('Sistem kategorisi silinemez', 'error')
+      setConfirmDelete(null)
+      return
+    }
     const saved = await persistCategories(
       categories.filter(item => item.id !== category.id),
       'Musteri kategorisi silindi',
@@ -506,14 +526,16 @@ export default function LoyaltyCustomerCategories() {
                       <button className="btn-o" type="button" onClick={() => openEditModal(category)}>
                         Duzenle
                       </button>
-                      <button
-                        className="btn-o"
-                        type="button"
-                        onClick={() => setConfirmDelete(category)}
-                        style={{ color: '#b91c1c', borderColor: '#fecaca' }}
-                      >
-                        Sil
-                      </button>
+                      {category.id !== 'feedback_source' && (
+                        <button
+                          className="btn-o"
+                          type="button"
+                          onClick={() => setConfirmDelete(category)}
+                          style={{ color: '#b91c1c', borderColor: '#fecaca' }}
+                        >
+                          Sil
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

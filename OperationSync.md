@@ -5977,4 +5977,250 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 
 
 
+## Entry 138 - 2026-05-27
+
+- `Timestamp`: `2026-05-27T11:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Denetim Formu Standart Bilgilerinin Tanımlanması ve Bildirim Formu Seçeneğinin Eklenmesi`
+- `Intent`: `Kullanıcının isteği doğrultusunda form tiplerine Bildirim Formu (notification_form) eklemek ve Denetim Formu (inspection) tipi doldurulurken standart metadata alanlarını (tarih, saat, şube, yetkili, vardiya görevlisi, şube sorumluları) arayüze ekleyip veritabanına kaydetmek.`
+- `Files Read`:
+  - `c:\RMSv3\src\components\pages\FormSubmissions.jsx`
+  - `c:\RMSv3\src\components\pages\FormTemplates.jsx`
+  - `c:\RMSv3\src\lib\formService.js`
+  - `c:\RMSv3\schema-railway-master.sql`
+- `Files Changed`:
+  - `c:\RMSv3\src\components\pages\FormSubmissions.jsx`
+  - `c:\RMSv3\src\components\pages\FormTemplates.jsx`
+  - `c:\RMSv3\src\lib\formService.js`
+  - `c:\RMSv3\schema-railway-master.sql`
+  - `c:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `node scratch/update_form_type_constraint.cjs`
+  - `npm run build`
+- `Findings`:
+  - `form_templates` tablosundaki `form_templates_type_check` kısıtlaması (constraint) sadece 'inspection', 'customer_survey', 'personnel_survey', 'checklist' tiplerini destekliyordu.
+  - Bildirim Formu (`notification_form`) eklenebilmesi için kısıtlama veritabanında güncellendi ve `schema-railway-master.sql` dosyasına yansıtıldı.
+  - Denetim formu doldurulurken; denetimi yapanın adı PIN oturumundan (`rms_active_user`) otomatik çekildi.
+  - Şube seçimi, form tarihi, başlangıç ve bitiş saatleri ile birlikte İlgili Şubenin Yetkilisi, Vardiya Görevlisi ve Şubenin Sorumluları (çoklu seçim) eklendi.
+  - Sorumlular seçildiğinde "Sonucu Gönder" seçeneği varsayılan olarak seçili gelirken, diğer yetkililerde seçilmemiş olarak sunuldu.
+  - Bu metadata alanları `form_submissions.metadata` içerisine kaydedildi ve form detay panelinde düzgünce gösterildi.
+  - Form tasarlama ekranında (`FormTemplates.jsx`) "Seçenekler" (select) tipi için seçenek ekleme/silme arayüzünün ve "Sıcaklık" (temperature) tipi için sıcaklık sınırlarının eksik olduğu tespit edildi; bu kısımlar için dinamik alt form editörleri eklenerek sorun çözüldü.
+- `Decisions`:
+  - Yeni form tipi veritabanında ve şablon ekranında aktif edildi.
+  - Denetim formuna özel bu alanların tümü `metadata` JSONB kolonu üzerinden esnek bir yapıda yönetilerek şema genişletmesi yapıldı.
+  - Seçenekler ve sıcaklık aralıkları tasarımı için inline alt panel tasarımları uygulandı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Kullanıcının `http://localhost:5173/form-sablonlari` sayfasından yeni "Bildirim Formu" şablonları tasarlayabilmesini ve `/form-yanitlari` sayfasından bir denetim formu doldurarak şube yetkilileri, sorumluları ve süre verilerinin kaydedildiğini doğrulamasını sağlamak.
+- `Handoff Contract`: `Dinamik form sistemine Bildirim Formu (notification_form) seçeneği eklendi. Denetim formları doldurulurken standart tarih, saat, şube, yetkili, vardiya görevlisi ve sorumlular listesi (seçim/gönderim bayraklarıyla) arayüzde sunuldu ve metadata olarak kaydedilmesi sağlandı. Ayrıca Şablon Tasarım ekranına Seçenekler (select) ve Sıcaklık (temperature) sınır tanımlama arayüzleri eklendi. Derleme başarılıdır.`
+
+
+
+## Entry 139 - 2026-05-27
+
+- `Timestamp`: `2026-05-27T13:58:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bilet Tabirinin Geribildirim Olarak Değiştirilmesi`
+- `Intent`: `Bilet ve Bilet Yönetimi terimlerini tüm ekranlarda, rota yönlendirmelerinde, bildirim şablonlarında ve dökümanlarda "Geribildirim" olarak değiştirmek.`
+- `Files Read`:
+  - `c:\RMSv3\src\lib\workspace.js`
+  - `c:\RMSv3\src\App.jsx`
+  - `c:\RMSv3\src\components\layout\Sidebar.jsx`
+  - `c:\RMSv3\src\components\pages\TicketBoard.jsx`
+  - `c:\RMSv3\src\components\pages\TicketDetail.jsx`
+  - `c:\RMSv3\src\components\pages\TicketCategories.jsx`
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+  - `c:\RMSv3\src\components\pages\FeedbackManagement.jsx`
+  - `c:\RMSv3\src\components\pages\QualityReports.jsx`
+  - `c:\RMSv3\src\components\pages\ReportDesigner.jsx`
+  - `c:\RMSv3\src\lib\ticketService.js`
+  - `c:\RMSv3\sikayetform.md`
+- `Files Changed`:
+  - `c:\RMSv3\src\lib\workspace.js` (Önceki adımda)
+  - `c:\RMSv3\src\App.jsx` (Önceki adımda)
+  - `c:\RMSv3\src\components\layout\Sidebar.jsx` (Önceki adımda)
+  - `c:\RMSv3\src\components\pages\TicketBoard.jsx`
+  - `c:\RMSv3\src\components\pages\TicketDetail.jsx`
+  - `c:\RMSv3\src\components\pages\TicketCategories.jsx`
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+  - `c:\RMSv3\src\components\pages\FeedbackManagement.jsx`
+  - `c:\RMSv3\src\components\pages\QualityReports.jsx`
+  - `c:\RMSv3\src\components\pages\ReportDesigner.jsx`
+  - `c:\RMSv3\src\lib\ticketService.js`
+  - `c:\RMSv3\sikayetform.md`
+  - `c:\RMSv3\.antigravityrules.md`
+  - `c:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `npm run build:web`
+- `Findings`:
+  - Arayüzlerde ve yönlendirmelerde kullanılan "Bilet" kelimeleri müşteri talebi doğrultusunda "Geribildirim" olarak güncellendi.
+  - Yol çakışmalarını önlemek amacıyla, anket ve müşteri geri bildirimlerini içeren eski `/geri-bildirimler` rotası `/musteri-yorumlari` (Müşteri Yorumları) olarak adlandırıldı.
+  - Rapor tasarlayıcısındaki "Ortalama Bilet" (Average Check) kavramı support biletleriyle çakışmayı önlemek için "Ortalama Sepet" olarak değiştirildi.
+- `Decisions`:
+  - Veritabanı tabloları ve dosya isimleri olası migrasyon risklerini engellemek için `tickets` ve `TicketBoard.jsx` olarak bırakıldı, ancak kullanıcıya sunulan etiketler ve rotalar tamamen "Geribildirim" olarak soyutlandı.
+  - İkon sınıfları `fa-ticket` yerine `fa-comments` yapılarak görsel tutarlılık sağlandı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Projenin yeni dökümantasyon klasöründeki (`docs/`) dosyaları Git'e eklemek ve doğrulamak.
+- `Handoff Contract`: `Bilet ve Bilet Yönetimi terimleri, rotaları (/geribildirimler), menüleri, ikonları, toast mesajları, bildirim şablonları ve sistem dökümanları (sikayetform.md) dahil olmak üzere tamamen Geribildirim olarak güncellendi. Proje başarıyla derlendi ve tüm değişikliklerin docs/ klasörü altında yedeklenmesi sağlandı.`
+
+## Entry 140 - 2026-05-27
+
+- `Timestamp`: `2026-05-27T14:21:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Çağrı Merkezi Geribildirim Formunda Müşteri Arama ve Otomatik Kayıt`
+- `Intent`: `Çağrı merkezinde geribildirim modalı içinden kayıtlı müşterilere ulaşılabilmesi, kaydı yoksa yeni müşteri olarak kaydedilmesi ve bu müşterilerin gömülü/silinemez 'feedback_source' (Geri Bildirimden Gelen) müşteri kategorisine otomatik atanması.`
+- `Files Read`:
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+  - `c:\RMSv3\src\components\pages\LoyaltyCustomerCategories.jsx`
+  - `c:\RMSv3\src\lib\loyalty.js`
+- `Files Changed`:
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+  - `c:\RMSv3\src\components\pages\LoyaltyCustomerCategories.jsx`
+  - `c:\RMSv3\docs\implementation_plan.md`
+  - `c:\RMSv3\docs\task.md`
+  - `c:\RMSv3\docs\walkthrough.md`
+  - `c:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `npm run build:web`
+- `Findings`:
+  - Autocomplete önerileri için 3+ karakter kısıtlamasıyla arama optimize edildi, `setTimeout` ile blur esnasında önerilerin kaybolması sağlandı.
+  - Veritabanında mükerrer kaydı önlemek için `normalized_phone` lookup eklendi.
+  - Gömülü sistem kategorisi `'feedback_source'` (`Geri Bildirimden Gelen`) UI ve DB seviyesinde korunarak silinmesi/düzenlenmesi engellendi ve ilk kez çağrıldığında dinamik olarak veritabanına eklenmesi (`ensureFeedbackSourceCategory`) sağlandı.
+- `Decisions`:
+  - Yeni müşterilerin `signup_channel` ve `acquisition_source` değerleri `feedback_source` olarak atandı.
+- `saveLoyaltyCustomerCategoryAssignments` fonksiyonunun fallback mekanizması sayesinde veritabanı tablolarının olmadığı durumlarda dahi `tags` üzerinden eşleştirme korunacaktır.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - `git status` ile tüm değişikliklerin takibini kontrol etmek ve doğrulamak.
+- `Handoff Contract`: `Çağrı merkezinden yeni geribildirim oluştururken müşteri arama (autocomplete) ve bulunamazsa otomatik müşteri oluşturma adımları tamamlandı. Oluşturulan yeni müşterilerin 'Geri Bildirimden Gelen' ('feedback_source') kategorisine otomatik atanması sağlandı, bu sistem kategorisi koruma altına alındı ve silinemez/düzenlenemez hale getirildi. Proje Vite ile sıfır hatayla başarıyla derlendi ve tüm plan/görev/walkthrough dosyaları docs/ klasörüne kopyalanarak OperationSync.md güncellendi.`
+
+## Entry 141 - 2026-05-27
+
+- `Timestamp`: `2026-05-27T14:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Sipariş Listesi Filtresine Arama Butonu Ekleme`
+- `Intent`: `Çağrı Merkezi sipariş listesi filtreleme alanındaki arama girdisinin (input) yanına büyüteç ikonlu bir arama butonu ekleyerek arama arayüzünün görsel ve işlevsel tamamlanması.`
+- `Files Read`:
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+- `Files Changed`:
+  - `c:\RMSv3\src\components\pages\CallCenter.jsx`
+  - `c:\RMSv3\docs\implementation_plan.md`
+  - `c:\RMSv3\docs\task.md`
+  - `c:\RMSv3\docs\walkthrough.md`
+  - `c:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `npm run build:web`
+- `Findings`:
+  - Sipariş arama input alanı (`hubSearch`) flex konteyner içine yerleştirilerek yanına büyüteç ikonlu ve modern görünümlü mavi bir `btn-p` butonu yerleştirildi.
+- `Decisions`:
+  - Arama client-side reactive (useMemo) çalıştığından butona doğrudan bir submit/event bağlamaya gerek kalmadan veri anlık olarak filtrelenmeye devam eder; ancak buton görsel bir onaylayıcı görevi görür.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Değişiklikleri Git ile doğrulamak.
+- `Handoff Contract`: `Çağrı Merkezi sipariş listesi filtrelerine büyüteç ikonlu arama butonu eklendi, derleme kontrolü sıfır hatayla başarıyla tamamlandı ve tüm dökümanlar `./docs` klasörüne kopyalanarak OperationSync.md dosyasına Entry 141 eklendi.`
+
+## Entry 142 - 2026-05-27
+
+- `Timestamp`: `2026-05-27T14:43:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Şube Yetkilisi Sidebar İzin Hatası Giderme`
+- `Intent`: `Şube yetkilisi kullanıcıların (örneğin Arda Işık) kendi şube bağlamlarında giriş yaptıklarında "Şube İşlemleri" sidebar menüsünü görememe hatasının, Türkçe karakter/kodlama (mojibake) uyumsuzluğunun canAccessSection çağrılarında fixMojibakeText kullanılarak çözülmesi.`
+- `Files Read`:
+  - `c:\RMSv3\src\components\layout\Sidebar.jsx`
+  - `c:\RMSv3\src\lib\workspace.js`
+- `Files Changed`:
+  - `c:\RMSv3\src\components\layout\Sidebar.jsx`
+  - `c:\RMSv3\docs\implementation_plan.md`
+  - `c:\RMSv3\docs\task.md`
+  - `c:\RMSv3\docs\walkthrough.md`
+  - `c:\RMSv3\OperationSync.md`
+- `Commands Run`:
+  - `npm run build:web`
+- `Findings`:
+  - `NAV` dizisinde yer alan ve mojibake içeren `'Åžube Ä°ÅŸlemleri'` başlığı `canAccessSection` yetki kontrolüne giderken `fixMojibakeText` fonksiyonundan geçirilmediği için `SECTION_ACCESS` tablosundaki temiz `'Şube İşlemleri'` anahtarıyla eşleşemiyordu. 
+  - Ayrıca şube seçici butonunu render eden `{section.section === 'Sube Islemleri'}` koşulu da decoded `'Şube İşlemleri'` metni ile değiştirilmiştir.
+- `Decisions`:
+  - Tüm NAV başlıklarını ham kod içinde değiştirmek yerine, `canAccessSection` çağrısına gönderilirken `fixMojibakeText` ile anlık decode edilmesi yöntemi seçildi. Böylece mevcut encoding yapısı bozulmadan en az riskli çözüm sağlandı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Değişiklikleri Git ile doğrulamak.
+- `Handoff Contract`: `Şube yöneticileri için Sidebar "Şube İşlemleri" izin hatası mojibake decode eklenerek giderildi, proje sıfır hatayla derlendi ve tüm dökümanlar `./docs` klasörüne kopyalanarak OperationSync.md dosyasına Entry 142 eklendi.`
+
+## Entry 143
+
+- `Timestamp`: `2026-05-27T17:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Denetim formu → otomatik görev oluşturma, ekran görüntüsü eki ve şube yetkilisi kuralları`
+- `Intent`: `Denetim formu gönderildiğinde otomatik görev oluşturulması, şube yetkilisine daima sonuç gönderilmesi, gözlemcilere görevin yansıması ve doldurulmuş formun ekran görüntüsünün göreve eklenmesi`
+- `Files Read`:
+  - `c:\RMSv3\.antigravityrules.md`
+  - `c:\RMSv3\src\lib\formService.js`
+  - `c:\RMSv3\src\lib\taskService.js`
+  - `c:\RMSv3\src\lib\personnelConfig.js`
+  - `c:\RMSv3\src\components\pages\FormSubmissions.jsx`
+  - `c:\RMSv3\OperationSync.md`
+- `Files Changed`:
+  - `c:\RMSv3\src\lib\formService.js` — `createTask()` bağımlılığı kaldırıldı; `createTaskFromInspection` doğrudan `db.from()` ile Railway Postgres'e insert yapacak şekilde yeniden yazıldı (tasks, task_participants, task_checklist_items, task_chat_threads, task_history, task_chat_messages tabloları). `attachFileToTask` fonksiyonu eklendi.
+  - `c:\RMSv3\src\components\pages\FormSubmissions.jsx` — `useRef` eklendi (formContainerRef), `html2canvas` dynamic import ile lazy-load edildi, form gönderimi sonrası ekran görüntüsü yakalanıp `uploadApiFile` + `attachFileToTask` ile göreve ekleniyor. Şube yetkilisi "Sonucu Gönder" checkbox'ı kaldırıldı, yerine sabit "Sonuç Daima Gönderilir" etiketi konuldu. `metaSendToAuthorized` default `true` yapıldı. Metadata'da `send_to_authorized: !!metaAuthorizedId` zorunlu kılındı.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `npm run build` (5 kez — her değişiklik sonrası doğrulama)
+- `Findings`:
+  - Eski `createTaskFromInspection`, `createTask()` fonksiyonuna bağımlıydı. `createTask()` içinde `context.employeesById` map'inden employee lookup yapılıyordu. Form metadata'sındaki personel ID'leri bu map'te bulunamadığı için `.filter(Boolean)` ile sessizce atılıyor, sonuç olarak task_participants satırları hiç oluşturulmuyordu. Bu yüzden görev var ama kimse göremiyordu.
+  - Yeni `createTaskFromInspection` doğrudan `db.from('tasks').insert()`, `db.from('task_participants').insert()` vb. kullanıyor; employee lookup'a ihtiyaç duymuyor. Tüm personel ID'leri form metadata'sından direkt alınıyor.
+  - `html2canvas` statik import edildiğinde FormSubmissions chunk'ı 57KB → 260KB çıkıyordu. Dynamic `import('html2canvas')` ile chunk boyutu 57KB'de kaldı; html2canvas sadece görev oluştuğunda lazy-load ediliyor.
+  - Tüm veri işlemleri `db.from()` (src/lib/db.js) üzerinden Railway Postgres'e gidiyor. localStorage/sessionStorage kullanımı yok. Mock veri yok.
+- `Decisions`:
+  - `createTask()` bağımlılığı kaldırıldı; employee lookup'ın başarısız olma riskini ortadan kaldırmak için doğrudan DB insert tercih edildi.
+  - Şube yetkilisi seçildiğinde `send_to_authorized` daima `true`; checkbox'a bırakılmadı. Bu kullanıcının "mutlaka gönderilir" talebiyle uyumlu.
+  - Task participant tipleri: assignee (şube yetkilisi + vardiya sorumlusu), watcher (sonucu gönder seçili sorumlular).
+  - Checklist: max puandan düşük alan sorular otomatik ekleniyor.
+  - Ekran görüntüsü: `html2canvas` ile form container'ı 1.5x çözünürlükte yakalanıp PNG olarak upload ediliyor, task_attachments'a ekleniyor.
+- `Open Risks`:
+  - `task_attachments` tablosunun Railway DB'de mevcut olduğu doğrulanmalı; yoksa `attachFileToTask` başarısız olur.
+  - `task_checklist_items` tablosunda `text` ve `sort_order` kolonlarının varlığı doğrulanmalı.
+  - `html2canvas` bazı CSS özelliklerini (backdrop-filter, box-shadow vb.) tam doğrulukla yakalayamayabilir.
+- `Next Step`: `Form gönderimi yapılıp tarayıcı konsolunda [Inspection→Task] logları kontrol edilmeli. Görevin doğru kişilere atandığı, "Görevlerim", "Verdiğim Görevler" ve "Gözlemci Olduklarım" sekmelerinde göründüğü doğrulanmalı.`
+- `Handoff Contract`: `Sonraki agent denetim formu → görev akışıyla çalışacaksa bu Entry 143'ü, src/lib/formService.js (createTaskFromInspection fonksiyonu), src/components/pages/FormSubmissions.jsx (handleSubmitForm ve formContainerRef) dosyalarını okusun. createTask() artık kullanılmıyor; tüm görev oluşturma doğrudan DB insert ile yapılıyor. html2canvas dynamic import olarak yükleniyor. Şube yetkilisi send_to_authorized daima true.`
+
+
+
+## Entry 144
+
+- `Timestamp`: `2026-05-27T18:38:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bildirim sistemi mobil entegrasyonu + Geribildirim coklu gorev destegi`
+- `Intent`: `Bildirimlerin personel mobil uygulamasina tasinmasi; geribildirim sayfasinda birden fazla duzeltici gorev tanimlanabilmesi, gorev olusturma modalinin on dolu acilmasi, gorev durum chipleri ve Goreve Git baglantisi eklenmesi`
+- `Files Changed`:
+  - `src/components/pages/MobileAppShells.jsx` — Bildirim zili (header), tam ekran bildirim paneli (drawer), PersonnelDashboard ozet karti, 30sn otomatik yenileme eklendi.
+  - `src/components/pages/Tasks.jsx` — Duyuru yayinlandiginda tum aktif personele, gorev atandiginda sorumluya otomatik bildirim gonderiliyor.
+  - `src/lib/ticketService.js` — createLinkedTaskFromTicket fonksiyonu eklendi (dogrudan DB insert, coklu gorev destegi, ticket_linked_tasks junction table). fetchTicketDetail linkedTasks dizisi dondurur hale getirildi. createTaskFromTicket legacy uyumluluk icin korundu.
+  - `src/components/pages/TicketDetail.jsx` — Tamamen yeniden yazildi: CreateTaskModal (on dolu, resmdeki kurallar secili), Bagli Gorevler paneli (coklu gorev, durum chipleri, Goreve Git butonu), eskale modalı window.prompt() kaldirilip modal ile degistirildi.
+  - `docs/implementation_plan.md`, `docs/task.md`, `docs/walkthrough.md` — brain dizininden kopyalandi.
+- `Commands Run`: `npm run build (sifir hata, 20.58s)`
+- `Open Risks`:
+  - `ticket_linked_tasks` tablosunun Railway DB'de olusturulmasi gerekiyor: CREATE TABLE ticket_linked_tasks (ticket_id uuid REFERENCES tickets(id), task_id uuid REFERENCES tasks(id), created_at timestamptz DEFAULT now(), PRIMARY KEY (ticket_id, task_id));
+- `Handoff Contract`: `ticketService.js'te createLinkedTaskFromTicket var. fetchTicketDetail linkedTasks dizisi donduruyor. TicketDetail.jsx yeniden yazildi. MobileAppShells.jsx'e bildirim paneli eklendi. ticket_linked_tasks tablosu DB'de olusturulmali.`
+
+## Entry 145
+
+- `Timestamp`: `2026-05-27T18:48:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Checklist form puanlama gizleme ve Checkbox alan tipi destegi`
+- `Intent`: `Form tipinin Checklist oldugu durumlarda puanlama (gecis esigi, max points, is_critical, secenek puanlari) alanlarinin gizlenmesi ve form alan tiplerine Onay Kutusu (checkbox) seceneginin eklenerek render edilip puanlanabilmesi`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx` — `FIELD_TYPES` dizisine `checkbox` (Onay Kutusu) eklendi. Düzenlenen form tipi `checklist` ise form taslak düzenleyicide Geçiş Eşiği, Maksimum Puan girdisi, Kritik onay kutusu ve Seçenek Puan Ağırlığı alanlarının gizlenmesi sağlandı.
+  - `src/components/pages/FormSubmissions.jsx` — Form doldurma aşamasında `checkbox` tipi için toggle edilebilir checkbox UI'ı eklendi. Detay penceresinde checkbox cevaplarının `☑ İşaretlendi` / `☐ İşaretlenmedi` şeklinde gösterilmesi ve `calcFieldScore` puanlama mantığına dâhil edilmesi sağlandı.
+  - `src/lib/formService.js` — `calcFieldScore` fonksiyonunda checkbox alan tipi puanlama mantığına entegre edildi. Değer `true` veya `'yes'` ise tam puan, değilse 0 puan verilmesi sağlandı.
+  - `docs/implementation_plan.md`, `docs/task.md`, `docs/walkthrough.md` — brain dizininden `./docs/` dizinine kopyalanarak güncellendi.
+- `Commands Run`: `npm run build` (başarılı derleme doğrulandı)
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Checklist form tipinde puanlama alanları gizlendi ve Checkbox alan tipi tüm sisteme (taslak düzenleyici, form doldurma, detay görüntüleme, puan hesaplama) sorunsuz şekilde entegre edildi.`
 

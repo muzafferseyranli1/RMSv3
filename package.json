@@ -58,6 +58,7 @@
     "check:protected-docs": "node scripts/check-protected-docs.mjs"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "pdfjs-dist": "^4.3.136",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",

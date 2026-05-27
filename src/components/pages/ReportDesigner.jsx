@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
@@ -45,7 +45,7 @@ const SALES_MEASURES = [
   { id: 's_tax_amount',    label: 'Vergi Tutarı',       col: null,                         kind: 'measure', agg: 'tax_amount',   fmt: 'currency' },
   { id: 's_sale_count',    label: 'Satış Sayısı',       col: 'sale_id',                    kind: 'measure', agg: 'countDistinct',fmt: 'integer'  },
   { id: 's_line_count',    label: 'Kalem Sayısı',       col: 'sale_id',                    kind: 'measure', agg: 'count',        fmt: 'integer'  },
-  { id: 's_avg_ticket',    label: 'Ortalama Bilet',     col: null,                         kind: 'measure', agg: 'avg_ticket',   fmt: 'currency' },
+  { id: 's_avg_ticket',    label: 'Ortalama Sepet',     col: null,                         kind: 'measure', agg: 'avg_ticket',   fmt: 'currency' },
   { id: 's_avg_unit_price',label: 'Ort. Birim Fiyat',   col: 'line_gross_after_discount',  kind: 'measure', agg: 'avg',          fmt: 'currency' },
   { id: 's_gross_before',  label: 'İndirim Öncesi Tutar',col:'line_gross_before_discount', kind: 'measure', agg: 'sum',          fmt: 'currency' },
 ]

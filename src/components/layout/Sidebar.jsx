@@ -106,8 +106,9 @@ const NAV = [
         children: [
           { label: 'Belge Girişi', path: '/documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
           { label: 'Görevler', path: '/tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
-          { label: 'Geri Bildirimler', path: '/geri-bildirimler', icon: 'fa-comment-dots', color: '#f472b6', bg: 'rgba(244,114,182,.18)' },
-          { label: 'Biletler', path: '/biletler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Müşteri Yorumları', path: '/musteri-yorumlari', icon: 'fa-comment-dots', color: '#f472b6', bg: 'rgba(244,114,182,.18)' },
+          { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Form Şablonları', path: '/form-sablonlari', icon: 'fa-clipboard-list', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
           { label: 'Form Yanıtları', path: '/form-yanitlari', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
         ],
@@ -159,6 +160,8 @@ const NAV = [
           { label: 'Transfer', path: '/sube-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Zayi KaydÄ±', path: '/sube-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Serbest KullanÄ±m KaydÄ±', path: '/sube-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
         ],
       },
       { label: 'Ãœretim', path: '/uretim', icon: 'fa-industry', color: '#4ade80', bg: 'rgba(74,222,128,.18)' },
@@ -217,6 +220,8 @@ const NAV = [
           { label: 'Transfer', path: '/merkez-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Zayi KaydÄ±', path: '/merkez-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Serbest KullanÄ±m KaydÄ±', path: '/merkez-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+          { label: 'Kalite Raporları', path: '/kalite-raporlari', icon: 'fa-square-poll-horizontal', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
         ],
       },
       {
@@ -271,7 +276,7 @@ const NAV = [
           { label: 'GÃ¶rev HiyerarÅŸisi', path: '/positions/hierarchy', icon: 'fa-sitemap', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
         ],
       },
-      { label: 'Bilet Kategorileri', path: '/bilet-kategorileri', icon: 'fa-tags', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
+      { label: 'Geribildirim Kategorileri', path: '/geribildirim-kategorileri', icon: 'fa-tags', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
       { label: 'Demo SatÄ±ÅŸ Yap', path: '/demo-sales', icon: 'fa-wand-magic-sparkles', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
     ],
   },
@@ -351,7 +356,7 @@ export default function Sidebar() {
   const isVisible = !isMobileMode || mobileOpen
 
   const visibleSections = useMemo(
-    () => NAV.filter(section => canAccessSection(scope, section.section)),
+    () => NAV.filter(section => canAccessSection(scope, fixMojibakeText(section.section))),
     [scope],
   )
 
@@ -693,7 +698,7 @@ export default function Sidebar() {
               )}
               {isIconOnly && <div style={{ height: 8 }} />}
 
-              {section.section === 'Sube Islemleri' && branchName && !isIconOnly && (
+              {fixMojibakeText(section.section) === 'Şube İşlemleri' && branchName && !isIconOnly && (
                 <button type="button" onClick={openWorkspacePicker} title="Çalışma bağlamını değiştir"
                   style={{ width: '100%', margin: '2px 0 8px', padding: '6px 10px', border: '1px solid rgba(245,166,35,.2)', background: 'rgba(245,166,35,.06)', color: '#f5a623', display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', textAlign: 'left', borderRadius: 0 }}>
                   <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,166,35,.15)', color: '#f5a623', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

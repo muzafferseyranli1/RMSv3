@@ -28,6 +28,7 @@ import {
   createAnnouncement,
   markAnnouncementAsRead,
 } from '@/lib/taskService'
+import { notifyAnnouncement, notifyTaskAssigned } from '@/lib/notificationService'
 import TaskCard from '@/components/pages/tasks/TaskCard'
 import TaskDrawer from '@/components/pages/tasks/TaskDrawer'
 import TaskClosureModal from '@/components/pages/tasks/TaskClosureModal'
@@ -488,6 +489,11 @@ export default function Tasks({ scope = 'center' }) {
         toast(`Görev kaydedilemedi: ${result.error.message}`, 'error')
         return
       }
+      // Sorumluya bildirim gönder
+      if (form.responsibleId && form.responsibleId !== String(actor.id)) {
+        const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(' ') || 'Bir yönetici'
+        notifyTaskAssigned(form.responsibleId, form.title, result.data?.id, actorName).catch(() => {})
+      }
       toast('Görev oluşturuldu.', 'success')
       setCreateOpen(false)
       setForm(createInitialForm(actor.branchId || ''))
@@ -518,6 +524,16 @@ export default function Tasks({ scope = 'center' }) {
         toast(`Duyuru yayınlanamadı: ${result.error.message}`, 'error')
         return
       }
+      // Tüm personele bildirim gönder (arka planda, hata sessizce yutulur)
+      try {
+        const { data: allPersonnel } = await db.from('personnel').select('id').eq('active', true)
+        const recipientIds = (allPersonnel || [])
+          .map(p => String(p.id))
+          .filter(id => id !== String(actor.id))
+        if (recipientIds.length > 0) {
+          notifyAnnouncement(recipientIds, annForm.title, annForm.content, result.data?.id).catch(() => {})
+        }
+      } catch { /* bildirim hatası sessizce geçilir */ }
       toast('Duyuru başarıyla yayınlandı.', 'success')
       setAnnouncementCreateOpen(false)
       setAnnForm({

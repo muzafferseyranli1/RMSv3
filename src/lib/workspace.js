@@ -112,15 +112,16 @@ const CENTER_PATHS = new Set([
   '/positions/hierarchy',
   '/demo-sales',
   '/tasks',
-  '/geri-bildirimler',
-  '/biletler',
+  '/musteri-yorumlari',
   '/form-sablonlari',
   '/form-yanitlari',
-  '/bilet-kategorileri',
+  '/geribildirim-kategorileri',
 ])
 
 const SHARED_PATHS = new Set([
   '/hesap-cizelgesi',
+  '/geribildirimler',
+  '/kalite-raporlari',
 ])
 
 function pathMatchesSet(path, pathSet) {
@@ -197,7 +198,7 @@ export function getWorkspaceScopeOption(scope) {
 
 export function getRequiredScopeForPath(path) {
   if (!path || path === '/') return ''
-  if (SHARED_PATHS.has(path)) return ''
+  if (pathMatchesSet(path, SHARED_PATHS)) return ''
   if (pathMatchesSet(path, CENTER_PATHS)) return WORKSPACE_SCOPE.center
   if (pathMatchesSet(path, BRANCH_PATHS)) return WORKSPACE_SCOPE.branch
   if (pathMatchesSet(path, WAREHOUSE_PATHS)) return WORKSPACE_SCOPE.warehouse
@@ -216,7 +217,7 @@ export function canAccessPath(scope, path) {
   if (!path || path === '/') return true
   if (!normalizedScope) return false
   if (normalizedScope === WORKSPACE_SCOPE.admin) return true
-  if (SHARED_PATHS.has(path)) return true
+  if (pathMatchesSet(path, SHARED_PATHS)) return true
   if (pathMatchesSet(path, CENTER_PATHS)) return normalizedScope === WORKSPACE_SCOPE.center
   if (pathMatchesSet(path, BRANCH_PATHS)) return normalizedScope === WORKSPACE_SCOPE.branch
   if (pathMatchesSet(path, WAREHOUSE_PATHS)) return normalizedScope === WORKSPACE_SCOPE.warehouse

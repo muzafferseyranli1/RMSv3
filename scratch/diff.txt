@@ -1,0 +1,207 @@
+﻿diff --git a/src/components/pages/FormTemplates.jsx b/src/components/pages/FormTemplates.jsx
+index aedfa33..f1918f4 100644
+--- a/src/components/pages/FormTemplates.jsx
++++ b/src/components/pages/FormTemplates.jsx
+@@ -18,6 +18,7 @@ const FORM_TYPES = [
+   { value: 'checklist', label: 'Checklist' },
+   { value: 'customer_survey', label: 'M├╝┼şteri Anketi' },
+   { value: 'personnel_survey', label: 'Personel Anketi' },
++  { value: 'notification_form', label: 'Bildirim Formu' },
+ ]
+ 
+ function generateId() {
+@@ -350,43 +351,160 @@ export default function FormTemplates() {
+           </div>
+ 
+           {section.fields.map((field, fIdx) => (
+-            <div key={field.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+-              <div style={{ flex: 2 }}>
+-                <input
+-                  value={field.label}
+-                  onChange={e => updateField(sIdx, fIdx, { label: e.target.value })}
+-                  placeholder="Soru metni"
+-                  className="f-input"
+-                />
+-              </div>
+-              <div style={{ width: 140 }}>
+-                <div className="sel-wrap">
+-                  <select
+-                    value={field.type}
+-                    onChange={e => updateField(sIdx, fIdx, { type: e.target.value })}
++            <div key={field.id} style={{ marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
++              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
++                <div style={{ flex: 2 }}>
++                  <input
++                    value={field.label}
++                    onChange={e => updateField(sIdx, fIdx, { label: e.target.value })}
++                    placeholder="Soru metni"
+                     className="f-input"
+-                  >
+-                    {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+-                  </select>
++                  />
+                 </div>
++                <div style={{ width: 140 }}>
++                  <div className="sel-wrap">
++                    <select
++                      value={field.type}
++                      onChange={e => {
++                        const newType = e.target.value
++                        const updates = { type: newType }
++                        if (newType === 'select') {
++                          updates.max_points = (field.options || []).reduce((acc, o) => acc + (typeof o === 'object' ? (Number(o.points) || 0) : 0), 0)
++                        }
++                        updateField(sIdx, fIdx, updates)
++                      }}
++                      className="f-input"
++                    >
++                      {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
++                    </select>
++                  </div>
++                </div>
++                <div style={{ width: 80 }}>
++                  <input
++                    type="number"
++                    value={field.max_points}
++                    onChange={e => updateField(sIdx, fIdx, { max_points: Number(e.target.value) || 0 })}
++                    disabled={field.type === 'select'}
++                    title={field.type === 'select' ? "Se├ğeneklerin toplam puan─▒d─▒r" : "Maks. puan"}
++                    className="f-input"
++                    style={{ textAlign: 'center', background: field.type === 'select' ? 'rgba(0,0,0,0.05)' : undefined }}
++                  />
++                </div>
++                <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 70, alignSelf: 'center', justifyContent: 'center' }}>
++                  <input
++                    type="checkbox"
++                    checked={field.is_critical || false}
++                    onChange={e => updateField(sIdx, fIdx, { is_critical: e.target.checked })}
++                    id={`field-critical-${field.id}`}
++                    style={{ cursor: 'pointer' }}
++                  />
++                  <label htmlFor={`field-critical-${field.id}`} style={{ fontSize: '.72rem', color: field.is_critical ? '#ef4444' : 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}>Kritik</label>
++                </div>
++                <button
++                  className="btn-g"
++                  onClick={() => removeField(sIdx, fIdx)}
++                  style={{ padding: '8px', color: 'var(--text-muted)', flexShrink: 0 }}
++                >
++                  <i className="fa-solid fa-xmark" />
++                </button>
+               </div>
+-              <div style={{ width: 80 }}>
+-                <input
+-                  type="number"
+-                  value={field.max_points}
+-                  onChange={e => updateField(sIdx, fIdx, { max_points: Number(e.target.value) || 0 })}
+-                  title="Maks. puan"
+-                  className="f-input"
+-                  style={{ textAlign: 'center' }}
+-                />
+-              </div>
+-              <button
+-                className="btn-g"
+-                onClick={() => removeField(sIdx, fIdx)}
+-                style={{ padding: '8px', color: 'var(--text-muted)', flexShrink: 0 }}
+-              >
+-                <i className="fa-solid fa-xmark" />
+-              </button>
++
++              {/* Se├ğenekler Listesi (select tipi i├ğin) */}
++              {field.type === 'select' && (
++                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
++                  <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
++                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Se├ğenekler Listesi ve Puan A─ş─▒rl─▒klar─▒
++                  </div>
++
++                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
++                    {(field.options || []).map((opt, oIdx) => {
++                      const label = typeof opt === 'object' ? opt.label : opt
++                      const points = typeof opt === 'object' ? (opt.points ?? 0) : 0
++                      return (
++                        <div key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
++                          <input
++                            type="text"
++                            value={label}
++                            onChange={e => {
++                              const newOpts = [...(field.options || [])]
++                              newOpts[oIdx] = { label: e.target.value, points }
++                              updateField(sIdx, fIdx, { options: newOpts })
++                            }}
++                            placeholder={`Se├ğenek ${oIdx + 1}`}
++                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 90, color: 'var(--text-strong)' }}
++                          />
++                          <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>|</span>
++                          <input
++                            type="number"
++                            value={points}
++                            onChange={e => {
++                              const newOpts = [...(field.options || [])]
++                              newOpts[oIdx] = { label, points: Number(e.target.value) || 0 }
++                              const sum = newOpts.reduce((acc, o) => acc + (typeof o === 'object' ? (Number(o.points) || 0) : 0), 0)
++                              updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
++                            }}
++                            placeholder="Puan"
++                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 40, color: 'var(--text-strong)', textAlign: 'center' }}
++                            title="Bu se├ğenek se├ğildi─şinde verilecek puan"
++                          />
++                          <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>puan</span>
++                          <button
++                            type="button"
++                            onClick={() => {
++                              const newOpts = (field.options || []).filter((_, oi) => oi !== oIdx)
++                              const sum = newOpts.reduce((acc, o) => acc + (typeof o === 'object' ? (Number(o.points) || 0) : 0), 0)
++                              updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
++                            }}
++                            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', color: 'var(--danger)', fontSize: '.75rem', marginLeft: 4 }}
++                          >
++                            <i className="fa-solid fa-xmark" />
++                          </button>
++                        </div>
++                      )
++                    })}
++                    <button
++                      type="button"
++                      className="btn-o"
++                      onClick={() => {
++                        const newOpts = [...(field.options || []), { label: '', points: 0 }]
++                        const sum = newOpts.reduce((acc, o) => acc + (typeof o === 'object' ? (Number(o.points) || 0) : 0), 0)
++                        updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
++                      }}
++                      style={{ padding: '4px 8px', fontSize: '.7rem', borderRadius: 6 }}
++                    >
++                      <i className="fa-solid fa-plus" style={{ marginRight: 4 }} /> Se├ğenek Ekle
++                    </button>
++                  </div>
++                </div>
++              )}
++
++              {/* S─▒cakl─▒k S─▒n─▒rlar─▒ (temperature tipi i├ğin) */}
++              {field.type === 'temperature' && (
++                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
++                  <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
++                    <i className="fa-solid fa-temperature-half" style={{ marginRight: 6 }} /> S─▒cakl─▒k S─▒n─▒rlar─▒ (┬░C)
++                  </div>
++                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
++                    <input
++                      type="number"
++                      value={field.min_value ?? ''}
++                      onChange={e => updateField(sIdx, fIdx, { min_value: e.target.value === '' ? null : Number(e.target.value) })}
++                      placeholder="Min ┬░C"
++                      className="f-input"
++                      style={{ width: 90, padding: '4px 8px', fontSize: '.75rem' }}
++                    />
++                    <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>-</span>
++                    <input
++                      type="number"
++                      value={field.max_value ?? ''}
++                      onChange={e => updateField(sIdx, fIdx, { max_value: e.target.value === '' ? null : Number(e.target.value) })}
++                      placeholder="Max ┬░C"
++                      className="f-input"
++                      style={{ width: 90, padding: '4px 8px', fontSize: '.75rem' }}
++                    />
++                  </div>
++                </div>
++              )}
+             </div>
+           ))}
+ 

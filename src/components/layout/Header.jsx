@@ -2,6 +2,7 @@ import { useWorkspace } from '@/context/WorkspaceContext'
 import { getWorkspaceScopeOption, isBranchScopedScope } from '@/lib/workspace'
 import { useSidebar } from '@/context/SidebarContext'
 import { useState, useEffect } from 'react'
+import NotificationBell from '@/components/common/NotificationBell'
 
 function chipStyle(background, color) {
   return {
@@ -91,6 +92,7 @@ export default function Header({ title, subtitle, actions }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {actions}
+        {activeUser && <NotificationBell />}
         {activeUser && (
           <button
             type="button"

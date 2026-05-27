@@ -25,6 +25,7 @@ import {
   isLoyaltyPersistenceColumnError,
 } from '@/lib/checkoutLoyalty'
 import { fetchAnnouncements, markAnnouncementAsRead } from '@/lib/taskService'
+import { fetchMyNotifications, markAsRead, markAllAsRead, getUnreadCount } from '@/lib/notificationService'
 import ShiftPlanner from '@/components/pages/ShiftPlanner'
 import Tasks from '@/components/pages/Tasks'
 import Garson from '@/components/pages/Garson'
@@ -918,6 +919,12 @@ function PersonnelPhoneRuntime({
     { id: 4, title: 'Mutfak tezgah temizliğini kontrol et', priority: 'Yüksek', done: true, category: 'Mutfak' },
   ])
 
+  // Notification states
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [notifLoading, setNotifLoading] = useState(false)
+
   const [pdksStatus, setPdksStatus] = useState('out') // 'in' or 'out'
   // Store shift start timestamp in a ref to avoid re-rendering the entire tree every second.
   // Each consumer component (PersonnelDashboard, PersonnelPdks) runs its own local timer.
@@ -946,9 +953,77 @@ function PersonnelPhoneRuntime({
     }
   }, [activeStaff])
 
+  const loadNotifications = useCallback(async () => {
+    if (!activeStaff?.id) return
+    setNotifLoading(true)
+    try {
+      const [{ count }, { data }] = await Promise.all([
+        getUnreadCount(activeStaff.id),
+        fetchMyNotifications(activeStaff.id, { limit: 20 }),
+      ])
+      setUnreadCount(count || 0)
+      setNotifications(data || [])
+    } catch (err) {
+      console.error('Error loading notifications:', err)
+    } finally {
+      setNotifLoading(false)
+    }
+  }, [activeStaff])
+
   useEffect(() => {
     loadAnnouncements()
   }, [loadAnnouncements])
+
+  useEffect(() => {
+    loadNotifications()
+    const interval = setInterval(loadNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
+  const handleNotifMarkAllRead = async () => {
+    if (!activeStaff?.id) return
+    await markAllAsRead(activeStaff.id)
+    await loadNotifications()
+  }
+
+  const handleNotifItemClick = async (notif) => {
+    if (!notif.is_read) {
+      await markAsRead(notif.id)
+      await loadNotifications()
+    }
+    // Görev bildirimi → görevler sekmesine geç
+    if (notif.type === 'task_assigned' || notif.type === 'task_comment' || notif.reference_type === 'task') {
+      setActiveTab('tasks')
+    }
+    setNotifOpen(false)
+  }
+
+  const getMobileNotifIcon = (type) => {
+    switch (type) {
+      case 'ticket_assigned': return { icon: 'fa-user-plus', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' }
+      case 'ticket_comment': return { icon: 'fa-comment-dots', color: '#10b981', bg: 'rgba(16,185,129,0.12)' }
+      case 'sla_warning': return { icon: 'fa-hourglass-half', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
+      case 'sla_breach': return { icon: 'fa-triangle-exclamation', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' }
+      case 'ticket_escalated': return { icon: 'fa-circle-exclamation', color: '#dc2626', bg: 'rgba(220,38,38,0.12)' }
+      case 'task_assigned': return { icon: 'fa-list-check', color: '#0ea5e9', bg: 'rgba(14,165,233,0.12)' }
+      case 'task_comment': return { icon: 'fa-comments', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' }
+      case 'task_status_changed': return { icon: 'fa-arrows-rotate', color: '#64748b', bg: 'rgba(100,116,139,0.12)' }
+      case 'announcement': return { icon: 'fa-bullhorn', color: '#f97316', bg: 'rgba(249,115,22,0.12)' }
+      default: return { icon: 'fa-bell', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' }
+    }
+  }
+
+  const formatNotifTime = (iso) => {
+    try {
+      const diff = Date.now() - new Date(iso).getTime()
+      const m = Math.floor(diff / 60000)
+      if (m < 1) return 'Az önce'
+      if (m < 60) return `${m} dk önce`
+      const h = Math.floor(m / 60)
+      if (h < 24) return `${h} sa önce`
+      return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
+    } catch { return '' }
+  }
 
   async function openAnnouncement(ann) {
     setSelectedAnnouncement(ann)
@@ -1042,6 +1117,20 @@ function PersonnelPhoneRuntime({
               MESAİDE
             </div>
           )}
+          {/* Bildirim Zili */}
+          <button
+            type="button"
+            onClick={() => { setNotifOpen(true); loadNotifications() }}
+            style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(56,189,248,.2)', background: 'rgba(56,189,248,.08)', color: '#0284c7', cursor: 'pointer', display: 'grid', placeItems: 'center', position: 'relative' }}
+            title="Bildirimler"
+          >
+            <i className="fa-solid fa-bell" style={{ fontSize: '0.9rem' }} />
+            {unreadCount > 0 && (
+              <span style={{ position: 'absolute', top: -3, right: -3, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '1px 4px', fontSize: '0.58rem', fontWeight: 900, lineHeight: 1.2, minWidth: 14, textAlign: 'center', boxShadow: '0 0 0 2px #fff' }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={onStaffLogout}
@@ -1051,6 +1140,77 @@ function PersonnelPhoneRuntime({
             <i className="fa-solid fa-right-from-bracket" />
           </button>
         </div>
+
+        {/* Bildirim Paneli — Tam Ekran Drawer */}
+        {notifOpen && (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', background: '#f8fafc' }}
+            onClick={e => e.target === e.currentTarget && setNotifOpen(false)}
+          >
+            {/* Panel Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button type="button" onClick={() => setNotifOpen(false)} style={{ width: 34, height: 34, border: 'none', background: 'rgba(100,116,139,0.08)', borderRadius: 10, cursor: 'pointer', display: 'grid', placeItems: 'center', color: '#475569' }}>
+                  <i className="fa-solid fa-arrow-left" />
+                </button>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: '0.9rem', color: '#0f172a' }}>Bildirimler</div>
+                  {unreadCount > 0 && <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{unreadCount} okunmamış</div>}
+                </div>
+              </div>
+              {unreadCount > 0 && (
+                <button type="button" onClick={handleNotifMarkAllRead} style={{ border: 'none', background: 'rgba(59,130,246,0.08)', color: '#3b82f6', borderRadius: 8, padding: '6px 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                  Tümünü Okundu Yap
+                </button>
+              )}
+            </div>
+
+            {/* Panel Content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+              {notifLoading ? (
+                <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '1.4rem' }} />
+                </div>
+              ) : notifications.length === 0 ? (
+                <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="fa-regular fa-bell-slash" style={{ fontSize: '2.5rem', marginBottom: 12, display: 'block', opacity: 0.4 }} />
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Henüz bildirim yok</div>
+                  <div style={{ fontSize: '0.75rem', marginTop: 4, opacity: 0.7 }}>Görev atamaları ve duyurular burada görünür</div>
+                </div>
+              ) : (
+                notifications.map(notif => {
+                  const ni = getMobileNotifIcon(notif.type)
+                  return (
+                    <div
+                      key={notif.id}
+                      onClick={() => handleNotifItemClick(notif)}
+                      style={{
+                        display: 'flex', gap: 12, padding: '14px 16px',
+                        borderBottom: '1px solid #f1f5f9',
+                        background: notif.is_read ? '#fff' : 'rgba(59,130,246,0.04)',
+                        cursor: 'pointer', position: 'relative',
+                        transition: 'background 0.15s'
+                      }}
+                    >
+                      {!notif.is_read && (
+                        <span style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)', width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+                      )}
+                      <div style={{ width: 40, height: 40, borderRadius: 12, background: ni.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <i className={`fa-solid ${ni.icon}`} style={{ color: ni.color, fontSize: '1rem' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: notif.is_read ? 600 : 800, fontSize: '0.82rem', color: '#0f172a', marginBottom: 2 }}>{notif.title}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4, marginBottom: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{notif.body}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{formatNotifTime(notif.created_at)}</div>
+                      </div>
+                      <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '0.7rem', alignSelf: 'center', flexShrink: 0 }} />
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Screen Body */}
@@ -1068,6 +1228,8 @@ function PersonnelPhoneRuntime({
               setTasks={setTasks}
               announcements={announcements}
               onAnnouncementClick={openAnnouncement}
+              unreadCount={unreadCount}
+              onBellClick={() => { setNotifOpen(true); loadNotifications() }}
               pdksStatus={pdksStatus}
               pdksStartTime={pdksStartTimeRef.current}
               handlePdksToggle={handlePdksToggle}
@@ -1428,6 +1590,8 @@ function PersonnelDashboard({
   setTasks,
   announcements,
   onAnnouncementClick,
+  unreadCount = 0,
+  onBellClick,
   pdksStatus,
   pdksStartTime,
   handlePdksToggle,
@@ -1462,14 +1626,59 @@ function PersonnelDashboard({
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       {/* Greeting card */}
-      <div style={{ padding: 16, borderRadius: 20, background: 'linear-gradient(135deg, #0284c7, #0284c7, #38bdf8)', color: '#fff', boxShadow: '0 8px 24px rgba(2,132,199,.15)' }}>
+      <div style={{ padding: 16, borderRadius: 20, background: 'linear-gradient(135deg, #0284c7, #0284c7, #38bdf8)', color: '#fff', boxShadow: '0 8px 24px rgba(2,132,199,.15)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ fontSize: '.72rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.1em', color: '#bae6fd' }}>Hoş Geldiniz</div>
         <div style={{ marginTop: 6, fontSize: '1.2rem', fontWeight: 900 }}>{getPersonnelDisplayName(activeStaff)}</div>
-        <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,.16)', fontSize: '.64rem', fontWeight: 900 }}>{staffRole}</span>
           <span style={{ fontSize: '.68rem', color: '#bae6fd' }}>Registry: #{activeStaff?.registryNumber || '0000'}</span>
         </div>
+        {/* Bildirim badge — sağ üst */}
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            onClick={onBellClick}
+            style={{
+              position: 'absolute', top: 12, right: 12,
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.3)', borderRadius: 999,
+              padding: '4px 10px', cursor: 'pointer',
+              color: '#fff', fontSize: '0.68rem', fontWeight: 900,
+            }}
+          >
+            <i className="fa-solid fa-bell" style={{ fontSize: '0.72rem' }} />
+            {unreadCount} okunmamış
+          </button>
+        )}
       </div>
+
+      {/* Bildirim özet kartı — varsa göster */}
+      {unreadCount > 0 && (
+        <button
+          type="button"
+          onClick={onBellClick}
+          style={{
+            width: '100%', textAlign: 'left', cursor: 'pointer',
+            padding: '12px 14px', borderRadius: 16,
+            background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(99,102,241,0.06))',
+            border: '1px solid rgba(99,102,241,0.2)',
+            display: 'flex', alignItems: 'center', gap: 12,
+            boxShadow: '0 2px 8px rgba(99,102,241,0.08)',
+          }}
+        >
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <i className="fa-solid fa-bell" style={{ color: '#6366f1', fontSize: '1rem' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e1b4b' }}>
+              {unreadCount} Okunmamış Bildirim
+            </div>
+            <div style={{ fontSize: '0.66rem', color: '#6366f1', marginTop: 2 }}>Görev atamaları ve duyurular sizi bekliyor</div>
+          </div>
+          <i className="fa-solid fa-chevron-right" style={{ color: '#a5b4fc', fontSize: '0.75rem' }} />
+        </button>
+      )}
 
       {/* Announcements */}
       {announcements.length > 0 && (

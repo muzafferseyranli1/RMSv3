@@ -3533,7 +3533,7 @@ CREATE TABLE IF NOT EXISTS public.form_templates (
   deleted_at               TIMESTAMPTZ,
   CONSTRAINT form_templates_pkey PRIMARY KEY (id),
   CONSTRAINT form_templates_type_check CHECK (
-    form_type = ANY (ARRAY['inspection','customer_survey','personnel_survey','checklist'])
+    form_type = ANY (ARRAY['inspection','customer_survey','personnel_survey','checklist','notification_form'])
   )
 );
 

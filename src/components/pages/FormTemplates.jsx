@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/useToast'
 
 const FIELD_TYPES = [
   { value: 'yes_no', label: 'Evet/Hayır', icon: 'fa-toggle-on' },
+  { value: 'checkbox', label: 'Onay Kutusu', icon: 'fa-square-check' },
   { value: 'rating', label: 'Puan (1-5)', icon: 'fa-star' },
   { value: 'number', label: 'Sayı', icon: 'fa-hashtag' },
   { value: 'temperature', label: 'Sıcaklık', icon: 'fa-temperature-half' },
@@ -18,10 +19,19 @@ const FORM_TYPES = [
   { value: 'checklist', label: 'Checklist' },
   { value: 'customer_survey', label: 'Müşteri Anketi' },
   { value: 'personnel_survey', label: 'Personel Anketi' },
+  { value: 'notification_form', label: 'Bildirim Formu' },
 ]
 
 function generateId() {
   return `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+const getSelectFieldMaxPoints = (options, currentMaxPoints) => {
+  const hasPointWeights = (options || []).some(opt => typeof opt === 'object' && 'points' in opt)
+  if (hasPointWeights) {
+    return (options || []).reduce((acc, opt) => acc + (typeof opt === 'object' ? (Number(opt.points) || 0) : 0), 0)
+  }
+  return Number(currentMaxPoints) || 10
 }
 
 const EMPTY_FIELD = () => ({
@@ -81,12 +91,39 @@ export default function FormTemplates() {
       min_completion_seconds: template.min_completion_seconds,
       scoring: template.scoring || { pass_threshold: 70 },
     })
-    setSchemaJson(template.schema_json || { sections: [EMPTY_SECTION()] })
+    
+    // Normalize max_points for select fields to be the sum of option points
+    const schema = template.schema_json ? JSON.parse(JSON.stringify(template.schema_json)) : { sections: [EMPTY_SECTION()] }
+    if (schema.sections) {
+      schema.sections = schema.sections.map(sec => ({
+        ...sec,
+        fields: (sec.fields || []).map(f => {
+          if (f.type === 'select') {
+            return { ...f, max_points: getSelectFieldMaxPoints(f.options, f.max_points) }
+          }
+          return f
+        })
+      }))
+    }
+    setSchemaJson(schema)
   }
 
   const handleSave = async () => {
     if (!editing.title.trim()) return toast('Başlık gerekli', 'warning')
-    const sections = schemaJson.sections.filter(s => s.fields.length > 0)
+    
+    // Clean and normalize sections, ensuring max_points of select fields is correct
+    const sections = schemaJson.sections
+      .filter(s => s.fields.length > 0)
+      .map(sec => ({
+        ...sec,
+        fields: (sec.fields || []).map(f => {
+          if (f.type === 'select') {
+            return { ...f, max_points: getSelectFieldMaxPoints(f.options, f.max_points) }
+          }
+          return f
+        })
+      }))
+
     if (sections.length === 0) return toast('En az bir bölüm ekleyin', 'warning')
 
     const payload = {
@@ -168,6 +205,32 @@ export default function FormTemplates() {
     setSchemaJson(prev => {
       const sections = [...prev.sections]
       sections[sectionIdx] = { ...sections[sectionIdx], fields: sections[sectionIdx].fields.filter((_, i) => i !== fieldIdx) }
+      return { ...prev, sections }
+    })
+  }
+
+  const moveSection = (idx, direction) => {
+    setSchemaJson(prev => {
+      const sections = [...prev.sections]
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+      if (targetIdx < 0 || targetIdx >= sections.length) return prev
+      const temp = sections[idx]
+      sections[idx] = sections[targetIdx]
+      sections[targetIdx] = temp
+      return { ...prev, sections }
+    })
+  }
+
+  const moveField = (sectionIdx, fieldIdx, direction) => {
+    setSchemaJson(prev => {
+      const sections = [...prev.sections]
+      const fields = [...sections[sectionIdx].fields]
+      const targetIdx = direction === 'up' ? fieldIdx - 1 : fieldIdx + 1
+      if (targetIdx < 0 || targetIdx >= fields.length) return prev
+      const temp = fields[fieldIdx]
+      fields[fieldIdx] = fields[targetIdx]
+      fields[targetIdx] = temp
+      sections[sectionIdx] = { ...sections[sectionIdx], fields }
       return { ...prev, sections }
     })
   }
@@ -303,6 +366,7 @@ export default function FormTemplates() {
               style={{ resize: 'vertical' }}
             />
           </div>
+          {editing.form_type !== 'checklist' && (
           <div>
             <label className="f-label">Geçiş Eşiği (%)</label>
             <input
@@ -313,6 +377,7 @@ export default function FormTemplates() {
               className="f-input"
             />
           </div>
+          )}
           <div>
             <label className="f-label">Min. Süre (saniye)</label>
             <input
@@ -344,49 +409,218 @@ export default function FormTemplates() {
               className="f-input"
               style={{ flex: 1, fontWeight: 700 }}
             />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                type="button"
+                className="btn-o"
+                onClick={() => moveSection(sIdx, 'up')}
+                disabled={sIdx === 0}
+                style={{ padding: '6px 10px', opacity: sIdx === 0 ? 0.35 : 1 }}
+                title="Bölümü Yukarı Taşı"
+              >
+                <i className="fa-solid fa-chevron-up" />
+              </button>
+              <button
+                type="button"
+                className="btn-o"
+                onClick={() => moveSection(sIdx, 'down')}
+                disabled={sIdx === schemaJson.sections.length - 1}
+                style={{ padding: '6px 10px', opacity: sIdx === schemaJson.sections.length - 1 ? 0.35 : 1 }}
+                title="Bölümü Aşağı Taşı"
+              >
+                <i className="fa-solid fa-chevron-down" />
+              </button>
+            </div>
             <button className="btn-g" onClick={() => removeSection(sIdx)} style={{ padding: '6px 10px', color: 'var(--danger)' }}>
               <i className="fa-solid fa-trash" />
             </button>
           </div>
 
           {section.fields.map((field, fIdx) => (
-            <div key={field.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-              <div style={{ flex: 2 }}>
-                <input
-                  value={field.label}
-                  onChange={e => updateField(sIdx, fIdx, { label: e.target.value })}
-                  placeholder="Soru metni"
-                  className="f-input"
-                />
-              </div>
-              <div style={{ width: 140 }}>
-                <div className="sel-wrap">
-                  <select
-                    value={field.type}
-                    onChange={e => updateField(sIdx, fIdx, { type: e.target.value })}
+            <div key={field.id} style={{ marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ flex: 2 }}>
+                  <input
+                    value={field.label}
+                    onChange={e => updateField(sIdx, fIdx, { label: e.target.value })}
+                    placeholder="Soru metni"
                     className="f-input"
-                  >
-                    {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
-                  </select>
+                  />
                 </div>
+                <div style={{ width: 140 }}>
+                  <div className="sel-wrap">
+                    <select
+                      value={field.type}
+                      onChange={e => {
+                        const newType = e.target.value
+                        const updates = { type: newType }
+                        if (newType === 'select') {
+                          updates.max_points = getSelectFieldMaxPoints(field.options, field.max_points)
+                        }
+                        updateField(sIdx, fIdx, updates)
+                      }}
+                      className="f-input"
+                    >
+                      {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {editing.form_type !== 'checklist' && (
+                <div style={{ width: 80 }}>
+                  <input
+                    type="number"
+                    value={field.max_points}
+                    onChange={e => updateField(sIdx, fIdx, { max_points: Number(e.target.value) || 0 })}
+                    disabled={field.type === 'select'}
+                    title={field.type === 'select' ? "Seçeneklerin toplam puanıdır" : "Maks. puan"}
+                    className="f-input"
+                    style={{ textAlign: 'center', background: field.type === 'select' ? 'rgba(0,0,0,0.05)' : undefined }}
+                  />
+                </div>
+                )}
+                {editing.form_type !== 'checklist' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 70, alignSelf: 'center', justifyContent: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={field.is_critical || false}
+                    onChange={e => updateField(sIdx, fIdx, { is_critical: e.target.checked })}
+                    id={`field-critical-${field.id}`}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <label htmlFor={`field-critical-${field.id}`} style={{ fontSize: '.72rem', color: field.is_critical ? '#ef4444' : 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}>Kritik</label>
+                </div>
+                )}
+                <div style={{ display: 'flex', gap: 4, alignSelf: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn-o"
+                    onClick={() => moveField(sIdx, fIdx, 'up')}
+                    disabled={fIdx === 0}
+                    style={{ padding: '6px 8px', fontSize: '.72rem', opacity: fIdx === 0 ? 0.35 : 1 }}
+                    title="Soruyu Yukarı Taşı"
+                  >
+                    <i className="fa-solid fa-chevron-up" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-o"
+                    onClick={() => moveField(sIdx, fIdx, 'down')}
+                    disabled={fIdx === section.fields.length - 1}
+                    style={{ padding: '6px 8px', fontSize: '.72rem', opacity: fIdx === section.fields.length - 1 ? 0.35 : 1 }}
+                    title="Soruyu Aşağı Taşı"
+                  >
+                    <i className="fa-solid fa-chevron-down" />
+                  </button>
+                </div>
+                <button
+                  className="btn-g"
+                  onClick={() => removeField(sIdx, fIdx)}
+                  style={{ padding: '8px', color: 'var(--text-muted)', flexShrink: 0 }}
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
               </div>
-              <div style={{ width: 80 }}>
-                <input
-                  type="number"
-                  value={field.max_points}
-                  onChange={e => updateField(sIdx, fIdx, { max_points: Number(e.target.value) || 0 })}
-                  title="Maks. puan"
-                  className="f-input"
-                  style={{ textAlign: 'center' }}
-                />
-              </div>
-              <button
-                className="btn-g"
-                onClick={() => removeField(sIdx, fIdx)}
-                style={{ padding: '8px', color: 'var(--text-muted)', flexShrink: 0 }}
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
+
+              {/* Seçenekler Listesi (select tipi için) */}
+              {field.type === 'select' && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Seçenekler Listesi{editing.form_type !== 'checklist' ? ' ve Puan Ağırlıkları' : ''}
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {(field.options || []).map((opt, oIdx) => {
+                      const label = typeof opt === 'object' ? opt.label : opt
+                      const points = typeof opt === 'object' ? (opt.points ?? 0) : 0
+                      return (
+                        <div key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <input
+                            type="text"
+                            value={label}
+                            onChange={e => {
+                              const newOpts = [...(field.options || [])]
+                              newOpts[oIdx] = { label: e.target.value, points }
+                              updateField(sIdx, fIdx, { options: newOpts })
+                            }}
+                            placeholder={`Seçenek ${oIdx + 1}`}
+                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 90, color: 'var(--text-strong)' }}
+                          />
+                          {editing.form_type !== 'checklist' && (
+                            <>
+                              <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>|</span>
+                              <input
+                                type="number"
+                                value={points}
+                                onChange={e => {
+                                  const newOpts = [...(field.options || [])]
+                                  newOpts[oIdx] = { label, points: Number(e.target.value) || 0 }
+                                  const sum = getSelectFieldMaxPoints(newOpts, field.max_points)
+                                  updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
+                                }}
+                                placeholder="Puan"
+                                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 40, color: 'var(--text-strong)', textAlign: 'center' }}
+                                title="Bu seçenek seçildiğinde verilecek puan"
+                              />
+                              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>puan</span>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newOpts = (field.options || []).filter((_, oi) => oi !== oIdx)
+                              const sum = getSelectFieldMaxPoints(newOpts, field.max_points)
+                              updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
+                            }}
+                            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', color: 'var(--danger)', fontSize: '.75rem', marginLeft: 4 }}
+                          >
+                            <i className="fa-solid fa-xmark" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      className="btn-o"
+                      onClick={() => {
+                        const newOpts = [...(field.options || []), { label: '', points: 0 }]
+                        const sum = getSelectFieldMaxPoints(newOpts, field.max_points)
+                        updateField(sIdx, fIdx, { options: newOpts, max_points: sum })
+                      }}
+                      style={{ padding: '4px 8px', fontSize: '.7rem', borderRadius: 6 }}
+                    >
+                      <i className="fa-solid fa-plus" style={{ marginRight: 4 }} /> Seçenek Ekle
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sıcaklık Sınırları (temperature tipi için) */}
+              {field.type === 'temperature' && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    <i className="fa-solid fa-temperature-half" style={{ marginRight: 6 }} /> Sıcaklık Sınırları (°C)
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      value={field.min_value ?? ''}
+                      onChange={e => updateField(sIdx, fIdx, { min_value: e.target.value === '' ? null : Number(e.target.value) })}
+                      placeholder="Min °C"
+                      className="f-input"
+                      style={{ width: 90, padding: '4px 8px', fontSize: '.75rem' }}
+                    />
+                    <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>-</span>
+                    <input
+                      type="number"
+                      value={field.max_value ?? ''}
+                      onChange={e => updateField(sIdx, fIdx, { max_value: e.target.value === '' ? null : Number(e.target.value) })}
+                      placeholder="Max °C"
+                      className="f-input"
+                      style={{ width: 90, padding: '4px 8px', fontSize: '.75rem' }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

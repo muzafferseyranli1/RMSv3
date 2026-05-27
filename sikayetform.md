@@ -15,19 +15,19 @@ Mikro Anketler: Uzun formlar yerine, müşteriye SMS ile iletilen "Deneyiminiz n
 
 Spesifik Ürün Oylaması: Sadece genel deneyim değil, sipariş edilen belirli bir menü kaleminin (örneğin sadece yenen tatlının) kalitesi de puanlanabilmelidir.  
 
-2. Yapay Zeka Destekli Olay Tespiti ve Otomatik Biletleme (AI Triage)
+2. Yapay Zeka Destekli Olay Tespiti ve Otomatik Geribildirim Oluşturma (AI Triage)
 Gelen binlerce yorumun veya anketin manuel olarak okunması imkansızdır. Sistem, gelen veriyi anlık olarak analiz eden akıllı bir filtreye sahip olmalıdır:
 
-Otomatik Bilet (Ticket) Oluşturma: Sistem; anketlerden, teslimat uygulamalarından veya Google yorumlarından gelen metinleri okuyup "soğuk yemek", "kaba personel" veya "gıda zehirlenmesi" gibi riskli ifadeleri tespit ettiğinde hiçbir insan müdahalesine gerek kalmadan anında yüksek öncelikli bir şikayet bileti oluşturmalıdır.  
+Otomatik Geribildirim (Ticket) Oluşturma: Sistem; anketlerden, teslimat uygulamalarından veya Google yorumlarından gelen metinleri okuyup "soğuk yemek", "kaba personel" veya "gıda zehirlenmesi" gibi riskli ifadeleri tespit ettiğinde hiçbir insan müdahalesine gerek kalmadan anında yüksek öncelikli bir şikayet geribildirimi oluşturmalıdır.  
 
-Zenginleştirilmiş Bağlam: Açılan bu bilet, sadece şikayet metnini değil; o günkü masaya bakan personeli, sipariş edilen yemekleri ve müşterinin geçmiş ziyaret sıklığını (Misafir Defteri) da yöneticinin önüne getirmelidir.  
+Zenginleştirilmiş Bağlam: Açılan bu geribildirim, sadece şikayet metnini değil; o günkü masaya bakan personeli, sipariş edilen yemekleri ve müşterinin geçmiş ziyaret sıklığını (Misafir Defteri) da yöneticinin önüne getirmelidir.  
 
 3. SLA (Hizmet Seviyesi Anlaşması) ve Yaşam Döngüsü Yönetimi
-Şikayetlerin ve operasyonel arızaların hasıraltı edilmesini engellemek için biletlerin sıkı bir zaman çizelgesi olmalıdır:
+Şikayetlerin ve operasyonel arızaların hasıraltı edilmesini engellemek için geribildirimlerin sıkı bir zaman çizelgesi olmalıdır:
 
-Gerçek Zamanlı SLA Takibi: Acil bir şikayetin (örneğin hijyen sorunu) 15 dakikada, standart bir şikayetin 24 saatte çözülmesini zorunlu kılan geri sayım sayaçları olmalıdır. Bu sayaç, bilet bir çalışana "atandığı" an değil, şikayet sisteme "girdiği" (intake) an başlamalıdır.  
+Gerçek Zamanlı SLA Takibi: Acil bir şikayetin (örneğin hijyen sorunu) 15 dakikada, standart bir şikayetin 24 saatte çözülmesini zorunlu kılan geri sayım sayaçları olmalıdır. Bu sayaç, geribildirim bir çalışana "atandığı" an değil, şikayet sisteme "girdiği" (intake) an başlamalıdır.  
 
-Yaşam Döngüsü Aşamaları: Her bilet; sınıflandırma (triage), önceliklendirme, ilgili departmana atama, müdahale ve kalıcı çözüm (resolution) aşamalarından geçerek izlenmelidir. Çözülemeyen biletler otomatik olarak bir üst yöneticiye raporlanmalıdır (escalation).
+Yaşam Döngüsü Aşamaları: Her geribildirim; sınıflandırma (triage), önceliklendirme, ilgili departmana atama, müdahale ve kalıcı çözüm (resolution) aşamalarından geçerek izlenmelidir. Çözülemeyen geribildirimler otomatik olarak bir üst yöneticiye raporlanmalıdır (escalation).
 
 4. Operasyonel Denetim, Formlar ve Sahtecilik Önleme
 Müşteri şikayetlerini beklemeden, mutfak ve salonun standartlarını koruyan iç denetim mekanizmaları kurulmalıdır:

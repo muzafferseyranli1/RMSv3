@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoAssignTicket } from '@/lib/ticketService'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ export async function fetchFeedbackDetail(feedbackId) {
 }
 
 export async function createManualFeedback({ branchId, source = 'manual', rating, comment, customerPhone, customerId, staffId, metadata = {} }) {
-  return db.from('table_feedback').insert({
+  const { data, error } = await db.from('table_feedback').insert({
     branch_id: branchId,
     table_id: null,
     rating: Number(rating) || 3,
@@ -36,7 +37,17 @@ export async function createManualFeedback({ branchId, source = 'manual', rating
     source,
     staff_id: staffId || null,
     metadata,
+    created_at: nowIso()
   }).select().maybeSingle()
+
+  if (error || !data) return { data, error }
+
+  // Auto triage to ticket if applicable
+  if (shouldAutoCreateTicket(data)) {
+    await triageFeedbackToTicket(data)
+  }
+
+  return { data, error }
 }
 
 // ─── SLA Policies ───────────────────────────────────────────
@@ -156,5 +167,8 @@ export async function triageFeedbackToTicket(feedback, { actorId = null, categor
     },
   })
 
-  return { data: ticket, error: null }
+  // Run automatic assignment
+  const { data: updatedTicket } = await autoAssignTicket(ticket.id)
+
+  return { data: updatedTicket || ticket, error: null }
 }

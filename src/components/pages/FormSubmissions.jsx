@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { fetchFormSubmissions, fetchFormSubmissionDetail, fetchFormTemplates, submitFormResponse, fetchTemplatesForBranch } from '@/lib/formService'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { fetchFormSubmissions, fetchFormSubmissionDetail, fetchFormTemplates, submitFormResponse, fetchTemplatesForBranch, attachFileToTask } from '@/lib/formService'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
+import { readSettingArray, normalizeEmployeeRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
+import { uploadApiFile, buildApiUrl } from '@/lib/db'
 
 const STATUS_MAP = {
   draft: { label: 'Taslak', color: '#94a3b8', bg: 'rgba(148,163,184,.15)' },
@@ -22,9 +24,36 @@ export default function FormSubmissions() {
   const [fillTemplateId, setFillTemplateId] = useState('')
   const [answers, setAnswers] = useState([])
   const [formStartTime, setFormStartTime] = useState(null)
-  const { branchId } = useWorkspace()
+  const [showPrintReport, setShowPrintReport] = useState(null)
+  const [uploadingFields, setUploadingFields] = useState({})
+  const formContainerRef = useRef(null)
+  const { branchId, branches } = useWorkspace()
   const { user } = useAuth()
   const toast = useToast()
+
+  // Personnel and metadata states
+  const [employees, setEmployees] = useState([])
+  const [metaBranchId, setMetaBranchId] = useState('')
+  const [metaAuthorizedId, setMetaAuthorizedId] = useState('')
+  const [metaSendToAuthorized, setMetaSendToAuthorized] = useState(true)
+  const [metaShiftOfficerId, setMetaShiftOfficerId] = useState('')
+  const [metaSendToShiftOfficer, setMetaSendToShiftOfficer] = useState(false)
+  const [metaResponsibles, setMetaResponsibles] = useState([])
+  const [metaFormDate, setMetaFormDate] = useState('')
+  const [metaStartTime, setMetaStartTime] = useState('')
+  const [metaEndTime, setMetaEndTime] = useState('')
+
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        const records = await readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord)
+        setEmployees(records || [])
+      } catch (err) {
+        console.error('Failed to load employees:', err)
+      }
+    }
+    loadEmployees()
+  }, [])
 
   const loadSubmissions = useCallback(async () => {
     setLoading(true)
@@ -66,10 +95,80 @@ export default function FormSubmissions() {
     setAnswers(initialAnswers)
     setFormStartTime(Date.now())
     setShowFillForm(true)
+
+    // Initialize metadata states
+    const activeBranch = branchId || (branches && branches[0]?.id) || ''
+    setMetaBranchId(activeBranch)
+    setMetaAuthorizedId('')
+    setMetaSendToAuthorized(false)
+    setMetaShiftOfficerId('')
+    setMetaSendToShiftOfficer(false)
+    
+    const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
+    setMetaFormDate(todayStr)
+    
+    const now = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+    setMetaStartTime(timeStr)
+    
+    const later = new Date(now.getTime() + 15 * 60 * 1000)
+    const endTimeStr = `${pad(later.getHours())}:${pad(later.getMinutes())}`
+    setMetaEndTime(endTimeStr)
+
+    const branchManagers = employees.filter(emp => 
+      !emp.deletedAt && 
+      Array.isArray(emp.managedBranchIds) && 
+      emp.managedBranchIds.includes(activeBranch)
+    )
+    setMetaResponsibles(branchManagers.map(m => ({
+      id: m.id,
+      name: `${m.firstName} ${m.lastName}`.trim(),
+      sendResult: true
+    })))
   }
 
   const updateAnswer = (fieldId, value) => {
     setAnswers(prev => prev.map(a => a.field_id === fieldId ? { ...a, value } : a))
+  }
+
+  const handlePhotoUpload = async (fieldId, file) => {
+    if (!file) return
+    setUploadingFields(prev => ({ ...prev, [fieldId]: true }))
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploaded = await uploadApiFile(formData)
+      const url = uploaded?.url || uploaded?.publicUrl || uploaded?.public_url || uploaded?.path || uploaded?.fileUrl || uploaded?.file_url || ''
+      if (url) {
+        updateAnswer(fieldId, url)
+        toast('Fotoğraf başarıyla yüklendi', 'success')
+      } else {
+        toast('Görsel adresi alınamadı', 'error')
+      }
+    } catch (err) {
+      console.error('Failed to upload photo:', err)
+      toast('Fotoğraf yükleme başarısız: ' + (err.message || ''), 'error')
+    } finally {
+      setUploadingFields(prev => ({ ...prev, [fieldId]: false }))
+    }
+  }
+
+  const handleMetaBranchChange = (newBranchId) => {
+    setMetaBranchId(newBranchId)
+    setMetaAuthorizedId('')
+    setMetaShiftOfficerId('')
+    
+    const branchManagers = employees.filter(emp => 
+      !emp.deletedAt && 
+      Array.isArray(emp.managedBranchIds) && 
+      emp.managedBranchIds.includes(newBranchId)
+    )
+    setMetaResponsibles(branchManagers.map(m => ({
+      id: m.id,
+      name: `${m.firstName} ${m.lastName}`.trim(),
+      sendResult: true
+    })))
   }
 
   const handleSubmitForm = async () => {
@@ -78,12 +177,69 @@ export default function FormSubmissions() {
 
     const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
 
+    // Get inspector name from pin session
+    const activeUserRaw = sessionStorage.getItem('rms_active_user')
+    const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+    const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
+
+    // Form-specific metadata
+    const metadata = template.form_type === 'inspection' ? {
+      inspector_name: inspectorName,
+      branch_id: metaBranchId,
+      branch_name: branches.find(b => b.id === metaBranchId)?.name || '',
+      branch_authorized_id: metaAuthorizedId,
+      branch_authorized_name: (() => {
+        const emp = employees.find(e => e.id === metaAuthorizedId)
+        return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+      })(),
+      send_to_authorized: !!metaAuthorizedId,  // Şube yetkilisi seçildiyse sonuç daima gönderilir
+      shift_officer_id: metaShiftOfficerId,
+      shift_officer_name: (() => {
+        const emp = employees.find(e => e.id === metaShiftOfficerId)
+        return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+      })(),
+      send_to_shift_officer: metaSendToShiftOfficer,
+      branch_responsibles: metaResponsibles.map(r => ({
+        id: r.id,
+        name: r.name,
+        send_result: r.sendResult
+      })),
+      form_date: metaFormDate,
+      start_time: metaStartTime,
+      end_time: metaEndTime
+    } : {}
+
+    const submitBranchId = template.form_type === 'inspection' && metaBranchId ? metaBranchId : branchId
+
+    // Extract photos from answers
+    const submissionPhotos = []
+    if (template?.schema_json?.sections) {
+      for (const section of template.schema_json.sections) {
+        for (const field of (section.fields || [])) {
+          if (field.type === 'photo') {
+            const ans = answers.find(a => a.field_id === field.id)
+            if (ans && ans.value) {
+              submissionPhotos.push({
+                field_id: field.id,
+                file_url: ans.value,
+                file_name: ans.value.split('/').pop() || 'photo.jpg',
+                captured_at: new Date().toISOString(),
+                is_live_capture: true,
+              })
+            }
+          }
+        }
+      }
+    }
+
     const { data, error } = await submitFormResponse({
       templateId: fillTemplateId,
-      branchId,
-      submittedBy: user?.id || 'anonymous',
+      branchId: submitBranchId,
+      submittedBy: activeUser?.id || 'anonymous',
       answersJson: answers,
       completionTimeSeconds,
+      metadata,
+      photos: submissionPhotos,
     })
 
     if (error) return toast('Gönderme başarısız: ' + (error.message || ''), 'error')
@@ -92,6 +248,37 @@ export default function FormSubmissions() {
       toast(`Form gönderildi ama ${data.anomalies.length} anomali tespit edildi!`, 'warning')
     } else {
       toast(`Form gönderildi — Puan: ${data?.scoreResult?.scorePercentage || 0}%`, 'success')
+    }
+
+    // Capture form screenshot and attach to created task
+    if (data?.createdTaskId && formContainerRef.current) {
+      try {
+        const { default: html2canvas } = await import('html2canvas')
+        const canvas = await html2canvas(formContainerRef.current, {
+          scale: 1.5,
+          useCORS: true,
+          backgroundColor: '#1e293b',
+          logging: false,
+        })
+        canvas.toBlob(async (blob) => {
+          if (!blob) return
+          const formData = new FormData()
+          formData.append('file', blob, `denetim-raporu-${Date.now()}.png`)
+          const uploadResult = await uploadApiFile(formData)
+          if (uploadResult?.file_url) {
+            await attachFileToTask(data.createdTaskId, {
+              fileName: `Denetim Raporu - ${template.title}.png`,
+              fileUrl: uploadResult.file_url,
+              fileSize: blob.size,
+              mimeType: 'image/png',
+              uploadedBy: activeUser?.id,
+              attachmentType: 'image',
+            })
+          }
+        }, 'image/png', 0.9)
+      } catch (err) {
+        console.error('Report screenshot failed:', err)
+      }
     }
 
     setShowFillForm(false)
@@ -111,114 +298,463 @@ export default function FormSubmissions() {
   // ─── Fill Form Modal ───
   if (showFillForm) {
     const template = getTemplate(fillTemplateId)
-    if (!template) return null
+    if (!template) return null;
+
+// Calculate overall scores
+let totalScoredPoints = 0;
+let totalMaxPoints = 0;
+(template.schema_json?.sections || []).forEach(section => {
+  (section.fields || []).forEach(field => {
+    const fMax = Number(field.max_points) || 0;
+    if (fMax > 0) {
+      totalMaxPoints += fMax;
+      const answer = answers.find(a => a.field_id === field.id);
+      if (answer && answer.value != null && answer.value !== '') {
+        const fScore = calculateFieldScore(field, answer.value);
+        totalScoredPoints += fScore != null ? fScore : 0;
+      }
+    }
+  });
+});
+const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / totalMaxPoints) * 100) : 0;
 
     return (
-      <div style={{ maxWidth: 800 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <button className="btn-o" onClick={() => setShowFillForm(false)} style={{ padding: '6px 10px' }}>
-            <i className="fa-solid fa-arrow-left" />
-          </button>
-          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-strong)' }}>{template.title}</h1>
-        </div>
+      <div ref={formContainerRef} style={{ maxWidth: 800, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: 24, backdropFilter: 'blur(8px)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+            <button className="btn-o" onClick={() => setShowFillForm(false)} style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--surface-2)', transition: 'background 0.2s' }}>
+              <i className="fa-solid fa-arrow-left" />
+            </button>
+            <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-strong)', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>{template.title}</h1>
+          </div>
 
-        {(template.schema_json?.sections || []).map((section, sIdx) => (
-          <div key={section.id} className="card" style={{ padding: 18, marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: '.88rem', color: '#8b5cf6', marginBottom: 12 }}>
-              {sIdx + 1}. {section.title}
+{/* Overall Score Summary */}
+<div className="card" style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)' }}>
+  <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6' }}>
+    Toplam Puan: {totalScoredPoints}/{totalMaxPoints} <span style={{ color: '#8b5cf6', fontWeight: 800 }}> %{overallPercentage}</span>
+  </div>
+</div>
+        {template.form_type === 'inspection' && (
+          <div className="card" style={{ padding: 18, marginBottom: 16, borderLeft: '4px solid #06b6d4', background: 'var(--surface)' }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#06b6d4', marginBottom: 14 }}>
+              <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Denetim Formu Bilgileri
             </div>
-            {(section.fields || []).map(field => {
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 14 }}>
+              {/* Denetimi Yapan */}
+              <div>
+                <label className="f-label">Denetimi Yapan</label>
+                <input
+                  type="text"
+                  className="f-input"
+                  value={
+                    (() => {
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
+                      const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+                      return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
+                    })()
+                  }
+                  disabled
+                  style={{ background: 'var(--surface-2)' }}
+                />
+              </div>
+
+              {/* Şube Seçimi */}
+              <div>
+                <label className="f-label">Hangi Şube</label>
+                <div className="sel-wrap">
+                  <select
+                    value={metaBranchId}
+                    onChange={e => handleMetaBranchChange(e.target.value)}
+                    className="f-input"
+                  >
+                    <option value="">Şube Seçiniz</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Tarih */}
+              <div>
+                <label className="f-label">Denetim Tarihi</label>
+                <input
+                  type="date"
+                  className="f-input"
+                  value={metaFormDate}
+                  onChange={e => setMetaFormDate(e.target.value)}
+                />
+              </div>
+
+              {/* Süreler (Başlangıç & Bitiş) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label className="f-label">Başlangıç Saati</label>
+                  <input
+                    type="time"
+                    className="f-input"
+                    value={metaStartTime}
+                    onChange={e => setMetaStartTime(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Bitiş Saati</label>
+                  <input
+                    type="time"
+                    className="f-input"
+                    value={metaEndTime}
+                    onChange={e => setMetaEndTime(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+              {/* Şube Yetkilisi */}
+              <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
+                <label className="f-label" style={{ fontWeight: 700 }}>İlgili Şubenin Yetkilisi</label>
+                <div className="sel-wrap" style={{ marginBottom: 8 }}>
+                  <select
+                    value={metaAuthorizedId}
+                    onChange={e => {
+                      const newId = e.target.value
+                      setMetaAuthorizedId(newId)
+                      if (newId) setMetaResponsibles(prev => prev.filter(r => r.id !== newId))
+                    }}
+                    className="f-input"
+                  >
+                    <option value="">Seçiniz...</option>
+                    {employees
+                      .filter(emp => !emp.deletedAt && (emp.defaultBranchId === metaBranchId || emp.workingBranchIds?.includes(metaBranchId) || emp.managedBranchIds?.includes(metaBranchId)))
+                      .map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-check-circle" style={{ color: '#10b981', fontSize: '.8rem' }} />
+                  <span style={{ fontSize: '.76rem', color: '#10b981', fontWeight: 700 }}>Sonuç Daima Gönderilir</span>
+                </div>
+              </div>
+
+              {/* Vardiya Görevlisi */}
+              <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
+                <label className="f-label" style={{ fontWeight: 700 }}>Vardiya Görevlisi</label>
+                <div className="sel-wrap" style={{ marginBottom: 8 }}>
+                  <select
+                    value={metaShiftOfficerId}
+                    onChange={e => setMetaShiftOfficerId(e.target.value)}
+                    className="f-input"
+                  >
+                    <option value="">Seçiniz...</option>
+                    {employees
+                      .filter(emp => !emp.deletedAt && (emp.defaultBranchId === metaBranchId || emp.workingBranchIds?.includes(metaBranchId)))
+                      .map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    id="send-to-shift"
+                    checked={metaSendToShiftOfficer}
+                    onChange={e => setMetaSendToShiftOfficer(e.target.checked)}
+                  />
+                  <label htmlFor="send-to-shift" style={{ fontSize: '.76rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Sonucu Gönder</label>
+                </div>
+              </div>
+            </div>
+
+            {/* Şubenin Sorumluları */}
+            <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)', marginTop: 14 }}>
+              <label className="f-label" style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>Şubenin Sorumluları (Birden fazla seçilebilir)</label>
+              {employees.filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId).length === 0 ? (
+                <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Bu şube için tanımlanmış sorumlu yönetici bulunamadı.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {employees
+                    .filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId)
+                    .map(emp => {
+                      const respObj = metaResponsibles.find(r => r.id === emp.id)
+                      const isSelected = !!respObj
+                      const sendChecked = respObj?.sendResult ?? true
+                      return (
+                        <div key={emp.id} style={{ display: 'flex', flexDirection: 'column', padding: 8, borderRadius: 8, border: '1px solid var(--border)', background: isSelected ? 'var(--surface)' : 'transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <input
+                              type="checkbox"
+                              id={`resp-select-${emp.id}`}
+                              checked={isSelected}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setMetaResponsibles(prev => [...prev, { id: emp.id, name: `${emp.firstName} ${emp.lastName}`.trim(), sendResult: true }])
+                                } else {
+                                  setMetaResponsibles(prev => prev.filter(r => r.id !== emp.id))
+                                }
+                              }}
+                            />
+                            <label htmlFor={`resp-select-${emp.id}`} style={{ fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', color: 'var(--text-strong)' }}>
+                              {emp.firstName} {emp.lastName}
+                            </label>
+                          </div>
+                          {isSelected && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 20 }}>
+                              <input
+                                type="checkbox"
+                                id={`resp-send-${emp.id}`}
+                                checked={sendChecked}
+                                onChange={e => {
+                                  setMetaResponsibles(prev => prev.map(r => r.id === emp.id ? { ...r, sendResult: e.target.checked } : r))
+                                }}
+                              />
+                              <label htmlFor={`resp-send-${emp.id}`} style={{ fontSize: '.7rem', color: 'var(--text-muted)', cursor: 'pointer' }}>Sonucu Gönder</label>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  }
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {(template.schema_json?.sections || []).map((section, sIdx) => {
+          let sectionScoredPoints = 0
+          let sectionMaxPoints = 0
+          for (const field of (section.fields || [])) {
+            const fMax = Number(field.max_points) || 0
+            if (fMax > 0) {
+              sectionMaxPoints += fMax
               const answer = answers.find(a => a.field_id === field.id)
-              return (
-                <div key={field.id} style={{ marginBottom: 14 }}>
-                  <label className="f-label">
-                    {field.label}
-                    {field.required && <span style={{ color: 'var(--danger)', marginLeft: 4 }}>*</span>}
-                    {field.max_points > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '.7rem', marginLeft: 8 }}>{field.max_points} puan</span>}
-                  </label>
+              if (answer && answer.value !== undefined && answer.value !== null && answer.value !== '') {
+                const fScore = calculateFieldScore(field, answer.value)
+                sectionScoredPoints += fScore !== null ? fScore : 0
+              }
+            }
+          }
+          const sectionPercentage = sectionMaxPoints > 0 ? Math.round((sectionScoredPoints / sectionMaxPoints) * 100) : 0
 
-                  {field.type === 'yes_no' && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {[true, false].map(v => (
-                        <button
-                          key={String(v)}
-                          type="button"
-                          className={answer?.value === v ? 'btn-p' : 'btn-o'}
-                          onClick={() => updateAnswer(field.id, v)}
-                          style={{ flex: 1, padding: '8px 16px', fontSize: '.82rem' }}
-                        >
-                          {v ? '✓ Evet' : '✗ Hayır'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+          return (
+            <div key={section.id} className="card" style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 20, marginBottom: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)' }}>
+              <div style={{ 
+                fontWeight: 700, 
+                fontSize: '.9rem', 
+                color: '#8b5cf6', 
+                marginBottom: 12,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8
+              }}>
+                <span>{sIdx + 1}. {section.title}</span>
+                {sectionMaxPoints > 0 && (
+                  <span style={{ 
+                    fontSize: '.75rem', 
+                    color: '#fff', 
+                    fontWeight: 600,
+                    background: 'rgba(0,0,0,0.2)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: 'none'
+                  }}>
+                    {sectionScoredPoints}/{sectionMaxPoints} <span style={{ color: '#8b5cf6', fontWeight: 800 }}>%{sectionPercentage}</span>
+                  </span>
+                )}
+              </div>
+              {(section.fields || []).map(field => {
+                const answer = answers.find(a => a.field_id === field.id)
+                const currentScore = calculateFieldScore(field, answer?.value)
+                const scoreText = currentScore !== null ? `${currentScore} / ${field.max_points} puan` : `— / ${field.max_points} puan`
+                const isFieldCritical = !!field.is_critical
 
-                  {field.type === 'rating' && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {[1, 2, 3, 4, 5].map(r => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => updateAnswer(field.id, r)}
-                          style={{
-                            width: 40, height: 40, borderRadius: 10, border: '2px solid',
-                            borderColor: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--border)',
-                            background: (answer?.value || 0) >= r ? 'rgba(245,158,11,.2)' : 'var(--surface-2)',
-                            color: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--text-muted)',
-                            fontWeight: 800, fontSize: '.9rem', cursor: 'pointer',
-                          }}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                return (
+                  <div key={field.id} style={{ marginBottom: 14 }}>
+                    <label className="f-label" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>{field.label}</span>
+                      {field.required && <span style={{ color: 'var(--danger)', marginLeft: 4 }}>*</span>}
+                      {field.max_points > 0 && (
+                        <span style={{ 
+                          fontSize: '.72rem', 
+                          marginLeft: 10, 
+                          fontWeight: 700, 
+                          color: currentScore === null ? 'var(--text-muted)' : (currentScore === 0 ? '#ef4444' : (currentScore < field.max_points ? '#f59e0b' : '#10b981')),
+                          background: currentScore === null ? 'transparent' : (currentScore === 0 ? 'rgba(239,68,68,0.08)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)')),
+                          padding: currentScore === null ? '0' : '2px 6px',
+                          borderRadius: '4px',
+                          border: currentScore === null ? 'none' : `1px solid ${currentScore === 0 ? 'rgba(239,68,68,0.2)' : (currentScore < field.max_points ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')}`,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}>
+                          {isFieldCritical && <span style={{ color: '#ef4444', fontWeight: 900 }}>[KRİTİK]</span>}
+                          <span>{scoreText}</span>
+                        </span>
+                      )}
+                    </label>
 
-                  {(field.type === 'number' || field.type === 'temperature') && (
-                    <input
-                      type="number"
-                      value={answer?.value ?? ''}
-                      onChange={e => updateAnswer(field.id, e.target.value === '' ? null : Number(e.target.value))}
-                      placeholder={field.type === 'temperature' ? '°C' : 'Sayı girin'}
-                      className="f-input"
-                      style={{ width: 200 }}
-                    />
-                  )}
+                    {field.type === 'yes_no' && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {[true, false].map(v => (
+                          <button
+                            key={String(v)}
+                            type="button"
+                            className={answer?.value === v ? 'btn-p' : 'btn-o'}
+                            onClick={() => updateAnswer(field.id, v)}
+                            style={{ flex: 1, padding: '8px 16px', fontSize: '.82rem' }}
+                          >
+                            {v ? '✓ Evet' : '✗ Hayır'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
-                  {field.type === 'text' && (
-                    <textarea
-                      value={answer?.value || ''}
-                      onChange={e => updateAnswer(field.id, e.target.value)}
-                      rows={2}
-                      placeholder="Yanıtınızı yazın..."
-                      className="f-input"
-                      style={{ resize: 'vertical' }}
-                    />
-                  )}
+                    {field.type === 'checkbox' && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${answer?.value ? '#3b82f6' : 'var(--border)'}`, background: answer?.value ? 'rgba(59,130,246,.06)' : 'var(--surface-2)', cursor: 'pointer', userSelect: 'none', transition: 'all .15s' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!answer?.value}
+                          onChange={e => updateAnswer(field.id, e.target.checked)}
+                          style={{ accentColor: '#3b82f6', width: 18, height: 18, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '.84rem', fontWeight: 700, color: answer?.value ? '#1d4ed8' : 'var(--text-muted)' }}>
+                          {answer?.value ? '✓ İşaretlendi' : 'İşaretlenmedi'}
+                        </span>
+                      </label>
+                    )}
 
-                  {field.type === 'select' && (
-                    <div className="sel-wrap">
-                      <select
+                    {field.type === 'rating' && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[1, 2, 3, 4, 5].map(r => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => updateAnswer(field.id, r)}
+                            style={{
+                              width: 40, height: 40, borderRadius: 10, border: '2px solid',
+                              borderColor: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--border)',
+                              background: (answer?.value || 0) >= r ? 'rgba(245,158,11,.2)' : 'var(--surface-2)',
+                              color: (answer?.value || 0) >= r ? '#f59e0b' : 'var(--text-muted)',
+                              fontWeight: 800, fontSize: '.9rem', cursor: 'pointer',
+                            }}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {(field.type === 'number' || field.type === 'temperature') && (
+                      <input
+                        type="number"
+                        value={answer?.value ?? ''}
+                        onChange={e => updateAnswer(field.id, e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder={field.type === 'temperature' ? 'Sıcaklık değeri girin' : 'Sayı girin'}
+                        className="f-input"
+                      />
+                    )}
+
+                    {field.type === 'text' && (
+                      <textarea
                         value={answer?.value || ''}
                         onChange={e => updateAnswer(field.id, e.target.value)}
+                        placeholder="Açıklama girin..."
+                        rows={2}
                         className="f-input"
-                      >
-                        <option value="">Seçiniz</option>
-                        {(field.options || []).map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
-                      </select>
-                    </div>
-                  )}
+                      />
+                    )}
 
-                  {field.type === 'photo' && (
-                    <div style={{ padding: 16, border: '2px dashed var(--border)', borderRadius: 8, textAlign: 'center', color: 'var(--text-muted)', fontSize: '.78rem' }}>
-                      <i className="fa-solid fa-camera" style={{ marginRight: 6 }} /> Fotoğraf çekme (yakında)
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        ))}
+                    {field.type === 'select' && (
+                      <div className="sel-wrap">
+                        <select
+                          value={answer?.value || ''}
+                          onChange={e => updateAnswer(field.id, e.target.value)}
+                          className="f-input"
+                        >
+                          <option value="">Seçiniz</option>
+                          {(field.options || []).map((opt, i) => {
+                            const val = typeof opt === 'object' ? opt.label : opt
+                            return <option key={i} value={val}>{val}</option>
+                          })}
+                        </select>
+                      </div>
+                    )}
+
+                    {field.type === 'photo' && (() => {
+                      const isUploading = !!uploadingFields[field.id]
+                      const photoUrl = answer?.value
+
+                      if (isUploading) {
+                        return (
+                          <div style={{ padding: 20, border: '2px dashed var(--border)', borderRadius: 10, textAlign: 'center', background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                            <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8, fontSize: '1.2rem', color: '#8b5cf6' }} />
+                            <span style={{ fontSize: '.8rem', fontWeight: 600 }}>Fotoğraf Yükleniyor...</span>
+                          </div>
+                        )
+                      }
+
+                      if (photoUrl) {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)' }}>
+                            <div style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
+                              <img src={buildApiUrl(photoUrl)} alt="Yüklenen Görsel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                {photoUrl.split('/').pop() || 'photo.jpg'}
+                              </div>
+                              <div style={{ fontSize: '.7rem', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <i className="fa-solid fa-circle-check" /> Yüklendi
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-danger"
+                              onClick={() => updateAnswer(field.id, '')}
+                              style={{ padding: '6px 12px', fontSize: '.75rem' }}
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <label style={{ 
+                          display: 'block', 
+                          padding: '24px 16px', 
+                          border: '2px dashed var(--border)', 
+                          borderRadius: 10, 
+                          textAlign: 'center', 
+                          color: 'var(--text-muted)', 
+                          cursor: 'pointer',
+                          background: 'var(--surface-2)',
+                          transition: 'all 0.2s',
+                        }} className="photo-upload-label">
+                          <i className="fa-solid fa-camera" style={{ fontSize: '1.4rem', color: '#8b5cf6', marginBottom: 6, display: 'block' }} />
+                          <span style={{ fontSize: '.78rem', fontWeight: 600, display: 'block', marginBottom: 2 }}>Fotoğraf Yükle veya Çek</span>
+                          <span style={{ fontSize: '.68rem', opacity: 0.7 }}>RMS-API-Volume üzerinde saklanır</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={e => handlePhotoUpload(field.id, e.target.files?.[0])}
+                            style={{ display: 'none' }}
+                          />
+                        </label>
+                      )
+                    })()}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn-o" onClick={() => setShowFillForm(false)}>İptal</button>
@@ -306,9 +842,9 @@ export default function FormSubmissions() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div>
         {/* Submission List */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ width: '100%' }}>
           {loading ? (
             <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
               <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} /> Yükleniyor...
@@ -321,17 +857,24 @@ export default function FormSubmissions() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {submissions.map(sub => {
+                const isCriticalFailed = !!sub.metadata?.failed_critical
                 const status = STATUS_MAP[sub.status] || STATUS_MAP.draft
                 const isSelected = selectedSub?.id === sub.id
                 const isAnomaly = sub.status === 'anomaly'
+                
+                const badgeLabel = isCriticalFailed ? 'Kabul Edilemez' : status.label
+                const badgeColor = isCriticalFailed ? '#ef4444' : status.color
+                const badgeBg = isCriticalFailed ? 'rgba(239,68,68,.15)' : status.bg
+                const scoreColor = isCriticalFailed ? '#ef4444' : ((Number(sub.score_percentage) || 0) >= 70 ? '#10b981' : '#ef4444')
+
                 return (
                   <div
                     key={sub.id}
                     className="card"
                     style={{
                       padding: 14, cursor: 'pointer',
-                      borderColor: isSelected ? '#22d3ee' : isAnomaly ? 'rgba(239,68,68,.3)' : undefined,
-                      background: isSelected ? 'rgba(34,211,238,.06)' : isAnomaly ? 'rgba(239,68,68,.03)' : undefined,
+                      borderColor: isSelected ? '#22d3ee' : isCriticalFailed ? 'rgba(239,68,68,.5)' : isAnomaly ? 'rgba(239,68,68,.3)' : undefined,
+                      background: isSelected ? 'rgba(34,211,238,.06)' : isCriticalFailed ? 'rgba(239,68,68,.03)' : isAnomaly ? 'rgba(239,68,68,.03)' : undefined,
                     }}
                     onClick={() => openDetail(sub.id)}
                   >
@@ -339,10 +882,10 @@ export default function FormSubmissions() {
                       {/* Score Circle */}
                       <div style={{
                         width: 44, height: 44, borderRadius: 12, border: '2px solid',
-                        borderColor: (Number(sub.score_percentage) || 0) >= 70 ? '#10b981' : '#ef4444',
+                        borderColor: scoreColor,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column',
                       }}>
-                        <div style={{ fontSize: '.85rem', fontWeight: 900, color: (Number(sub.score_percentage) || 0) >= 70 ? '#10b981' : '#ef4444' }}>
+                        <div style={{ fontSize: '.85rem', fontWeight: 900, color: scoreColor }}>
                           {sub.score_percentage != null ? Math.round(sub.score_percentage) : '—'}
                         </div>
                         <div style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>%</div>
@@ -350,8 +893,8 @@ export default function FormSubmissions() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                           <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-strong)' }}>{getTemplateName(sub.template_id)}</span>
-                          <span style={{ fontSize: '.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: status.bg, color: status.color }}>
-                            {status.label}
+                          <span style={{ fontSize: '.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: badgeBg, color: badgeColor }}>
+                            {badgeLabel}
                           </span>
                           {sub.is_offline_submission && (
                             <span style={{ fontSize: '.65rem', padding: '2px 8px', borderRadius: 99, background: 'rgba(245,158,11,.15)', color: '#f59e0b', fontWeight: 700 }}>
@@ -371,91 +914,799 @@ export default function FormSubmissions() {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Detail Panel */}
-        {selectedSub && (
-          <div className="card" style={{ width: 380, padding: 20, flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: 24 }}>
+      {/* Modal Detail Panel – Premium Redesign */}
+      {selectedSub && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(8,15,35,0.65)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => { if (e.target === e.currentTarget) setSelectedSub(null) }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 920, maxHeight: '94vh',
+            display: 'flex', flexDirection: 'column',
+            borderRadius: 20, overflow: 'hidden',
+            background: 'var(--surface)',
+            boxShadow: '0 32px 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)'
+          }}>
             {detailLoading ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <i className="fa-solid fa-spinner fa-spin" /> Yükleniyor...
+              <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '1.6rem', color: '#8b5cf6' }} />
+                <span style={{ fontSize: '.9rem', fontWeight: 600 }}>Yükleniyor...</span>
+              </div>
+            ) : (() => {
+              const isCritical = !!selectedSub.metadata?.failed_critical
+              const scoreNum = Number(selectedSub.score_percentage) || 0
+              const isGood = !isCritical && scoreNum >= 70
+              const hasAnomaly = (selectedSub.metadata?.anomalies?.length || 0) > 0
+              const accentColor = isCritical ? '#ef4444' : (isGood ? '#10b981' : '#f59e0b')
+              const gradientBg = isCritical
+                ? 'linear-gradient(135deg, #1a0808 0%, #2d0f0f 50%, #1e0a0a 100%)'
+                : isGood
+                  ? 'linear-gradient(135deg, #071a12 0%, #0d2e1e 50%, #091a12 100%)'
+                  : 'linear-gradient(135deg, #1a1208 0%, #2d2010 50%, #1a1208 100%)'
+              return (
+                <>
+                  {/* ── HERO HEADER ── */}
+                  <div style={{ background: gradientBg, padding: '28px 32px 24px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+                    {/* Decorative orb */}
+                    <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: accentColor, opacity: 0.07, filter: 'blur(60px)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', bottom: -30, left: '30%', width: 120, height: 120, borderRadius: '50%', background: '#8b5cf6', opacity: 0.05, filter: 'blur(40px)', pointerEvents: 'none' }} />
+
+                    {/* Close button */}
+                    <button
+                      onClick={() => setSelectedSub(null)}
+                      style={{ position: 'absolute', top: 18, right: 20, width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.9rem', transition: 'all 0.2s' }}
+                    >
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+                      {/* Score Ring */}
+                      <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                        <div style={{
+                          width: 88, height: 88, borderRadius: '50%',
+                          border: `4px solid ${accentColor}`,
+                          boxShadow: `0 0 24px ${accentColor}55, inset 0 0 24px ${accentColor}11`,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          background: `${accentColor}11`
+                        }}>
+                          <div style={{ fontSize: '1.7rem', fontWeight: 900, color: accentColor, lineHeight: 1 }}>
+                            {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) : '—'}
+                          </div>
+                          <div style={{ fontSize: '.65rem', color: accentColor, fontWeight: 700, opacity: 0.8 }}>PUAN%</div>
+                        </div>
+                        <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
+                          {selectedSub.total_score ?? '—'}/{selectedSub.max_possible_score ?? '—'} p
+                        </div>
+                      </div>
+
+                      {/* Title area */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '.7rem', fontWeight: 700, color: `${accentColor}cc`, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                          {getTemplateName(selectedSub.template_id)}
+                        </div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', lineHeight: 1.2, marginBottom: 10 }}>
+                          {selectedSub.metadata?.branch_name || selectedSub.metadata?.inspector_name || 'Denetim Detayı'}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {/* Status badge */}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 700, background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+                            <i className={`fa-solid ${isCritical ? 'fa-circle-xmark' : isGood ? 'fa-circle-check' : 'fa-triangle-exclamation'}`} />
+                            {isCritical ? 'KABUL EDİLEMEZ' : isGood ? 'BAŞARILI' : 'ANOMALİ'}
+                          </span>
+                          {/* Date badge */}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <i className="fa-regular fa-calendar" />
+                            {selectedSub.metadata?.form_date
+                              ? new Date(selectedSub.metadata.form_date).toLocaleDateString('tr-TR')
+                              : new Date(selectedSub.created_at).toLocaleDateString('tr-TR')}
+                          </span>
+                          {/* Time badge */}
+                          {selectedSub.metadata?.start_time && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <i className="fa-regular fa-clock" />
+                              {selectedSub.metadata.start_time} – {selectedSub.metadata.end_time || '?'}
+                            </span>
+                          )}
+                          {/* Duration */}
+                          {selectedSub.completion_time_seconds && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <i className="fa-solid fa-stopwatch" />
+                              {Math.round(selectedSub.completion_time_seconds / 60)} dk
+                            </span>
+                          )}
+                          {selectedSub.is_offline_submission && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 700, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
+                              <i className="fa-solid fa-wifi" style={{ opacity: 0.5 }} /> Offline
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── BODY ── */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+                    {/* Critical Failure Alert */}
+                    {isCritical && (
+                      <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#ef4444', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <i className="fa-solid fa-circle-xmark" style={{ fontSize: '1rem' }} /> KABUL EDİLEMEZ – KRİTİK SORU BAŞARISIZ
+                        </div>
+                        {selectedSub.metadata?.failed_critical_fields?.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 8 }}>
+                            {selectedSub.metadata.failed_critical_fields.map((f, fi) => (
+                              <div key={fi} style={{ fontSize: '.76rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <i className="fa-solid fa-xmark" style={{ width: 14, flexShrink: 0 }} /> {f.label}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Anomaly Alert */}
+                    {!isCritical && hasAnomaly && (
+                      <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                        <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#f59e0b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '1rem' }} /> ANOMALİ TESPİT EDİLDİ
+                        </div>
+                        {selectedSub.metadata.anomalies.map((a, i) => (
+                          <div key={i} style={{ fontSize: '.76rem', color: '#f59e0b', marginTop: 4 }}>• {a.message}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Metadata Grid */}
+                    {selectedSub.metadata?.inspector_name && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                        {[
+                          { icon: 'fa-user-shield', label: 'Denetleyen', value: selectedSub.metadata.inspector_name, color: '#8b5cf6' },
+                          { icon: 'fa-building', label: 'Şube', value: selectedSub.metadata.branch_name || '—', color: '#22d3ee' },
+                          { icon: 'fa-user-tie', label: 'Şube Yetkilisi', value: selectedSub.metadata.branch_authorized_name || '—', color: '#10b981', extra: selectedSub.metadata.branch_authorized_name ? (selectedSub.metadata.send_to_authorized ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: selectedSub.metadata.send_to_authorized ? '#10b981' : '#ef4444' },
+                          { icon: 'fa-id-badge', label: 'Vardiya Görevlisi', value: selectedSub.metadata.shift_officer_name || '—', color: '#f59e0b', extra: selectedSub.metadata.shift_officer_name ? (selectedSub.metadata.send_to_shift_officer ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: selectedSub.metadata.send_to_shift_officer ? '#10b981' : '#ef4444' },
+                          { icon: 'fa-user', label: 'Gönderen (ID)', value: selectedSub.submitted_by, color: '#94a3b8' },
+                        ].map((item, idx) => (
+                          <div key={idx} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: `${item.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <i className={`fa-solid ${item.icon}`} style={{ color: item.color, fontSize: '.8rem' }} />
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '.66rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{item.label}</div>
+                              <div style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</div>
+                              {item.extra && (
+                                <div style={{ fontSize: '.68rem', fontWeight: 700, color: item.extraColor, marginTop: 2 }}>{item.extra}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Responsibles */}
+                    {selectedSub.metadata?.branch_responsibles?.length > 0 && (
+                      <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+                          <i className="fa-solid fa-users" style={{ marginRight: 6 }} /> Şube Sorumluları
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {selectedSub.metadata.branch_responsibles.map((r, ri) => (
+                            <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <i className="fa-solid fa-user" style={{ color: '#8b5cf6', fontSize: '.7rem' }} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '.76rem', fontWeight: 700, color: 'var(--text-strong)' }}>{r.name}</div>
+                                <div style={{ fontSize: '.64rem', fontWeight: 700, color: r.send_result ? '#10b981' : '#ef4444' }}>
+                                  {r.send_result ? '✓ Sonuç Gönderildi' : '✗ Gönderilmedi'}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Photos */}
+                    {selectedSub.photos?.length > 0 && (
+                      <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+                          <i className="fa-solid fa-camera" style={{ marginRight: 6 }} /> Fotoğraflar ({selectedSub.photos.length})
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {selectedSub.photos.map(p => (
+                            <a key={p.id} href={buildApiUrl(p.file_url)} target="_blank" rel="noopener noreferrer"
+                              style={{ width: 90, height: 90, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)', display: 'block', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.3)' }}
+                              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
+                            >
+                              <img src={buildApiUrl(p.file_url)} alt="Kanıt" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Answers Section */}
+                    {selectedSub.answers_json && (() => {
+                      const template = templates.find(t => t.id === selectedSub.template_id)
+                      return (
+                        <div>
+                          <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-list-check" /> Soru & Yanıt Detayları
+                          </div>
+                          {template?.schema_json?.sections ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {template.schema_json.sections.map((section, sIdx) => {
+                                const sectionAnswers = (Array.isArray(selectedSub.answers_json) ? selectedSub.answers_json : []).filter(ans =>
+                                  ans.section_id === section.id || section.fields?.some(f => f.id === ans.field_id)
+                                )
+                                if (sectionAnswers.length === 0) return null
+
+                                let sectionScoredPoints = 0
+                                let sectionMaxPoints = 0
+                                for (const field of (section.fields || [])) {
+                                  const fMax = Number(field.max_points) || 0
+                                  if (fMax > 0) {
+                                    sectionMaxPoints += fMax
+                                    const ans = sectionAnswers.find(a => a.field_id === field.id)
+                                    if (ans && ans.value !== undefined && ans.value !== null && ans.value !== '') {
+                                      const fScore = calculateFieldScore(field, ans.value)
+                                      sectionScoredPoints += fScore !== null ? fScore : 0
+                                    }
+                                  }
+                                }
+                                const sectionPercentage = sectionMaxPoints > 0 ? Math.round((sectionScoredPoints / sectionMaxPoints) * 100) : 0
+
+                                return (
+                                  <div key={section.id} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                    {/* Section Header */}
+                                    <div style={{ padding: '10px 16px', background: 'linear-gradient(90deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+                                      <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#8b5cf6' }}>
+                                        <i className="fa-solid fa-layer-group" style={{ marginRight: 6, opacity: 0.7 }} />{sIdx + 1}. {section.title}
+                                      </span>
+                                      {sectionMaxPoints > 0 && (
+                                        <span style={{ fontSize: '.72rem', fontWeight: 800, color: sectionPercentage >= 70 ? '#10b981' : '#ef4444', background: sectionPercentage >= 70 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)', padding: '3px 10px', borderRadius: 99 }}>
+                                          {sectionScoredPoints}/{sectionMaxPoints} — %{sectionPercentage}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Section Rows */}
+                                    <div style={{ background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
+                                      {(section.fields || []).map((field, fIdx) => {
+                                        const ans = sectionAnswers.find(a => a.field_id === field.id)
+                                        if (!ans) return null
+
+                                        let displayValue = String(ans.value ?? '—')
+                                        if (ans.value === true) displayValue = 'Evet'
+                                        if (ans.value === false) displayValue = 'Hayır'
+
+                                        const isAnsNegative = selectedSub.metadata?.failed_critical_fields?.some(f => f.id === field.id)
+                                        const score = calculateFieldScore(field, ans.value)
+                                        const scoreText = score !== null ? `${score}/${field.max_points}p` : null
+
+                                        return (
+                                          <div key={field.id} style={{
+                                            padding: '10px 16px',
+                                            borderTop: fIdx > 0 ? '1px solid var(--border)' : undefined,
+                                            background: isAnsNegative ? 'rgba(239,68,68,0.04)' : 'transparent',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12
+                                          }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                              {field.is_critical && (
+                                                <span style={{ fontSize: '.62rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 6px', borderRadius: 4, marginRight: 6 }}>KRİTİK</span>
+                                              )}
+                                              <span style={{ fontSize: '.78rem', color: 'var(--text-strong)', fontWeight: 600 }}>{field.label}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                              {field.type === 'photo' && ans.value ? (
+                                                <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer"
+                                                  style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)', display: 'block' }}>
+                                                  <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </a>
+                                              ) : (
+                                                <span style={{
+                                                  fontSize: '.8rem', fontWeight: 800,
+                                                  color: isAnsNegative ? '#ef4444' : (ans.value === true ? '#10b981' : ans.value === false ? '#ef4444' : 'var(--text-strong)')
+                                                }}>{displayValue}</span>
+                                              )}
+                                              {scoreText && (
+                                                <span style={{ fontSize: '.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: score === 0 ? 'rgba(239,68,68,0.1)' : score < field.max_points ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', color: score === 0 ? '#ef4444' : score < field.max_points ? '#f59e0b' : '#10b981' }}>
+                                                  {scoreText}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {(Array.isArray(selectedSub.answers_json) ? selectedSub.answers_json : []).map((ans, i) => {
+                                let displayValue = String(ans.value ?? '—')
+                                if (ans.value === true) displayValue = 'Evet'
+                                if (ans.value === false) displayValue = 'Hayır'
+                                const isAnsNegative = selectedSub.metadata?.failed_critical_fields?.some(f => f.id === ans.field_id)
+                                return (
+                                  <div key={i} style={{ padding: '10px 14px', borderRadius: 10, background: isAnsNegative ? 'rgba(239,68,68,0.06)' : 'var(--surface-2)', border: '1px solid', borderColor: isAnsNegative ? 'rgba(239,68,68,0.2)' : 'var(--border)', fontSize: '.78rem', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                                    <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{ans.field_id}</span>
+                                    <span style={{ color: isAnsNegative ? '#ef4444' : 'var(--text-strong)', fontWeight: 700 }}>{displayValue}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                  </div>
+
+                  {/* ── FOOTER ── */}
+                  <div style={{ padding: '14px 28px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+                    <button
+                      className="btn-p"
+                      onClick={() => setShowPrintReport(selectedSub.id)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '.8rem', padding: '8px 18px' }}
+                    >
+                      <i className="fa-solid fa-print" /> Raporu Yazdır / PDF
+                    </button>
+                    <button
+                      onClick={() => setSelectedSub(null)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '.8rem', padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {showPrintReport && (
+        <PrintReportOverlay
+          submissionId={showPrintReport}
+          templates={templates}
+          employees={employees}
+          onClose={() => setShowPrintReport(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
+  const [submission, setSubmission] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadDetail() {
+      setLoading(true)
+      const { data, error } = await fetchFormSubmissionDetail(submissionId)
+      if (!error && data) {
+        setSubmission(data)
+      }
+      setLoading(false)
+    }
+    if (submissionId) loadDetail()
+  }, [submissionId])
+
+  if (loading) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: 'var(--surface)', padding: 24, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-strong)' }}>
+          <i className="fa-solid fa-spinner fa-spin" /> Rapor yükleniyor...
+        </div>
+      </div>
+    )
+  }
+
+  if (!submission) return null
+
+  const template = templates.find(t => t.id === submission.template_id)
+  const isCriticalFailed = !!submission.metadata?.failed_critical
+  const scoreColor = isCriticalFailed ? '#ef4444' : ((Number(submission.score_percentage) || 0) >= 70 ? '#10b981' : '#ef4444')
+  
+  const createdDateStr = new Date(submission.created_at).toLocaleString('tr-TR')
+
+  return (
+    <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #print-report-area, #print-report-area * {
+            visibility: visible;
+          }
+          #print-report-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            color: #000 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Control bar */}
+      <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i className="fa-solid fa-file-invoice" style={{ color: '#8b5cf6' }} />
+          Denetim Raporu Önizleme
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-p" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="fa-solid fa-print" /> Yazdır / PDF Kaydet
+          </button>
+          <button className="btn-o" onClick={onClose}>
+            Kapat
+          </button>
+        </div>
+      </div>
+
+      {/* A4 Report Page Container */}
+      <div id="print-report-area" style={{ background: '#fff', color: '#1e293b', width: '800px', margin: '30px auto', padding: '48px', borderRadius: '8px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', fontFamily: 'Inter, sans-serif' }}>
+        
+        {/* Header Block */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '3px solid #1e293b', paddingBottom: '16px', marginBottom: '24px' }}>
+          <div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '1px', color: '#0f172a' }}>SUITABLE RMS</div>
+            <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginTop: '2px' }}>DİNAMİK DENETİM VE HİJYEN YÖNETİM SİSTEMİ</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isCriticalFailed ? '#ef4444' : '#1e293b' }}>
+              {isCriticalFailed ? 'KRİTİK HATA RAPORU' : 'DENETİM RAPORU'}
+            </div>
+            <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '4px' }}>Tarih: {createdDateStr}</div>
+          </div>
+        </div>
+
+        {/* Form Title & Summary */}
+        <div style={{ marginBottom: '24px' }}>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{template?.title || 'Form Raporu'}</h2>
+          {template?.description && (
+            <p style={{ fontSize: '.85rem', color: '#475569', margin: '6px 0 0', lineHeight: 1.5 }}>{template.description}</p>
+          )}
+        </div>
+
+        {/* Score & Verdict Card */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', marginBottom: '32px' }}>
+          <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Denetim Skoru</div>
+            <div style={{ fontSize: '3rem', fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
+              {submission.score_percentage != null ? Math.round(submission.score_percentage) : '—'}
+              <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>%</span>
+            </div>
+            <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '8px' }}>
+              {submission.total_score} / {submission.max_possible_score} Toplam Puan
+            </div>
+          </div>
+
+          <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Denetim Değerlendirmesi</div>
+            {isCriticalFailed ? (
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fa-solid fa-circle-xmark" /> KABUL EDİLEMEZ
+                </div>
+                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                  Denetimde kritik öneme sahip sorularda olumsuz sonuç alındığı için başarı oranı gözetilmeksizlik genel sonuç doğrudan <strong>KABUL EDİLEMEZ (BAŞARISIZ)</strong> olarak değerlendirilmiştir.
+                </p>
+              </div>
+            ) : (Number(submission.score_percentage) || 0) >= (template?.scoring?.pass_threshold || 70) ? (
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fa-solid fa-circle-check" /> UYGUN (GEÇTİ)
+                </div>
+                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                  Bu denetim başarı barajını (%{template?.scoring?.pass_threshold || 70}) aşarak standartlara uygun bir şekilde tamamlanmıştır.
+                </p>
               </div>
             ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ fontSize: '.9rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                    {getTemplateName(selectedSub.template_id)}
-                  </div>
-                  <button className="btn-g" onClick={() => setSelectedSub(null)} style={{ padding: '4px 8px' }}>
-                    <i className="fa-solid fa-xmark" />
-                  </button>
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fa-solid fa-triangle-exclamation" /> YETERSİZ (KALDI)
                 </div>
-
-                {/* Score */}
-                <div style={{ textAlign: 'center', padding: 16, borderRadius: 12, background: 'var(--surface-2)', marginBottom: 16 }}>
-                  <div style={{ fontSize: '2rem', fontWeight: 900, color: (Number(selectedSub.score_percentage) || 0) >= 70 ? '#10b981' : '#ef4444' }}>
-                    {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) + '%' : '—'}
-                  </div>
-                  <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
-                    {selectedSub.total_score}/{selectedSub.max_possible_score} puan
-                  </div>
-                </div>
-
-                {/* Anomalies */}
-                {selectedSub.metadata?.anomalies?.length > 0 && (
-                  <div style={{ padding: 10, borderRadius: 8, background: 'var(--danger-bg)', border: '1px solid var(--border)', marginBottom: 12 }}>
-                    <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--danger)', marginBottom: 4 }}>
-                      <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 4 }} /> Anomaliler
-                    </div>
-                    {selectedSub.metadata.anomalies.map((a, i) => (
-                      <div key={i} style={{ fontSize: '.75rem', color: 'var(--danger)', marginBottom: 2 }}>{a.message}</div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Details */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '.78rem', color: 'var(--text-muted)' }}>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Gönderen:</strong> {selectedSub.submitted_by}</div>
-                  <div><strong style={{ color: 'var(--text-strong)' }}>Tarih:</strong> {new Date(selectedSub.created_at).toLocaleString('tr-TR')}</div>
-                  {selectedSub.completion_time_seconds && (
-                    <div><strong style={{ color: 'var(--text-strong)' }}>Süre:</strong> {Math.round(selectedSub.completion_time_seconds / 60)} dakika</div>
-                  )}
-                  {selectedSub.is_offline_submission && (
-                    <div><strong style={{ color: 'var(--text-strong)' }}>Offline:</strong> Evet {selectedSub.synced_at && `(Senkronize: ${new Date(selectedSub.synced_at).toLocaleString('tr-TR')})`}</div>
-                  )}
-                </div>
-
-                {/* Answers */}
-                {selectedSub.answers_json && (
-                  <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                    <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>Yanıtlar</div>
-                    <div style={{ maxHeight: 250, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(Array.isArray(selectedSub.answers_json) ? selectedSub.answers_json : []).map((ans, i) => (
-                        <div key={i} style={{ padding: 6, borderRadius: 6, background: 'var(--surface-2)', fontSize: '.75rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>{ans.field_id}:</span> <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{String(ans.value ?? '—')}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Photos */}
-                {selectedSub.photos?.length > 0 && (
-                  <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                    <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>Fotoğraflar ({selectedSub.photos.length})</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {selectedSub.photos.map(p => (
-                        <a key={p.id} href={p.file_url} target="_blank" rel="noopener noreferrer" style={{ width: 64, height: 64, borderRadius: 8, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <i className="fa-solid fa-image" style={{ color: 'var(--text-muted)' }} />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+                <p style={{ fontSize: '.8rem', color: '#64748b', margin: '4px 0 0', lineHeight: 1.4 }}>
+                  Denetim sonucu başarı barajının (%{template?.scoring?.pass_threshold || 70}) altında kaldığı için yetersiz olarak değerlendirilmiştir.
+                </p>
+              </div>
             )}
           </div>
+        </div>
+
+        {/* Inspection Details Metadata Grid */}
+        <div style={{ marginBottom: '32px' }}>
+          <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '12px' }}>
+            DENETİM BİLGİLERİ
+          </h3>
+          
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+            <tbody>
+              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Şube:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.branch_name || '—'}</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Denetleyen:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.inspector_name || submission.submitted_by}</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Denetim Tarihi:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                  {submission.metadata?.form_date ? new Date(submission.metadata.form_date).toLocaleDateString('tr-TR') : '—'}
+                </td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Süre / Saat:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                  {submission.metadata?.start_time || '—'} - {submission.metadata?.end_time || '—'}
+                  {submission.completion_time_seconds && ` (${Math.round(submission.completion_time_seconds / 60)} dk)`}
+                </td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Şube Yetkilisi:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                  {submission.metadata?.branch_authorized_name || '—'}
+                  {submission.metadata?.branch_authorized_name && (
+                    <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_authorized ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
+                      ({submission.metadata.send_to_authorized ? 'Sonuç Gönder' : 'Gönderilmedi'})
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Vardiya Görevlisi:</td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                  {submission.metadata?.shift_officer_name || '—'}
+                  {submission.metadata?.shift_officer_name && (
+                    <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_shift_officer ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
+                      ({submission.metadata.send_to_shift_officer ? 'Sonuç Gönder' : 'Gönderilmedi'})
+                    </span>
+                  )}
+                </td>
+              </tr>
+              {submission.metadata?.branch_responsibles?.length > 0 && (
+                <tr>
+                  <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', verticalAlign: 'top' }}>Şube Sorumluları:</td>
+                  <td colSpan={3} style={{ padding: '8px 0', color: '#0f172a' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      {submission.metadata.branch_responsibles.map((r, ri) => (
+                        <span key={ri} style={{ background: '#f8fafc', padding: '2px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '.75rem' }}>
+                          {r.name}
+                          <span style={{ color: r.send_result ? '#10b981' : '#64748b', fontWeight: 800, marginLeft: '4px' }}>
+                            ({r.send_result ? 'Gönder' : 'X'})
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Failed Critical Questions Summary Block */}
+        {isCriticalFailed && submission.metadata?.failed_critical_fields?.length > 0 && (
+          <div style={{ border: '2px solid #ef4444', borderRadius: '8px', background: 'rgba(239,68,68,0.03)', padding: '16px', marginBottom: '32px' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '.85rem', fontWeight: 800, color: '#ef4444', textTransform: 'uppercase' }}>
+              <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '6px' }} />
+              BAŞARISIZ KRİTİK SORULAR
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '.8rem' }}>
+              {submission.metadata.failed_critical_fields.map((f, fi) => (
+                <div key={fi} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontWeight: 700 }}>
+                  <span>•</span> {f.label}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
+
+        {/* Questionnaire Results Table */}
+        <div style={{ marginBottom: '32px' }}>
+          <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '16px' }}>
+            DENETİM SORULARI VE YANITLAR
+          </h3>
+
+          {(template?.schema_json?.sections || []).map((section, sIdx) => {
+            const sectionAnswers = (submission.answers_json || []).filter(ans => {
+              return ans.section_id === section.id || section.fields?.some(f => f.id === ans.field_id)
+            })
+
+            if (sectionAnswers.length === 0) return null
+
+            // Calculate section scored and max points
+            let sectionScoredPoints = 0
+            let sectionMaxPoints = 0
+            for (const field of (section.fields || [])) {
+              const fMax = Number(field.max_points) || 0
+              if (fMax > 0) {
+                sectionMaxPoints += fMax
+                const ans = (submission.answers_json || []).find(a => a.field_id === field.id)
+                if (ans && ans.value !== undefined && ans.value !== null && ans.value !== '') {
+                  const fScore = calculateFieldScore(field, ans.value)
+                  sectionScoredPoints += fScore !== null ? fScore : 0
+                }
+              }
+            }
+            const sectionPercentage = sectionMaxPoints > 0 ? Math.round((sectionScoredPoints / sectionMaxPoints) * 100) : 0
+
+            return (
+              <div key={section.id} style={{ marginBottom: '20px' }}>
+                <h4 style={{ 
+                  fontSize: '.85rem', 
+                  fontWeight: 800, 
+                  color: '#4f46e5', 
+                  margin: '0 0 10px 0', 
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>{sIdx + 1}. {section.title}</span>
+                  {sectionMaxPoints > 0 && (
+                    <span style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700 }}>
+                      {sectionScoredPoints}/{sectionMaxPoints} <span style={{ color: '#4f46e5' }}>%{sectionPercentage}</span>
+                    </span>
+                  )}
+                </h4>
+                
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569' }}>Soru</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '20%' }}>Yanıt</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '15%', textAlign: 'center' }}>Puan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(section.fields || []).map((field) => {
+                      const ans = (submission.answers_json || []).find(a => a.field_id === field.id)
+                      if (!ans) return null
+
+                      let displayValue = String(ans.value ?? '—')
+                      if (ans.value === true) displayValue = field.type === 'checkbox' ? '☑ İşaretlendi' : 'Evet'
+                      if (ans.value === false) displayValue = field.type === 'checkbox' ? '☐ İşaretlenmedi' : 'Hayır'
+
+                      const isNeg = submission.metadata?.failed_critical_fields?.some(f => f.id === field.id)
+                      
+                      let ptsAwarded = '0'
+                      if (field.type === 'yes_no') {
+                        ptsAwarded = (ans.value === true || ans.value === 'yes') ? String(field.max_points) : '0'
+                      } else if (field.type === 'rating') {
+                        ptsAwarded = String(Math.min((Number(ans.value) / 5) * field.max_points, field.max_points))
+                      } else if (field.type === 'temperature') {
+                        const temp = Number(ans.value)
+                        const inRange = temp >= Number(field.min_value) && temp <= Number(field.max_value)
+                        ptsAwarded = inRange ? String(field.max_points) : '0'
+                      } else if (field.type === 'select') {
+                        const optionObj = (field.options || []).find(opt => (typeof opt === 'object' ? opt.label : opt) === ans.value)
+                        if (optionObj && typeof optionObj === 'object' && 'points' in optionObj) {
+                          ptsAwarded = String(optionObj.points)
+                        } else {
+                          ptsAwarded = ans.value ? String(field.max_points) : '0'
+                        }
+                      } else {
+                        ptsAwarded = ans.value ? String(field.max_points) : '0'
+                      }
+
+                      return (
+                        <tr key={field.id} style={{ borderBottom: '1px solid #e2e8f0', background: isNeg ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
+                          <td style={{ padding: '8px 12px', color: '#0f172a', lineHeight: 1.4 }}>
+                            {field.is_critical && (
+                              <span style={{ color: '#ef4444', fontWeight: 800, marginRight: '6px' }}>[KRİTİK]</span>
+                            )}
+                            {field.label}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#1e293b' }}>
+                            {field.type === 'photo' && ans.value ? (
+                              <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', width: 60, height: 60, borderRadius: 6, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                                <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </a>
+                            ) : (
+                              displayValue
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: isNeg ? '#ef4444' : '#475569' }}>
+                            {ptsAwarded} / {field.max_points}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Photos section if exists */}
+        {submission.photos?.length > 0 && (
+          <div style={{ marginBottom: '40px', pageBreakInside: 'avoid' }}>
+            <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '16px' }}>
+              FOTOĞRAFLAR VE KANITLAR
+            </h3>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {submission.photos.map((p, pi) => (
+                <div key={p.id} style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px', background: '#f8fafc' }}>
+                  <img src={buildApiUrl(p.file_url)} alt={`Kanıt ${pi+1}`} style={{ width: '150px', height: '110px', objectFit: 'cover', borderRadius: '4px', display: 'block' }} />
+                  <div style={{ fontSize: '.65rem', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>Soru ID: {p.field_id}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Signature Blocks */}
+        <div style={{ marginTop: '56px', borderTop: '2px solid #e2e8f0', paddingTop: '24px', pageBreakInside: 'avoid' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '60px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>DENETLEYEN</div>
+              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.inspector_name || submission.submitted_by}</div>
+              <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
+              <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
+            </div>
+            
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>ŞUBE YETKİLİSİ</div>
+              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.branch_authorized_name || 'Şube Yetkilisi'}</div>
+              <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
+              <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   )
+}
+
+function calculateFieldScore(field, value) {
+  if (value === null || value === undefined || value === '') return null
+  const maxPoints = Number(field.max_points) || 0
+  if (maxPoints <= 0) return 0
+
+  if (field.type === 'rating') {
+    const val = Number(value) || 0
+    return Math.min((val / 5) * maxPoints, maxPoints)
+  }
+  if (field.type === 'yes_no' || field.type === 'checkbox') {
+    return (value === true || value === 'yes') ? maxPoints : 0
+  }
+  if (field.type === 'temperature') {
+    const temp = Number(value)
+    const minVal = Number(field.min_value)
+    const maxVal = Number(field.max_value)
+    if (!isNaN(temp) && !isNaN(minVal) && !isNaN(maxVal)) {
+      return (temp >= minVal && temp <= maxVal) ? maxPoints : 0
+    }
+    return 0
+  }
+  if (field.type === 'number') {
+    return value != null ? maxPoints : 0
+  }
+  if (field.type === 'select') {
+    const optionObj = (field.options || []).find(opt => {
+      const label = typeof opt === 'object' ? opt.label : opt
+      return String(label) === String(value)
+    })
+    if (optionObj && typeof optionObj === 'object' && 'points' in optionObj) {
+      return Number(optionObj.points) || 0
+    }
+    return maxPoints
+  }
+  return value ? maxPoints : 0
 }

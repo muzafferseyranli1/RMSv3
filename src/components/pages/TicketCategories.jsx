@@ -63,9 +63,9 @@ export default function TicketCategories() {
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <i className="fa-solid fa-tags" style={{ color: '#ef4444', fontSize: '1rem' }} />
             </span>
-            Bilet Kategorileri
+            Geribildirim Kategorileri
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>Şikayet ve denetim biletleri için kullanılan kategorileri yönetin.</p>
+          <p style={{ margin: '4px 0 0', fontSize: '.82rem', color: 'var(--text-muted)' }}>Şikayet ve denetim geribildirimleri için kullanılan kategorileri yönetin.</p>
         </div>
         <button
           className="btn-p"

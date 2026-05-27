@@ -179,10 +179,10 @@ body { background: var(--app-bg); margin: 0; }
 .tog-sl.on::before { transform: translateX(16px); }
 
 /* Modal */
-.modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.6); z-index: 200; display: flex;
+.modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,0.9); z-index: 200; display: flex;
   align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: .2s; backdrop-filter: blur(3px); }
 .modal-bg.open { opacity: 1; pointer-events: all; }
-.modal-box { background: #eef2f7; border-radius: 20px; padding: 0; width: 600px; max-width: 94vw;
+.modal-box { background: #ffffff; border-radius: 20px; padding: 0; width: 600px; max-width: 94vw;
   max-height: 88vh; overflow-y: auto; transform: translateY(16px); transition: .25s;
   box-shadow: 0 28px 72px rgba(0,0,0,.24); }
 .modal-bg.open .modal-box { transform: translateY(0); }
