@@ -6479,3 +6479,30 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 5. Resolved a timezone parsing error (\	ime zone \"zt00:00:00+03:00\" not recognized\) by correctly slicing ISO dates from Postgres RPC responses in \DemoSales.jsx\.
 6. Increased \LOOP_PAUSE_MS\ to prevent Railway API timeouts.
 
+
+## Entry 160 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T13:13:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Demo satış üretiminde rate limit (Too many requests) hatasının giderilmesi`
+- `Intent`: `Demo satış üretimindeki yüksek sorgu trafiğinin Express rate limiter engeline takılmasını önlemek amacıyla API limitini artırmak.`
+- `Files Read`:
+  - `c:\RMSv3\server\index.js`
+  - `c:\RMSv3\src\hooks\useDemoSalesJob.jsx`
+- `Files Changed`:
+  - `c:\RMSv3\server\index.js` — Rate limiter limiti 100'den 600'e çıkarıldı.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `git status`
+  - `git push --dry-run`
+- `Findings`:
+  - Demo satış ön plan (foreground) işi çalışırken, gün bazında birden fazla chunk insert ve select sorgusu yapıldığı için IP başına düşen istek sayısı 1 dakika içinde 100 sınırını aşmakta ve `/api/query` API sunucusundan HTTP 429 "Too many requests" hatası dönmektedir.
+- `Decisions`:
+  - API üzerindeki rate limiter limitinin 600'e yükseltilmesiyle demo veri üretimi gibi toplu işlemlerin yarıda kalmaması sağlandı.
+- `Open Risks`:
+  - Yok.
+- `Next Step`:
+  - Değişiklikleri Git'e commit edip push ederek Railway üzerinde otomatik deploy'un tetiklenmesini sağlamak.
+- `Handoff Contract`: `API sunucusu (server/index.js) üzerindeki rate limiter limiti 600'e çıkarıldı. Projenin ana reposuna push yapılıp Railway otomatik deploy süreci tamamlandığında canlıdaki Too many requests hatası çözülecektir.`
+
+

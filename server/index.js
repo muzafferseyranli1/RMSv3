@@ -177,7 +177,7 @@ function rateLimiter(req, res, next) {
   let timestamps = rateLimitMap.get(ip) || []
   timestamps = timestamps.filter(ts => now - ts < 60_000)
   
-  if (timestamps.length >= 100) {
+  if (timestamps.length >= 600) {
     return res.status(429).json({
       data: null,
       error: { message: 'Too many requests. Please try again later.' }
