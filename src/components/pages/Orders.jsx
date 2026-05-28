@@ -217,12 +217,16 @@ async function fetchAllRows(buildQuery) {
 function toDateOnly(value) {
   if (!value) return ''
   if (typeof value === 'string') {
-    const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
-    if (match) return match[1]
+    if (value.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value
+    }
   }
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function getCurrentLocalHour() {
@@ -1060,7 +1064,7 @@ function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate })
     const existing = (orders || []).find(order =>
       order.flow_id === flow.id &&
       branchMatchesRecord(order, branch) &&
-      order.order_date === targetDate &&
+      toDateOnly(order.order_date) === toDateOnly(targetDate) &&
       order.status !== 'cancelled'
     )
 

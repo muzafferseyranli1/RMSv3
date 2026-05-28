@@ -195,7 +195,11 @@ export function normalizeDayName(value) {
 
 function dateOnly(dateLike) {
   if (!dateLike) return ''
-  if (typeof dateLike === 'string') return dateLike.slice(0, 10)
+  if (typeof dateLike === 'string') {
+    if (dateLike.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
+      return dateLike
+    }
+  }
   const copy = new Date(dateLike)
   if (Number.isNaN(copy.getTime())) return ''
   const year = copy.getFullYear()

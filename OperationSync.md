@@ -6650,6 +6650,36 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `QueryBuilder.or() desteği hem frontend istemcisinde hem de Node.js PostgreSQL API backend sunucusunda başarıyla çözümlenerek sipariş sayfasındaki hata giderildi. Derleme sorunsuzdur.`
 
 
+## Entry 165 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T14:40:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Aynı dakikada tekrarlı sipariş üretilme (infinite loop) ve timezone/date karşılaştırma hatasının giderilmesi`
+- `Intent`: `Postgres DATE kolonunun Node.js client tarafından yerel saat dilimine parse edilip JSON'a çevrilirken oluşan UTC timezone kayması nedeniyle frontend'in sipariş gününü yanlış tarihle eşleştirmesi ve bu yüzden sürekli tekrarlı sipariş oluşturmasını engellemek; veritabanındaki 40 mükerrer siparişi temizlemek.`
+- `Files Read`:
+  - `C:\RMSv3\src\components\pages\Orders.jsx`
+  - `C:\RMSv3\src\lib\branchPurchasing.js`
+  - `C:\RMSv3\schema-railway-master.sql`
+- `Files Changed`:
+  - `C:\RMSv3\src\components\pages\Orders.jsx` — `toDateOnly` fonksiyonu timezone kaymalarına karşı korundu. `collectMissingDueFlows` fonksiyonunda mevcut siparişlerin tarih kontrolü `toDateOnly(order.order_date) === toDateOnly(targetDate)` olarak güncellendi.
+  - `C:\RMSv3\src\lib\branchPurchasing.js` — `dateOnly` fonksiyonunun ISO formatındaki UTC tarih dizelerini local timezone ile doğru parse etmesi sağlandı.
+  - `C:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Scripts Created`:
+  - `C:\RMSv3\scratch\cleanup_duplicates.cjs` — 2026-05-28 tarihine ait tekrarlı 40 siparişi silen temizlik script'i.
+- `Commands Run`:
+  - `node scratch/cleanup_duplicates.cjs` (Mükerrer 40 adet sipariş veritabanından başarıyla temizlendi)
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+  - `git push origin main` (Tüm güncellemeler Railway deploy için canlıya gönderildi)
+- `Findings`:
+  - Postgres `DATE` tipi `2026-05-28` verisi frontend tarafında `"2026-05-27T21:00:00.000Z"` şeklinde UTC olarak alınıyordu. Sadece `.slice(0, 10)` ile tarih alındığında `2026-05-27` çıktığı için frontend bu siparişi `2026-05-28` gününe ait kabul etmiyor ve döngüsel olarak yeniden sipariş üretiyordu.
+- `Decisions`:
+  - ISO tarih formatlarındaki timezone kaymasını engellemek için `Date` nesnesinin yerel `getFullYear()`, `getMonth()` ve `getDate()` metotlarıyla tarih alma kararı alındı.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Zaman dilimi kaymasından kaynaklı mükerrer sipariş üretme sorunu giderildi ve veritabanı temizlendi. Proje sorunsuz derlenmekte ve Railway üzerinde canlıya alınmaktadır.`
+
+
+
 
 
 
