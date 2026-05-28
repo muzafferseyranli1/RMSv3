@@ -8,6 +8,8 @@ export default function TaskDrawer({
   open,
   task,
   peopleById,
+  formTemplates = [],
+  onFillForm,
   onClose,
   onStart,
   onAccept,
@@ -22,6 +24,11 @@ export default function TaskDrawer({
   onSendMessage,
 }) {
   if (!task) return null
+
+  const getTemplateTitle = (id) => {
+    const tpl = formTemplates.find(item => item.id === id)
+    return tpl ? tpl.title : 'Şablon'
+  }
 
   const assignees = (task.participants || []).filter(item => item.participant_type === 'assignee')
   const watchers = (task.participants || []).filter(item => item.participant_type === 'watcher')
@@ -72,6 +79,38 @@ export default function TaskDrawer({
             <div style={{ fontSize: '.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Aciklama</div>
             <div style={{ marginTop: 10, fontSize: '.88rem', color: '#0f172a', lineHeight: 1.6 }}>{task.description || 'Aciklama girilmedi.'}</div>
           </section>
+
+          {task.form_template_id && (
+            <section className="card" style={{ padding: 16, borderLeft: '4px solid #3b82f6' }}>
+              <div style={{ fontSize: '.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Görev Formu</div>
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="btn-p"
+                  onClick={() => onFillForm(task.form_template_id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 16px',
+                    fontSize: '.88rem',
+                    fontWeight: 700,
+                    borderRadius: 10,
+                    background: '#3b82f6',
+                    color: '#fff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = '#2563eb'}
+                  onMouseOut={e => e.currentTarget.style.background = '#3b82f6'}
+                >
+                  <i className="fa-solid fa-file-signature" />
+                  Form Doldur: {getTemplateTitle(task.form_template_id)}
+                </button>
+              </div>
+            </section>
+          )}
 
           <section className="card" style={{ padding: 16 }}>
             <div style={{ fontSize: '.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Katilimcilar</div>

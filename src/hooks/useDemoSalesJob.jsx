@@ -246,7 +246,7 @@ async function buildRuntime(currentJob) {
     { data: stockItems, error: stockItemsError },
     { data: semiItems, error: semiItemsError },
   ] = await Promise.all([
-    db.from('sale_items').select('*').is('deleted_at', null).order('name'),
+    db.from('sale_items').select('id,sku,name,deleted_at,sale_status,setting_active,standard_price,portions,option_groups,channel_prices,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,recipe_rows,recipe_output_qty').is('deleted_at', null).order('name'),
     db.from('sales_channels').select('*').is('deleted_at', null).eq('active', true).order('sort_order'),
     db.from('sale_categories').select('id,name,parent_id,deleted_at').is('deleted_at', null).order('name'),
     db.from('taxes').select('id,name,rate,deleted_at').is('deleted_at', null).order('rate'),

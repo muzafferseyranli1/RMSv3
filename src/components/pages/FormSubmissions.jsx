@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/useToast'
 import { readSettingArray, normalizeEmployeeRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { useSearchParams } from 'react-router-dom'
 
 const STATUS_MAP = {
   draft: { label: 'Taslak', color: '#94a3b8', bg: 'rgba(148,163,184,.15)' },
@@ -40,6 +41,8 @@ export default function FormSubmissions() {
   const { scope, branchId, branches, branchName } = useWorkspace()
   const { user } = useAuth()
   const toast = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryFillTemplateId = searchParams.get('fillTemplateId')
 
   // Personnel and metadata states
   const [employees, setEmployees] = useState([])
@@ -381,6 +384,22 @@ export default function FormSubmissions() {
       sendResult: true
     })))
   }
+
+  useEffect(() => {
+    if (!loading && queryFillTemplateId && templates.length > 0) {
+      const templateExists = templates.some(t => String(t.id) === String(queryFillTemplateId))
+      if (templateExists) {
+        startFillForm(queryFillTemplateId)
+        
+        // Clean query parameter
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('fillTemplateId')
+        setSearchParams(nextParams, { replace: true })
+      } else {
+        toast('Seçilen form şablonu bulunamadı', 'error')
+      }
+    }
+  }, [loading, queryFillTemplateId, templates, searchParams, setSearchParams, toast])
 
   const updateAnswer = (fieldId, value) => {
     setAnswers(prev => prev.map(a => a.field_id === fieldId ? { ...a, value } : a))

@@ -3150,6 +3150,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   deleted_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  form_template_id uuid,
   CONSTRAINT tasks_pkey PRIMARY KEY (id),
   CONSTRAINT tasks_priority_check CHECK ((priority = ANY (ARRAY['low'::text, 'normal'::text, 'high'::text, 'urgent'::text]))),
   CONSTRAINT tasks_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'open'::text, 'in_progress'::text, 'pending_approval'::text, 'pending_completion_approval'::text, 'completed'::text, 'rejected'::text, 'overdue'::text, 'cancelled'::text, 'soft_deleted'::text, 'not_completed'::text])))
@@ -3175,6 +3176,11 @@ ALTER TABLE ONLY public.tasks
   DROP CONSTRAINT IF EXISTS tasks_recurrence_rule_id_fkey;
 ALTER TABLE ONLY public.tasks
   ADD CONSTRAINT tasks_recurrence_rule_id_fkey FOREIGN KEY (recurrence_rule_id) REFERENCES public.task_recurrence_rules(id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.tasks
+  DROP CONSTRAINT IF EXISTS tasks_form_template_id_fkey;
+ALTER TABLE ONLY public.tasks
+  ADD CONSTRAINT tasks_form_template_id_fkey FOREIGN KEY (form_template_id) REFERENCES public.form_templates(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS public.task_participants (
   id uuid DEFAULT gen_random_uuid() NOT NULL,

@@ -111,6 +111,7 @@ function createInitialForm(actorBranchId = '') {
     checklistItems: [createChecklistItem()],
     files: [],
     images: [],
+    formTemplateId: '',
   }
 }
 
@@ -295,6 +296,26 @@ export default function Tasks({ scope = 'center' }) {
   // Search & Sorting States
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState('due_soon')
+  const [formTemplates, setFormTemplates] = useState([])
+
+  useEffect(() => {
+    async function loadTemplates() {
+      try {
+        const { data, error } = await db
+          .from('form_templates')
+          .select('id,title')
+          .eq('active', true)
+          .is('deleted_at', null)
+          .order('title')
+        if (!error && data) {
+          setFormTemplates(data)
+        }
+      } catch (err) {
+        console.error('Failed to load form templates:', err)
+      }
+    }
+    loadTemplates()
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -397,6 +418,16 @@ export default function Tasks({ scope = 'center' }) {
     }
     setAnnouncementsLoading(false)
     setLoading(false)
+  }
+
+  const handleFillForm = (templateId) => {
+    let path = '/formlar'
+    if (scope === 'branch') {
+      path = '/sube-formlar'
+    } else if (scope === 'warehouse') {
+      path = '/merkez-depo-formlar'
+    }
+    window.open(`${path}?fillTemplateId=${templateId}`, '_blank')
   }
 
   useEffect(() => {
@@ -1056,6 +1087,22 @@ export default function Tasks({ scope = 'center' }) {
                 </button>
               </div>
             </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label className="f-label">Görevin Formu (İsteğe Bağlı)</label>
+              <select
+                className="f-input"
+                value={form.formTemplateId}
+                onChange={event => setField('formTemplateId', event.target.value)}
+                style={{ height: 38 }}
+              >
+                <option value="">Form Seçilmedi</option>
+                {formTemplates.map(tpl => (
+                  <option key={tpl.id} value={tpl.id}>{tpl.title}</option>
+                ))}
+              </select>
+            </div>
+
             <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
                 <label className="f-label">Dosya Ekleri</label>
@@ -1286,6 +1333,8 @@ export default function Tasks({ scope = 'center' }) {
         open={!!selectedTask}
         task={selectedTask}
         peopleById={peopleById}
+        formTemplates={formTemplates}
+        onFillForm={handleFillForm}
         onClose={() => setSelectedTask(null)}
         onStart={() => runTaskAction(() => acceptTask(selectedTask.id, actor.id))}
         onAccept={approvalId => runTaskAction(() => acceptAssignment(selectedTask.id, approvalId, actor.id))}

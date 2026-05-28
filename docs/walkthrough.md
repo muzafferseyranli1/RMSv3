@@ -1,6 +1,6 @@
-# Walkthrough — Maliyet Hesaplama, Filtreleme ve Mükerrer Sipariş Düzeltmeleri
+# Walkthrough — Maliyet Hesaplama, Filtreleme, Mükerrer Sipariş ve Demo Satış Optimizasyonu Düzeltmeleri
 
-Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığındaki negatif stok anomalilerini gidermek, `/orders` sayfasındaki otomatik sipariş filtreleme hatalarını gidermek ve zaman dilimi (timezone) kaymasından ötürü oluşan mükerrer otomatik sipariş döngüsünü çözmek amacıyla gerçekleştirilen tüm çalışmalar özetlenmiştir.
+Bu dokümanda, envanter hareketlerindeki ağırlıklı ortalama maliyet (WAC) hesaplama mantığındaki negatif stok anomalilerini gidermek, `/orders` sayfasındaki otomatik sipariş filtreleme ve mükerrer sipariş döngülerini çözmek ve demo satış üreticisindeki (`/demo-sales`) JSON kesilme hatasını gidermek amacıyla gerçekleştirilen tüm çalışmalar özetlenmiştir.
 
 ## Yapılan Değişiklikler
 
@@ -39,16 +39,26 @@ Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışl
 - **Sebep**: Postgres `DATE` tipi alanlar Express backend API tarafından istemciye UTC JSON stringi olarak (`2026-05-27T21:00:00.000Z`) gönderiliyordu. Frontend tarafında sadece ilk 10 hane kesilerek (`2026-05-27`) işlem yapıldığı için, bu sipariş yerel saat dilimindeki bugünün tarihi (`2026-05-28`) ile uyuşmuyor, siparişin henüz oluşturulmadığı zannedilerek sürekli yeni kayıt ekleniyordu.
 - **Düzeltme**:
   - `src/components/pages/Orders.jsx` içerisindeki `collectMissingDueFlows` fonksiyonunda sipariş tarih kontrolleri `toDateOnly(order.order_date) === toDateOnly(targetDate)` olarak güncellendi.
-  - `Orders.jsx` altındaki `toDateOnly` ve `src/lib/branchPurchasing.js` altındaki `dateOnly` fonksiyonları güncellenerek ISO formatlı dizelerin yerel saat diliminin gün, ay ve yıl bilgilerine göre çözümlenmesi (`Date.getFullYear()`, `Date.getMonth()`, `Date.getDate()`) sağlandı.
+  - `Orders.jsx` altındaki `toDateOnly` ve `src/lib/branchPurchasing.js` altındaki `dateOnly` fonksiyonları güncellenerek ISO formatlı dizelerin yerel saat diliminin gün, ay ve yıl bilgilerine göre çözümlenmesi (`Date.getFullYear()`, `Date.getDate()`) sağlandı.
   - `scratch/cleanup_duplicates.cjs` script'i ile veritabanındaki mükerrer siparişler ve bunlara bağlı sipariş satırları başarıyla temizlendi, sadece 1 adet orijinal sipariş bırakıldı.
+
+---
+
+### 5. Demo Satış Üretiminde JSON Kesilme Hatası Optimizasyonu
+- **Hata**: `/demo-sales` sayfasında "Üretimi Başlat" tıklandığı anda `Unterminated string in JSON at position 50592` hatası alınıyor ve işlem başlamadan kalıyordu.
+- **Sebep**: `useDemoSalesJob.jsx` içindeki `buildRuntime` ilk adımda `sale_items` tablosundaki tüm satır ve sütunları (`select('*')`) çekiyordu. Bu tablonun `pos_image` ve `channel_image` alanları base64 görsel kodları sakladığından, 74 satırlık ürün listesinin JSON boyutu **42.89 MB**'a ulaşıyordu. API sunucusu veya aradaki proxy, bu boyuttaki yanıtı tam gönderemeden kestiği için JSON ayrıştırılamıyordu.
+- **Düzeltme**:
+  - `src/hooks/useDemoSalesJob.jsx` içerisindeki `sale_items` sorgusu, yalnızca simülasyon motorunun ihtiyaç duyduğu alanları (`id,sku,name,deleted_at,sale_status,setting_active,standard_price,portions,option_groups,channel_prices,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,recipe_rows,recipe_output_qty`) seçecek şekilde güncellendi.
+  - Böylece veri yükü **42.89 MB**'tan **~217 KB** seviyesine düşürüldü (%99.5 tasarruf) ve ağ/sunucu yükü sıfıra indirildi.
 
 ---
 
 ## Doğrulama ve Test Sonuçları
 
-1. **Veritabanı Migrasyon ve Temizlik Testi**:
-   - `node scratch/cleanup_duplicates.cjs` komutu başarıyla çalıştırılarak mükerrer siparişler silindi. Veritabanında tek sipariş kaldığı doğrulandı.
-2. **Derleme (Build) Testi**:
+1. **Derleme (Build) Testi**:
    - `npm.cmd run build` çalıştırıldı. Tüm frontend kodları sorunsuz ve sıfır hata ile derlendi.
-3. **Canlı Ortam Doğrulaması**:
-   - Yapılan düzeltmeler GitHub main branch'ine push edilerek Railway üzerinde otomatik deploy edildi. Deploy sonrası mükerrer otomatik sipariş üretiminin tamamen durduğu doğrulandı.
+2. **Yerel Veri Boyutu Testi**:
+   - Oluşturulan test betiği (`test-build-runtime.cjs`) ile veritabanından çekilen temizlenmiş ve stringleştirilmiş veri boyutu test edildi:
+     - `sale_items` verisinin optimize edilmiş hali **217,358 bytes** (eski hali: **42,890,745 bytes**).
+3. **Canlı Ortam Deploy**:
+   - Yapılan optimizasyonların Railway canlı platformuna yansıdıktan sonra simülasyon adımlarının kesintisiz ve hızlıca tamamlandığı doğrulanacaktır.

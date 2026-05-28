@@ -1,63 +1,40 @@
-# Maliyet Hesaplama Hatası ve Yarış Durumu Düzeltme Planı
+# Demo Satış Üretiminde "Unterminated string in JSON" Hatasının Çözümü
 
-Bu plan, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığında tespit edilen **negatif stok anomalilerini** gidermeyi ve bu süreci **Railway üzerinde ek ağ trafiği ve sunucu maliyeti yaratmayacak** şekilde veritabanı düzeyinde optimize etmeyi hedefler.
+Bu plan, Demo Satış Üreticisi (`/demo-sales`) sayfasında "Üretimi Başlat" butonuna tıklandıktan hemen sonra karşılaşılan ve tarayıcıda `Unterminated string in JSON at position 50592` hatasına sebep olan veri boyutu/kesilme sorununu çözmeyi hedefler.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Maliyet ve Trafik Koruması Politikamız:**
-> Önceki oturumlarda yaşanan sunucu maliyeti artışlarını engellemek adına, bu planda **sürekli çalışan hiçbir arka plan script'i veya polling (periyodik kontrol) döngüsü kullanılmamıştır.**
-> 
-> *   Tüm ortalama maliyet ve geriye dönük hesaplama mantığı, PostgreSQL'in kendi içinde (`stored procedure` ve `trigger` seviyesinde) çalıştırılacaktır.
-> *   İşlemler sadece yeni bir stok kaydı yazıldığında (Mal Kabul, Transfer Onayı vb.) tetiklenecektir.
-> *   Sistem boşta kaldığında **0 network trafiği ve 0% CPU** harcayacaktır.
-
-> [!WARNING]
-> **Şema Değişikliği:**
-> Canlı Railway Postgres veritabanına `inventory_balances` adında yeni bir bakiye takip tablosu eklenecek ve mevcut `recalculate_inventory_item_costs` fonksiyonu düzeltilecektir. Bu işlem veritabanı tutarlılığını artıracaktır.
+> **Yapılan Değişiklik ve Performans Kazanımı:**
+> - `sale_items` tablosundaki `pos_image` ve `channel_image` sütunları, ürün görsellerini base64 formatında saklamaktadır ve satır başına ortalama ~580 KB yer kaplamaktadır (74 satır için toplam ~43 MB).
+> - Demo satış simülasyonu çalışırken ürün görsellerine hiçbir şekilde ihtiyaç duymamaktadır.
+> - Bu değişiklik ile, `useDemoSalesJob.jsx` içindeki `sale_items` sorgusu `*` yerine yalnızca simülasyon motorunun kullandığı alanları (`select(...)`) isteyecek şekilde güncellenecektir.
+> - Bu sayede veri boyutu **42.89 MB**'tan **~217 KB**'a düşürülerek (%99.5 tasarruf) ağ trafiği ve sunucu yükü minimize edilecek, JSON kesilme hatası tamamen giderilecektir.
 
 ---
 
 ## Proposed Changes
 
-### 1. Veritabanı ve Şema Güncellemeleri (Database Migration)
+### Arayüz ve Job Bileşenleri (Frontend Updates)
 
-#### [NEW] [018_inventory_cost_calculation_fix.sql](file:///c:/RMSv3/migrations/018_inventory_cost_calculation_fix.sql)
-Aşağıdaki işlemleri transaction içinde uygulayacak SQL gövdesi:
-1.  `inventory_balances` tablosunun oluşturulması (hızlı bakiye okuma ve kilitleme desteği).
-2.  Mevcut stok hareketlerinden (`inventory_movements`) en güncel durumların hesaplanarak `inventory_balances` tablosunun ilk verilerle tohumlanması (bootstrap).
-3.  Negatif stok sapmalarını düzeltilmiş formülle ele alacak şekilde `recalculate_inventory_item_costs` veritabanı fonksiyonunun güncellenmesi.
-4.  `BEFORE INSERT` trigger'ı oluşturularak her yeni eklemede çakışmayı (race condition) önleyecek satır kilitlemeli bakiye güncellemesinin eklenmesi.
-
-#### [NEW] [run-migration-018.cjs](file:///c:/RMSv3/scripts/run-migration-018.cjs)
-`server/.env` dosyasındaki `DATABASE_URL` bilgisini okuyarak `018` nolu SQL migrasyonunu canlı veritabanında çalıştıracak ve sonrasında güvenle sonlanacak Node.js script'i.
-
----
-
-### 2. Arayüz Bileşenleri (Frontend Updates)
-
-#### [MODIFY] [MalKabul.jsx](file:///c:/RMSv3/src/components/pages/MalKabul.jsx)
-*   Mal kabul kaydedilirken (`persistReceipt` metodu) yapılan envanter hareketleri (`inventory_movements`) hazırlığında, negatif stok ihtimalini göz önünde bulunduran yeni düzeltilmiş ortalama maliyet (WAC) formülünün entegre edilmesi.
-*   Böylece, veritabanındaki asenkron maliyet kuyruğu çalışana kadar geçen sürede de kullanıcının arayüzde doğru rakamları görmesi sağlanacaktır.
-
-#### [MODIFY] [InventoryTransfer.jsx](file:///c:/RMSv3/src/components/pages/InventoryTransfer.jsx)
-*   Transfer kabulü yapıldığında (`createMovementPayload` fonksiyonu, `direction = 'in'`) uygulanan frontend maliyet formülünün, negatif stok normalizasyonu ile uyumlu hale getirilmesi.
+#### [MODIFY] [useDemoSalesJob.jsx](file:///c:/RMSv3/src/hooks/useDemoSalesJob.jsx)
+- `buildRuntime` fonksiyonundaki `sale_items` sorgusunu (`db.from('sale_items').select('*')`) şu şekilde güncelleyeceğiz:
+  ```javascript
+  db.from('sale_items')
+    .select('id,sku,name,deleted_at,sale_status,setting_active,standard_price,portions,option_groups,channel_prices,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,recipe_rows,recipe_output_qty')
+    .is('deleted_at', null)
+    .order('name')
+  ```
 
 ---
 
 ## Verification Plan
 
 ### Automated & Manual Verification
-1.  **Migrasyon Testi:** 
-    *   Lokal olarak migrasyon script'i dry-run edilecek ve canlı Railway Postgres'e uygulanacaktır:
-        ```bash
-        node scripts/run-migration-018.cjs
-        ```
-2.  **Derleme (Build) Doğrulaması:**
-    *   Frontend kodlarının sıfır hata ile derlendiği teyit edilecektir:
-        ```bash
-        npm run build
-        ```
-3.  **Matematiksel Doğrulama (Smoke Test):**
-    *   Negatif stok durumunda olan bir ürün için mal kabul veya transfer kabulü girilecek.
-    *   Yeni ortalama maliyetin (WAC) fırlamadığı, yeni alış fiyatıyla normalize olduğu veritabanı satırından kontrol edilerek doğrulanacaktır.
+1. **Derleme (Build) Doğrulaması:**
+   - Frontend kodunun hatasız derlendiğini doğrulayacağız:
+     ```powershell
+     npm run build
+     ```
+2. **Yerel Test:**
+   - Değişikliği uyguladıktan sonra `/demo-sales` sayfasına gidip "Üretimi Başlat" diyerek işlemin ilk adımdan itibaren (0/115 yerine ilerleyerek) sorunsuz çalıştığını kontrol edeceğiz.

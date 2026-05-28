@@ -239,6 +239,7 @@ export async function createTask(form, actor, uploadedFiles = []) {
     edit_due_date_allowed: !!form.edit_due_date_allowed,
     edit_schedule_allowed: !!form.edit_schedule_allowed,
     incomplete_if_late: !!form.incomplete_if_late,
+    form_template_id: form.formTemplateId || null,
     updated_at: nowIso(),
   }).select().maybeSingle()
 

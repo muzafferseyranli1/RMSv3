@@ -6704,3 +6704,70 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `Form doldurma ekranındaki tüm mobil görsel bozulmalar ve taşmalar çözüldü. db ve branchName ReferenceError kilitlenmeleri giderildi. Derleme testi başarılıdır.`
 
 
+## Entry 167 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T23:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görevler sayfasına form şablonu ilişkilendirme ve tek tıklamayla doldurma entegrasyonu`
+- `Intent`: `Yeni görev oluşturulurken form şablonu seçilebilmesini, veritabanına form_template_id olarak kaydedilmesini, atanan kişinin görev detay çekmecesinden tek tıklamayla ilgili formu yeni sekmede doldurabilmesini sağlamak.`
+- `Files Read`:
+  - `C:\RMSv3\schema-railway-master.sql`
+  - `C:\RMSv3\src\lib\taskService.js`
+  - `C:\RMSv3\src\components\pages\Tasks.jsx`
+  - `C:\RMSv3\src\components\pages\tasks\TaskDrawer.jsx`
+  - `C:\RMSv3\src\components\pages\FormSubmissions.jsx`
+- `Files Changed`:
+  - `C:\RMSv3\migrations\019_task_form_template_relation.sql` [NEW] — `tasks` tablosuna `form_template_id` kolonu ve fk ilişkisi ekleyen SQL.
+  - `C:\RMSv3\scripts\run-migration-019.cjs` [NEW] — SQL migrasyonunu veritabanına uygulayan runner script.
+  - `C:\RMSv3\schema-railway-master.sql` [MODIFY] — Veritabanı şema tanım dosyası güncellendi.
+  - `C:\RMSv3\src\lib\taskService.js` [MODIFY] — `createTask` fonksiyonunda `form_template_id` kaydedilmesi sağlandı.
+  - `C:\RMSv3\src\components\pages\Tasks.jsx` [MODIFY] — Form şablonlarının çekilmesi, modal içi select dropdown'ı, route yönlendirme callback'i ve `TaskDrawer` prop bağlantıları eklendi.
+  - `C:\RMSv3\src\components\pages\tasks\TaskDrawer.jsx` [MODIFY] — İlişkili form için özel action kartı ve "Form Doldur" butonu eklendi.
+  - `C:\RMSv3\src\components\pages\FormSubmissions.jsx` [MODIFY] — URL query parametresinden gelen `fillTemplateId` ile formu otomatik doldurma modalı tetiklemesi ve temizlemesi entegre edildi.
+  - `C:\RMSv3\docs\implementation_plan.md` [MODIFY] — Uygulama planı güncellendi.
+  - `C:\RMSv3\docs\task.md` [MODIFY] — Görev takip listesi güncellendi.
+  - `C:\RMSv3\docs\walkthrough.md` [MODIFY] — Walkthrough belgesi güncellendi.
+- `Commands Run`:
+  - `node scripts/run-migration-019.cjs` (Canlı veritabanına migrasyon başarıyla uygulandı)
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+- `Findings`:
+  - `FormSubmissions` sayfasında form doldurma modalını otomatik tetiklerken referans hatası (hoisting) almamak için query param kontrolü ve `startFillForm` tetiklemesi `startFillForm` fonksiyonunun altındaki bir `useEffect` bloğuna yerleştirildi.
+  - Form doldurma başlatıldıktan hemen sonra query parametresinin temizlenmesi, sayfa yenilemelerinde veya modal iptal edildiğinde formun tekrar tekrar açılmasını engelledi.
+- `Decisions`:
+  - Formun görevle doğrudan ilişkisini tutmaya gerek olmadığı için form doldurma işlemi yeni sekmede (`window.open`) bağımsız bir oturum olarak açıldı, bu sayede görev detaylarının yer aldığı asıl ekranın durumu korunmuş oldu.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Görev ile form şablonu ilişkilendirme, veritabanı migrasyonu, görev çekmecesinden form doldurma butonu ve URL parametresiyle otomatik doldurma modalının tetiklenmesi akışları sıfır derleme hatası ile tamamlandı.`
+
+
+
+## Entry 168 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T23:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Demo Satış Üreticisi veri aktarım optimizasyonu`
+- `Intent`: `useDemoSalesJob.jsx içindeki sale_items tablosu sorgusunda görsel base64 verisi (pos_image, channel_image) içeren tüm alanları devredışı bırakıp yalnızca motorun kullandığı alanları çekerek JSON veri boyutunu 43MB'tan 217KB'a düşürmek ve Unterminated string in JSON hatasını gidermek.`
+- `Files Read`:
+  - `c:\RMSv3\src\hooks\useDemoSalesJob.jsx`
+  - `c:\RMSv3\src\lib\demoSalesGenerator.js`
+- `Files Changed`:
+  - `c:\RMSv3\src\hooks\useDemoSalesJob.jsx` — `sale_items` sorgusu `select('*')` yerine özel sütun seçiciyle optimize edildi.
+  - `c:\RMSv3\docs\implementation_plan.md` — Güncellendi.
+  - `c:\RMSv3\docs\task.md` — Güncellendi.
+  - `c:\RMSv3\docs\walkthrough.md` — Güncellendi.
+  - `c:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `node scratch/test-build-runtime.cjs` (Veritabanı veri boyutlarını test etmek için çalıştırıldı)
+  - `node scratch/check-columns-size.cjs` (Tablo sütun boyutlarını analiz etmek için çalıştırıldı)
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+- `Findings`:
+  - `sale_items` tablosundaki `pos_image` ve `channel_image` alanları base64 görsel barındırmakta olup sorgu başına toplam 42.89 MB ağ trafiği oluşturmaktaydı. Bu durum Railway API sunucusu/proxy üzerinden JSON yanıtının kesilmesine sebep oluyordu.
+  - Sadece gerekli alanlar seçildiğinde JSON yanıtı 217 KB boyutuna düşürüldü.
+- `Decisions`:
+  - Ürün görsellerini demo satış veri üretim sürecinden muaf tutmak amacıyla seçici SQL sorguları kullanıldı.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Demo satış üreticisinin ilk adımında yaşanan Unterminated string in JSON hatası, sale_items sorgusunun seçici hale getirilmesiyle (select('*') -> select('id,sku...')) tamamen çözülmüştür. Ağ trafiği 43MB'tan 217KB'a indirilmiş ve üretim derlemesi başarıyla doğrulanmıştır.`
+
+
+
