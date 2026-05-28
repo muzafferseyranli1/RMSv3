@@ -726,7 +726,7 @@ export default function FormSubmissions() {
                   )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-info-grid" style={{ marginBottom: 0 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Başlangıç Tarihi</label>
                     <input
@@ -1022,7 +1022,97 @@ let totalMaxPoints = 0;
 const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / totalMaxPoints) * 100) : 0;
 
     return (
-      <div ref={formContainerRef} style={{ maxWidth: 800, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: 24, backdropFilter: 'blur(8px)' }}>
+      <>
+        <style dangerouslySetInnerHTML={{__html: `
+          /* Form Yanıtları Mobil Düzeltmeleri */
+          .form-fill-container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--surface);
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            padding: 24px;
+            backdrop-filter: blur(8px);
+          }
+          .form-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+            margin-bottom: 14px;
+          }
+          .form-field-row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+          }
+          .form-field-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            flex-shrink: 0;
+            max-width: 100%;
+          }
+          .rating-10-wrapper {
+            display: flex;
+            gap: 4px;
+            font-size: 1.25rem;
+            flex-wrap: wrap;
+          }
+          .nps-buttons-wrapper {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+            width: 100%;
+          }
+          .form-responsibles-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+
+          @media (max-width: 600px) {
+            .form-fill-container {
+              padding: 14px !important;
+              border-radius: 8px !important;
+            }
+            .form-info-grid {
+              grid-template-columns: 1fr !important;
+              gap: 10px !important;
+            }
+            .form-field-row {
+              flex-direction: column !important;
+              align-items: stretch !important;
+              gap: 12px !important;
+            }
+            .form-field-controls {
+              margin-left: 0 !important;
+              width: 100% !important;
+              justify-content: flex-start !important;
+              flex-shrink: 1 !important;
+            }
+            .rating-10-wrapper {
+              font-size: 1rem !important;
+              gap: 4px !important;
+            }
+            .nps-buttons-wrapper {
+              gap: 4px !important;
+            }
+            .nps-buttons-wrapper button {
+              flex: 1 1 calc(16.6% - 4px) !important;
+              min-width: 26px !important;
+              height: 26px !important;
+              font-size: 0.72rem !important;
+            }
+            .form-responsibles-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}} />
+        <div ref={formContainerRef} className="form-fill-container">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
             <button className="btn-o" onClick={() => setShowFillForm(false)} style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--surface-2)', transition: 'background 0.2s' }}>
               <i className="fa-solid fa-arrow-left" />
@@ -1044,7 +1134,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Denetim Formu Bilgileri
             </div>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 14 }}>
+            <div className="form-info-grid">
               {/* Denetimi Yapan */}
               <div>
                 <label className="f-label">Denetimi Yapan</label>
@@ -1114,7 +1204,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+            <div className="form-info-grid" style={{ marginBottom: 0 }}>
               {/* Şube Yetkilisi */}
               <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
                 <label className="f-label" style={{ fontWeight: 700 }}>İlgili Şubenin Yetkilisi</label>
@@ -1179,7 +1269,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               {employees.filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId).length === 0 ? (
                 <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Bu şube için tanımlanmış sorumlu yönetici bulunamadı.</div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-responsibles-grid">
                   {employees
                     .filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId)
                     .map(emp => {
@@ -1290,14 +1380,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     gap: 8
                   }}>
                     {/* Row Container (Horizontal on wide screens, wraps nicely) */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 16,
-                      flexWrap: 'wrap'
-                    }}>
+                    <div className="form-field-row">
                       {/* Left Block: Question, Critical Badge, Points, Note Button */}
                       <div style={{ flex: '1 1 300px', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -1347,7 +1430,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                       </div>
 
                       {/* Right Block: Input Controls */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+                      <div className="form-field-controls">
                         {field.type === 'yes_no' && (
                           <div style={{ display: 'flex', gap: 6 }}>
                             {[true, false].map(v => (
@@ -1399,7 +1482,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                         )}
 
                         {field.type === 'rating_10' && (
-                          <div style={{ display: 'flex', gap: 4, fontSize: '1.25rem', flexWrap: 'wrap' }}>
+                          <div className="rating-10-wrapper">
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
                               <button
                                 key={r}
@@ -1496,7 +1579,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
 
                         {field.type === 'nps' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-                            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                            <div className="nps-buttons-wrapper">
                               {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => {
                                 const isActive = answer?.value === val
                                 const isDetractor = val <= 6
@@ -1663,8 +1746,9 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           </button>
         </div>
       </div>
-    )
-  }
+    </>
+  )
+}
 
   // ─── List View ───
   return (
@@ -1698,11 +1782,11 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           icon: t.form_type === 'checklist' ? 'fa-list-check' : (t.form_type === 'inspection' ? 'fa-file-shield' : 'fa-comments'),
         }))
         return (
-          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <i className="fa-solid fa-pen-to-square" /> Yeni Form Doldur:
             </span>
-            <div style={{ width: 320, maxWidth: '100%' }}>
+            <div style={{ flex: '1 1 280px', maxWidth: '100%' }}>
               <SearchableSelect
                 value=""
                 onChange={val => val && startFillForm(val)}
