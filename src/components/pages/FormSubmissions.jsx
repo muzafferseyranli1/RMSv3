@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
 import { readSettingArray, normalizeEmployeeRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { uploadApiFile, buildApiUrl } from '@/lib/db'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 const STATUS_MAP = {
   draft: { label: 'Taslak', color: '#94a3b8', bg: 'rgba(148,163,184,.15)' },
@@ -998,7 +999,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
         </div>
       </div>
 
-      {/* Quick Fill Buttons */}
+      {/* Quick Fill Searchable Select */}
       {(() => {
         const activeTemplates = templates.filter(t => {
           if (!t.active || t.deleted_at) return false
@@ -1007,16 +1008,27 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           return allowed.includes(scope)
         })
         if (activeTemplates.length === 0) return null
+        const templateOptions = activeTemplates.map(t => ({
+          value: t.id,
+          label: t.title,
+          meta: t.form_type === 'checklist' ? 'Checklist' : (t.form_type === 'inspection' ? 'Denetim' : 'Müşteri Anketi'),
+          icon: t.form_type === 'checklist' ? 'fa-list-check' : (t.form_type === 'inspection' ? 'fa-file-shield' : 'fa-comments'),
+        }))
         return (
-          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-              <i className="fa-solid fa-pen-to-square" style={{ marginRight: 6 }} /> Form Doldur:
+          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <i className="fa-solid fa-pen-to-square" /> Yeni Form Doldur:
             </span>
-            {activeTemplates.map(t => (
-              <button key={t.id} className="btn-o" onClick={() => startFillForm(t.id)} style={{ fontSize: '.75rem' }}>
-                {t.title}
-              </button>
-            ))}
+            <div style={{ width: 320, maxWidth: '100%' }}>
+              <SearchableSelect
+                value=""
+                onChange={val => val && startFillForm(val)}
+                options={templateOptions}
+                placeholder="Doldurulacak form şablonunu seçin..."
+                searchPlaceholder="Form şablonu ara..."
+                allowClear={false}
+              />
+            </div>
           </div>
         )
       })()}
