@@ -1,65 +1,63 @@
-# Uygulama Planı - Form Şablon Raporlama ve Filtreleme Geliştirmesi
+# Maliyet Hesaplama Hatası ve Yarış Durumu Düzeltme Planı
 
-Mevcut `Form Yanıtları` sayfasındaki istatistik kartlarının kaldırılması, tarih filtrelerinin eklenmesi ve kapsamlı şube/tarih/şablon bazlı soru ortalamalarını hesaplayıp yazdırabilen yeni bir "Rapor Al" özelliğinin eklenmesi planlanmaktadır.
+Bu plan, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığında tespit edilen **negatif stok anomalilerini** gidermeyi ve bu süreci **Railway üzerinde ek ağ trafiği ve sunucu maliyeti yaratmayacak** şekilde veritabanı düzeyinde optimize etmeyi hedefler.
 
-## Kullanıcı İncelemesi Gereken Hususlar
+## User Review Required
+
 > [!IMPORTANT]
-> - **Şube Şablonları Entegrasyonu**: Genel Merkez (Center) ve Admin yetkisindeki kullanıcılar, rapor alırken tekil şubelerin yanı sıra `branch_templates` tablosunda tanımlanmış şube şablonlarını (İstanbul Şubeleri, Ege Şubeleri vb.) da seçebilecektir. Şube ve Depo kullanıcıları ise sadece kendi şubelerinin verilerini görebilecek, şube seçimi yapamayacaktır.
-> - **Soru Bazlı Ortalama Hesaplama Kuralları**:
->   - **Evet/Hayır (yes_no) & Onay Kutusu (checkbox)**: "Evet" veya işaretli olma yüzdesi (% bazında oran) hesaplanacaktır.
->   - **Derecelendirme (rating, rating_10, slider, nps, number, temperature)**: Matematiksel aritmetik ortalama hesaplanacak ve görsel barlar / yıldızlarla sunulacaktır.
->   - **Emoji Derecelendirme (emoji_rating)**: `sad` (1), `neutral` (2), `happy` (3) puan karşılıkları atanarak ortalama skor çıkarılacaktır.
->   - **Seçim Listesi (select)**: Seçeneklerin puan ağırlıkları varsa bunlara göre ortalama alınacaktır.
+> **Maliyet ve Trafik Koruması Politikamız:**
+> Önceki oturumlarda yaşanan sunucu maliyeti artışlarını engellemek adına, bu planda **sürekli çalışan hiçbir arka plan script'i veya polling (periyodik kontrol) döngüsü kullanılmamıştır.**
+> 
+> *   Tüm ortalama maliyet ve geriye dönük hesaplama mantığı, PostgreSQL'in kendi içinde (`stored procedure` ve `trigger` seviyesinde) çalıştırılacaktır.
+> *   İşlemler sadece yeni bir stok kaydı yazıldığında (Mal Kabul, Transfer Onayı vb.) tetiklenecektir.
+> *   Sistem boşta kaldığında **0 network trafiği ve 0% CPU** harcayacaktır.
 
-## Önerilen Değişiklikler
+> [!WARNING]
+> **Şema Değişikliği:**
+> Canlı Railway Postgres veritabanına `inventory_balances` adında yeni bir bakiye takip tablosu eklenecek ve mevcut `recalculate_inventory_item_costs` fonksiyonu düzeltilecektir. Bu işlem veritabanı tutarlılığını artıracaktır.
 
-### Bileşenler ve Arayüz Katmanı
+---
 
-#### [MODIFY] [FormSubmissions.jsx](file:///c:/RMSv3/src/components/pages/FormSubmissions.jsx)
+## Proposed Changes
 
-1. **Arayüz Sadeleştirmesi ve Tarih Filtreleri**:
-   - Üst kısımdaki `Stat Cards` (Toplam, Tamamlanan, Anomali, Ort. Puan kartları) kaldırılacak.
-   - Listeleme filtrelerinin bulunduğu satıra başlangıç tarihi (`filter.startDate`) ve bitiş tarihi (`filter.endDate`) inputları (`type="date"`) eklenecek.
-   - Listelenen yanıtlar local state seviyesinde `filteredSubmissions` olarak bu tarihlere göre süzülecek.
+### 1. Veritabanı ve Şema Güncellemeleri (Database Migration)
 
-2. **Rapor Al Butonu**:
-   - Tarih ve durum filtrelerinin yanına şık, mavi renkli bir **Rapor Al** (`<button className="btn-p">Rapor Al</button>`) butonu eklenecek.
-   - Bu buton tıklandığında `showReportModal` state'ini `true` yaparak yeni rapor modalını açacak.
+#### [NEW] [018_inventory_cost_calculation_fix.sql](file:///c:/RMSv3/migrations/018_inventory_cost_calculation_fix.sql)
+Aşağıdaki işlemleri transaction içinde uygulayacak SQL gövdesi:
+1.  `inventory_balances` tablosunun oluşturulması (hızlı bakiye okuma ve kilitleme desteği).
+2.  Mevcut stok hareketlerinden (`inventory_movements`) en güncel durumların hesaplanarak `inventory_balances` tablosunun ilk verilerle tohumlanması (bootstrap).
+3.  Negatif stok sapmalarını düzeltilmiş formülle ele alacak şekilde `recalculate_inventory_item_costs` veritabanı fonksiyonunun güncellenmesi.
+4.  `BEFORE INSERT` trigger'ı oluşturularak her yeni eklemede çakışmayı (race condition) önleyecek satır kilitlemeli bakiye güncellemesinin eklenmesi.
 
-3. **Rapor Seçim ve Hesaplama Modalı**:
-   - **Form Şablonu Seçimi**: Raporlanacak form şablonu (dropdown) seçilir.
-   - **Şube Seçimi**:
-     - `scope === 'center' || scope === 'admin'` ise: Kullanıcıya şube şablonları (`branch_templates` tablosundan dinamik çekilen listeler) ve tekil şubeleri seçebileceği çoklu seçim/dropdown alanı sunulur.
-     - `scope === 'branch' || scope === 'warehouse'` ise: Kullanıcının kendi şubesi kilitli ve otomatik seçili olarak gelir.
-   - **Tarih Aralığı Seçimi**: Başlangıç ve bitiş tarihlerini içerir.
-   - **Raporu Göster Butonu**: Seçimlerden sonra veritabanından (`form_submissions` tablosu) ilgili şablon, şubeler ve tarih aralığına ait tüm tamamlanmış form yanıtlarını çeker.
+#### [NEW] [run-migration-018.cjs](file:///c:/RMSv3/scripts/run-migration-018.cjs)
+`server/.env` dosyasındaki `DATABASE_URL` bilgisini okuyarak `018` nolu SQL migrasyonunu canlı veritabanında çalıştıracak ve sonrasında güvenle sonlanacak Node.js script'i.
 
-4. **Soru Bazlı Ortalama Hesaplama Motoru**:
-   - Gelen tüm form yanıtlarının `answers_json` verileri parse edilerek soru bazında (field_id) cevaplar toplanır.
-   - Her sorunun ortalama skoru hesaplanır.
-   - Rapor Sonuçları Ekranında:
-     - Seçilen şablon bilgisi, analiz edilen toplam form adeti, seçilen şubeler ve tarih aralığı özetlenir.
-     - Her bölüm (section) altında yer alan soruların ortalama puanları görsel ilerleme barlar (progress bar) veya derecelendirme yıldızları / emojileri ile premium bir UX tasarımında listelenir.
+---
 
-5. **Yazdırılabilir Sürüm (A4 Print)**:
-   - Rapor sonuç ekranında bir **Yazdır** butonu bulunacaktır.
-   - Buton tıklandığında veya `window.print()` tetiklendiğinde devreye giren `@media print` CSS kuralları ile sayfanın diğer tüm elemanları gizlenecek; sadece A4 dikey (portrait) düzenene uygun, şık bir başlık altında tüm soruların karşısında ortalama değerlerinin yazdığı temiz bir tablo raporu yazdırılacaktır.
+### 2. Arayüz Bileşenleri (Frontend Updates)
 
-### Veritabanı ve Servis Katmanı
+#### [MODIFY] [MalKabul.jsx](file:///c:/RMSv3/src/components/pages/MalKabul.jsx)
+*   Mal kabul kaydedilirken (`persistReceipt` metodu) yapılan envanter hareketleri (`inventory_movements`) hazırlığında, negatif stok ihtimalini göz önünde bulunduran yeni düzeltilmiş ortalama maliyet (WAC) formülünün entegre edilmesi.
+*   Böylece, veritabanındaki asenkron maliyet kuyruğu çalışana kadar geçen sürede de kullanıcının arayüzde doğru rakamları görmesi sağlanacaktır.
 
-- Veritabanı sorguları `db.from('form_submissions')` üzerinden doğrudan çekilecektir.
-- Şube şablonları için `db.from('branch_templates').select('*').is('deleted_at', null)` sorgusuyla aktif şablonlar yüklenecektir.
+#### [MODIFY] [InventoryTransfer.jsx](file:///c:/RMSv3/src/components/pages/InventoryTransfer.jsx)
+*   Transfer kabulü yapıldığında (`createMovementPayload` fonksiyonu, `direction = 'in'`) uygulanan frontend maliyet formülünün, negatif stok normalizasyonu ile uyumlu hale getirilmesi.
 
-## Doğrulama Planı
+---
 
-### Otomatik Test ve Derleme Kontrolü
-- Değişiklikler yapıldıktan sonra `npm.cmd run build` çalıştırılarak hata almadan derlendiği doğrulanacak.
+## Verification Plan
 
-### Manuel Doğrulama
-1. **İstatistik Kartlarının Kontrolü**: `Form Yanıtları` ekranında stat kartlarının kaldırıldığı, filtrelerin ve listenin yukarı kayarak daha geniş alan kazandığı gözlemlenecek.
-2. **Tarih Filtresi Kontrolü**: Başlangıç ve bitiş tarihi seçildiğinde listelenen form yanıtlarının bu tarihlere göre süzüldüğü doğrulanacak.
-3. **Rapor Seçici Yetki Kontrolü**:
-   - Şube rolüyle girildiğinde şube seçicinin kapalı olduğu ve sadece kendi şubesine ait rapor alabildiği test edilecek.
-   - Merkez rolüyle girildiğinde hem tekil şube hem de "İstanbul Şubeleri" vb. şube şablonlarının seçilebildiği test edilecek.
-4. **Ortalama Hesaplama ve Rapor Görünümü**: Seçilen tarih aralığındaki form yanıtlarının başarıyla çekilip soru bazında ortalama skorların doğru hesaplandığı ve görsel barlarla listelendiği doğrulanacak.
-5. **A4 Yazıcı Önizlemesi**: "Yazdır" tıklandığında açılan tarayıcı yazdırma ekranında form başlığı, tarih aralığı, şube detayları ve soru-ortalama tablosunun A4 sayfasına tam oturduğu gözlemlenecek.
+### Automated & Manual Verification
+1.  **Migrasyon Testi:** 
+    *   Lokal olarak migrasyon script'i dry-run edilecek ve canlı Railway Postgres'e uygulanacaktır:
+        ```bash
+        node scripts/run-migration-018.cjs
+        ```
+2.  **Derleme (Build) Doğrulaması:**
+    *   Frontend kodlarının sıfır hata ile derlendiği teyit edilecektir:
+        ```bash
+        npm run build
+        ```
+3.  **Matematiksel Doğrulama (Smoke Test):**
+    *   Negatif stok durumunda olan bir ürün için mal kabul veya transfer kabulü girilecek.
+    *   Yeni ortalama maliyetin (WAC) fırlamadığı, yeni alış fiyatıyla normalize olduğu veritabanı satırından kontrol edilerek doğrulanacaktır.
