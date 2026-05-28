@@ -117,7 +117,10 @@ function clamp(value, min, max) {
 
 function safeNumber(value, fallback = 0) {
   const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : fallback
+  if (Number.isFinite(numeric)) return numeric
+  if (fallback === null) return null
+  const fallbackNumeric = Number(fallback)
+  return Number.isFinite(fallbackNumeric) ? fallbackNumeric : fallback
 }
 
 function parseJsonValue(value, fallback) {
@@ -1333,6 +1336,7 @@ export default function Forecast() {
       const selectedBranchMeta = branches.find(branch => branch.id === selectedBranch) || null
       const selectedBranchName = selectedBranchMeta?.name || ''
       const historyStartDate = addDays(todayIso(), -Math.max(lookbackWeeks * 7 + forecastWeeks * 7 + 56, 120))
+      const queryEndDate = maxIsoDate(todayIso(), addDays(weekStart, 6))
       const initialNameAliases = buildBranchNameAliases(selectedBranchName)
 
       const [preAggregatedDailyRows, rawSalesRows] = await Promise.all([
@@ -1355,7 +1359,7 @@ export default function Forecast() {
                 .eq('status', 'completed')
                 .in('branch_name', initialNameAliases)
                 .gte('sale_datetime', `${historyStartDate}T00:00:00`)
-                .lte('sale_datetime', `${todayIso()}T23:59:59`)
+                .lte('sale_datetime', `${queryEndDate}T23:59:59`)
                 .order('sale_datetime', { ascending: true })
                 .range(from, to)
             )
@@ -1377,7 +1381,7 @@ export default function Forecast() {
 
       const firstSaleDate = branchDailyRows[0]?.sale_date || historyStartDate
       const lineWindowStart = maxIsoDate(firstSaleDate, addDays(weekStart, -(lookbackWeeks * 7)))
-      const lineWindowEnd = minIsoDate(todayIso(), addDays(weekStart, 6))
+      const lineWindowEnd = minIsoDate(queryEndDate, addDays(weekStart, 6))
       let lineRowsFromHistory = []
       let nextMixLoadError = ''
 

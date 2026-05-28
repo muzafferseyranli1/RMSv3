@@ -2,7 +2,7 @@ import {
   DEMO_WEEKDAY_FIELDS,
   normalizeDemoSalesSettings,
   normalizeDayWeights,
-} from '@/lib/demoSalesSettings'
+} from './demoSalesSettings.js'
 
 export function roundMoney(value) {
   return Math.round((parseFloat(value) || 0) * 100) / 100
