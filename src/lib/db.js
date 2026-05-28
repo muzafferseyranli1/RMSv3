@@ -170,6 +170,8 @@ class QueryBuilder {
   ilike(col, val)        { this._filters.push({ type: 'ilike', col, val }); return this }
   contains(col, val)     { this._filters.push({ type: 'contains', col, val }); return this }
   overlaps(col, val)     { this._filters.push({ type: 'overlaps', col, val }); return this }
+  or(val)                { this._filters.push({ type: 'or', val }); return this }
+
 
   order(col, opts = {}) {
     this._filters.push({ type: 'order', col, ascending: opts.ascending !== false })

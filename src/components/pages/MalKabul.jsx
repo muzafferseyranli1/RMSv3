@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
@@ -717,10 +717,22 @@ export default function MalKabul() {
       const prevQty = Number(previous?.balance_qty_after || 0)
       const prevTotalCost = Number(previous?.balance_total_cost_after || 0)
       const receivedQty = Number(line.received_qty || 0)
-      const totalCost = Number(line.line_total || 0)
+      const unitCost = Number(line.unit_price || 0)
+      const lineTotal = Number(line.line_total || 0)
+      
       const nextQty = prevQty + receivedQty
-      const nextTotalCost = prevTotalCost + totalCost
-      const nextAvg = nextQty > 0 ? nextTotalCost / nextQty : Number(line.unit_price || 0)
+      let nextTotalCost = 0
+      let nextAvg = 0
+
+      if (prevQty < 0) {
+        // Negatif stok normalizasyonu
+        nextAvg = unitCost
+        nextTotalCost = nextQty * nextAvg
+      } else {
+        // Standart pozitif stok WAC hesabi
+        nextTotalCost = prevTotalCost + lineTotal
+        nextAvg = nextQty > 0 ? nextTotalCost / nextQty : unitCost
+      }
 
       currentBalances.set(line.stock_item_id, {
         balance_qty_after: nextQty,
@@ -748,7 +760,7 @@ export default function MalKabul() {
         source_doc_ref: receiptRow.order_no || receiptRow.doc_no || null,
         supplier_id: form.supplier_id,
         unit_cost: Number(line.unit_price || 0),
-        total_cost: totalCost,
+        total_cost: lineTotal,
         avg_unit_cost_after: nextAvg,
         balance_qty_after: nextQty,
         balance_total_cost_after: nextTotalCost,

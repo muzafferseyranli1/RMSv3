@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -613,11 +613,32 @@ function createMovementPayload({
   )
   const quantity = safeNumber(line.quantity)
   const signedQty = direction === 'out' ? -quantity : quantity
-  const totalCost = quantity * avgUnitCost
-  const signedTotalCost = direction === 'out' ? -totalCost : totalCost
-  const nextQty = prevQty + signedQty
-  const nextTotalCost = prevTotalCost + signedTotalCost
-  const nextAvg = nextQty > 0 ? nextTotalCost / nextQty : avgUnitCost
+  
+  let totalCost = 0
+  let signedTotalCost = 0
+  let nextQty = prevQty + signedQty
+  let nextTotalCost = 0
+  let nextAvg = 0
+
+  if (direction === 'in') {
+    totalCost = quantity * avgUnitCost
+    if (prevQty < 0) {
+      // Negatif stok normalizasyonu
+      nextAvg = avgUnitCost
+      nextTotalCost = nextQty * nextAvg
+    } else {
+      // Standart pozitif stok WAC hesabi
+      nextTotalCost = prevTotalCost + totalCost
+      nextAvg = nextQty > 0 ? nextTotalCost / nextQty : avgUnitCost
+    }
+    signedTotalCost = totalCost
+  } else {
+    // Çıkış (direction === 'out')
+    totalCost = quantity * avgUnitCost
+    signedTotalCost = -totalCost
+    nextTotalCost = prevTotalCost + signedTotalCost
+    nextAvg = previousBalance?.avg_unit_cost_after ?? previousBalance?.unit_cost ?? avgUnitCost
+  }
 
   return {
     item_type: line.itemType,

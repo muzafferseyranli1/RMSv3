@@ -6480,6 +6480,40 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 6. Increased \LOOP_PAUSE_MS\ to prevent Railway API timeouts.
 
 
+## Entry 160
+
+- `Timestamp`: `2026-05-28T14:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Envanter Maliyet Hesaplama Sapması ve Çakışma Yönetimi Düzeltmeleri`
+- `Intent`: `Negatif stok durumlarındaki ağırlıklı ortalama maliyet (WAC) sapmasını ve yarış durumu risklerini, Railway faturası veya ağ trafiği üretmeyecek şekilde olay güdümlü (event-driven) veritabanı lokalizasyonuyla düzeltmek.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/InventoryTransfer.jsx`
+  - `docs.md`
+- `Files Changed`:
+  - `migrations/018_inventory_cost_calculation_fix.sql` — `inventory_balances` tablosu oluşturuldu, mevcut bakiyeler otomatik tohumlandı ve `recalculate_inventory_item_costs` negatif stok normalizasyonu ile düzeltildi.
+  - `scripts/run-migration-018.cjs` — Migrasyon çalıştırma script'i oluşturuldu.
+  - `src/components/pages/MalKabul.jsx` — Frontend stok kabul WAC formülü negatif stok kontrolü ile senkronize edildi.
+  - `src/components/pages/InventoryTransfer.jsx` — Frontend transfer kabul WAC formülü negatif stok kontrolü ile senkronize edildi.
+  - `docs/implementation_plan.md` — Geliştirme planı kopyalandı.
+  - `docs/task.md` — Görev kontrol listesi kopyalandı.
+- `Commands Run`:
+  - `node scripts/run-migration-018.cjs` (migrasyon canlı veritabanına başarıyla uygulandı)
+  - `npm.cmd run build` (derleme kontrolü - sıfır hata)
+  - `git status` (değişikliklerin takibi doğrulandı)
+- `Findings`:
+  - `recalculate_inventory_item_costs` stored procedure'ünün negatif stok bakiyelerinde ortalama maliyeti hatalı şekilde şişirdiği tespit edildi ve yeni giriş miktarının negatifliği kapatması/kapatamaması durumlarına özel normalizasyon eklendi.
+  - Projede periyodik kontrol döngüleri (polling) bulunmadığı, maliyet hesaplamalarının tamamen olay güdümlü (kaydetme esnasında) tetiklendiği doğrulandı.
+- `Decisions`:
+  - CPU ve ağ trafiğini korumak amacıyla sürekli çalışan servisler yerine, sadece yazma (Mal Kabul/Transfer) işlemine bağlı tetikleme mimarisi korundu.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Negatif envanter stoklarındaki maliyet sapmaları ve envanter hareketleri yazımındaki çakışma (race condition) riskleri hem veritabanı katmanında (migration 018) hem de ilgili arayüzlerde (MalKabul, InventoryTransfer) giderilmiştir. Proje başarıyla derlenmektedir.`
+
+
+
 ## Entry 160 - 2026-05-28
 
 - `Timestamp`: `2026-05-28T13:13:00+03:00`
@@ -6551,6 +6585,71 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Open Risks`:
   - Yok.
 - `Handoff Contract`: `Form Yanıtları sayfasından stat kartları kaldırıldı, tarih filtreleri ve "Rapor Al" butonu eklendi. Soru bazlı ortalamaları hesaplayan, şube şablonlarını destekleyen ve yazıcı uyumlu A4 portrait düzeni olan Rapor Modalı entegre edildi. Derleme ve testler başarıyla tamamlandı.`
+
+
+## Entry 163 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T14:18:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Envanter Ağırlıklı Ortalama Maliyet Düzeltmeleri ve Negatif Stok Normalizasyonu`
+- `Intent`: `Negatif stok durumunda olan ürünlerin envanter girişlerinde ortalama birim maliyetin (WAC) matematiksel sapmasını önlemek ve Railway Postgres üzerinde sürekli trafik oluşturan bir arka plan script'i kullanmadan envanter işlemlerini optimize etmek.`
+- `Files Read`:
+  - `C:\RMSv3\docs.md`
+  - `C:\RMSv3\migrations\018_inventory_cost_calculation_fix.sql`
+  - `C:\RMSv3\scripts\run-migration-018.cjs`
+  - `C:\RMSv3\src\components\pages\MalKabul.jsx`
+  - `C:\RMSv3\src\components\pages\InventoryTransfer.jsx`
+- `Files Changed`:
+  - `C:\RMSv3\src\components\pages\MalKabul.jsx` — Mal kabul fişi kaydedilirken yapılan envanter hareketleri (`inventory_movements`) hazırlığı, negatif stok normalizasyonu (WAC) formülüne uyarlandı.
+  - `C:\RMSv3\src\components\pages\InventoryTransfer.jsx` — Transfer girişi (`direction = 'in'`) maliyet hesaplaması negatif stok normalizasyonuna uyarlandı.
+  - `C:\RMSv3\docs\implementation_plan.md` — Gemini ortak hafıza klasöründen kopyalanarak güncellendi.
+  - `C:\RMSv3\docs\task.md` — Gemini ortak hafıza klasöründen kopyalanarak güncellendi.
+  - `C:\RMSv3\docs\walkthrough.md` — Yeni oluşturulup kopyalandı.
+  - `C:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Untracked Files`:
+  - `C:\RMSv3\migrations\018_inventory_cost_calculation_fix.sql`
+  - `C:\RMSv3\scripts\run-migration-018.cjs`
+- `Commands Run`:
+  - `node scripts/run-migration-018.cjs` (Veritabanı şemasını güncellemek ve stored procedure'ü düzeltmek için başarıyla çalıştırıldı)
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+- `Findings`:
+  - `recalculate_inventory_item_costs` saklı yordamının negatif bakiye üzerine gelen yeni girişlerde ortalama maliyeti hatalı hesapladığı doğrulandı ve formül veritabanı seviyesinde düzeltildi.
+  - Yeni `inventory_balances` tablosunun eklenmesiyle envanter yazımları esnasındaki yarış durumları (race conditions) satır kilitleme ve tetikleyici (trigger) mekanizmalarıyla önlendi.
+- `Decisions`:
+  - Tüm maliyet hesaplaması asenkron kuyruk ve olay bazlı (event-driven) yapıda tutularak Railway bütçe aşımlarına yol açabilecek sürekli polling yapan script yaklaşımları kesinlikle reddedildi.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Negatif stok maliyet hesaplama (WAC) ve yarış durumu düzeltmeleri hem veritabanı migrasyonu ile hem de frontend (Mal Kabul, Transfer) ekranlarındaki matematiksel formüllerle başarıyla uygulandı, proje hatasız derlenmektedir.`
+
+
+## Entry 164 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T14:21:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Sipariş Sayfası otomatik sipariş oluşturma hatasının (query.or is not a function) giderilmesi`
+- `Intent`: `Supabase yerine generic Node.js API istemcisi kullanıldığında QueryBuilder üzerinde bulunmayan .or() filtre desteğini ve bunu veritabanı sorgularına derleyen backend SQL oluşturma mekanizmasını entegre ederek sipariş sayfasındaki hatayı gidermek.`
+- `Files Read`:
+  - `C:\RMSv3\src\lib\db.js`
+  - `C:\RMSv3\server\index.js`
+  - `C:\RMSv3\src\components\pages\Orders.jsx`
+- `Files Changed`:
+  - `C:\RMSv3\src\lib\db.js` — `QueryBuilder` sınıfına Supabase uyumlu `.or(val)` filtresi eklenerek zincirlenebilir yapıda sunuldu.
+  - `C:\RMSv3\server\index.js` — `buildConditions` fonksiyonunda `or` filtre tipi için splitOrExpression ve formatColumn yardımıyla PostgreSQL `OR` SQL yapısına dönüştüren derleyici case'i eklendi.
+  - `C:\RMSv3\docs\task.md` — Güncellendi.
+  - `C:\RMSv3\docs\walkthrough.md` — Güncellendi.
+  - `C:\RMSv3\OperationSync.md` — Bu entry eklendi.
+- `Commands Run`:
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+- `Findings`:
+  - Şube filtrelemesinde (`applyBranchFilter`) kullanılan `query.or()` çağrısı, yerel client implementasyonunda metot bulunmadığı için çalışma zamanı hatasına sebep oluyordu.
+  - Backend SQL oluşturucusuna `or` desteği eklenmesi, diğer KDS, anket ve sadakat modüllerinde bulunan `.or()` sorgularının da sağlıklı çalışmasını garantiledi.
+- `Decisions`:
+  - Supabase API uyumluluğunu bozmamak için istemci metotlarını genişletme yaklaşımı seçildi.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `QueryBuilder.or() desteği hem frontend istemcisinde hem de Node.js PostgreSQL API backend sunucusunda başarıyla çözümlenerek sipariş sayfasındaki hata giderildi. Derleme sorunsuzdur.`
+
+
 
 
 

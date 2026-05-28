@@ -302,6 +302,44 @@ function buildConditions(filters, startIdx = 1) {
   let offsetVal = null
   let idx = startIdx
 
+  const formatColumn = (col) => {
+    if (col.includes('->>')) {
+      const parts = col.split('->>');
+      return `"${parts[0]}"->>'${parts[1]}'`;
+    }
+    return `"${col}"`;
+  }
+
+  const splitOrExpression = (expr) => {
+    const parts = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+
+    for (let i = 0; i < expr.length; i++) {
+      const char = expr[i];
+      if ((char === '"' || char === "'") && (i === 0 || expr[i - 1] !== '\\')) {
+        if (inQuotes && char === quoteChar) {
+          inQuotes = false;
+        } else if (!inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+        }
+        current += char;
+      } else if (char === ',' && !inQuotes) {
+        parts.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current) {
+      parts.push(current);
+    }
+    return parts;
+  }
+
+
   for (const f of (filters || [])) {
     switch (f.type) {
       case 'order':
@@ -375,6 +413,75 @@ function buildConditions(filters, startIdx = 1) {
         conditions.push(`"${f.col}" && $${idx++}`)
         values.push(f.val)
         break
+      case 'or': {
+        const orConditions = []
+        for (const part of splitOrExpression(f.val)) {
+          const trimmedPart = part.trim()
+          if (!trimmedPart) continue
+
+          const firstDot = trimmedPart.indexOf('.')
+          if (firstDot === -1) continue
+          const secondDot = trimmedPart.indexOf('.', firstDot + 1)
+          if (secondDot === -1) continue
+
+          const col = trimmedPart.slice(0, firstDot)
+          const op = trimmedPart.slice(firstDot + 1, secondDot)
+          let val = trimmedPart.slice(secondDot + 1)
+
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1)
+          }
+
+          const sqlCol = formatColumn(col)
+
+          if (op === 'is') {
+            if (val.toLowerCase() === 'null') {
+              orConditions.push(`${sqlCol} IS NULL`)
+            } else if (val.toLowerCase() === 'true') {
+              orConditions.push(`${sqlCol} IS TRUE`)
+            } else if (val.toLowerCase() === 'false') {
+              orConditions.push(`${sqlCol} IS FALSE`)
+            }
+          } else {
+            const opMap = {
+              eq: '=',
+              neq: '!=',
+              gt: '>',
+              gte: '>=',
+              lt: '<',
+              lte: '<=',
+              like: 'LIKE',
+              ilike: 'ILIKE'
+            }
+
+            const sqlOp = opMap[op]
+            if (sqlOp) {
+              orConditions.push(`${sqlCol} ${sqlOp} $${idx++}`)
+              values.push(val)
+            } else if (op === 'in') {
+              let cleanVal = val
+              if (cleanVal.startsWith('(') && cleanVal.endsWith(')')) {
+                cleanVal = cleanVal.slice(1, -1)
+              }
+              const arrayVals = cleanVal.split(',').map(v => {
+                const trimmed = v.trim()
+                if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+                  return trimmed.slice(1, -1)
+                }
+                return trimmed
+              })
+              orConditions.push(`${sqlCol} = ANY($${idx++})`)
+              values.push(arrayVals)
+            }
+          }
+        }
+
+        if (orConditions.length > 0) {
+          conditions.push(`(${orConditions.join(' OR ')})`)
+        }
+        break
+      }
+
       default:
         break
     }

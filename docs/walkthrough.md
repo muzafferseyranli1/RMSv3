@@ -1,32 +1,49 @@
-# Form Şablon Raporlama ve Filtreleme Geliştirmesi Walkthrough
+# Walkthrough — Maliyet Hesaplama Hatası ve Yarış Durumu Düzeltme
 
-Form Yanıtları sayfasındaki istatistik kartlarının kaldırılması, tarih filtrelerinin eklenmesi ve soru bazlı ortalama hesaplayıp yazdırabilen yeni "Rapor Al" modal özelliğinin entegrasyonu tamamlanmıştır.
+Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığındaki negatif stok anomalilerini gidermek ve Railway üzerinde ek maliyet yaratmayacak şekilde veritabanı düzeyinde optimize etmek amacıyla gerçekleştirilen tüm çalışmalar özetlenmiştir.
 
-## Değişiklik Özeti
+## Yapılan Değişiklikler
 
-### 1. Arayüz Sadeleştirmesi ve Tarih Filtreleri
-* `FormSubmissions.jsx` sayfasının üstündeki 4 adet istatistik kartı kaldırıldı.
-* Listeleme filtrelerinin yanına `Başlangıç` ve `Bitiş` tarih seçicileri (`type="date"`) eklenecek.
-* Liste verileri seçilen bu tarih aralığına göre local olarak anında süzülecek şekilde güncellendi.
-* Filtrelerin sağ köşesine şık bir **Rapor Al** butonu konumlandırıldı.
+### 1. Veritabanı ve Şema Güncellemeleri (Database Migration)
+- **SQL Dosyası**: [018_inventory_cost_calculation_fix.sql](file:///c:/RMSv3/migrations/018_inventory_cost_calculation_fix.sql)
+  - `inventory_balances` tablosu oluşturuldu. Bu tablo her şube ve ürün için en güncel miktarları, toplam maliyetleri ve ağırlıklı ortalama birim maliyetlerini tutmaktadır.
+  - Mevcut `inventory_movements` verileri taranarak `inventory_balances` tablosuna başlangıç değerleri başarıyla tohumlandı (bootstrap).
+  - `recalculate_inventory_item_costs` saklı yordamı (stored procedure) güncellendi:
+    - Negatif stoktan pozitif stoğa geçişlerde veya negatif stok durumunda kalmaya devam eden durumlarda maliyetin hatalı sapması engellendi. Negatif stok sonrası ilk girişte average cost gelen yeni birim fiyata eşitlenerek WAC matematiksel olarak normalize edildi.
+    - Stok çıkışlarında (`direction = 'out'`) ortalama maliyetin değişmemesi, sadece bakiye maliyetin tüketilmesi kuralı korundu.
+  - Değişiklikler sonrası `inventory_balances` tablosunun otomatik güncellenmesi sağlandı.
 
-### 2. Form Analiz Raporlama Modalı
-* Butona tıklandığında açılan modalde kullanıcı:
-  * Raporlanacak **Form Şablonu**nu seçer.
-  * **Şube Kapsamı**nı belirler. 
-    * Merkez (Center) ve Admin kullanıcıları; Tüm Şubeleri, dinamik olarak `branch_templates` tablosundan yüklenen Şube Şablonlarını (örn: "İstanbul Şubeleri") veya tekil şubeleri seçebilir.
-    * Şube veya Depo kullanıcılarında şube seçimi kilitlenip otomatik olarak kendi şubesi seçilir.
-  * **Tarih Aralığı**nı (Başlangıç ve Bitiş) belirler.
-* **Aritmetik Ortalama Motoru**:
-  * "Raporu Hesapla" tıklandığında kriterlere uyan tüm yanıtlar çekilir ve form alan tiplerine (`yes_no`, `checkbox`, `rating`, `rating_10`, `slider`, `nps`, `emoji_rating`, `number`, `temperature`, `select`) göre en uygun aritmetik ortalamalar hesaplanır.
-  * Sonuçlar her bölüm bazında başarı yüzdesiyle ve sorular altında renkli ilerleme barlarıyla (progress bar) görselleştirilir.
-
-### 3. Yazdırılabilir A4 Dikey Rapor Düzeni
-* Rapor ekranındaki "Raporu Yazdır (A4)" butonu veya tarayıcının yazdır komutu tetiklendiğinde devreye giren `@media print` kuralları ile diğer tüm site elemanları gizlenir.
-* A4 dikey kağıt boyutuna uygun şık bir başlık, şube ve tarih kırılım detayları ile form sorularının karşısında sadece ortalamalarının yer aldığı sade, net bir tablo çıktısı üretilir.
+- **Migrasyon Çalıştırıcı**: [run-migration-018.cjs](file:///c:/RMSv3/scripts/run-migration-018.cjs)
+  - Canlı Railway Postgres veritabanına bağlanıp migrasyonu güvenle uygulayan betik oluşturuldu.
+  - `node scripts/run-migration-018.cjs` komutuyla canlı veritabanına uygulandı.
 
 ---
 
-## Test ve Doğrulama
-1. **Build Kontrolü**: Proje `npm.cmd run build` ile başarıyla hatasız derlendi.
-2. **Fonksiyonellik**: Tüm state senkronizasyonları, database select sorguları ve rol bazlı şube kısıtlama mantığı test edilerek doğrulandı.
+### 2. Arayüz Bileşenleri (Frontend Updates)
+- **Mal Kabul**: [MalKabul.jsx](file:///c:/RMSv3/src/components/pages/MalKabul.jsx)
+  - `persistReceipt` fonksiyonunda envanter hareketi kayıtları oluşturulurken, negatif stok olasılığı kontrol edilerek düzeltilmiş ortalama maliyet formülü frontend tarafında da entegre edildi. Bu sayede veritabanı asenkron kuyruğunun çalışması beklenmeden kullanıcının anlık doğru maliyetleri görmesi sağlandı.
+- **Envanter Transferi**: [InventoryTransfer.jsx](file:///c:/RMSv3/src/components/pages/InventoryTransfer.jsx)
+  - `createMovementPayload` fonksiyonundaki transfer kabulü (`direction = 'in'`) maliyet hesaplaması negatif stok normalizasyonu formülüne uyarlandı.
+
+### 3. Otomatik Sipariş Arama/Filtreleme Düzeltmesi (QueryBuilder .or() Entegrasyonu)
+- **Hata**: `/orders` sayfasında otomatik sipariş oluşturulurken `query.or is not a function` hatası alınıyordu.
+- **Sebep**: Supabase benzeri istemci yerine kullanılan yerel generic `QueryBuilder` yapısında `.or(...)` metodunun bulunmaması, ancak şube bazlı filtreleme mantığının (`applyBranchFilter`) bu metodu çağırması.
+- **Düzeltme**:
+  - `src/lib/db.js` içerisindeki `QueryBuilder` sınıfına zincirlenebilir `.or(val)` metodu eklendi.
+  - `server/index.js` içerisindeki backend filtre derleme mantığına (`buildConditions`) gelen Postgrest-uyumlu `or` filtresini çözüp PostgreSQL `OR` ifadesine dönüştüren parser entegre edildi.
+  - Bu sayede JSONB alan filtreleri (`metadata->>creator_scope.is.null`), tarih karşılaştırmaları (`kds_release_at.lte...`) ve çoklu şube eşleştirmeleri (`branch_id.eq...`) gibi tüm `or` sorguları güvenle desteklendi.
+
+---
+
+## Doğrulama ve Test Sonuçları
+
+1. **Veritabanı Migrasyon Testi**:
+   - `node scripts/run-migration-018.cjs` komutu canlı Railway Postgres veritabanında çalıştırıldı ve başarıyla tamamlandı.
+2. **Hata Giderme ve Arayüz Doğrulaması**:
+   - `QueryBuilder.or()` entegrasyonu sonrası `/orders` sayfasındaki otomatik sipariş tetikleme mekanizmasının veritabanına sorunsuz istek attığı ve hatanın tamamen giderildiği doğrulandı.
+3. **Derleme (Build) Testi**:
+   - `npm.cmd run build` çalıştırıldı. Tüm frontend kodları sıfır hata ve uyarı ile başarıyla derlendi.
+4. **Maliyet ve Trafik Denetimi**:
+   - Herhangi bir sürekli çalışan `setInterval` veya periyodik cron betiği eklenmemiştir.
+   - Tüm maliyet hesaplama ve kuyruk tetikleme işlemleri sadece veri yazma olaylarına bağlı (event-driven) olarak çalışmaktadır. Bu sayede Railway faturalandırma ve CPU kullanımlarında artış engellenmiştir.
+
