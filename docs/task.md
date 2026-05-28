@@ -7,4 +7,5 @@
 - `[x]` 7. QueryBuilder'a `or()` desteğinin eklenmesi (`src/lib/db.js`)
 - `[x]` 8. Backend `/api/query` filtre derleyicisine `or` case desteğinin eklenmesi (`server/index.js`)
 - `[x]` 9. Sipariş sayfasındaki `query.or is not a function` hatasının giderildiğinin doğrulanması ve derleme kontrolü
-
+- `[x]` 10. Zaman dilimi kaymasından kaynaklı mükerrer sipariş üretme (infinite loop) sorununun `Orders.jsx` ve `branchPurchasing.js` dosyalarında çözülmesi
+- `[x]` 11. Veritabanındaki mükerrer (duplicate) siparişlerin `cleanup_duplicates.cjs` script'i ile temizlenmesi ve doğrulanması

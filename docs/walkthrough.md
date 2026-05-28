@@ -1,6 +1,6 @@
-# Walkthrough — Maliyet Hesaplama Hatası ve Yarış Durumu Düzeltme
+# Walkthrough — Maliyet Hesaplama, Filtreleme ve Mükerrer Sipariş Düzeltmeleri
 
-Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığındaki negatif stok anomalilerini gidermek ve Railway üzerinde ek maliyet yaratmayacak şekilde veritabanı düzeyinde optimize etmek amacıyla gerçekleştirilen tüm çalışmalar özetlenmiştir.
+Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışları) ağırlıklı ortalama maliyet (WAC) hesaplama mantığındaki negatif stok anomalilerini gidermek, `/orders` sayfasındaki otomatik sipariş filtreleme hatalarını gidermek ve zaman dilimi (timezone) kaymasından ötürü oluşan mükerrer otomatik sipariş döngüsünü çözmek amacıyla gerçekleştirilen tüm çalışmalar özetlenmiştir.
 
 ## Yapılan Değişiklikler
 
@@ -31,19 +31,24 @@ Bu dokümanda, envanter hareketlerindeki (Mal Kabul, Transfer ve Zayi çıkışl
 - **Düzeltme**:
   - `src/lib/db.js` içerisindeki `QueryBuilder` sınıfına zincirlenebilir `.or(val)` metodu eklendi.
   - `server/index.js` içerisindeki backend filtre derleme mantığına (`buildConditions`) gelen Postgrest-uyumlu `or` filtresini çözüp PostgreSQL `OR` ifadesine dönüştüren parser entegre edildi.
-  - Bu sayede JSONB alan filtreleri (`metadata->>creator_scope.is.null`), tarih karşılaştırmaları (`kds_release_at.lte...`) ve çoklu şube eşleştirmeleri (`branch_id.eq...`) gibi tüm `or` sorguları güvenle desteklendi.
+
+---
+
+### 4. Zaman Dilimi (Timezone) Eşleştirme ve Mükerrer Sipariş Çözümü
+- **Hata**: Aynı gün/dakika içinde aynı akış için çoklu mükerrer (duplicate) siparişler (örneğin 40 adet) otomatik olarak oluşturuluyordu.
+- **Sebep**: Postgres `DATE` tipi alanlar Express backend API tarafından istemciye UTC JSON stringi olarak (`2026-05-27T21:00:00.000Z`) gönderiliyordu. Frontend tarafında sadece ilk 10 hane kesilerek (`2026-05-27`) işlem yapıldığı için, bu sipariş yerel saat dilimindeki bugünün tarihi (`2026-05-28`) ile uyuşmuyor, siparişin henüz oluşturulmadığı zannedilerek sürekli yeni kayıt ekleniyordu.
+- **Düzeltme**:
+  - `src/components/pages/Orders.jsx` içerisindeki `collectMissingDueFlows` fonksiyonunda sipariş tarih kontrolleri `toDateOnly(order.order_date) === toDateOnly(targetDate)` olarak güncellendi.
+  - `Orders.jsx` altındaki `toDateOnly` ve `src/lib/branchPurchasing.js` altındaki `dateOnly` fonksiyonları güncellenerek ISO formatlı dizelerin yerel saat diliminin gün, ay ve yıl bilgilerine göre çözümlenmesi (`Date.getFullYear()`, `Date.getMonth()`, `Date.getDate()`) sağlandı.
+  - `scratch/cleanup_duplicates.cjs` script'i ile veritabanındaki mükerrer siparişler ve bunlara bağlı sipariş satırları başarıyla temizlendi, sadece 1 adet orijinal sipariş bırakıldı.
 
 ---
 
 ## Doğrulama ve Test Sonuçları
 
-1. **Veritabanı Migrasyon Testi**:
-   - `node scripts/run-migration-018.cjs` komutu canlı Railway Postgres veritabanında çalıştırıldı ve başarıyla tamamlandı.
-2. **Hata Giderme ve Arayüz Doğrulaması**:
-   - `QueryBuilder.or()` entegrasyonu sonrası `/orders` sayfasındaki otomatik sipariş tetikleme mekanizmasının veritabanına sorunsuz istek attığı ve hatanın tamamen giderildiği doğrulandı.
-3. **Derleme (Build) Testi**:
-   - `npm.cmd run build` çalıştırıldı. Tüm frontend kodları sıfır hata ve uyarı ile başarıyla derlendi.
-4. **Maliyet ve Trafik Denetimi**:
-   - Herhangi bir sürekli çalışan `setInterval` veya periyodik cron betiği eklenmemiştir.
-   - Tüm maliyet hesaplama ve kuyruk tetikleme işlemleri sadece veri yazma olaylarına bağlı (event-driven) olarak çalışmaktadır. Bu sayede Railway faturalandırma ve CPU kullanımlarında artış engellenmiştir.
-
+1. **Veritabanı Migrasyon ve Temizlik Testi**:
+   - `node scratch/cleanup_duplicates.cjs` komutu başarıyla çalıştırılarak mükerrer siparişler silindi. Veritabanında tek sipariş kaldığı doğrulandı.
+2. **Derleme (Build) Testi**:
+   - `npm.cmd run build` çalıştırıldı. Tüm frontend kodları sorunsuz ve sıfır hata ile derlendi.
+3. **Canlı Ortam Doğrulaması**:
+   - Yapılan düzeltmeler GitHub main branch'ine push edilerek Railway üzerinde otomatik deploy edildi. Deploy sonrası mükerrer otomatik sipariş üretiminin tamamen durduğu doğrulandı.
