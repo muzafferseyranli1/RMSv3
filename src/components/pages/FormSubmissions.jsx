@@ -37,7 +37,7 @@ export default function FormSubmissions() {
   const [reportGenerating, setReportGenerating] = useState(false)
   const [reportResults, setReportResults] = useState(null)
   const formContainerRef = useRef(null)
-  const { scope, branchId, branches } = useWorkspace()
+  const { scope, branchId, branches, branchName } = useWorkspace()
   const { user } = useAuth()
   const toast = useToast()
 
