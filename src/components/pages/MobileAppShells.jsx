@@ -1241,7 +1241,7 @@ function PersonnelPhoneRuntime({
           )}
 
           {activeTab === 'tasks' && (
-            <Tasks scope="branch" />
+            <Tasks scope="branch" isMobile={true} />
           )}
 
           {activeTab === 'pdks' && (

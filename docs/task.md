@@ -1,4 +1,7 @@
-- [x] useDemoSalesJob.jsx içindeki sale_items sorgusunun güncellenmesi
-- [x] Değişikliklerin yerel sunucuda test edilmesi ve build kontrolü
-- [x] Değişikliklerin docs klasörüne kopyalanması ve OperationSync.md dosyasına eklenmesi
-- [x] Değişikliklerin git'e atılması ve Railway deploy kontrolü
+- [x] Personel uygulaması (/personel-app) görevler sayfasının mobil uyumlu hale getirilmesi
+- [x] Modal bileşeninin dar ekranlarda taşmasını engellemek için min(94vw, width) ve minHeight ayarlaması
+- [x] Tasks.jsx'te mobil görünümde (isMobile=true) gereksiz büyük başlıkların ve kartların gizlenmesi
+- [x] Tasks.jsx sekme butonlarının mobilde yatay kaydırılabilir yapılması ve filtre/arama alanlarının dikey düzenlenmesi
+- [x] Yeni görev ekleme butonunun mobilde FAB (Floating Action Button) olarak sağ alta yerleştirilmesi
+- [x] Değişikliklerin yerel sunucuda test edilmesi ve build kontrolü (npm.cmd run build)
+- [x] Değişikliklerin OperationSync.md dosyasına eklenmesi ve docs altındaki dosyaların güncellenmesi

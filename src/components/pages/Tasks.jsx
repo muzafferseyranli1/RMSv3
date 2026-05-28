@@ -252,7 +252,7 @@ function AnnouncementCard({ announcement, peopleById, onOpen }) {
   )
 }
 
-export default function Tasks({ scope = 'center' }) {
+export default function Tasks({ scope = 'center', isMobile = false }) {
   const toast = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -722,91 +722,93 @@ export default function Tasks({ scope = 'center' }) {
   })
 
   return (
-    <>
+    <div style={isMobile ? { padding: '4px 10px 80px', minHeight: 0 } : {}}>
       {/* Custom Premium Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        background: '#fff',
-        padding: '16px 20px',
-        borderRadius: 16,
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 4px 12px rgba(15,23,42,.02)',
-        marginBottom: 20
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: '#0f172a',
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.1rem'
-          }}>
-            <i className="fa-solid fa-list-check" />
-          </div>
-          <div>
-            <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              {scope === 'center' ? 'Merkez Görevleri' : 'Şube Görevleri'}
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>
-              Görevler
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => setAnnouncementCreateOpen(true)}
-            style={{
-              padding: '10px 18px',
+      {!isMobile && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: '#fff',
+          padding: '16px 20px',
+          borderRadius: 16,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 4px 12px rgba(15,23,42,.02)',
+          marginBottom: 20
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 44,
+              height: 44,
               borderRadius: 12,
-              border: 'none',
-              background: '#f59e0b',
-              color: '#0f172a',
-              fontWeight: 900,
-              fontSize: '.82rem',
+              background: '#0f172a',
+              color: '#fff',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              boxShadow: '0 4px 10px rgba(245,158,11,.15)',
-              transition: 'all .2s'
-            }}
-          >
-            <span style={{ fontSize: '1.1rem', lineHeight: 0 }}>•</span> Yeni Duyuru
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 12,
-              border: 'none',
-              background: '#eab308',
-              color: '#0f172a',
-              fontWeight: 900,
-              fontSize: '.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              boxShadow: '0 4px 10px rgba(234,179,8,.15)',
-              transition: 'all .2s'
-            }}
-          >
-            <i className="fa-solid fa-plus" /> Yeni Görev
-          </button>
-        </div>
-      </div>
+              justifyContent: 'center',
+              fontSize: '1.1rem'
+            }}>
+              <i className="fa-solid fa-list-check" />
+            </div>
+            <div>
+              <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                {scope === 'center' ? 'Merkez Görevleri' : 'Şube Görevleri'}
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>
+                Görevler
+              </div>
+            </div>
+          </div>
 
-      {actor && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setAnnouncementCreateOpen(true)}
+              style={{
+                padding: '10px 18px',
+                borderRadius: 12,
+                border: 'none',
+                background: '#f59e0b',
+                color: '#0f172a',
+                fontWeight: 900,
+                fontSize: '.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                boxShadow: '0 4px 10px rgba(245,158,11,.15)',
+                transition: 'all .2s'
+              }}
+            >
+              <span style={{ fontSize: '1.1rem', lineHeight: 0 }}>•</span> Yeni Duyuru
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              style={{
+                padding: '10px 18px',
+                borderRadius: 12,
+                border: 'none',
+                background: '#eab308',
+                color: '#0f172a',
+                fontWeight: 900,
+                fontSize: '.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                boxShadow: '0 4px 10px rgba(234,179,8,.15)',
+                transition: 'all .2s'
+              }}
+            >
+              <i className="fa-solid fa-plus" /> Yeni Görev
+            </button>
+          </div>
+        </div>
+      )}
+
+      {actor && !isMobile && (
         <div className="card" style={{ padding: 14, marginBottom: 16, borderColor: '#bfdbfe', background: '#eff6ff' }}>
           <div style={{ fontSize: '.84rem', fontWeight: 800, color: '#1d4ed8' }}>
             Aktif kullanıcı: {[peopleById.get(String(actor.id))?.firstName, peopleById.get(String(actor.id))?.lastName].filter(Boolean).join(' ') || [actor.firstName, actor.lastName].filter(Boolean).join(' ') || actor.id}
@@ -830,7 +832,18 @@ export default function Tasks({ scope = 'center' }) {
       )}
 
       {/* Row 1 Main Tabs */}
-      <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #e2e8f0', paddingBottom: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex',
+        gap: 8,
+        borderBottom: '1px solid #e2e8f0',
+        paddingBottom: 12,
+        marginBottom: 16,
+        overflowX: isMobile ? 'auto' : 'visible',
+        whiteSpace: isMobile ? 'nowrap' : 'normal',
+        width: '100%',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+      }}>
         {[
           { value: 'mine', label: 'Görevlerim', icon: 'fa-user-check' },
           { value: 'assigned_by_me', label: 'Verdiğim Görevler', icon: 'fa-user-pen' },
@@ -851,18 +864,19 @@ export default function Tasks({ scope = 'center' }) {
                 }
               }}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '10px 20px',
+                padding: isMobile ? '8px 12px' : '10px 20px',
                 borderRadius: 12,
                 border: '1px solid',
                 borderColor: isActive ? '#0d9488' : '#e2e8f0',
                 background: isActive ? '#f0fdfa' : '#fff',
                 color: isActive ? '#0f766e' : '#475569',
                 fontWeight: 800,
-                fontSize: '.84rem',
+                fontSize: isMobile ? '.76rem' : '.84rem',
                 cursor: 'pointer',
+                flexShrink: 0,
                 boxShadow: isActive ? '0 4px 12px rgba(13,148,136,.1)' : 'none',
                 transition: 'all .2s'
               }}
@@ -875,7 +889,14 @@ export default function Tasks({ scope = 'center' }) {
       </div>
 
       {/* Row 2 Sub-Tabs, Search & Sort */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        alignItems: isMobile ? 'stretch' : 'center',
+        gap: 12,
+        marginBottom: 18
+      }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {subTabs.map(item => (
             <button
@@ -888,7 +909,7 @@ export default function Tasks({ scope = 'center' }) {
             </button>
           ))}
           
-          {tab !== 'announcements' && (
+          {tab !== 'announcements' && !isMobile && (
             <button
               type="button"
               style={{
@@ -911,12 +932,17 @@ export default function Tasks({ scope = 'center' }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', width: 220 }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          width: isMobile ? '100%' : 'auto',
+        }}>
+          <div style={{ position: 'relative', flex: isMobile ? 1 : 'unset', width: isMobile ? '100%' : 220 }}>
             <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '.8rem' }} />
             <input
               type="text"
-              placeholder={tab === 'announcements' ? "Duyuru ara..." : "Görev, kişi veya..."}
+              placeholder={tab === 'announcements' ? "Duyuru ara..." : "Görev, kişi..."}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{
@@ -945,6 +971,7 @@ export default function Tasks({ scope = 'center' }) {
                 fontWeight: 700,
                 outline: 'none',
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
             >
               <option value="due_soon">Süresi en az kalan</option>
@@ -1411,7 +1438,37 @@ export default function Tasks({ scope = 'center' }) {
         }}
       />
 
+      {isMobile && (
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            background: '#0ea5e9',
+            color: '#fff',
+            border: 'none',
+            boxShadow: '0 4px 14px rgba(14,165,233,.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.4rem',
+            cursor: 'pointer',
+            zIndex: 80,
+            transition: 'transform 0.2s',
+          }}
+          onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+          onMouseOut={e => e.currentTarget.style.transform = 'none'}
+        >
+          <i className="fa-solid fa-plus" />
+        </button>
+      )}
+
       {detailLoading && <div style={{ position: 'fixed', right: 20, bottom: 20, background: '#0f172a', color: '#fff', padding: '10px 14px', borderRadius: 12 }}>Detay yükleniyor...</div>}
-    </>
+    </div>
   )
 }

@@ -6770,4 +6770,31 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `Demo satış üreticisinin ilk adımında yaşanan Unterminated string in JSON hatası, sale_items sorgusunun seçici hale getirilmesiyle (select('*') -> select('id,sku...')) tamamen çözülmüştür. Ağ trafiği 43MB'tan 217KB'a indirilmiş ve üretim derlemesi başarıyla doğrulanmıştır.`
 
 
+## Entry 169 - 2026-05-28
+
+- `Timestamp`: `2026-05-28T23:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Personel uygulaması (/personel-app) görevler sayfasının mobil uyumlu hale getirilmesi`
+- `Intent`: `Personel mobil uygulamasında (/personel-app) masaüstü düzeniyle bozuk ve taşmış olarak görüntülenen görevler sayfasını mobil cihazlar ve dar ekranlar (maxWidth 430px) için tamamen responsive ve premium tasarıma dönüştürmek; modal pencerelerin küçük ekranlarda taşmasını önlemek.`
+- `Files Read`:
+  - `C:\RMSv3\src\components\pages\PersonnelMobileAppPage.jsx`
+  - `C:\RMSv3\src\components\pages\MobileAppShells.jsx`
+  - `C:\RMSv3\src\components\pages\Tasks.jsx`
+  - `C:\RMSv3\src\components\ui\Modal.jsx`
+- `Files Changed`:
+  - `C:\RMSv3\src\components\pages\Tasks.jsx` — `isMobile` parametresi eklendi. Mobil görünümde büyük masaüstü başlığı ve aktif kullanıcı kartı gizlendi. Ana sekmelerin mobil ekranlarda taşmadan yatay kaydırılabilir olması sağlandı. Filtrelerin ve arama alanının dikey sıralanarak esnek büyümesi ve FAB (Floating Action Button) butonu ile mobil görev ekleme arayüzü entegre edildi.
+  - `C:\RMSv3\src\components\ui\Modal.jsx` — Modalların genişliği `min(94vw, width)` ve `minHeight` parametresi `min(560px, 80vh)` olarak güncellendi. Böylece tüm modalların küçük ekranlarda taşması ve dikey sığmama sorunları tamamen çözüldü.
+  - `C:\RMSv3\src\components\pages\MobileAppShells.jsx` — `PersonnelPhoneRuntime` altındaki `<Tasks scope="branch" />` bileşeni `<Tasks scope="branch" isMobile={true} />` olarak güncellendi.
+- `Commands Run`:
+  - `npm.cmd run build` (Sıfır hata ile üretim derlemesi doğrulandı)
+- `Findings`:
+  - `Modal` bileşeninin sabit `width` ve `minHeight` değerleri küçük ekranlarda viewport sınırını aşarak kullanıcı etkileşimini kilitliyordu. `min()` fonksiyonu ile ekran sınırlarına göre dinamik olarak boyutlandırıldı.
+  - Masaüstü görünümüne göre tasarlanmış `Tasks.jsx` başlığı mobil uygulamada ikincil bir başlık kirliliği yarattığı için `isMobile` ile tamamen gizlendi ve görev ekleme aksiyonu sağ alt köşeye sabitlenmiş şık bir FAB butona taşındı.
+- `Decisions`:
+  - Mobilde yatay sığmayan ana sekme butonları için `overflowX: 'auto'` ve `whiteSpace: 'nowrap'` ile kaydırılabilir şerit yapısı tercih edildi.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Personel mobil uygulamasındaki görevler sayfasının tüm responsive ve mobil görünüm bozuklukları giderilmiştir. Modalların dar ekranlarda taşması önlenmiştir. Derleme başarıyla tamamlanmıştır.`
+
+
 

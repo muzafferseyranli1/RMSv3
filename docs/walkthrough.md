@@ -62,3 +62,15 @@ Bu dokümanda, envanter hareketlerindeki ağırlıklı ortalama maliyet (WAC) he
      - `sale_items` verisinin optimize edilmiş hali **217,358 bytes** (eski hali: **42,890,745 bytes**).
 3. **Canlı Ortam Deploy**:
    - Yapılan optimizasyonların Railway canlı platformuna yansıdıktan sonra simülasyon adımlarının kesintisiz ve hızlıca tamamlandığı doğrulanacaktır.
+
+---
+
+### 6. Personel Uygulaması Görevler Sayfası Mobil Uyumlu Hale Getirilmesi
+
+- **Yapılan İyileştirmeler**:
+  - **Modal Taşmalarının Engellenmesi**: `Modal.jsx` bileşeninde `width` ve `minHeight` özellikleri `min()` fonksiyonu ile sarmalanarak responsive hale getirildi (genişlik `min(94vw, width)`, yükseklik `min(560px, 80vh)` yapıldı). Mobil ekranlarda (örneğin 430px) form modallarının dışarı taşması ve ekranın kilitlenmesi sorunu giderildi.
+  - **Tasks Mobil Düzeni**: `Tasks.jsx` içerisine `isMobile` parametresi entegre edilerek mobil görünümde büyük masaüstü başlıkları ve aktif kullanıcı kartı gizlendi.
+  - **Yatay Kaydırılabilir Sekmeler**: Mobilde sığmayan ana sekme butonları `overflowX: 'auto'` ve `whiteSpace: 'nowrap'` ile kaydırılabilir bir şerit haline getirildi.
+  - **Dikey Hizalanan Arama/Filtre Paneli**: Arama kutusu ve sıralama dropdown'ları dikey esnek düzene alınarak mobil ekran boyutlarına tam oturtuldu.
+  - **FAB Buton Entegrasyonu**: Mobil arayüzde görev ekleme aksiyonu sağ alt köşeye sabitlenen şık bir FAB (Floating Action Button) butona taşındı.
+  - **Runtime Entegrasyonu**: `PersonnelPhoneRuntime` altındaki `<Tasks scope="branch" />` bileşeni `<Tasks scope="branch" isMobile={true} />` prop'u ile güncellendi.

@@ -12,7 +12,7 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
 
   return (
     <div className={`modal-bg ${open ? 'open' : ''}`}>
-      <div className="modal-box" style={{ width, ...(flex ? { display:'flex', flexDirection:'column', maxHeight:'90vh', minHeight: '560px' } : {}) }}>
+      <div className="modal-box" style={{ width: `min(94vw, ${typeof width === 'number' ? width + 'px' : width})`, ...(flex ? { display:'flex', flexDirection:'column', maxHeight:'90vh', minHeight: 'min(560px, 80vh)' } : {}) }}>
         <div className="modal-head">
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div>
