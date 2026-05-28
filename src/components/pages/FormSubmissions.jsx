@@ -4,7 +4,7 @@ import { useWorkspace } from '@/context/WorkspaceContext'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
 import { readSettingArray, normalizeEmployeeRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
-import { uploadApiFile, buildApiUrl } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
 const STATUS_MAP = {
