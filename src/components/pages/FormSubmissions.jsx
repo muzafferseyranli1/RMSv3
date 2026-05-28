@@ -20,7 +20,7 @@ export default function FormSubmissions() {
   const [loading, setLoading] = useState(true)
   const [selectedSub, setSelectedSub] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [filter, setFilter] = useState({ templateId: '', status: '' })
+  const [filter, setFilter] = useState({ templateId: '', status: '', startDate: '', endDate: '' })
   const [showFillForm, setShowFillForm] = useState(false)
   const [fillTemplateId, setFillTemplateId] = useState('')
   const [answers, setAnswers] = useState([])
@@ -28,6 +28,14 @@ export default function FormSubmissions() {
   const [formStartTime, setFormStartTime] = useState(null)
   const [showPrintReport, setShowPrintReport] = useState(null)
   const [uploadingFields, setUploadingFields] = useState({})
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [branchTemplates, setBranchTemplates] = useState([])
+  const [reportTemplateId, setReportTemplateId] = useState('')
+  const [selectedBranchOption, setSelectedBranchOption] = useState('all')
+  const [reportStartDate, setReportStartDate] = useState('')
+  const [reportEndDate, setReportEndDate] = useState('')
+  const [reportGenerating, setReportGenerating] = useState(false)
+  const [reportResults, setReportResults] = useState(null)
   const formContainerRef = useRef(null)
   const { scope, branchId, branches } = useWorkspace()
   const { user } = useAuth()
@@ -75,6 +83,244 @@ export default function FormSubmissions() {
   }, [branchId, filter.templateId, filter.status, scope, toast])
 
   useEffect(() => { loadSubmissions() }, [loadSubmissions])
+
+  useEffect(() => {
+    async function loadBranchTemplates() {
+      if (scope === 'center' || scope === 'admin') {
+        try {
+          const { data, error } = await db.from('branch_templates').select('*').is('deleted_at', null).order('name')
+          if (!error && data) {
+            setBranchTemplates(data)
+          }
+        } catch (err) {
+          console.error('Failed to load branch templates:', err)
+        }
+      }
+    }
+    loadBranchTemplates()
+  }, [scope])
+
+  const calculateReport = async () => {
+    if (!reportTemplateId) {
+      toast('Lütfen bir form şablonu seçin', 'error')
+      return
+    }
+    setReportGenerating(true)
+    try {
+      const template = templates.find(t => t.id === reportTemplateId)
+      if (!template) throw new Error('Şablon bulunamadı')
+
+      // 1. Determine target branch IDs
+      let targetBranchIds = null
+      if (scope === 'branch' || scope === 'warehouse') {
+        targetBranchIds = [branchId]
+      } else if (selectedBranchOption !== 'all') {
+        if (selectedBranchOption.startsWith('template:')) {
+          const tId = selectedBranchOption.split(':')[1]
+          const tpl = branchTemplates.find(t => t.id === tId)
+          if (tpl && Array.isArray(tpl.branch_ids)) {
+            targetBranchIds = tpl.branch_ids
+          }
+        } else if (selectedBranchOption.startsWith('branch:')) {
+          targetBranchIds = [selectedBranchOption.split(':')[1]]
+        }
+      }
+
+      // 2. Fetch submissions
+      let query = db.from('form_submissions')
+        .select('*')
+        .eq('template_id', reportTemplateId)
+        .in('status', ['completed', 'anomaly'])
+
+      if (targetBranchIds && targetBranchIds.length > 0) {
+        query = query.in('branch_id', targetBranchIds)
+      }
+      if (reportStartDate) {
+        query = query.gte('created_at', `${reportStartDate}T00:00:00+03:00`)
+      }
+      if (reportEndDate) {
+        query = query.lte('created_at', `${reportEndDate}T23:59:59+03:00`)
+      }
+
+      const { data: subs, error } = await query
+      if (error) throw error
+
+      if (!subs || subs.length === 0) {
+        toast('Seçilen kriterlere uygun form yanıtı bulunamadı', 'warning')
+        setReportResults({
+          submissionsCount: 0,
+          questionAverages: {},
+          sectionAverages: {},
+          template,
+          subs: []
+        })
+        return
+      }
+
+      // 3. Process answers
+      const fieldValues = {}
+      subs.forEach(sub => {
+        const answers = Array.isArray(sub.answers_json) ? sub.answers_json : []
+        answers.forEach(ans => {
+          if (ans.value !== undefined && ans.value !== null && ans.value !== '') {
+            if (!fieldValues[ans.field_id]) fieldValues[ans.field_id] = []
+            fieldValues[ans.field_id].push(ans.value)
+          }
+        })
+      })
+
+      // 4. Calculate averages per field
+      const questionAverages = {}
+      const sections = Array.isArray(template.schema_json?.sections) ? template.schema_json.sections : []
+      
+      sections.forEach(section => {
+        const fields = Array.isArray(section.fields) ? section.fields : []
+        fields.forEach(field => {
+          const vals = fieldValues[field.id] || []
+          if (vals.length === 0) {
+            questionAverages[field.id] = { avg: null, count: 0, label: field.label, type: field.type }
+            return
+          }
+
+          let sum = 0
+          let count = 0
+          let yesCount = 0
+
+          if (field.type === 'yes_no' || field.type === 'checkbox') {
+            vals.forEach(v => {
+              const isYes = v === true || v === 'yes'
+              if (isYes) yesCount++
+              count++
+            })
+            questionAverages[field.id] = {
+              avg: count > 0 ? (yesCount / count) * 100 : 0,
+              count,
+              label: field.label,
+              type: field.type,
+              format: 'percentage'
+            }
+          } else if (field.type === 'rating' || field.type === 'rating_10' || field.type === 'slider' || field.type === 'nps' || field.type === 'number' || field.type === 'temperature') {
+            vals.forEach(v => {
+              const num = Number(v)
+              if (!isNaN(num)) {
+                sum += num
+                count++
+              }
+            })
+            questionAverages[field.id] = {
+              avg: count > 0 ? sum / count : 0,
+              count,
+              label: field.label,
+              type: field.type,
+              format: 'numeric'
+            }
+          } else if (field.type === 'emoji_rating') {
+            vals.forEach(v => {
+              let score = 0
+              if (v === 'happy') score = 3
+              else if (v === 'neutral') score = 2
+              else if (v === 'sad') score = 1
+              if (score > 0) {
+                sum += score
+                count++
+              }
+            })
+            questionAverages[field.id] = {
+              avg: count > 0 ? sum / count : 0,
+              count,
+              label: field.label,
+              type: field.type,
+              format: 'emoji'
+            }
+          } else if (field.type === 'select') {
+            const hasPointWeights = Array.isArray(field.options) && field.options.some(o => typeof o === 'object' && 'points' in o)
+            if (hasPointWeights) {
+              vals.forEach(v => {
+                const optObj = field.options.find(o => String(typeof o === 'object' ? o.label : o) === String(v))
+                if (optObj && typeof optObj === 'object' && 'points' in optObj) {
+                  sum += Number(optObj.points) || 0
+                  count++
+                }
+              })
+              questionAverages[field.id] = {
+                avg: count > 0 ? sum / count : 0,
+                count,
+                label: field.label,
+                type: field.type,
+                format: 'numeric_points'
+              }
+            } else {
+              questionAverages[field.id] = {
+                avg: null,
+                count: vals.length,
+                label: field.label,
+                type: field.type,
+                format: 'text'
+              }
+            }
+          } else {
+            questionAverages[field.id] = {
+              avg: null,
+              count: vals.length,
+              label: field.label,
+              type: field.type,
+              format: 'text'
+            }
+          }
+        })
+      })
+
+      // 5. Calculate section averages
+      const sectionAverages = {}
+      sections.forEach(section => {
+        const fields = Array.isArray(section.fields) ? section.fields : []
+        let sectionSum = 0
+        let sectionCount = 0
+
+        fields.forEach(field => {
+          const avgInfo = questionAverages[field.id]
+          if (avgInfo && avgInfo.avg !== null) {
+            if (avgInfo.format === 'percentage') {
+              sectionSum += avgInfo.avg
+              sectionCount++
+            } else if (avgInfo.format === 'numeric') {
+              const maxVal = field.type === 'rating' ? 5 : 10
+              const percentage = maxVal > 0 ? (avgInfo.avg / maxVal) * 100 : 0
+              sectionSum += percentage
+              sectionCount++
+            } else if (avgInfo.format === 'emoji') {
+              const percentage = (avgInfo.avg / 3) * 100
+              sectionSum += percentage
+              sectionCount++
+            } else if (avgInfo.format === 'numeric_points') {
+              const maxPoints = Number(field.max_points) || 0
+              const percentage = maxPoints > 0 ? (avgInfo.avg / maxPoints) * 100 : 0
+              sectionSum += percentage
+              sectionCount++
+            }
+          }
+        })
+
+        sectionAverages[section.id] = {
+          avg: sectionCount > 0 ? sectionSum / sectionCount : null,
+          title: section.title
+        }
+      })
+
+      setReportResults({
+        submissionsCount: subs.length,
+        questionAverages,
+        sectionAverages,
+        template,
+        subs
+      })
+    } catch (err) {
+      console.error('Failed to calculate report:', err)
+      toast('Rapor hesaplanırken bir hata oluştu: ' + err.message, 'error')
+    } finally {
+      setReportGenerating(false)
+    }
+  }
 
   const openDetail = async (subId) => {
     setDetailLoading(true)
@@ -312,8 +558,445 @@ export default function FormSubmissions() {
     ? (submissions.reduce((sum, s) => sum + (Number(s.score_percentage) || 0), 0) / totalCount).toFixed(1)
     : '—'
 
+  const filteredSubmissions = submissions.filter(sub => {
+    const subDate = sub.created_at.split('T')[0]
+    if (filter.startDate && subDate < filter.startDate) return false
+    if (filter.endDate && subDate > filter.endDate) return false
+    return true
+  })
+
   const filteredTemplate = filter.templateId ? templates.find(t => t.id === filter.templateId) : null
   const isFilterChecklist = filteredTemplate?.form_type === 'checklist'
+
+  // ─── Report Modal ───
+  if (showReportModal) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(8,15,35,0.65)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+        }}
+        onClick={e => {
+          if (e.target === e.currentTarget && !reportGenerating) {
+            setShowReportModal(false)
+            setReportResults(null)
+          }
+        }}
+      >
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            .print-report-container, .print-report-container * {
+              visibility: visible !important;
+            }
+            .print-report-container {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              background: #fff !important;
+              color: #000 !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+            .print-only-block {
+              display: block !important;
+            }
+          }
+        `}} />
+
+        <div
+          style={{
+            width: '100%',
+            maxWidth: reportResults ? 860 : 540,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 20,
+            overflow: 'hidden',
+            background: 'var(--surface)',
+            boxShadow: '0 32px 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+          className="print-report-container"
+        >
+          {/* Modal Header */}
+          <div
+            style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--surface-2)',
+            }}
+            className="no-print"
+          >
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-chart-pie" style={{ color: '#8b5cf6' }} />
+              Form Şablon Analiz Raporu
+            </h3>
+            <button
+              onClick={() => {
+                setShowReportModal(false)
+                setReportResults(null)
+              }}
+              disabled={reportGenerating}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+              }}
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+            {!reportResults ? (
+              /* ── SEARCH FORM ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="no-print">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Form Şablonu</label>
+                  <div className="sel-wrap">
+                    <select
+                      value={reportTemplateId}
+                      onChange={e => setReportTemplateId(e.target.value)}
+                      className="f-input"
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">Seçiniz...</option>
+                      {templates
+                        .filter(t => scope === 'admin' || (t.allowed_contexts || ['center', 'branch', 'warehouse']).includes(scope))
+                        .map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Şube Kapsamı</label>
+                  {scope === 'center' || scope === 'admin' ? (
+                    <div className="sel-wrap">
+                      <select
+                        value={selectedBranchOption}
+                        onChange={e => setSelectedBranchOption(e.target.value)}
+                        className="f-input"
+                        style={{ width: '100%' }}
+                      >
+                        <option value="all">Tüm Şubeler</option>
+                        {branchTemplates.length > 0 && (
+                          <optgroup label="Şube Şablonları">
+                            {branchTemplates.map(bt => (
+                              <option key={bt.id} value={`template:${bt.id}`}>{bt.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="Tekil Şubeler">
+                          {branches.map(b => (
+                            <option key={b.id} value={`branch:${b.id}`}>{b.name}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      className="f-input"
+                      value={branchName || 'Şubem'}
+                      disabled
+                      style={{ width: '100%', background: 'var(--surface-2)', cursor: 'not-allowed' }}
+                    />
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Başlangıç Tarihi</label>
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={e => setReportStartDate(e.target.value)}
+                      className="f-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Bitiş Tarihi</label>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={e => setReportEndDate(e.target.value)}
+                      className="f-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-p"
+                  onClick={calculateReport}
+                  disabled={reportGenerating || !reportTemplateId}
+                  style={{ width: '100%', height: 44, marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: '.9rem' }}
+                >
+                  {reportGenerating ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin" /> Hesaplamalar Yapılıyor...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-calculator" /> Raporu Hesapla ve Göster
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              /* ── REPORT RESULTS SCREEN ── */
+              <div>
+                {/* Visual Header (Only visible on screen) */}
+                <div style={{ marginBottom: 24, padding: '16px 20px', background: 'var(--surface-2)', borderRadius: 12, border: '1px solid var(--border)' }} className="no-print">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>FORM ANALİZ RAPORU</span>
+                      <h4 style={{ margin: '4px 0 8px 0', fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-strong)' }}>{reportResults.template.title}</h4>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: '.76rem', color: 'var(--text-muted)' }}>
+                        <span>
+                          <i className="fa-solid fa-building" style={{ marginRight: 4 }} />
+                          <strong>Şube Kapsamı:</strong> {
+                            scope === 'branch' || scope === 'warehouse'
+                              ? (branchName || 'Kendi Şubem')
+                              : (selectedBranchOption === 'all'
+                                  ? 'Tüm Şubeler'
+                                  : (selectedBranchOption.startsWith('template:')
+                                      ? branchTemplates.find(bt => bt.id === selectedBranchOption.split(':')[1])?.name || 'Şablon'
+                                      : branches.find(b => b.id === selectedBranchOption.split(':')[1])?.name || 'Şube'))
+                          }
+                        </span>
+                        <span>
+                          <i className="fa-regular fa-calendar" style={{ marginRight: 4 }} />
+                          <strong>Tarih Aralığı:</strong> {reportStartDate || 'İlk Kayıt'} – {reportEndDate || 'Bugün'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 10, padding: '8px 16px', textAlign: 'center', minWidth: 100 }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#8b5cf6' }}>{reportResults.submissionsCount}</div>
+                      <div style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Analiz Edilen Form</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Print-Only Header (Only visible when printing) */}
+                <div style={{ display: 'none' }} className="print-only-block">
+                  <div style={{ textAlign: 'center', paddingBottom: 20, borderBottom: '2px solid #000', marginBottom: 20 }}>
+                    <h2 style={{ fontSize: '1.6rem', margin: '0 0 6px 0', fontWeight: 800 }}>SUITABLE RMS - DÖNEMSEL FORM RAPORU</h2>
+                    <h3 style={{ fontSize: '1.25rem', margin: '0 0 12px 0', color: '#333' }}>{reportResults.template.title}</h3>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontSize: '.85rem' }}>
+                      <span><strong>Şube Kapsamı:</strong> {
+                        scope === 'branch' || scope === 'warehouse'
+                          ? (branchName || 'Kendi Şubem')
+                          : (selectedBranchOption === 'all'
+                              ? 'Tüm Şubeler'
+                              : (selectedBranchOption.startsWith('template:')
+                                  ? branchTemplates.find(bt => bt.id === selectedBranchOption.split(':')[1])?.name || 'Şablon'
+                                  : branches.find(b => b.id === selectedBranchOption.split(':')[1])?.name || 'Şube'))
+                      }</span>
+                      <span><strong>Tarih Aralığı:</strong> {reportStartDate || 'En Eski'} – {reportEndDate || 'Güncel'}</span>
+                      <span><strong>Analiz Edilen Form Adedi:</strong> {reportResults.submissionsCount}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Print-Only Table (Only visible when printing) */}
+                <div style={{ display: 'none' }} className="print-only-block">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #000', textAlign: 'left', fontSize: '.85rem', fontWeight: 800 }}>
+                        <th style={{ padding: '8px 4px' }}>Bölüm / Soru</th>
+                        <th style={{ padding: '8px 4px', width: '25%', textAlign: 'right' }}>Ortalama Yanıt / Puan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.isArray(reportResults.template.schema_json?.sections) && reportResults.template.schema_json.sections.map((section) => {
+                        const secAvg = reportResults.sectionAverages[section.id];
+                        return (
+                          <React.Fragment key={section.id}>
+                            <tr style={{ background: '#f1f5f9', fontWeight: 800, fontSize: '.9rem', borderTop: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1' }}>
+                              <td style={{ padding: '8px 4px' }}>{section.title}</td>
+                              <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                                {secAvg?.avg !== null ? `%${Math.round(secAvg.avg)}` : '—'}
+                              </td>
+                            </tr>
+                            {Array.isArray(section.fields) && section.fields.map((field) => {
+                              const avgInfo = reportResults.questionAverages[field.id];
+                              let printVal = '—';
+                              if (avgInfo && avgInfo.avg !== null) {
+                                if (avgInfo.format === 'percentage') {
+                                  printVal = `%${Math.round(avgInfo.avg)} Evet`;
+                                } else if (avgInfo.format === 'numeric') {
+                                  const divisor = field.type === 'rating' ? 5 : 10;
+                                  printVal = `${avgInfo.avg.toFixed(1)} / ${divisor}`;
+                                } else if (avgInfo.format === 'emoji') {
+                                  printVal = `${avgInfo.avg.toFixed(1)} / 3.0`;
+                                } else if (avgInfo.format === 'numeric_points') {
+                                  printVal = `${avgInfo.avg.toFixed(1)} / ${field.max_points}`;
+                                }
+                              } else if (avgInfo && avgInfo.count > 0) {
+                                printVal = `${avgInfo.count} Yanıt`;
+                              }
+
+                              return (
+                                <tr key={field.id} style={{ borderBottom: '1px solid #cbd5e1', fontSize: '.8rem' }}>
+                                  <td style={{ padding: '6px 4px 6px 16px' }}>{field.label}</td>
+                                  <td style={{ padding: '6px 4px', textAlign: 'right' }}>{printVal}</td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Visual Report Listing (Only visible on screen) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }} className="no-print">
+                  {Array.isArray(reportResults.template.schema_json?.sections) && reportResults.template.schema_json.sections.map((section) => {
+                    const secAvg = reportResults.sectionAverages[section.id];
+                    return (
+                      <div key={section.id} className="card" style={{ padding: 18, border: '1px solid var(--border)' }}>
+                        <h5 style={{ margin: '0 0 16px 0', fontSize: '.9rem', fontWeight: 800, color: '#8b5cf6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>{section.title}</span>
+                          {secAvg?.avg !== null && (
+                            <span style={{ background: 'rgba(139,92,246,0.1)', padding: '3px 8px', borderRadius: 6, fontSize: '.75rem', fontWeight: 800 }}>
+                              Ortalama Başarı: %{Math.round(secAvg.avg)}
+                            </span>
+                          )}
+                        </h5>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {Array.isArray(section.fields) && section.fields.map((field) => {
+                            const avgInfo = reportResults.questionAverages[field.id];
+                            
+                            // Determine percent for progress bar
+                            let progressPercent = 0;
+                            let scoreLabel = '—';
+                            if (avgInfo && avgInfo.avg !== null) {
+                              if (avgInfo.format === 'percentage') {
+                                progressPercent = avgInfo.avg;
+                                scoreLabel = `%${Math.round(avgInfo.avg)} Evet`;
+                              } else if (avgInfo.format === 'numeric') {
+                                const divisor = field.type === 'rating' ? 5 : 10;
+                                progressPercent = (avgInfo.avg / divisor) * 100;
+                                scoreLabel = `${avgInfo.avg.toFixed(1)} / ${divisor}`;
+                              } else if (avgInfo.format === 'emoji') {
+                                progressPercent = (avgInfo.avg / 3) * 100;
+                                scoreLabel = `${avgInfo.avg.toFixed(1)} / 3.0`;
+                              } else if (avgInfo.format === 'numeric_points') {
+                                const maxPoints = Number(field.max_points) || 1;
+                                progressPercent = (avgInfo.avg / maxPoints) * 100;
+                                scoreLabel = `${avgInfo.avg.toFixed(1)} / ${maxPoints} p`;
+                              }
+                            } else if (avgInfo && avgInfo.count > 0) {
+                              scoreLabel = `${avgInfo.count} Yanıt`;
+                            }
+
+                            // Progress bar color
+                            const progressColor = progressPercent >= 70 ? '#10b981' : (progressPercent >= 45 ? '#f59e0b' : '#ef4444');
+
+                            return (
+                              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                                  <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-strong)' }}>{field.label}</span>
+                                  <span style={{ fontSize: '.76rem', fontWeight: 800, color: progressColor, flexShrink: 0 }}>{scoreLabel}</span>
+                                </div>
+                                {avgInfo && avgInfo.avg !== null ? (
+                                  <div style={{ height: 8, background: 'var(--surface-3)', borderRadius: 99, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                    <div style={{ width: `${progressPercent}%`, height: '100%', background: progressColor, borderRadius: 99, transition: 'width 0.3s ease' }} />
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                    Veri ortalaması hesaplanamayan alan tipi (örn: serbest metin veya fotoğraf)
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div
+            style={{
+              padding: '16px 24px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
+              background: 'var(--surface-2)',
+            }}
+            className="no-print"
+          >
+            <button
+              type="button"
+              className="btn-o"
+              onClick={() => {
+                setShowReportModal(false)
+                setReportResults(null)
+              }}
+              disabled={reportGenerating}
+            >
+              Kapat
+            </button>
+            {reportResults && (
+              <>
+                <button
+                  type="button"
+                  className="btn-o"
+                  onClick={() => setReportResults(null)}
+                  disabled={reportGenerating}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <i className="fa-solid fa-arrow-rotate-left" /> Yeni Arama
+                </button>
+                <button
+                  type="button"
+                  className="btn-p"
+                  onClick={() => window.print()}
+                  disabled={reportGenerating || reportResults.submissionsCount === 0}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <i className="fa-solid fa-print" /> Raporu Yazdır (A4)
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ─── Fill Form Modal ───
   if (showFillForm) {
@@ -1033,28 +1716,10 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
         )
       })()}
 
-      {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: isFilterChecklist ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Toplam', value: totalCount, icon: 'fa-file-lines', color: '#3b82f6' },
-          { label: 'Tamamlanan', value: completedCount, icon: 'fa-check-circle', color: '#10b981' },
-          { label: 'Anomali', value: anomalyCount, icon: 'fa-exclamation-triangle', color: '#ef4444' },
-          ...(!isFilterChecklist ? [{ label: 'Ort. Puan', value: avgScore + '%', icon: 'fa-chart-simple', color: '#f59e0b' }] : []),
-        ].map(stat => (
-          <div key={stat.label} className="card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ width: 36, height: 36, borderRadius: 10, background: `${stat.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <i className={`fa-solid ${stat.icon}`} style={{ color: stat.color, fontSize: '.9rem' }} />
-            </span>
-            <div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-strong)' }}>{stat.value}</div>
-              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{stat.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="sel-wrap">
           <select
             value={filter.templateId}
@@ -1079,6 +1744,42 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             {Object.entries(STATUS_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8, padding: '0 10px', height: 38 }}>
+          <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>Başlangıç:</span>
+          <input
+            type="date"
+            value={filter.startDate}
+            onChange={e => setFilter(p => ({ ...p, startDate: e.target.value }))}
+            style={{ border: 'none', background: 'transparent', fontSize: '.8rem', color: '#0f172a', outline: 'none' }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8, padding: '0 10px', height: 38 }}>
+          <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>Bitiş:</span>
+          <input
+            type="date"
+            value={filter.endDate}
+            onChange={e => setFilter(p => ({ ...p, endDate: e.target.value }))}
+            style={{ border: 'none', background: 'transparent', fontSize: '.8rem', color: '#0f172a', outline: 'none' }}
+          />
+        </div>
+        {(filter.startDate || filter.endDate) && (
+          <button
+            type="button"
+            className="btn-o"
+            onClick={() => setFilter(p => ({ ...p, startDate: '', endDate: '' }))}
+            style={{ padding: '0 12px', height: 38, fontSize: '.75rem' }}
+          >
+            Tarihleri Temizle
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-p"
+          onClick={() => setShowReportModal(true)}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', height: 38, fontSize: '.8rem' }}
+        >
+          <i className="fa-solid fa-chart-line" /> Rapor Al
+        </button>
       </div>
 
       <div>
@@ -1088,14 +1789,14 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
               <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} /> Yükleniyor...
             </div>
-          ) : submissions.length === 0 ? (
+          ) : filteredSubmissions.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
               <i className="fa-solid fa-file-lines" style={{ fontSize: '2rem', marginBottom: 12, display: 'block', opacity: .4 }} />
-              <div style={{ fontWeight: 700 }}>Henüz yanıt yok</div>
+              <div style={{ fontWeight: 700 }}>Eşleşen yanıt yok</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {submissions.map(sub => {
+              {filteredSubmissions.map(sub => {
                 const tpl = templates.find(t => t.id === sub.template_id)
                 const isChecklist = tpl?.form_type === 'checklist'
                 const isCriticalFailed = !isChecklist && !!sub.metadata?.failed_critical

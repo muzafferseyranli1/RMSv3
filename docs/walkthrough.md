@@ -1,28 +1,32 @@
-# Demo Satış Yeniden Yapılandırması
+# Form Şablon Raporlama ve Filtreleme Geliştirmesi Walkthrough
 
-Seçtiğimiz **Seçenek A** (tam sayım yöntemi) ve talepleriniz doğrultusunda arka planda çalışan, çok fazla yük bindiren ve eksik günleri tam olarak algılayamayan demo satış mekanizması tamamen refactor (yeniden yapılandırma) edilmiştir.
+Form Yanıtları sayfasındaki istatistik kartlarının kaldırılması, tarih filtrelerinin eklenmesi ve soru bazlı ortalama hesaplayıp yazdırabilen yeni "Rapor Al" modal özelliğinin entegrasyonu tamamlanmıştır.
 
-## Yapılan Değişiklikler
+## Değişiklik Özeti
 
-### 1. Ön Plan (Foreground) Çalışma Mantığı
-`useDemoSalesJob.jsx` dosyasındaki `localStorage` kullanımı kaldırıldı. Artık işlem başladıktan sonra, ilerleme durumu sadece o sekme açık kaldığı sürece `DemoSales.jsx` bileşeni tarafından kontrol edilecek ve ekranda görünecektir. Sekmeyi kapattığınızda veya duraklattığınızda Railway'e gönderilen devasa arka plan işleri iptal olacaktır.
+### 1. Arayüz Sadeleştirmesi ve Tarih Filtreleri
+* `FormSubmissions.jsx` sayfasının üstündeki 4 adet istatistik kartı kaldırıldı.
+* Listeleme filtrelerinin yanına `Başlangıç` ve `Bitiş` tarih seçicileri (`type="date"`) eklenecek.
+* Liste verileri seçilen bu tarih aralığına göre local olarak anında süzülecek şekilde güncellendi.
+* Filtrelerin sağ köşesine şık bir **Rapor Al** butonu konumlandırıldı.
 
-### 2. İşlem Yükü (Chunking) Azaltıldı
-Railway veritabanına binen yükü hafifletmek için tek seferde atılan kayıt blokları küçültüldü:
-*   Satış (Sale) oluşturma bloğu 40'tan 20'ye düşürüldü.
-*   Fiş satırı bloğu 80'den 40'a düşürüldü.
-*   Ödeme ve stok hareketi blokları da yarı yarıya azaltılarak sunucu nefes alacak şekilde yeniden yapılandırıldı (Bekleme süreleri artırıldı).
+### 2. Form Analiz Raporlama Modalı
+* Butona tıklandığında açılan modalde kullanıcı:
+  * Raporlanacak **Form Şablonu**nu seçer.
+  * **Şube Kapsamı**nı belirler. 
+    * Merkez (Center) ve Admin kullanıcıları; Tüm Şubeleri, dinamik olarak `branch_templates` tablosundan yüklenen Şube Şablonlarını (örn: "İstanbul Şubeleri") veya tekil şubeleri seçebilir.
+    * Şube veya Depo kullanıcılarında şube seçimi kilitlenip otomatik olarak kendi şubesi seçilir.
+  * **Tarih Aralığı**nı (Başlangıç ve Bitiş) belirler.
+* **Aritmetik Ortalama Motoru**:
+  * "Raporu Hesapla" tıklandığında kriterlere uyan tüm yanıtlar çekilir ve form alan tiplerine (`yes_no`, `checkbox`, `rating`, `rating_10`, `slider`, `nps`, `emoji_rating`, `number`, `temperature`, `select`) göre en uygun aritmetik ortalamalar hesaplanır.
+  * Sonuçlar her bölüm bazında başarı yüzdesiyle ve sorular altında renkli ilerleme barlarıyla (progress bar) görselleştirilir.
 
-### 3. Eksik Günlerin Tespiti ve Satış Tamamlama (Top-up)
-Artık sistem, günde hedeflenen fiş sayısının %40'ı veya daha az satış yapılmış günleri **eksik gün** kabul edecek. 
-Örneğin o gün hedeflenen satış 50, ancak sistemde (POS vb. denemelerden) 5 gerçek satış varsa, sistem bu 5 satışı koruyacak ve sadece üzerine 45 yeni demo satış ekleyerek günü tamamlayacaktır. Bu özellik `demoSalesGenerator.js` içerisinde kodlandı.
+### 3. Yazdırılabilir A4 Dikey Rapor Düzeni
+* Rapor ekranındaki "Raporu Yazdır (A4)" butonu veya tarayıcının yazdır komutu tetiklendiğinde devreye giren `@media print` kuralları ile diğer tüm site elemanları gizlenir.
+* A4 dikey kağıt boyutuna uygun şık bir başlık, şube ve tarih kırılım detayları ile form sorularının karşısında sadece ortalamalarının yer aldığı sade, net bir tablo çıktısı üretilir.
 
-### 4. Ürün Çeşitliliğinde Rastgelelik (Jitter)
-Satış fişleri oluşturulurken hep aynı ürünlerin seçilmesini engellemek adına algoritmanın çekirdek fonksiyonu olan `pickProductForReceipt` metoduna bir ağırlık sarsma (jitter) tekniği eklendi. Rastgele bir dalgalanma katsayısı kullanılarak daha önce hiç seçilmemiş veya düşük ağırlıklı ürünlerin de satılması sağlandı.
+---
 
-## Veritabanı Güncellemesi (Otomatik Uygulandı)
-
-Sistemin düzgün çalışabilmesi için gereken `get_sales_count_by_branch_day` RPC fonksiyonunu Railway veritabanınıza **otomatik olarak uyguladım**. 
-Sizin herhangi bir manuel SQL sorgusu çalıştırmanıza gerek kalmadı.
-
-**Şimdi sadece `http://localhost:5173/demo-sales` sayfasını yenileyerek (F5) "Tekrar Tara" diyebilir ve yeni özellikleri test edebilirsiniz.**
+## Test ve Doğrulama
+1. **Build Kontrolü**: Proje `npm.cmd run build` ile başarıyla hatasız derlendi.
+2. **Fonksiyonellik**: Tüm state senkronizasyonları, database select sorguları ve rol bazlı şube kısıtlama mantığı test edilerek doğrulandı.

@@ -1,47 +1,65 @@
-# Refactor Demo Sales Generation
+# Uygulama Planı - Form Şablon Raporlama ve Filtreleme Geliştirmesi
 
-Mevcut durumda `DemoSales.jsx` modülü arka planda çalışan ve `localStorage` kullanan bir iş kuyruğu sistemine dayanıyor. Kullanıcının talebi doğrultusunda bu süreç tamamen ön plana alınacak ve tamamlanmamış (eksik satışlı) günlerin üzerine ekleme yapılacak şekilde güncellenecektir. Ayrıca Railway veritabanındaki yükü azaltmak için işlem yığınları küçültülecektir.
+Mevcut `Form Yanıtları` sayfasındaki istatistik kartlarının kaldırılması, tarih filtrelerinin eklenmesi ve kapsamlı şube/tarih/şablon bazlı soru ortalamalarını hesaplayıp yazdırabilen yeni bir "Rapor Al" özelliğinin eklenmesi planlanmaktadır.
 
-## Proposed Changes
-
-### 1. `src/hooks/useDemoSalesJob.jsx` (Kaldırılacak / Yeniden Yazılacak)
-- `localStorage` (örneğin `JOB_STORAGE_KEY`) kullanımı tamamen kaldırılacak.
-- Zamanlanmış arka plan görev döngüsü (`scheduleLoop`, `setTimeout(..., LOOP_PAUSE_MS)`) kaldırılacak.
-- Bunun yerine, yalnızca sayfa açıkken (component mount durumundayken) çalışan ve React state kullanan foreground (ön plan) bir süreç yazılacak. İşlem duraklatılırsa veya sayfa kapatılırsa, kuyruk baştan alınabilecek veya sadece eksik kalanlar tekrar hesaplanabilecek.
-- İşlem yığınları (chunk) küçültülecek:
-  - `SALES_INSERT_CHUNK` = 20 (önceki 40)
-  - `LINES_INSERT_CHUNK` = 40 (önceki 80)
-  - `MOVEMENTS_INSERT_CHUNK` = 60 (önceki 120)
-
-### 2. `src/components/pages/DemoSales.jsx`
-- Sayfadaki indikatörler güçlendirilecek: İşlem çalışırken ekranda belirgin bir ilerleme durumu (örneğin "Şube X için Y günü işleniyor... %Z tamamlandı") gösterilecek.
-- Veri tarama mantığı (`fetchSalesPresenceChunk`) güncellenerek, bir günde kaç adet fiş/satış olduğu kontrol edilecek. Eğer o gün için az sayıda (örn. belirlenen günlük hedefin %50'sinden az veya sadece 3-5 tane) satış varsa, bu gün **"tamamlanmamış"** sayılacak ve o günün satış hedefine ulaşacak kadar "tamamlama (top-up)" satışı üretilecek. 
-- Tamamlanmış (yeterli satışı olan) günler pas geçilecek.
-
-### 3. `src/lib/demoSalesGenerator.js`
-- `buildMissingSalesSummary` fonksiyonu, veritabanından dönen satış adetlerini (eğer varsa) veya ciro tutarlarını inceleyerek o günün tam mı yoksa eksik mi olduğuna karar veren algoritmaya göre güncellenecek.
-- `buildReceiptLines` içindeki ürün seçme (çeşitlilik) algoritması iyileştirilecek. Hep aynı ürünlerin satılmasını engellemek için daha önceden rastgele seçilmiş ürünlerin havuzdaki ağırlığı azaltılacak (penalty) veya her fiş için farklı kombinasyonlar denenmeye zorlanacak.
-
-## Open Questions
+## Kullanıcı İncelemesi Gereken Hususlar
 > [!IMPORTANT]
-> **Sorunuzun Cevabı ve Açıklaması:**
-> Belirttiğiniz Seçenek A ve Seçenek B, **satışların nasıl üretileceği ile ilgili DEĞİLDİR.** Bu seçenekler sadece *sistemin o güne ait ne kadar gerçek satış olduğunu nasıl sayacağı* ile ilgilidir. Üretilecek olan yeni demo satışlar, her halükarda stok hareketlerini (inventory_movements), fiş satırlarını ve ödemeleri eksiksiz olarak oluşturmaya devam edecektir (mevcut sistemde olduğu gibi). Bu konuda hiçbir bozulma olmayacaktır.
-> 
-> **Seçenek A (Yeni RPC/SQL Fonksiyonu):**
-> *   **Nasıl Çalışır:** Sistem, doğrudan `sales` (satışlar) tablosuna giderek o günkü organik ve demo satışların toplam adetini o an canlı olarak sayar.
-> *   **Avantajı:** %100 kesin ve anlık sonuç verir. Eğer 5 satış varsa tam 5 olarak görür ve hedefe (örn. 50) ulaşmak için 45 adet yeni "stok hareketli" satış üretir.
-> *   **Dezavantajı:** Railway veritabanında ufak bir yeni fonksiyon (RPC) tanımlamamız gerekir.
-> 
-> **Seçenek B (`daily_sales` Özet Tablosu):**
-> *   **Nasıl Çalışır:** Her satış yapıldığında arka planda tetikleyicilerle güncellendiği varsayılan `daily_sales` isimli günlük ciro özet tablosuna bakar.
-> *   **Avantajı:** Veritabanına yeni bir fonksiyon eklememize gerek kalmaz, okuması hızlıdır.
-> *   **Dezavantajı:** Eğer `daily_sales` tablosu anlık olarak anında güncellenmiyorsa (gecikme varsa), sistem o günü 0 satışlı sanabilir ve gereğinden fazla üretim yapabilir.
-> 
-> Kesinlik açısından **Seçenek A'nın** kullanılmasını şiddetle tavsiye ederim. Veritabanına gerekli küçük sayma fonksiyonunu kod ile ben ekleyebilirim. Seçenek A ile ilerlememi onaylıyor musunuz?
+> - **Şube Şablonları Entegrasyonu**: Genel Merkez (Center) ve Admin yetkisindeki kullanıcılar, rapor alırken tekil şubelerin yanı sıra `branch_templates` tablosunda tanımlanmış şube şablonlarını (İstanbul Şubeleri, Ege Şubeleri vb.) da seçebilecektir. Şube ve Depo kullanıcıları ise sadece kendi şubelerinin verilerini görebilecek, şube seçimi yapamayacaktır.
+> - **Soru Bazlı Ortalama Hesaplama Kuralları**:
+>   - **Evet/Hayır (yes_no) & Onay Kutusu (checkbox)**: "Evet" veya işaretli olma yüzdesi (% bazında oran) hesaplanacaktır.
+>   - **Derecelendirme (rating, rating_10, slider, nps, number, temperature)**: Matematiksel aritmetik ortalama hesaplanacak ve görsel barlar / yıldızlarla sunulacaktır.
+>   - **Emoji Derecelendirme (emoji_rating)**: `sad` (1), `neutral` (2), `happy` (3) puan karşılıkları atanarak ortalama skor çıkarılacaktır.
+>   - **Seçim Listesi (select)**: Seçeneklerin puan ağırlıkları varsa bunlara göre ortalama alınacaktır.
 
-## Verification Plan
-### Manual Verification
-- `http://localhost:5173/demo-sales` sayfasına girilecek.
-- Tekrar Tara dendiğinde, içinde 1-2 satış olan günlerin "Eksik Gün" olarak algılandığı teyit edilecek.
-- Üretimi Başlat dendiğinde işlemin sadece sekme açıkken çalıştığı, ilerlemenin ekranda görüldüğü test edilecek.
-- Railway veri trafiğinin daha yavaş/düşük paketler halinde gidip gitmediği ağ sekmesinden doğrulanacak.
+## Önerilen Değişiklikler
+
+### Bileşenler ve Arayüz Katmanı
+
+#### [MODIFY] [FormSubmissions.jsx](file:///c:/RMSv3/src/components/pages/FormSubmissions.jsx)
+
+1. **Arayüz Sadeleştirmesi ve Tarih Filtreleri**:
+   - Üst kısımdaki `Stat Cards` (Toplam, Tamamlanan, Anomali, Ort. Puan kartları) kaldırılacak.
+   - Listeleme filtrelerinin bulunduğu satıra başlangıç tarihi (`filter.startDate`) ve bitiş tarihi (`filter.endDate`) inputları (`type="date"`) eklenecek.
+   - Listelenen yanıtlar local state seviyesinde `filteredSubmissions` olarak bu tarihlere göre süzülecek.
+
+2. **Rapor Al Butonu**:
+   - Tarih ve durum filtrelerinin yanına şık, mavi renkli bir **Rapor Al** (`<button className="btn-p">Rapor Al</button>`) butonu eklenecek.
+   - Bu buton tıklandığında `showReportModal` state'ini `true` yaparak yeni rapor modalını açacak.
+
+3. **Rapor Seçim ve Hesaplama Modalı**:
+   - **Form Şablonu Seçimi**: Raporlanacak form şablonu (dropdown) seçilir.
+   - **Şube Seçimi**:
+     - `scope === 'center' || scope === 'admin'` ise: Kullanıcıya şube şablonları (`branch_templates` tablosundan dinamik çekilen listeler) ve tekil şubeleri seçebileceği çoklu seçim/dropdown alanı sunulur.
+     - `scope === 'branch' || scope === 'warehouse'` ise: Kullanıcının kendi şubesi kilitli ve otomatik seçili olarak gelir.
+   - **Tarih Aralığı Seçimi**: Başlangıç ve bitiş tarihlerini içerir.
+   - **Raporu Göster Butonu**: Seçimlerden sonra veritabanından (`form_submissions` tablosu) ilgili şablon, şubeler ve tarih aralığına ait tüm tamamlanmış form yanıtlarını çeker.
+
+4. **Soru Bazlı Ortalama Hesaplama Motoru**:
+   - Gelen tüm form yanıtlarının `answers_json` verileri parse edilerek soru bazında (field_id) cevaplar toplanır.
+   - Her sorunun ortalama skoru hesaplanır.
+   - Rapor Sonuçları Ekranında:
+     - Seçilen şablon bilgisi, analiz edilen toplam form adeti, seçilen şubeler ve tarih aralığı özetlenir.
+     - Her bölüm (section) altında yer alan soruların ortalama puanları görsel ilerleme barlar (progress bar) veya derecelendirme yıldızları / emojileri ile premium bir UX tasarımında listelenir.
+
+5. **Yazdırılabilir Sürüm (A4 Print)**:
+   - Rapor sonuç ekranında bir **Yazdır** butonu bulunacaktır.
+   - Buton tıklandığında veya `window.print()` tetiklendiğinde devreye giren `@media print` CSS kuralları ile sayfanın diğer tüm elemanları gizlenecek; sadece A4 dikey (portrait) düzenene uygun, şık bir başlık altında tüm soruların karşısında ortalama değerlerinin yazdığı temiz bir tablo raporu yazdırılacaktır.
+
+### Veritabanı ve Servis Katmanı
+
+- Veritabanı sorguları `db.from('form_submissions')` üzerinden doğrudan çekilecektir.
+- Şube şablonları için `db.from('branch_templates').select('*').is('deleted_at', null)` sorgusuyla aktif şablonlar yüklenecektir.
+
+## Doğrulama Planı
+
+### Otomatik Test ve Derleme Kontrolü
+- Değişiklikler yapıldıktan sonra `npm.cmd run build` çalıştırılarak hata almadan derlendiği doğrulanacak.
+
+### Manuel Doğrulama
+1. **İstatistik Kartlarının Kontrolü**: `Form Yanıtları` ekranında stat kartlarının kaldırıldığı, filtrelerin ve listenin yukarı kayarak daha geniş alan kazandığı gözlemlenecek.
+2. **Tarih Filtresi Kontrolü**: Başlangıç ve bitiş tarihi seçildiğinde listelenen form yanıtlarının bu tarihlere göre süzüldüğü doğrulanacak.
+3. **Rapor Seçici Yetki Kontrolü**:
+   - Şube rolüyle girildiğinde şube seçicinin kapalı olduğu ve sadece kendi şubesine ait rapor alabildiği test edilecek.
+   - Merkez rolüyle girildiğinde hem tekil şube hem de "İstanbul Şubeleri" vb. şube şablonlarının seçilebildiği test edilecek.
+4. **Ortalama Hesaplama ve Rapor Görünümü**: Seçilen tarih aralığındaki form yanıtlarının başarıyla çekilip soru bazında ortalama skorların doğru hesaplandığı ve görsel barlarla listelendiği doğrulanacak.
+5. **A4 Yazıcı Önizlemesi**: "Yazdır" tıklandığında açılan tarayıcı yazdırma ekranında form başlığı, tarih aralığı, şube detayları ve soru-ortalama tablosunun A4 sayfasına tam oturduğu gözlemlenecek.
