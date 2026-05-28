@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -628,8 +628,9 @@ function buildDetailedActualMixByDate(lineRows) {
       currentDateMap.set(itemKey, current)
     }
 
-    const selectedOptions = parseJsonValue(row.options_json, [])
-    for (const option of selectedOptions || []) {
+    const parsedOptions = parseJsonValue(row.options_json, [])
+    const selectedOptions = Array.isArray(parsedOptions) ? parsedOptions : []
+    for (const option of selectedOptions) {
       const itemKey = createOptionMixKey(option?.id, option?.name)
       if (!itemKey) continue
 

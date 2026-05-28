@@ -168,12 +168,14 @@ export function getCompanyDefaults(treeValue, taxes = []) {
 }
 
 export function resolveSelectionIds(selectionsValue) {
-  const selections = parseJsonValue(selectionsValue, [])
+  const parsed = parseJsonValue(selectionsValue, [])
+  const selections = Array.isArray(parsed) ? parsed : []
   const ids = new Set()
-  for (const row of selections || []) {
+  for (const row of selections) {
     if (row?.type === 'branch' && row.id) ids.add(row.id)
     if (row?.type === 'template') {
-      for (const id of row.branchIds || []) {
+      const branchIds = Array.isArray(row.branchIds) ? row.branchIds : []
+      for (const id of branchIds) {
         if (id) ids.add(id)
       }
     }
