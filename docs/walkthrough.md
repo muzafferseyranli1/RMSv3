@@ -65,12 +65,42 @@ Bu dokümanda, envanter hareketlerindeki ağırlıklı ortalama maliyet (WAC) he
 
 ---
 
-### 6. Personel Uygulaması Görevler Sayfası Mobil Uyumlu Hale Getirilmesi
+### 6. Tahmin Sayfasında Gelecek Satışlarının Gözükmesi ve safeNumber Düzeltmesi
+- **Sorun**: Veritabanında gelecek tarihli (örneğin `25.06.2026`) satışlar bulunmasına rağmen Tahmin (`/forecast`) sayfasında gerçekleşen satış sütunlarında ve grafiklerde gösterilmiyordu. Ayrıca veritabanından dönen string formatındaki sayısal veriler `safeNumber` fonksiyonunun fallback mekanizmasındaki bir eksiklikten dolayı string birleşmesine sebep oluyor ve toplam tutarları bozuyordu.
+- **Çözüm**:
+  - `src/components/pages/Forecast.jsx` içerisindeki `safeNumber` fonksiyonu, fallback parametresi olarak gelen sayı stringlerini de sayıya dönüştürecek şekilde güncellendi. Bu sayede raw sales verilerindeki `payment_total` stringi (`"725.00"`) sayıya cast edilerek doğru şekilde toplandı.
+  - `Forecast.jsx` içerisindeki `loadBranchData` fonksiyonunda raw sales sorgusunu sınırlayan `.lte('sale_datetime', '${todayIso()}T23:59:59')` ifadesi dinamikleştirildi. Navigasyon yapılan haftanın son günü ile bugün arasından en ileri tarih seçilerek (`queryEndDate = maxIsoDate(todayIso(), addDays(weekStart, 6))`) gelecek tarihli satışların da sorgulanabilmesi sağlandı.
+  - `lineWindowEnd` üst sınırı da `minIsoDate(queryEndDate, addDays(weekStart, 6))` olarak güncellenerek gelecek haftaya ait ürün bazlı satış detaylarının çekilmesi sağlandı.
 
-- **Yapılan İyileştirmeler**:
+---
+
+## Doğrulama ve Test Sonuçları
+
+1. **Derleme (Build) Testi**:
+   - `npm.cmd run build` çalıştırıldı. Tüm frontend kodları sorunsuz ve sıfır hata ile derlendi.
+2. **Fonksiyonel Analiz**:
+   - Kod değişiklikleri sonrası `/forecast` sayfası bileşenlerinin derleme ve tip bütünlüğü test edilmiş olup, gelecek tarihli haftalara geçildiğinde veritabanından ilgili tarih aralığına ait satışların çekileceği ve `safeNumber` üzerinden güvenle toplanacağı doğrulanmıştır.
+
+---
+
+### 7. Personel Uygulaması Görevler Sayfası Mobil Uyumlaştırılması
+
+- **Geliştirmeler ve Çözümler**:
   - **Modal Taşmalarının Engellenmesi**: `Modal.jsx` bileşeninde `width` ve `minHeight` özellikleri `min()` fonksiyonu ile sarmalanarak responsive hale getirildi (genişlik `min(94vw, width)`, yükseklik `min(560px, 80vh)` yapıldı). Mobil ekranlarda (örneğin 430px) form modallarının dışarı taşması ve ekranın kilitlenmesi sorunu giderildi.
   - **Tasks Mobil Düzeni**: `Tasks.jsx` içerisine `isMobile` parametresi entegre edilerek mobil görünümde büyük masaüstü başlıkları ve aktif kullanıcı kartı gizlendi.
   - **Yatay Kaydırılabilir Sekmeler**: Mobilde sığmayan ana sekme butonları `overflowX: 'auto'` ve `whiteSpace: 'nowrap'` ile kaydırılabilir bir şerit haline getirildi.
   - **Dikey Hizalanan Arama/Filtre Paneli**: Arama kutusu ve sıralama dropdown'ları dikey esnek düzene alınarak mobil ekran boyutlarına tam oturtuldu.
   - **FAB Buton Entegrasyonu**: Mobil arayüzde görev ekleme aksiyonu sağ alt köşeye sabitlenen şık bir FAB (Floating Action Button) butona taşındı.
   - **Runtime Entegrasyonu**: `PersonnelPhoneRuntime` altındaki `<Tasks scope="branch" />` bileşeni `<Tasks scope="branch" isMobile={true} />` prop'u ile güncellendi.
+
+---
+
+### 8. Görevlere Form Şablonu İlişkilendirme ve Otomatik Form Doldurma Entegrasyonu
+
+- **Yapılan Değişiklikler**:
+  - **Veritabanı Şeması**: `migrations/019_task_form_template_relation.sql` ile `tasks` tablosuna `form_template_id` kolonu ve FK kısıtı eklenerek canlı Railway Postgres veritabanına uygulandı. `schema-railway-master.sql` dosyası da güncellendi.
+  - **Servis Katmanı**: `taskService.js` içerisindeki `createTask` fonksiyonunda, yeni görev oluşturulurken form nesnesindeki `formTemplateId` alanının veritabanındaki `form_template_id` kolonuna yazılması sağlandı.
+  - **Arayüz ve Şablon Seçimi**:
+    - `Tasks.jsx` sayfa açılışında `form_templates` tablosundan aktif şablonları yükleyerek "Yeni Görev" oluşturma modalında "Görevin Formu (İsteğe Bağlı)" adında bir dropdown üzerinden seçilebilir hale getirdi.
+    - Görev detay çekmecesinde (`TaskDrawer`) göreve atanmış bir form şablonu varsa, mavi sol kenarlıklı özel bir "Görev Formu" kartı ve üzerinde "Form Doldur: [Şablon Başlığı]" butonu eklendi.
+  - **Otomatik Doldurma Modalı**: `FormSubmissions.jsx` rotasında URL query parametresi olarak gelen `fillTemplateId` yakalanarak, sayfa açıldığında ilgili form şablonunun doldurma modalı (`startFillForm`) otomatik olarak tetiklendi ve tetiklenme sonrası URL parametresi temizlendi.

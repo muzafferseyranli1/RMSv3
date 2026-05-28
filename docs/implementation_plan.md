@@ -1,40 +1,75 @@
-# Demo Satış Üretiminde "Unterminated string in JSON" Hatasının Çözümü
+# Görevlere Form Şablonu Ekleme ve Doldurma Entegrasyon Planı
 
-Bu plan, Demo Satış Üreticisi (`/demo-sales`) sayfasında "Üretimi Başlat" butonuna tıklandıktan hemen sonra karşılaşılan ve tarayıcıda `Unterminated string in JSON at position 50592` hatasına sebep olan veri boyutu/kesilme sorununu çözmeyi hedefler.
+Bu plan, "Yeni Görev" modalı üzerinden bir göreve form şablonu bağlanmasını ve atanan kişinin görev detay çekmecesinden tek tıklamayla bu formu doldurmak üzere yeni bir sayfada boş form açmasını sağlayacak entegrasyonu tanımlar.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Yapılan Değişiklik ve Performans Kazanımı:**
-> - `sale_items` tablosundaki `pos_image` ve `channel_image` sütunları, ürün görsellerini base64 formatında saklamaktadır ve satır başına ortalama ~580 KB yer kaplamaktadır (74 satır için toplam ~43 MB).
-> - Demo satış simülasyonu çalışırken ürün görsellerine hiçbir şekilde ihtiyaç duymamaktadır.
-> - Bu değişiklik ile, `useDemoSalesJob.jsx` içindeki `sale_items` sorgusu `*` yerine yalnızca simülasyon motorunun kullandığı alanları (`select(...)`) isteyecek şekilde güncellenecektir.
-> - Bu sayede veri boyutu **42.89 MB**'tan **~217 KB**'a düşürülerek (%99.5 tasarruf) ağ trafiği ve sunucu yükü minimize edilecek, JSON kesilme hatası tamamen giderilecektir.
+> **DB-First İlkesi ve Şema Güncellemesi:**
+> Görev ile form şablonu ilişkisini tutmak amacıyla `tasks` tablosuna `form_template_id` kolonu eklenecektir. Bu işlem `019_task_form_template_relation.sql` migrasyonu ile canlı veritabanında çalıştırılacaktır.
+> 
+> *   İşlemler Railway Postgres veritabanında gerçekleştirilecektir.
+> *   `schema-railway-master.sql` dosyası güncellenerek senkronizasyon korunacaktır.
 
 ---
 
 ## Proposed Changes
 
-### Arayüz ve Job Bileşenleri (Frontend Updates)
+### 1. Veritabanı ve Şema Güncellemeleri
 
-#### [MODIFY] [useDemoSalesJob.jsx](file:///c:/RMSv3/src/hooks/useDemoSalesJob.jsx)
-- `buildRuntime` fonksiyonundaki `sale_items` sorgusunu (`db.from('sale_items').select('*')`) şu şekilde güncelleyeceğiz:
-  ```javascript
-  db.from('sale_items')
-    .select('id,sku,name,deleted_at,sale_status,setting_active,standard_price,portions,option_groups,channel_prices,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,recipe_rows,recipe_output_qty')
-    .is('deleted_at', null)
-    .order('name')
-  ```
+#### [NEW] [019_task_form_template_relation.sql](file:///C:/RMSv3/migrations/019_task_form_template_relation.sql)
+Aşağıdaki işlemleri transaction içinde uygulayacak SQL gövdesi:
+1.  `tasks` tablosuna `form_template_id` (UUID) kolonunun eklenmesi.
+2.  `form_templates` tablosuna foreign key ilişkisi kurulması (`ON DELETE SET NULL` kuralı ile).
+
+#### [NEW] [run-migration-019.cjs](file:///C:/RMSv3/scripts/run-migration-019.cjs)
+`server/.env` dosyasındaki `DATABASE_URL` bilgisini kullanarak `019` nolu SQL migrasyonunu canlı veritabanında çalıştırıp güvenle sonlanacak Node.js betiği.
+
+#### [MODIFY] [schema-railway-master.sql](file:///C:/RMSv3/schema-railway-master.sql)
+*   `public.tasks` tablosunun `CREATE TABLE` tanımına `form_template_id` kolonunun eklenmesi.
+*   Tabloya `tasks_form_template_id_fkey` yabancı anahtar kısıtının (foreign key constraint) eklenmesi.
+
+---
+
+### 2. Frontend ve Servis Katmanı Güncellemeleri
+
+#### [MODIFY] [taskService.js](file:///C:/RMSv3/src/lib/taskService.js)
+*   `createTask` fonksiyonunda, yeni görev oluşturulurken form nesnesindeki `formTemplateId` alanının `form_template_id` adıyla veritabanına yazılmasının sağlanması.
+
+#### [MODIFY] [Tasks.jsx](file:///C:/RMSv3/src/components/pages/Tasks.jsx)
+*   Aktif form şablonlarının (`form_templates` tablosundan) sayfa açılışında yüklenmesi ve `formTemplates` state'inde saklanması.
+*   `createInitialForm` fonksiyonuna `formTemplateId: ''` alanının eklenmesi.
+*   "Yeni Görev" modalındaki "Checklist ve Ekler" kartı altına, kullanıcının aktif şablonlar arasından seçim yapabilmesini sağlayan "Görevin Formu (İsteğe Bağlı)" açılır menüsünün (select) eklenmesi.
+*   Görev detay çekmecesinde (`TaskDrawer`) tıklanan formu yeni sekmede açacak `handleFillForm(templateId)` fonksiyonunun tasarlanması (aktif çalışma alanı kapsamına göre `/sube-formlar`, `/merkez-depo-formlar` veya `/formlar` rotasını hedef alacaktır).
+*   `TaskDrawer` bileşenine `formTemplates` ve `onFillForm` prop'larının geçirilmesi.
+
+#### [MODIFY] [TaskDrawer.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskDrawer.jsx)
+*   Çekmeceye `formTemplates` ve `onFillForm` prop'larının tanımlanması.
+*   Göreve atanmış bir form şablonu var ise, açıklama bölümünün hemen altında mavi sol kenarlıklı şık bir "Görev Formu" kartı ve üzerinde "Form Doldur: [Şablon Başlığı]" butonu gösterilmiştir.
+*   Butona tıklandığında `onFillForm` callback'inin çalıştırılması sağlanmıştır.
+
+#### [MODIFY] [FormSubmissions.jsx](file:///C:/RMSv3/src/components/pages/FormSubmissions.jsx)
+*   `react-router-dom`'dan `useSearchParams` hook'u import edilmesi.
+*   URL query parametreleri arasında `fillTemplateId` var ise, form şablonları yüklenikten hemen sonra otomatik olarak bu form şablonunun doldurma modalının (`startFillForm`) tetiklenmesi.
+*   Form doldurma başlatıldıktan sonra URL query parametresinin temizlenmesi (böylece sayfa yenilemelerinde veya modal kapatıldığında mükerrer tetiklenmeler önlenecektir).
 
 ---
 
 ## Verification Plan
 
 ### Automated & Manual Verification
-1. **Derleme (Build) Doğrulaması:**
-   - Frontend kodunun hatasız derlendiğini doğrulayacağız:
-     ```powershell
-     npm run build
-     ```
-2. **Yerel Test:**
-   - Değişikliği uyguladıktan sonra `/demo-sales` sayfasına gidip "Üretimi Başlat" diyerek işlemin ilk adımdan itibaren (0/115 yerine ilerleyerek) sorunsuz çalıştığını kontrol edeceğiz.
+1.  **Migrasyon Testi:**
+    *   Lokal olarak migrasyon betiği çalıştırılarak veritabanına uygulanacaktır:
+        ```bash
+        node scripts/run-migration-019.cjs
+        ```
+2.  **Derleme (Build) Doğrulaması:**
+    *   Frontend kodlarının sıfır hata ile derlendiği teyit edilecektir:
+        ```bash
+        npm run build
+        ```
+3.  **Manuel Doğrulama (Akış Testi):**
+    *   "Yeni Görev" oluşturulurken "Görevin Formu" dropdown'ından bir şablon seçilecek.
+    *   Oluşturulan görev atanan kişiyle açılıp görev çekmecesine girilecek.
+    *   Görev çekmecesinde "Form Doldur: [Form Adı]" butonunun çıktığı görülecek.
+    *   Butona tıklandığında yeni bir sekmede form doldurma modalının otomatik olarak açık geldiği ve form doldurulduktan sonra kaydedilebildiği doğrulanacaktır.
