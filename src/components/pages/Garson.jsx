@@ -5059,27 +5059,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
               </div>
             )}
 
-            {isTableLayoutView && isMasaChannel && canEditCurrentTable && (
-              <button
-                className="touch-btn"
-                onClick={() => navigate('/masa-duzeni')}
-                style={{
-                  minHeight:44,
-                  minWidth:112,
-                  padding:'8px 16px',
-                  borderRadius:99,
-                  border:'1px solid rgba(251,191,36,.26)',
-                  background:'linear-gradient(135deg, rgba(251,191,36,.18), rgba(245,158,11,.2))',
-                  color:'#fbbf24',
-                  fontWeight:900,
-                  fontSize:'.78rem',
-                  cursor:'pointer',
-                  whiteSpace:'nowrap'
-                }}
-              >
-                Düzenle
-              </button>
-            )}
+
 
             {!isTableLayoutView && (
               <button className="touch-btn" onClick={() => setShowPrices(v => !v)} style={{
