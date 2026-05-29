@@ -50,3 +50,5 @@ node_modules
 temp-dist-saleitems-alias-fix
 temp-dist-verify-kiosk-cleanup
 
+
+release/
