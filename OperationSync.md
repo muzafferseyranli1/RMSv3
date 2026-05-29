@@ -7399,3 +7399,37 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - Decisions: Removed them from Ayarlar section in Sidebar.jsx. Added them to Sube section as /:branchId/cihazlar and /:branchId/masalar. Mapped these routes in App.jsx to use WorkspaceBranchScope.
 - Open Risks: None
 - Handoff Contract: All routes successfully mapped and sidebar updated. Build tested.
+
+
+## Entry - Desktop Auto-Updater and Publishing Setup
+
+- Timestamp: 2026-05-30T00:20:00+03:00
+- Agent: Antigravity
+- Task: Setup Electron auto-updater and 1-click publishing script
+- Files Read:
+  - package.json
+  - desktop/updater.cjs
+- Files Changed:
+  - package.json
+  - desktop/updater.cjs
+  - Yayinla.bat (Created)
+  - .gitignore
+  - DESKTOP_KILAVUZ.md (Created)
+- Commands Run:
+  - npm.cmd run publish:desktop (Successfully built and published v2.0.0 to GitHub Releases)
+- Findings:
+  - Auto-updater requires an installed application (\
+sis\ target instead of \portable\).
+  - GitHub Personal Access Token (\GH_TOKEN\) is required to publish releases.
+  - The repo configuration in \package.json\ and \updater.cjs\ was pointing to a non-existent repo (\muzafferseyranli/SuitableRMS-Releases\), which caused 404 errors during publishing. It was corrected to point to \muzafferseyranli1/RMSv3\.
+- Decisions:
+  - Switched \uild:desktop\ command to output an \
+sis\ installer.
+  - Added \publish:desktop\ command to \package.json\.
+  - Created a \Yayinla.bat\ script to automate Git commit, version bumping (\
+pm version\), and publishing in a single double-click action.
+  - Created a \.env\ file containing \GH_TOKEN\ for the local environment and added it to \.gitignore\.
+  - Created \DESKTOP_KILAVUZ.md\ documentation detailing the desktop architecture, rules, and auto-update process.
+- Open Risks: None.
+- Next Step: User tests the auto-update process from the sahadaki cihazlar by incrementing the version and publishing a new release.
+- Handoff Contract: The auto-update publishing mechanism is fully functional and documented.
