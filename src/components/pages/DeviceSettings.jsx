@@ -72,6 +72,7 @@ export default function DeviceSettings() {
       branch_id: branchId,
       device_type: formData.device_type,
       is_master: Boolean(formData.is_master),
+      terminal_role: Boolean(formData.is_master) ? 'master' : 'slave',
       pair_key: generatedPairKey,
       activation_code: `SUT-${generatedPairKey}`,
       is_used: false,
