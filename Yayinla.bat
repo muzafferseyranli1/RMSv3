@@ -20,7 +20,7 @@ if "!GH_TOKEN!"=="" (
     echo ve icine sunu yazin:
     echo GH_TOKEN=ghp_sizin_token_kodunuz
     echo.
-    echo (Bu .env dosyasi GitHub'a gonderilmez, sadece o bilgisayarda kalir ve isinizi kolaylastirir.)
+    echo Bu .env dosyasi GitHub'a gonderilmez, sadece o bilgisayarda kalir ve isinizi kolaylastirir.
     pause
     exit /b
 )
