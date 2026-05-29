@@ -8,6 +8,7 @@ import { logActivity } from '@/lib/activityLogger'
 import { WORKSPACE_SCOPE } from '@/lib/workspace'
 import { getBranchId, getStartupPath, readTerminalConfig } from '@/lib/terminalIdentity'
 import PairingScreen from '@/components/pos/PairingScreen'
+import GlobalUnpairGesture from '@/components/pos/GlobalUnpairGesture'
 
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
@@ -58,6 +59,7 @@ function DesktopPosShell() {
 
   return (
     <>
+      <GlobalUnpairGesture />
       <RouteActivityTracker />
       <Suspense fallback={<PageLoader />}>
         <Routes>
@@ -101,17 +103,17 @@ export default function DesktopPosApp() {
     <ToastProvider>
       <AuthProvider>
         <AuthGate>
-          <WorkspaceProvider
-            allowedScopes={[WORKSPACE_SCOPE.branch]}
-            forcedScope={WORKSPACE_SCOPE.branch}
-            forcedBranchId={terminalBranchId}
-          >
-            <WorkspaceGate>
-              <PairingGuard>
+          <PairingGuard>
+            <WorkspaceProvider
+              allowedScopes={[WORKSPACE_SCOPE.branch]}
+              forcedScope={WORKSPACE_SCOPE.branch}
+              forcedBranchId={terminalBranchId}
+            >
+              <WorkspaceGate>
                 <DesktopPosShell />
-              </PairingGuard>
-            </WorkspaceGate>
-          </WorkspaceProvider>
+              </WorkspaceGate>
+            </WorkspaceProvider>
+          </PairingGuard>
         </AuthGate>
       </AuthProvider>
     </ToastProvider>
