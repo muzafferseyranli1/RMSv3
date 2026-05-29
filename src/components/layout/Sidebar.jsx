@@ -189,9 +189,6 @@ const NAV = [
         label: 'Garson', path: '/garson', icon: 'fa-user-tie', color: '#38bdf8', bg: 'rgba(56,189,248,.18)',
         group: 'pos-garson',
         screenPath: '/garson-screen',
-        children: [
-          { label: 'Salon Masa Yonetimi', path: '/pos-masa', icon: 'fa-table-cells-large', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
-        ],
       },
       {
         label: 'Kiosk', icon: 'fa-tablet-screen-button', color: '#a78bfa', bg: 'rgba(167,139,250,.18)',
@@ -245,6 +242,8 @@ const NAV = [
     section: 'Ayarlar',
     icon: 'fa-gear',
     items: [
+      { label: 'Cihaz Yönetimi', path: '/cihaz-yonetimi', icon: 'fa-mobile-screen', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+      { label: 'Masa Düzeni', path: '/masa-duzeni', icon: 'fa-table-cells-large', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'Tahmin AyarlarÄ±', path: '/settings', icon: 'fa-gear', color: '#94a3b8', bg: 'rgba(148,163,184,.18)' },
       { label: 'Hesap Ã‡izelgesi', path: '/hesap-cizelgesi', icon: 'fa-book-bookmark', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
       { label: 'Muhasebe EÅŸleÅŸtirmeleri', path: '/muhasebe-eslestirmeleri', icon: 'fa-arrow-right-arrow-left', color: '#0f766e', bg: 'rgba(13,148,136,.16)' },

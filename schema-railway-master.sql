@@ -452,6 +452,7 @@ CREATE TABLE IF NOT EXISTS public.inventory_movements (
   created_by UUID,
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
+  created_by_terminal UUID,
   CONSTRAINT inventory_movements_pkey PRIMARY KEY (id),
   CONSTRAINT inventory_movements_calc_status_check CHECK (calc_status = ANY (ARRAY['pending'::text, 'calculated'::text, 'recalculate'::text, 'locked'::text])),
   CONSTRAINT inventory_movements_cancelled_check CHECK (is_cancelled = false AND cancelled_at IS NULL OR is_cancelled = true AND cancelled_at IS NOT NULL),
@@ -1030,6 +1031,27 @@ CREATE TABLE IF NOT EXISTS public.pos_sales (
   CONSTRAINT pos_sales_local_id_key UNIQUE (local_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.pos_terminals (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  terminal_id UUID NOT NULL,
+  branch_id UUID NOT NULL,
+  activation_code TEXT NOT NULL,
+  terminal_role TEXT DEFAULT 'slave'::text NOT NULL,
+  screen_mode TEXT DEFAULT 'pos'::text NOT NULL,
+  terminal_name TEXT,
+  last_seen_at TIMESTAMPTZ,
+  app_version TEXT,
+  is_active BOOLEAN DEFAULT true NOT NULL,
+  is_used BOOLEAN DEFAULT false NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT pos_terminals_pkey PRIMARY KEY (id),
+  CONSTRAINT pos_terminals_terminal_id_key UNIQUE (terminal_id),
+  CONSTRAINT pos_terminals_activation_code_key UNIQUE (activation_code),
+  CONSTRAINT pos_terminals_terminal_role_check CHECK (terminal_role = ANY (ARRAY['master'::text, 'slave'::text])),
+  CONSTRAINT pos_terminals_screen_mode_check CHECK (screen_mode = ANY (ARRAY['pos'::text, 'garson'::text, 'pos-masa'::text, 'pos-masalar'::text]))
+);
+
 CREATE TABLE IF NOT EXISTS public.price_changes (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   sale_item_id UUID,
@@ -1428,6 +1450,8 @@ CREATE TABLE IF NOT EXISTS public.sales (
   loyalty_selected_coupon_code TEXT,
   loyalty_applied_actions_json JSONB,
   loyalty_decision_context_json JSONB,
+  created_by_terminal UUID,
+  created_by_terminal_name TEXT,
   CONSTRAINT sales_pkey PRIMARY KEY (id),
   CONSTRAINT sales_discount_type_check CHECK (discount_type IS NULL OR (discount_type = ANY (ARRAY['percent'::text, 'amount'::text]))),
   CONSTRAINT sales_kds_status_check CHECK (kds_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'ready'::text, 'delivered'::text])),
@@ -1900,6 +1924,9 @@ CREATE INDEX idx_sales_sale_datetime ON public.sales USING btree (sale_datetime 
 CREATE INDEX idx_sales_sales_channel_id ON public.sales USING btree (sales_channel_id);
 CREATE INDEX idx_sales_status ON public.sales USING btree (status);
 CREATE UNIQUE INDEX sales_local_id_key ON public.sales USING btree (local_id);
+CREATE INDEX idx_pos_terminals_branch ON public.pos_terminals USING btree (branch_id);
+CREATE INDEX idx_pos_terminals_code ON public.pos_terminals USING btree (activation_code);
+CREATE INDEX idx_sales_terminal ON public.sales USING btree (created_by_terminal) WHERE (created_by_terminal IS NOT NULL);
 CREATE INDEX sales_forecasts_branch_idx ON public.sales_forecasts USING btree (branch_id);
 CREATE INDEX sales_forecasts_date_idx ON public.sales_forecasts USING btree (forecast_date DESC);
 CREATE UNIQUE INDEX sales_forecasts_forecast_date_branch_id_system_version_key ON public.sales_forecasts USING btree (forecast_date, branch_id, system_version);
@@ -2329,6 +2356,28 @@ AS $function$
     s.branch_name,
     date(timezone('Europe/Istanbul', s.sale_datetime))
   order by sale_day, branch_name;
+$function$;
+
+
+CREATE OR REPLACE FUNCTION public.generate_terminal_activation_code(p_branch_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_code TEXT;
+  v_exists BOOLEAN;
+BEGIN
+  LOOP
+    v_code := 'SUT-' ||
+      upper(substring(md5(random()::text), 1, 4)) || '-' ||
+      upper(substring(md5(random()::text), 1, 3));
+    SELECT EXISTS(
+      SELECT 1 FROM public.pos_terminals WHERE activation_code = v_code
+    ) INTO v_exists;
+    EXIT WHEN NOT v_exists;
+  END LOOP;
+  RETURN v_code;
+END;
 $function$;
 
 

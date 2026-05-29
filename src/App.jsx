@@ -31,6 +31,7 @@ const SalesChannels = lazy(() => import('@/components/pages/SalesChannels'))
 const Prices = lazy(() => import('@/components/pages/Prices'))
 const PriceChanges = lazy(() => import('@/components/pages/PriceChanges'))
 const Settings = lazy(() => import('@/components/pages/Settings'))
+const DeviceSettings = lazy(() => import('@/components/pages/DeviceSettings'))
 const ChartOfAccounts = lazy(() => import('@/components/pages/ChartOfAccounts'))
 const AccountingMappings = lazy(() => import('@/components/pages/AccountingMappings'))
 const PnLTemplateBuilder = lazy(() => import('@/components/pages/PnLTemplateBuilder'))
@@ -65,6 +66,7 @@ const LoyaltyCampaignWizard = lazy(() => import('@/components/loyalty/LoyaltyCam
 const LoyaltyCustomerCategories = lazy(() => import('@/components/pages/LoyaltyCustomerCategories'))
 const LoyaltyCouponSets = lazy(() => import('@/components/pages/LoyaltyCouponSets'))
 const LoyaltyReferralPrograms = lazy(() => import('@/components/pages/LoyaltyReferralPrograms'))
+const TableManagement = lazy(() => import('@/components/pages/TableManagement'))
 const MobileAppShells = lazy(() => import('@/components/pages/MobileAppShells'))
 const OrderFlows = lazy(() => import('@/components/pages/OrderFlows'))
 const CountFlows = lazy(() => import('@/components/pages/CountFlows'))
@@ -291,8 +293,6 @@ function AppShell() {
           <Routes>
             <Route path="/pos" element={<WorkspaceBranchScope><WorkspaceGate><POS /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/garson" element={<WorkspaceBranchScope><WorkspaceGate><Garson /></WorkspaceGate></WorkspaceBranchScope>} />
-            <Route path="/pos-masa" element={<WorkspaceBranchScope><WorkspaceGate><POSMasa /></WorkspaceGate></WorkspaceBranchScope>} />
-              <Route path="/pos-masalar" element={<WorkspaceBranchScope><WorkspaceGate><POSMasalar /></WorkspaceGate></WorkspaceBranchScope>} />
               <Route path="/kiosk" element={<WorkspaceBranchScope><WorkspaceGate><KioskBig /></WorkspaceGate></WorkspaceBranchScope>} />
               <Route path="/kiosk-big" element={<WorkspaceBranchScope><WorkspaceGate><KioskBig /></WorkspaceGate></WorkspaceBranchScope>} />
               <Route path="/kiosk-tablet" element={<WorkspaceBranchScope><WorkspaceGate><KioskTablet /></WorkspaceGate></WorkspaceBranchScope>} />
@@ -341,6 +341,9 @@ function AppShell() {
               <Route path="/options" element={<Options />} />
               <Route path="/prices" element={<Prices />} />
               <Route path="/price-changes" element={<PriceChanges />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/cihaz-yonetimi" element={<DeviceSettings />} />
+              <Route path="/masa-duzeni" element={<WorkspaceBranchScope><TableManagement /></WorkspaceBranchScope>} />
               <Route path="/reports" element={<Reports scopeVariant="center" initialTab="overview" />} />
               <Route path="/activity-logs" element={<ActivityLogs />} />
               <Route path="/stock-items" element={<StockItems />} />

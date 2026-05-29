@@ -1,3 +1,5 @@
+import { getTerminalRole, getSlaveConfig, getTerminalId, getBranchId, isDesktopMode, injectTerminalFields } from './terminalIdentity.js'
+
 const DEFAULT_API_URL = 'https://rms-api-production-219d.up.railway.app'
 const LOCAL_API_URLS = ['http://127.0.0.1:3001', 'http://localhost:3001']
 const API_URL_CACHE_KEY = 'suitable_rms_api_base_url_v1'
@@ -88,6 +90,41 @@ async function queryApi(body) {
   } catch (err) {
     return { data: null, error: { message: err.message } }
   }
+}
+
+async function routedQueryApi(body) {
+  if (!isDesktopMode()) {
+    // Web/dev ortamı → mevcut Railway yolu (hiç değişmez)
+    return queryApi(body)
+  }
+
+  const role = getTerminalRole()
+
+  if (role === 'slave') {
+    // YAN KASA → Ana Kasanın LAN HTTP sunucusuna gönder
+    const { masterIp, masterPort } = getSlaveConfig()
+    const response = await fetch(`http://${masterIp}:${masterPort}/lan/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Terminal-Id': getTerminalId() ?? '',
+        'X-Branch-Id': getBranchId() ?? '',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) throw new Error(`LAN query failed: ${response.status}`)
+    return response.json()
+  }
+
+  if (role === 'master') {
+    // ANA KASA → Kendi LAN sunucusuna istek atmadan doğrudan IPC ile
+    // (main process'te executeQuery çağrılır — FAZ 6'da IPC handler eklenir)
+    // Şimdilik fallback: normal Railway yolu
+    return queryApi(body)
+  }
+
+  // Pairing yapılmamış → normal Railway yolu
+  return queryApi(body)
 }
 
 export function getApiBaseUrl() {
@@ -205,12 +242,17 @@ class QueryBuilder {
   }
 
   _execute() {
-    return queryApi({
+    let finalData = this._data
+    if (isDesktopMode() && this._operation !== 'select') {
+      finalData = injectTerminalFields(this._table, this._data)
+    }
+
+    return routedQueryApi({
       table: this._table,
       operation: this._operation,
       select: this._select,
       filters: this._filters,
-      data: this._data,
+      data: finalData,
       options: this._options,
     })
   }
@@ -223,7 +265,7 @@ class QueryBuilder {
 export const db = {
   from: (table) => new QueryBuilder(table),
 
-  rpc: (name, params = {}) => queryApi({ rpc: name, params }),
+  rpc: (name, params = {}) => routedQueryApi({ rpc: name, params }),
 
   auth: {
     getUser: async () => ({ data: { user: null }, error: null }),

@@ -104,3 +104,63 @@ Bu dokümanda, envanter hareketlerindeki ağırlıklı ortalama maliyet (WAC) he
     - `Tasks.jsx` sayfa açılışında `form_templates` tablosundan aktif şablonları yükleyerek "Yeni Görev" oluşturma modalında "Görevin Formu (İsteğe Bağlı)" adında bir dropdown üzerinden seçilebilir hale getirdi.
     - Görev detay çekmecesinde (`TaskDrawer`) göreve atanmış bir form şablonu varsa, mavi sol kenarlıklı özel bir "Görev Formu" kartı ve üzerinde "Form Doldur: [Şablon Başlığı]" butonu eklendi.
   - **Otomatik Doldurma Modalı**: `FormSubmissions.jsx` rotasında URL query parametresi olarak gelen `fillTemplateId` yakalanarak, sayfa açıldığında ilgili form şablonunun doldurma modalı (`startFillForm`) otomatik olarak tetiklendi ve tetiklenme sonrası URL parametresi temizlendi.
+
+---
+
+### 9. POS Terminal Kayıt ve Aktivasyon Sistemi Entegrasyonu (FAZ 0-C)
+
+- **Veritabanı Migrasyonu**: [020_pos_terminal_registry.sql](file:///c:/RMSv3/migrations/020_pos_terminal_registry.sql) dosyası oluşturuldu ve canlı Railway Postgres veritabanına `scripts/run-migration-020.cjs` betiği vasıtasıyla başarıyla uygulandı.
+- **Şema Güncellemesi (Master Schema Sync)**: [schema-railway-master.sql](file:///c:/RMSv3/schema-railway-master.sql) dosyası güncellenerek:
+  - `public.pos_terminals` tablosunun (aktivasyon kodu, terminal rolü, ekran modu, tek kullanımlık durum) tanımı eklendi.
+  - `public.sales` tablosuna terminal bazlı izlenebilirlik için `created_by_terminal` (UUID) ve `created_by_terminal_name` (TEXT) kolonları eklendi.
+  - `public.inventory_movements` tablosuna `created_by_terminal` (UUID) kolonu eklendi.
+  - İlgili performans indeksleri (`idx_pos_terminals_branch`, `idx_pos_terminals_code`, `idx_sales_terminal`) eklendi.
+  - Şubelere özel benzersiz aktivasyon kodu üreten `public.generate_terminal_activation_code` saklı yordamı (PL/pgSQL function) eklendi.
+- **Doğrulama**:
+  - \`is_used\` kolonu tek kullanımlık aktivasyon kodları için başarıyla eklendi.
+  - \`screen_mode\` check constraint doğru değerleri (\`pos\`, \`garson\`, \`pos-masa\`, \`pos-masalar\`) kapsayacak şekilde tanımlandı.
+  - Proje \`npm run build\` ile hatasız ve başarılı bir şekilde derlendi.
+
+---
+
+### 10. SQLite Yerel Veritabanı Katmanı (FAZ 1)
+
+- **Paket Entegrasyonu**: \`package.json\` dosyasına Node.js 24 ve Electron uyumlu, prebuilt binary desteği sunan \`better-sqlite3@^12.1.0\` eklendi. Paket yüklemeleri sonrası native bindings'i Electron ortamı için otomatik derleyen \`"postinstall": "electron-rebuild -f -w better-sqlite3 --only better-sqlite3"\` betiği tanımlandı.
+- **Yerel SQLite Deposu**: [desktop/sqliteStore.cjs](file:///c:/RMSv3/desktop/sqliteStore.cjs) oluşturuldu:
+  - **getDb()**: Singleton bağlantı döndürür, Electron dışı test ortamları için \`./scratch\` dizin fallback'i içerir.
+  - **Pragmalar**: \`journal_mode = WAL\`, \`foreign_keys = ON\`, \`synchronous = NORMAL\` etkinleştirildi.
+  - **Tablolar**: \`catalog_cache\` (önbellek), \`offline_queue\` (çevrimdışı SQL işlem sırası), \`terminal_registry\` (terminal kayıt defteri), \`open_tickets_mirror\` (açık adisyon ayna tablosu) şemaları otomatik kurulur.
+- **İş Mantığı ve Metotlar**:
+  - **Önbellek TTL Kontrolü**: Önbellek süresi dolduğunda veriyi otomatik silip \`null\` döndüren \`getCatalogCache\` mantığı kuruldu.
+  - **Güvenli Yeniden Deneme (Retry Limit) Mantığı**: \`markWriteFailed\` metodu ile çevrimdışı işlem hatalarında \`retry_count\` artırılması, hatanın kaydedilmesi ve 5 başarısız denemeden sonra durumun \`'failed'\` olarak kilitlenmesi sağlandı.
+- **Birim Testleri**:
+  - \`npx electron scratch/test-sqlite-store.cjs\` betiği ile tüm iş kuralları ve SQLite pragmaları Electron Main Process bağlamında test edilerek **%100 başarıyla** doğrulandı.
+  - Proje \`npm run build\` ile hatasız ve başarılı bir şekilde derlendi.
+
+---
+
+### 11. Sync Worker Çevrimdışı Kuyruk Senkronizasyonu (FAZ 3)
+
+- **Sync Worker Modülü**: [desktop/syncWorker.cjs](file:///c:/RMSv3/desktop/syncWorker.cjs) dosyası oluşturuldu:
+  - **İnternet İzleme**: \`dns.lookup()\` ile API host izleniyor. Bütçe ve sunucu trafiğini yormamak adına \`setInterval\` kullanılmamış, asenkron \`setTimeout(check, 30000)\` (30 saniyelik kontrollü periyot) zincirleme yapısıyla takip kurulmuştur.
+  - **flushQueue Motoru**: Kuyruktan bekleyen en fazla 50 işlemi (\`getPendingWrites(50)\`) asenkron sıralı şekilde çekip Railway Postgres sunucusuna aktaran motor geliştirildi. İşlemin durumuna göre \`markWriteDone\` veya \`markWriteFailed\` SQLite metotları çağrılır.
+  - **Network Error Short-Circuit**: Ağ hatası alındığında (\`ENOTFOUND\` veya \`ECONNREFUSED\` hata mesajlarında) **işlem sırası döngüsü derhal kesilir (break)**.
+- **Birim Testleri**:
+  - \`npx electron scratch/test-sync-worker.cjs\` betiği ile internet izleme geçiş kuralları, asenkron \`flushQueue\` basamakları ve ağ hatalarındaki erken kesilme (break) mekanizmaları Electron Main Process bağlamında simüle edildi ve **%100 başarıyla** doğrulandı.
+  - Proje \`npm run build\` ile hatasız ve başarılı bir şekilde derlendi.
+
+---
+
+### 12. created_by_terminal Enjeksiyonu (FAZ 7)
+
+- **Terminal Identity Enjeksiyon Metodu**: [src/lib/terminalIdentity.js](file:///c:/RMSv3/src/lib/terminalIdentity.js) dosyası güncellenerek \`injectTerminalFields(tableName, data)\` fonksiyonu eklendi. Bu fonksiyon, hedef tablo adı \`'sales'\`, \`'sale_lines'\` veya \`'inventory_movements'\` ise ve aktif terminal ID'si mevcutsa veri gövdesine otomatik olarak \`created_by_terminal = terminalId\` enjekte eder.
+- **db.js Entegrasyonu**: [src/lib/db.js](file:///c:/RMSv3/src/lib/db.js) güncellenerek:
+  - \`terminalIdentity.js\`'den \`injectTerminalFields\` import edildi.
+  - \`QueryBuilder._execute()\` metodu içerisinde, eğer masaüstü/Electron modunda çalışılıyorsa (\`isDesktopMode() === true\`) ve işlem \`select\` değilse insert/upsert sorgu verisi \`injectTerminalFields\` ile otomatik zenginleştirilecek şekilde tasarlandı.
+  - Web modunda zenginleştirme tamamen bypass edilerek standart tarayıcı uyumluluğu korundu.
+- **Birim Testleri**:
+  - \`npx electron scratch/test-terminal-injection.cjs\` betiği ile tablo filtreleme, tekil/çoğul kayıt formatları, desktop mod kontrolü ve \`db.from('sales').insert()\` entegrasyonu Electron Main Process bağlamında test edilerek **%100 başarıyla** doğrulanmıştır.
+  - Proje \`npm run build\` ile hatasız ve başarılı bir şekilde derlendi.
+
+
+

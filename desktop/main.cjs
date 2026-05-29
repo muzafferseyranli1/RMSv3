@@ -3,6 +3,11 @@ const fs = require('fs')
 const http = require('http')
 const path = require('path')
 
+const { isPaired, isMaster, readConfig, getStartupRoute } = require('./terminalConfig.cjs')
+const { startEdgeServer, stopEdgeServer } = require('./edgeServer.cjs')
+const { initSyncWorker } = require('./syncWorker.cjs')
+const { ipcMain } = require('electron')
+
 const DESKTOP_PORT = Number(process.env.DESKTOP_SERVER_PORT || 4173)
 const HOST = '127.0.0.1'
 const DIST_DIR = path.join(__dirname, '..', 'dist-desktop-web')
@@ -144,6 +149,7 @@ async function createWindow(baseUrl) {
     minWidth: 1200,
     minHeight: 760,
     autoHideMenuBar: true,
+    fullscreen: true,
     show: false,
     backgroundColor: '#0f172a',
     webPreferences: {
@@ -166,14 +172,51 @@ async function createWindow(baseUrl) {
   })
 
   await waitForServer(baseUrl)
-  await mainWindow.loadURL(`${baseUrl}/pos`)
+  const startRoute = isPaired() ? getStartupRoute() : '/pairing'
+  await mainWindow.loadURL(`${baseUrl}${startRoute}`)
 }
 
 app.whenReady().then(async () => {
   try {
+    if (isPaired() && isMaster()) {
+      const railwayBaseUrl = process.env.VITE_API_URL || 'https://rms-api-production-219d.up.railway.app'
+      async function railwayQueryFn(body) {
+        const res = await fetch(`${railwayBaseUrl}/api/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        return res.json()
+      }
+      startEdgeServer(railwayQueryFn)
+      initSyncWorker(railwayQueryFn)
+    }
+
+    const { initAutoUpdater, autoUpdater } = require('./updater.cjs')
+
+    ipcMain.handle('terminal:getConfig', () => readConfig())
+    ipcMain.handle('queue:getSize', () => {
+      try {
+        const { getQueueSize } = require('./sqliteStore.cjs')
+        return getQueueSize()
+      } catch { return 0 }
+    })
+    ipcMain.handle('update:apply', () => autoUpdater.quitAndInstall(false, true))
+
     const serverState = await createStaticServer()
     staticServer = serverState.server
     await createWindow(serverState.baseUrl)
+    initAutoUpdater(mainWindow)
+
+    mainWindow.webContents.on('did-finish-load', () => {
+      const config = readConfig()
+      if (config) {
+        mainWindow.webContents.executeJavaScript(
+          `window.__ELECTRON_TERMINAL_CONFIG__ = ${JSON.stringify(config)};
+           window.__DESKTOP_MODE__ = true;`
+        )
+      }
+    })
   } catch (error) {
     dialog.showErrorBox(
       'SuitableRMS POS baslatilamadi',
@@ -184,6 +227,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  try { stopEdgeServer() } catch (e) {}
   if (staticServer) {
     staticServer.close()
     staticServer = null

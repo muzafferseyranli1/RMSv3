@@ -55,15 +55,20 @@
     "enrich:sale-showcase-pricing:audit": "node scripts/enrich-sale-showcase-pricing.mjs --audit-only",
     "enrich:sale-showcase-pricing:verify": "node scripts/enrich-sale-showcase-pricing.mjs --verify-only",
     "check:encoding": "node scripts/check-mojibake.mjs",
-    "check:protected-docs": "node scripts/check-protected-docs.mjs"
+    "check:protected-docs": "node scripts/check-protected-docs.mjs",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 --only better-sqlite3"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "html2canvas": "^1.4.1",
+    "lucide-react": "^1.17.0",
     "pdfjs-dist": "^4.3.136",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
+    "ws": "^8.21.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -71,8 +76,10 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
+    "better-sqlite3": "^12.10.0",
     "electron": "^35.1.5",
     "electron-builder": "^26.0.12",
+    "electron-updater": "^6.1.8",
     "pg": "^8.16.3",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
@@ -85,19 +92,34 @@
       "output": "release"
     },
     "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "muzafferseyranli",
+      "repo": "SuitableRMS-Releases"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "files": [
       "dist-desktop-web/**/*",
-      "desktop/main.cjs",
+      "desktop/**/*.cjs",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/ws/**/*",
       "package.json"
     ],
     "extraMetadata": {
       "main": "desktop/main.cjs"
-    },
-    "win": {
-      "signAndEditExecutable": false,
-      "target": [
-        "portable"
-      ]
     }
   }
 }

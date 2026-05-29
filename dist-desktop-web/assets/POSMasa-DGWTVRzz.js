@@ -1,0 +1,1 @@
+import{a as s,u as t,j as r}from"./desktop-bG6H2UD6.js";import{T as n}from"./TableManagementModal-BazckTLP.js";import"./posTableCatalogService-GRzWec9j.js";function p(){const a=s(),{branchId:e,branchName:o}=t();return r.jsx(n,{open:!0,embedded:!0,branchId:e,branchName:o,onClose:()=>a("/garson")})}export{p as default};

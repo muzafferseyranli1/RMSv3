@@ -6969,3 +6969,233 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `Gelecek tarihli satışların (/forecast) sayfasındaki gerçekleşen satış sütunlarında ve grafiklerde gösterilmemesi ve toplam tutarlardaki string birleşme sorunu Forecast.jsx üzerinde yapılan safeNumber ve dinamik tarih sorgusu düzeltmeleriyle başarıyla çözülmüş, frontend derlemesi (build) doğrulanmış ve senkronizasyon dokümanları docs/ altına aktarılmıştır.`
 
 
+
+## Entry 036
+
+- `Timestamp`: `2026-05-29T14:56:32.6686017+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 0-B — Pairing Wizard UI uygulandı`
+- `Intent`: `Terminal kimliklendirme akışının 4 adımlı UI bileşenini (PairingScreen.jsx) oluşturmak`
+- `Files Read`:
+  - `src/lib/terminalIdentity.js`
+  - `src/index.css`
+  - `.antigravityrules.md`
+- `Files Changed`:
+  - `src/components/pos/PairingScreen.jsx` (YENİ)
+- `Commands Run`:
+  - `mkdir c:\RMSv3\src\components\pos`
+  - `npm run build:desktop:web`
+- `Findings`:
+  - `PairingScreen.jsx Vanilla CSS, css variable'ları kullanılarak yazıldı.` 
+  - `Build sorunsuz tamamlandı.`
+- `Decisions`:
+  - `PairingScreen.jsx veritabanından şube sorgulama, terminal rolü, IP adresi ve ekran modu seçimlerini yapıyor.` 
+  - `CustomEvent('terminal:pairing-complete') tetikleyerek sandbox üzerinden Electron'a (preload/IPC) haber verilmesini sağlıyor.`
+- `Open Risks`:
+  - `Henüz App.jsx (Root Router) entegrasyonu yapılmadı. Sonraki adımda UI testleri ile birlikte App.jsx root'a konulması gerekiyor.`
+- `Next Step`: `App.jsx'e PairingScreen'in entegrasyonunu yapıp uygulamanın başlangıç adımını test etmek.`
+- `Handoff Contract`: `Sonraki agent PairingScreen.jsx'in eklendiğini bilsin ve terminal konfigürasyonlarını (terminalConfig.cjs) App.jsx'e bağlasın.`
+
+
+## Entry 176 - 2026-05-29
+
+- `Timestamp`: `2026-05-29T15:12:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 0-C — Railway Migration (Terminal Kayıt Tablosu)`
+- `Intent`: `POS terminal aktivasyon ve kayıt sisteminin SQL migrasyonunu oluşturmak, canlı veritabanına uygulamak ve master şema ile senkronize etmek.`
+- `Files Read`:
+  - `c:\RMSv3\protected-docs.json`
+  - `c:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `c:\RMSv3\.antigravityrules.md`
+  - `c:\RMSv3\OperationSync.md`
+  - `c:\RMSv3\schema-railway-master.sql`
+- `Files Changed`:
+  - `c:\RMSv3\migrations\020_pos_terminal_registry.sql` (YENİ) — Terminal kayıt tablosu, sales/inventory_movements izlenebilirlik kolonları, indeksler ve generate_terminal_activation_code fonksiyonunun tanımlandığı SQL migrasyon dosyası.
+  - `c:\RMSv3\scripts\run-migration-020.cjs` (YENİ) — Migrasyonu canlı Railway Postgres veritabanına uygulayan asenkron Node.js betiği.
+  - `c:\RMSv3\schema-railway-master.sql` (MODIFY) — Yeni şema tanımları (pos_terminals tablosu, created_by_terminal alanları, indeksler ve aktivasyon kodu üretici fonksiyon) master şema dosyasına eklendi.
+  - `c:\RMSv3\docs\implementation_plan.md` (MODIFY) — Geliştirme planı güncellendi.
+  - `c:\RMSv3\docs\task.md` (MODIFY) — Görev takip listesi güncellendi.
+  - `c:\RMSv3\docs\walkthrough.md` (MODIFY) — Walkthrough belgesi güncellendi.
+- `Commands Run`:
+  - `node scripts/run-migration-020.cjs` (Migrasyon canlı Railway Postgres veritabanına sıfır hata ile başarıyla uygulandı)
+  - `npm run build` (Tüm projenin sorunsuz derlendiği teyit edildi)
+- `Findings`:
+  - `pos_terminals` tablosuna `is_used` kolonu ve `screen_mode` alanına `pos`, `garson`, `pos-masa`, `pos-masalar` değerlerini kısıtlayan PostgreSQL CHECK constraint başarıyla eklendi.
+- `Decisions`:
+  - Proje mimarisinin DB-first bütünlüğünü ve taşınabilirliğini korumak adına tüm şema güncellemeleri eş zamanlı olarak `schema-railway-master.sql` dosyasına pg_dump uyumlu formatta işlenmiştir.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `POS Terminal aktivasyon ve kayıt altyapısı veritabanı katmanında (020 nolu SQL migrasyonu, indeksler, master şema senkronizasyonu ve aktivasyon kodu üretici fonksiyonu ile) %100 başarıyla tamamlanmıştır. Veritabanı ve derleme testleri sıfır hata ile sonuçlanmıştır.`
+
+
+
+## Entry 037
+
+- `Timestamp`: `2026-05-29T15:18:30.6472431+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 4 — db.js LAN/Railway Router Implementation`
+- `Intent`: `db.js üzerindeki query akışını cihazın Master/Slave durumuna göre yerel LAN veya Railway hedeflerine yönlendirmek.`
+- `Files Read`:
+  - `src/lib/db.js`
+  - `src/lib/terminalIdentity.js`
+- `Files Changed`:
+  - `src/lib/db.js`
+- `Commands Run`:
+  - `npm run build:desktop:web`
+- `Findings`:
+  - `routedQueryApi eklendi ve QueryBuilder._execute() ile rpc() çağrıları routedQueryApi'ye yönlendirildi.`
+  - `Slave modunda (Yan Kasa) fetch çağrısı http://{ip}:{port}/lan/query formatında, gerekli header'lar ile gönderiliyor.`
+  - `Build sorunsuz tamamlandı.`
+- `Decisions`:
+  - `VITE_DESKTOP_MODE vs. kontrolü isDesktopMode() üzerinden yapıldığı için queryApi varlığı korundu, yalnızca terminal kimliği mevcutsa ve rolü Slave ise yerel LAN rotası çalışacak şekilde güncellendi.`
+- `Open Risks`:
+  - `LAN query endpointi (Ana Kasa local sunucusu) henüz ayakta değil (FAZ 5/6 konusu). Yan kasa olarak çalıştırıldığında fetch fail edecektir.`
+- `Next Step`: `LAN sunucusunu (Express/IPC) Ana Kasa modunda ayağa kaldırmak.`
+- `Handoff Contract`: `Sonraki agent db.js üzerinden yapılan sorguların Slave modda LAN üzerinden gönderildiğini, diğer modlarda ise doğrudan Railway (veya normal) queryApi fallback rotasını kullandığını bilsin.`
+
+
+## Entry 177 - 2026-05-29
+
+- `Timestamp`: `2026-05-29T15:23:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 1 — SQLite Yerel Veritabanı Katmanı`
+- `Intent`: `better-sqlite3 ile Ana Kasa yerel SQLite veritabanı veri katmanını oluşturmak, paket entegrasyonu yapmak ve Electron native binding'lerini rebuild etmek.`
+- `Files Read`:
+  - `package.json`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `package.json` (MODIFY) — `devDependencies` alanına `better-sqlite3@^12.1.0` (Node 24 prebuilt ikili uyumlu) ve postinstall altına `electron-rebuild -f -w better-sqlite3 --only better-sqlite3` yerleştirildi.
+  - `desktop/sqliteStore.cjs` (YENİ) — Singleton bağlantı deseni, WAL/Synchronous/FK pragmaları, catalog_cache önbelleği (TTL limit korumasıyla), offline_queue kuyruğu (5 retry limit korumasıyla), terminal_registry ve open_tickets_mirror işlevsel metotlarını barındıran yerel veri deposu katmanı.
+  - `docs/implementation_plan.md` (MODIFY) — Geliştirme planı güncellendi.
+  - `docs/task.md` (MODIFY) — Görev takip listesi güncellendi.
+  - `docs/walkthrough.md` (MODIFY) — Walkthrough belgesi güncellendi.
+- `Commands Run`:
+  - `npm install` (better-sqlite3 native bindings Electron 133 ABI ile sıfır hata ile rebuild edildi)
+  - `npx electron scratch/test-sqlite-store.cjs` (Tüm birim testleri ve pragma iş kuralları Electron Main Process bağlamında test edilerek %100 başarıyla doğrulandı)
+  - `npm run build` (Üretim derleme testi sıfır hata ile tamamlandı)
+- `Findings`:
+  - better-sqlite3 version `^12.1.0` kullanılarak Node v24.14.0 için prebuilt ikili dosyalarıyla Visual Studio gereksinimi duymadan sorunsuz kurulum sağlandı.
+  - `electron-rebuild` için `--only better-sqlite3` parametresi geçilerek `canvas` gibi projede yer alan ve build toolchain engeli çıkaran diğer native paketlerin derleme aşaması atlatıldı.
+- `Decisions`:
+  - SQLite singleton yapısının Electron dışı geliştirme/test ortamlarında ReferenceError fırlatmaması için `app.getPath('userData')` çağrısına `./scratch` dizin fallback'i konumlandırıldı.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `better-sqlite3 yerel veritabanı katmanı (sqliteStore.cjs, tablo şemaları, WAL pragmaları, TTL ve 5 retry limit kuralları dahil) Electron Main Process uyumlu olarak %100 başarıyla tamamlanmıştır. Testler sıfır hata ile yeşillenmiştir.`
+
+
+
+## Entry 038
+
+- `Timestamp`: `2026-05-29T15:28:01.7091855+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 2 — Local Edge Server (Express + WebSocket) Oluşturuldu`
+- `Intent`: `Ana kasanın yan kasalara hizmet vereceği yerel LAN servisini ayağa kaldırmak.`
+- `Files Read`:
+  - `desktop/sqliteStore.cjs`
+  - `desktop/terminalConfig.cjs`
+  - `server/index.js`
+- `Files Changed`:
+  - `package.json` (express, ws, cors eklendi)
+  - `desktop/edgeServer.cjs` (YENİ)
+- `Commands Run`:
+  - `npm install express ws cors`
+- `Findings`:
+  - `Express HTTP sunucusu port 4000'de, WebSocket sunucusu port 4001'de başlatılacak şekilde kodlandı.`
+  - `x-branch-id kontrolü eklendi.`
+  - `sqliteStore tabanlı önbellek stratejisi (TTL) ve offline yazma kuyruğu entegre edildi.`
+- `Decisions`:
+  - `TTL politikaları istenilen sürelerle haritalandı.`
+  - `Yalnızca operation === 'select' için önbellek bakılıyor, write işlemleri (update vb.) doğrudan Railway'e gidiyor, başarılı olursa WS ile broadcast yapılıyor.`
+- `Open Risks`:
+  - `better-sqlite3 Electron için derlendiği için doğrudan node komutuyla test edilirken NODE_MODULE_VERSION çakışması yaşandı. Servisin main.cjs (Electron) içinden başlatılması gerekiyor.`
+- `Next Step`: `main.cjs üzerinde edgeServer.cjs'i içe aktarıp Ana Kasa modunda startEdgeServer() çağırmak (FAZ 5 veya 6 kapsamı olabilir).`
+- `Handoff Contract`: `Sonraki agent edgeServer.cjs'in Ana kasa LAN sunucusu olarak görev yaptığını, 4000/4001 portlarını kullandığını ve yan kasalardan gelecek istekleri Railway'e veleyip (veya cache'leyip) sonucu döndürdüğünü bilsin. main.cjs güncellemelerinde kullanılacaktır.`
+
+
+## Entry 178 - 2026-05-29
+
+- `Timestamp`: `2026-05-29T15:32:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 3 — Sync Worker (Offline Queue → Railway)`
+- `Intent`: `Çevrimdışı biriken SQL sorgularını, internet bağlantısı sağlandığında otomatik olarak Railway Postgres veritabanına aktaran asenkron Sync Worker motorunu tasarlamak.`
+- `Files Read`:
+  - `desktop/edgeServer.cjs`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `desktop/syncWorker.cjs` (YENİ) — 30 saniyelik dns.lookup loop periyotları ile asenkron internet bağlantı takibi yapan, syncInProgress bayrağıyla çift flush tetiklenmesini koruyan, ENOTFOUND/ECONNREFUSED ağ hatalarında döngüyü derhal kesen senkronizasyon çalıştırıcısı.
+  - `docs/implementation_plan.md` (MODIFY) — Geliştirme planı güncellendi.
+  - `docs/task.md` (MODIFY) — Görev takip listesi güncellendi.
+  - `docs/walkthrough.md` (MODIFY) — Walkthrough belgesi güncellendi.
+- `Commands Run`:
+  - `npx electron scratch/test-sync-worker.cjs` (Çevrimdışı kuyruk boşaltma, asenkron batching, syncInProgress guard ve ağ kesilme kuralları Electron Main Process bağlamında simüle edilerek %100 başarıyla doğrulandı)
+  - `npm run build` (Tüm projenin sorunsuz derlendiği teyit edildi)
+- `Findings`:
+  - `setInterval` yerine asenkron zincirlenmiş `setTimeout(check, 30000)` tercih edilerek ağ ve işlemci yükleri optimize edildi.
+  - `ENOTFOUND` ağ hatası fırlatıldığında senkronizasyon döngüsünün anında kesildiği (short-circuit) ve bir sonraki deneme periyoduna kadar asenkron kuyruk işlemesinin askıya alındığı doğrulandı.
+- `Decisions`:
+  - Railway API sunucusuna doğrudan istek atmadan önce `dns.lookup` ile host adresi kontrolü yapılarak sunucu trafiği optimize edildi.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `syncWorker.cjs modülü (initSyncWorker, flushQueue, syncInProgress guard ve network error break kuralı dahil) %100 başarıyla tamamlanmış ve test edilmiştir.`
+
+
+
+## Entry 039
+
+- `Timestamp`: `2026-05-29T15:34:34.8095525+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 6 — main.cjs + DesktopPosApp.jsx Entegrasyonu`
+- `Intent`: `DesktopPosApp'te PairingGuard kurgusunu aktif edip, main.cjs içerisinde terminal kimliğine göre (Master/Slave) Edge Server'ı ve Sync Worker'ı başlatmak. Ayrıca yapılandırma dosyasını (config) web ortamına IPC ve window nesnesi üzerinden inject etmek.`
+- `Files Read`:
+  - `desktop/main.cjs`
+  - `src/DesktopPosApp.jsx`
+  - `desktop/terminalConfig.cjs`
+  - `desktop/syncWorker.cjs`
+- `Files Changed`:
+  - `desktop/main.cjs`
+  - `src/DesktopPosApp.jsx`
+- `Commands Run`:
+  - `npm run build:desktop:web`
+- `Findings`:
+  - `isMaster() ise Edge Server (port 4000/4001) ve Sync Worker başlatıldı.`
+  - `window.__ELECTRON_TERMINAL_CONFIG__ ve window.__DESKTOP_MODE__ basarili bir sekilde executeJavaScript ile inject edildi.`
+  - `IPC handler'lar (terminal:getConfig, queue:getSize) ipcMain üzerinden baglandi.`
+  - `PairingGuard yazildi ve isPaired() false ise PairingScreen gosterildi.`
+  - `Build sorunsuz (vite v5.4.21, 12s) tamamlandı.`
+- `Decisions`:
+  - `DesktopPosApp'teki Routes degistirilmedi, PairingGuard ile sarmalandi. Eger pairing yoksa Routes yerine PairingScreen cikar, routes'a dusmez.`
+  - `stopEdgeServer(), app.on('window-all-closed') altinda try-catch blogunda guncellendi.`
+- `Open Risks`:
+  - `PairingScreen sonrasinda reload cagiriliyor. Bu yeniden baslamayi saglayacak, main.cjs tarafinda preload ve executeJavaScript dogru zamanda inject edildigi surece config sorunu olmayacak.`
+- `Next Step`: `Kurulumu bitmis olan projede FAZ testleri veya gerekiyorsa FAZ 7'ye (Slave Terminal Syncing / IPC Köprüsü) geçis.`
+- `Handoff Contract`: `Sonraki agent uygulamanın tamamen FAZ-1,2,3,4,6 mimarisi ile baglandigini, artik Desktop uygulamasinin master/slave modlarinda kendi yerel api agina sahip oldugunu bilsin.`
+
+
+## Entry 179 - 2026-05-29
+
+- `Timestamp`: `2026-05-29T15:42:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `FAZ 7 — created_by_terminal Enjeksiyonu`
+- `Intent`: `Çevrimdışı/çevrim içi POS fiş yazımında terminal bazlı izlenebilirlik sağlamak üzere created_by_terminal alanını insert/upsert SQL sorgularına otomatik enjekte etmek.`
+- `Files Read`:
+  - `src/lib/terminalIdentity.js`
+  - `src/lib/db.js`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `src/lib/terminalIdentity.js` (MODIFY) — `injectTerminalFields(tableName, data)` fonksiyonu eklenerek `'sales'`, `'sale_lines'` ve `'inventory_movements'` tabloları için terminal ID enjeksiyonu tanımlandı.
+  - `src/lib/db.js` (MODIFY) — `injectTerminalFields` fonksiyonu içe aktarıldı ve `QueryBuilder._execute()` metodu, `isDesktopMode() && operation !== 'select'` durumunda insert/upsert sorgu verisini otomatik zenginleştirecek şekilde güncellendi.
+  - `docs/implementation_plan.md` (MODIFY) — Geliştirme planı güncellendi.
+  - `docs/task.md` (MODIFY) — Görev takip listesi güncellendi.
+  - `docs/walkthrough.md` (MODIFY) — Walkthrough belgesi güncellendi.
+- `Commands Run`:
+  - `npx electron scratch/test-terminal-injection.cjs` (Tablo filtreleme, tekil/çoğul kayıt formatları, web/desktop mod bypass kuralları ve db.from() entegrasyonu Electron Main Process bağlamında test edilerek %100 başarıyla doğrulandı)
+  - `npm run build` (Tüm projenin sorunsuz derlendiği teyit edildi)
+- `Findings`:
+  - Enjeksiyon işlemi sadece hedeflenen 3 kritik tabloyu etkilerken, web modunda (`isDesktopMode() === false`) veya untracked tablolarda (örneğin `'customers'`) veri gövdesinin hiçbir değişikliğe uğramadan aynen döndüğü doğrulandı.
+- `Decisions`:
+  - Modüller arası temiz kod bütünlüğünü korumak adına tüm enjeksiyon kuralları tekil olarak `terminalIdentity.js` içerisinde tutulmuş ve `db.js`'e minimum müdahale ile entegre edilmiştir.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `created_by_terminal alan enjeksiyon altyapısı hem veri istemci (db.js) hem de terminal kimlik (terminalIdentity.js) katmanlarında %100 başarıyla tamamlanmış ve test edilmiştir.`
+
+
