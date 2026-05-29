@@ -3,7 +3,7 @@ const fs = require('fs')
 const http = require('http')
 const path = require('path')
 
-const { isPaired, isMaster, readConfig, getStartupRoute } = require('./terminalConfig.cjs')
+const { isPaired, isMaster, readConfig, writeConfig, getStartupRoute } = require('./terminalConfig.cjs')
 const { startEdgeServer, stopEdgeServer } = require('./edgeServer.cjs')
 const { initSyncWorker } = require('./syncWorker.cjs')
 const { ipcMain } = require('electron')
@@ -156,6 +156,7 @@ async function createWindow(baseUrl) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   })
 
@@ -195,6 +196,10 @@ app.whenReady().then(async () => {
     const { initAutoUpdater, autoUpdater } = require('./updater.cjs')
 
     ipcMain.handle('terminal:getConfig', () => readConfig())
+    ipcMain.handle('terminal:save-config', async (_, payload) => {
+      writeConfig(payload)
+      return { ok: true }
+    })
     ipcMain.handle('queue:getSize', () => {
       try {
         const { getQueueSize } = require('./sqliteStore.cjs')

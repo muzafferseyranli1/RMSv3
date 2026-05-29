@@ -17,15 +17,16 @@ function overlayStyle() {
 
 function cardStyle() {
   return {
-    borderRadius: 16,
+    borderRadius: 12,
     border: '1px solid #e2e8f0',
     background: '#fff',
     padding: 16,
     display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
     breakInside: 'avoid',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.07)'
   }
 }
 
@@ -102,7 +103,7 @@ export default function TableQrPrintModal({
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <button type="button" className="btn-o" onClick={onClose}>Kapat</button>
-            <button type="button" className="btn-p" onClick={() => window.print()}>
+            <button type="button" className="btn-p" style={{ background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} onClick={() => window.print()}>
               <i className="fa-solid fa-print" style={{ marginRight: 8 }} />
               Yazdır
             </button>
@@ -121,27 +122,23 @@ export default function TableQrPrintModal({
             <p>QR kartları hazırlanıyor...</p>
           </div>
         ) : (
-          <div className="print-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+          <div className="print-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
             {normalizedRecords.map(record => (
               <div key={record.id} className="print-card" style={cardStyle()}>
-                <div style={{ textAlign: 'center', paddingBottom: 8, borderBottom: '1px dashed #e2e8f0' }}>
-                  <div style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 900 }}>{record.tableName || 'Masa'}</div>
-                  <div style={{ color: '#64748b', fontSize: '.8rem', marginTop: 2 }}>
+                <div className="qr-wrapper" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}>
+                  {qrMap[record.id]
+                    ? <img src={qrMap[record.id]} alt={`${record.tableName} QR`} style={{ width: 80, height: 80, margin: 0, display: 'block' }} />
+                    : <div style={{ width: 80, height: 80, background: '#f1f5f9' }} />}
+                </div>
+                
+                <div className="text-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ color: '#111111', fontSize: '11pt', fontWeight: 'bold', lineHeight: 1.2 }}>{record.tableName || 'Masa'}</div>
+                  <div style={{ color: '#888888', fontSize: '8pt', marginTop: 2, lineHeight: 1.2 }}>
                     {record.hallName || 'Salon'} {record.sectionName ? `/ ${record.sectionName}` : ''}
                   </div>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}>
-                  {qrMap[record.id]
-                    ? <img src={qrMap[record.id]} alt={`${record.tableName} QR`} style={{ width: 160, height: 160 }} />
-                    : <div style={{ width: 160, height: 160, borderRadius: 12, background: '#f1f5f9' }} />}
-                </div>
-                
-                <div style={{ textAlign: 'center', color: '#0f172a', fontWeight: 800, fontSize: '.9rem' }}>
-                  Masa No: {record.tableNumber || '-'}
-                </div>
-                <div className="no-print" style={{ color: '#94a3b8', fontSize: '.65rem', lineHeight: 1.3, wordBreak: 'break-all', textAlign: 'center', marginTop: 4 }}>
-                  {record.payload}
+                  <div style={{ color: '#111111', fontSize: '8pt', fontWeight: 'bold', marginTop: 2, lineHeight: 1.2 }}>
+                    Masa No: {record.tableNumber || '-'}
+                  </div>
                 </div>
               </div>
             ))}
@@ -153,12 +150,14 @@ export default function TableQrPrintModal({
         @media print {
           @page {
             size: A4 portrait;
-            margin: 1cm;
+            margin: 10.7mm 4.65mm;
           }
           body {
             background: #fff;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            margin: 0;
+            padding: 0;
           }
           body * {
             visibility: hidden;
@@ -189,17 +188,34 @@ export default function TableQrPrintModal({
           }
           .print-grid {
             display: grid !important;
-            /* A4 width is roughly 21cm. 3 columns with gap should fit perfectly */
-            grid-template-columns: repeat(3, 1fr) !important;
-            gap: 1cm !important;
+            grid-template-columns: repeat(2, 99mm) !important;
+            grid-template-rows: repeat(7, 38mm) !important;
+            column-gap: 2.5mm !important;
+            row-gap: 0mm !important;
             width: 100% !important;
+            gap: 0 !important;
           }
           .print-card {
-            border: 2px solid #cbd5e1 !important;
-            border-radius: 12px !important;
+            width: 99mm !important;
+            height: 38mm !important;
+            overflow: hidden !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            padding: 0.5cm !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 2mm 3mm !important;
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 3mm !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+          }
+          .print-card img {
+            width: 28mm !important;
+            height: 28mm !important;
+            flex-shrink: 0 !important;
+            margin: 0 !important;
           }
         }
       `}</style>

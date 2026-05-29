@@ -15,12 +15,14 @@ export default function DeviceSettings() {
   const [formData, setFormData] = useState({
     device_type: 'pos',
     is_master: false,
+    terminal_name: '',
     config_data: {}
   })
-  const { addToast } = useToast()
+  const toast = useToast()
 
   const loadDevices = async () => {
-    const { data, error } = await db.query('pos_terminals').select('*')
+    if (!branchId) return
+    const { data, error } = await db.from('pos_terminals').select('*').eq('branch_id', branchId)
     if (!error && data) {
       setDevices(data)
     }
@@ -40,7 +42,7 @@ export default function DeviceSettings() {
 
   useEffect(() => {
     loadDevices()
-  }, [])
+  }, [branchId])
 
   useEffect(() => {
     loadHalls()
@@ -52,27 +54,45 @@ export default function DeviceSettings() {
 
   const handleSave = async (e) => {
     e.preventDefault()
-    
+
+    if (!branchId) {
+      toast('Aktif bir şube seçili değil. Lütfen şube seçin.', 'error')
+      return
+    }
+
     // Safety check: if master is forced but there's already a master
     if (formData.is_master && hasMaster) {
-      addToast({ title: 'Hata', description: 'Sistemde zaten bir Ana Kasa (Master) bulunuyor.', type: 'error' })
+      toast('Sistemde zaten bir Ana Kasa (Master) bulunuyor.', 'error')
       return
     }
 
     const generatedPairKey = generatePairKey()
     const newDevice = {
-      ...formData,
-      pair_key: generatedPairKey,
-      branch_id: branchId,
       terminal_id: crypto.randomUUID(),
-      activation_code: `SUT-${generatedPairKey}`
+      branch_id: branchId,
+      device_type: formData.device_type,
+      is_master: Boolean(formData.is_master),
+      pair_key: generatedPairKey,
+      activation_code: `SUT-${generatedPairKey}`,
+      is_used: false,
+      config_data: formData.config_data ?? {}
     }
-    
-    const { error } = await db.query('pos_terminals').insert(newDevice)
+
+    // terminal_name opsiyonel — sadece doluysa gönder
+    if (formData.terminal_name && formData.terminal_name.trim()) {
+      newDevice.terminal_name = formData.terminal_name.trim()
+    }
+
+    const { error } = await db.from('pos_terminals').insert(newDevice)
     if (error) {
-      addToast({ title: 'Hata', description: 'Cihaz eklenemedi.', type: 'error' })
+      toast(`Cihaz eklenemedi: ${error.message || JSON.stringify(error)}`, 'error')
+      console.error('[DeviceSettings] insert error:', error)
     } else {
-      addToast({ title: 'Başarılı', description: 'Cihaz oluşturuldu.', type: 'success' })
+      const deviceLabel = newDevice.terminal_name
+        ? `'​${newDevice.terminal_name}'​ başarıyla oluşturuldu.`
+        : 'Cihaz başarıyla oluşturuldu.'
+      toast(deviceLabel, 'success')
+      setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
       setIsModalOpen(false)
       loadDevices()
     }
@@ -80,7 +100,7 @@ export default function DeviceSettings() {
 
   const handleDelete = async (id) => {
     if (confirm('Bu cihazı silmek istediğinize emin misiniz?')) {
-      await db.query('pos_terminals').delete().eq('id', id)
+      await db.from('pos_terminals').delete().eq('id', id)
       loadDevices()
     }
   }
@@ -134,7 +154,7 @@ export default function DeviceSettings() {
         subtitle="Fiziksel POS, Garson, Mutfak (KDS) ve Sıra terminallerinizi merkezi olarak yönetin."
         actions={
           <button className="btn-p" onClick={() => {
-            setFormData({ device_type: 'pos', is_master: false, config_data: {} })
+            setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
             setIsModalOpen(true)
           }}>
             <Plus className="w-4 h-4 mr-2" />
@@ -159,7 +179,12 @@ export default function DeviceSettings() {
               <tr key={device.id} className="border-b last:border-0 hover:bg-gray-50">
                 <td className="px-6 py-4 flex items-center gap-3">
                   {getDeviceIcon(device.device_type)}
-                  <span className="font-medium">{getDeviceTypeName(device.device_type)}</span>
+                  <div>
+                    <div className="font-medium">{getDeviceTypeName(device.device_type)}</div>
+                    {device.terminal_name && (
+                      <div className="text-xs text-gray-500">{device.terminal_name}</div>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4">
                   {device.device_type === 'queue_screen' ? (
@@ -243,6 +268,25 @@ export default function DeviceSettings() {
               <option value="pickup">Teslimat (Pickup)</option>
               <option value="queue_screen">Sıra Ekranı</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Cihaz Adı <span className="text-gray-400 font-normal">(İsteğe bağlı)</span>
+            </label>
+            <input
+              type="text"
+              className="f-input"
+              placeholder={{
+                pos: 'örn. Kasa 1, Bahçe POS',
+                masa: 'örn. Bahçe Tableti, Garson 2',
+                kds: 'örn. Mutfak Ekranı, Sıcak Bölüm',
+                pickup: 'örn. Paket Ekranı',
+                queue_screen: 'örn. Sıra TV'
+              }[formData.device_type] || 'Cihaz adı girin'}
+              value={formData.terminal_name || ''}
+              onChange={e => setFormData({ ...formData, terminal_name: e.target.value })}
+            />
           </div>
 
           {['pos', 'masa'].includes(formData.device_type) && (

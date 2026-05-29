@@ -449,6 +449,7 @@ export function WorkspaceProvider({
   children,
   allowedScopes = DEFAULT_ALLOWED_SCOPES,
   forcedScope = '',
+  forcedBranchId = '',
 }) {
   const location = useLocation()
   const publicKioskPath = isPublicDisplayPath(location.pathname)
@@ -466,17 +467,17 @@ export function WorkspaceProvider({
     initialResolvedScope
   ))
   const [branchId, setBranchId] = useState(() => (
-    readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
+    forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
   ))
   const [persistedBranchMeta, setPersistedBranchMeta] = useState(() => ({
-    id: readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY),
+    id: forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY),
     name: readLocalStorage(WORKSPACE_BRANCH_NAME_STORAGE_KEY),
   }))
   const [branches, setBranches] = useState([])
   const [branchLoadError, setBranchLoadError] = useState('')
   const [loadingBranches, setLoadingBranches] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(() => {
-    const initialBranchId = readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
+    const initialBranchId = forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
     if (publicKioskPath) return false
     return !initialResolvedScope || (initialResolvedScope === WORKSPACE_SCOPE.branch && !initialBranchId)
   })
@@ -495,11 +496,13 @@ export function WorkspaceProvider({
       setBranches(nextBranches)
       setBranchId(current => {
         const rememberedBranchId =
+          forcedBranchId ||
           current ||
           readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) ||
           readLocalStorage(POS_BRANCH_KEY)
 
-        return findPreferredBranchContext(branchContexts, rememberedBranchId)?.branchId || ''
+        const resolved = findPreferredBranchContext(branchContexts, rememberedBranchId)?.branchId
+        return resolved || forcedBranchId || ''
       })
     } catch (error) {
       setBranches([])
@@ -507,11 +510,18 @@ export function WorkspaceProvider({
     } finally {
       setLoadingBranches(false)
     }
-  }, [])
+  }, [forcedBranchId])
 
   useEffect(() => {
     void loadBranches()
   }, [loadBranches])
+
+  useEffect(() => {
+    if (forcedBranchId) {
+      setBranchId(forcedBranchId)
+      setPickerOpen(false)
+    }
+  }, [forcedBranchId])
 
   useEffect(() => {
     if (!normalizedForcedScope) return
@@ -559,6 +569,10 @@ export function WorkspaceProvider({
 
   useEffect(() => {
     if (publicKioskPath) return
+    if (forcedBranchId) {
+      setPickerOpen(false)
+      return
+    }
     if (!scope) {
       setPickerOpen(true)
       return
@@ -566,7 +580,7 @@ export function WorkspaceProvider({
     if (isBranchScopedScope(scope) && !branchId) {
       setPickerOpen(true)
     }
-  }, [scope, branchId, publicKioskPath])
+  }, [scope, branchId, publicKioskPath, forcedBranchId])
 
   useEffect(() => {
     if (scope) return

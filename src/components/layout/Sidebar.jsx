@@ -120,6 +120,8 @@ const NAV = [
     section: 'Şube',
     icon: 'fa-store',
     items: [
+      { label: 'Masa Düzeni', path: '/:branchId/masalar', icon: 'fa-chair', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
+      { label: 'POS ve Cihazlar', path: '/:branchId/cihazlar', icon: 'fa-cash-register', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
       { label: 'Tahmin', path: '/forecast', icon: 'fa-chart-line', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'SipariÅŸler', path: '/orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
       { label: 'Mal Kabul', path: '/mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
@@ -242,8 +244,6 @@ const NAV = [
     section: 'Ayarlar',
     icon: 'fa-gear',
     items: [
-      { label: 'Cihaz Yönetimi', path: '/cihaz-yonetimi', icon: 'fa-mobile-screen', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-      { label: 'Masa Düzeni', path: '/masa-duzeni', icon: 'fa-table-cells-large', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'Tahmin AyarlarÄ±', path: '/settings', icon: 'fa-gear', color: '#94a3b8', bg: 'rgba(148,163,184,.18)' },
       { label: 'Hesap Ã‡izelgesi', path: '/hesap-cizelgesi', icon: 'fa-book-bookmark', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
       { label: 'Muhasebe EÅŸleÅŸtirmeleri', path: '/muhasebe-eslestirmeleri', icon: 'fa-arrow-right-arrow-left', color: '#0f766e', bg: 'rgba(13,148,136,.16)' },
@@ -357,7 +357,7 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, authBusy, signOut } = useAuth()
-  const { scope, branchName, openWorkspacePicker } = useWorkspace()
+  const { scope, branchId, branchName, openWorkspacePicker } = useWorkspace()
   const { mode, mobileOpen, setMobileOpen, togglePin, isPinned, autoMode } = useSidebar()
   const scopeOption = getWorkspaceScopeOption(scope)
   const isIconOnly = mode === 'icon'
@@ -365,8 +365,18 @@ export default function Sidebar() {
   const isVisible = !isMobileMode || mobileOpen
 
   const visibleSections = useMemo(
-    () => NAV.filter(section => canAccessSection(scope, fixMojibakeText(section.section))),
-    [scope],
+    () => NAV
+      .filter(section => canAccessSection(scope, fixMojibakeText(section.section)))
+      .map(section => ({
+        ...section,
+        items: section.items.map(item => {
+          if (item.path?.includes(':branchId')) {
+            return { ...item, path: item.path.replace(':branchId', branchId || 'secilmedi') }
+          }
+          return item
+        })
+      })),
+    [scope, branchId],
   )
 
   const matchesPath = path => location.pathname === path || location.pathname.startsWith(`${path}/`)

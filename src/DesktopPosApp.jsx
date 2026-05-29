@@ -6,7 +6,7 @@ import { WorkspaceGate, WorkspaceProvider, useWorkspace } from '@/context/Worksp
 import { ToastProvider } from '@/hooks/useToast'
 import { logActivity } from '@/lib/activityLogger'
 import { WORKSPACE_SCOPE } from '@/lib/workspace'
-import { getStartupPath, readTerminalConfig } from '@/lib/terminalIdentity'
+import { getBranchId, getStartupPath, readTerminalConfig } from '@/lib/terminalIdentity'
 import PairingScreen from '@/components/pos/PairingScreen'
 
 const POS = lazy(() => import('@/components/pages/POS'))
@@ -95,6 +95,8 @@ export default function DesktopPosApp() {
     localStorage.setItem('suitable_rms_pos_branch_v1', config.branchId)
   }
 
+  const terminalBranchId = getBranchId()
+
   return (
     <ToastProvider>
       <AuthProvider>
@@ -102,6 +104,7 @@ export default function DesktopPosApp() {
           <WorkspaceProvider
             allowedScopes={[WORKSPACE_SCOPE.branch]}
             forcedScope={WORKSPACE_SCOPE.branch}
+            forcedBranchId={terminalBranchId}
           >
             <WorkspaceGate>
               <PairingGuard>

@@ -56,10 +56,12 @@
     "enrich:sale-showcase-pricing:verify": "node scripts/enrich-sale-showcase-pricing.mjs --verify-only",
     "check:encoding": "node scripts/check-mojibake.mjs",
     "check:protected-docs": "node scripts/check-protected-docs.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3 --only better-sqlite3"
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
+    "electron-updater": "^6.1.8",
     "express": "^5.2.1",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.17.0",
@@ -76,10 +78,9 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
-    "better-sqlite3": "^12.10.0",
     "electron": "^35.1.5",
     "electron-builder": "^26.0.12",
-    "electron-updater": "^6.1.8",
+    "electron-rebuild": "^3.2.9",
     "pg": "^8.16.3",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
@@ -92,6 +93,9 @@
       "output": "release"
     },
     "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
     "publish": {
       "provider": "github",
       "owner": "muzafferseyranli",

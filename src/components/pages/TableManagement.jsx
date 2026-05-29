@@ -70,14 +70,14 @@ function EditorForm({
   const isEdit = editor.mode === 'edit'
 
   return (
-    <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h3 style={{ margin: 0, fontWeight: 800, color: '#0f172a' }}>
+    <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, borderLeft: '4px solid #f5a623', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+      <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem', color: '#111111' }}>
         {isEdit ? 'Kaydı Düzenle' : 'Yeni Kayıt'}
       </h3>
 
       {(editor.kind === 'hall' || editor.kind === 'section') && (
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>
+          <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>
             {editor.kind === 'hall' ? 'Salon Adı' : 'Bölge Adı'}
           </label>
           <input className="f-input" value={form.name || ''} onChange={event => onChange('name', event.target.value)} />
@@ -86,7 +86,7 @@ function EditorForm({
 
       {editor.kind === 'hall' && (
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Kod</label>
+          <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Kod</label>
           <input className="f-input" value={form.code || ''} onChange={event => onChange('code', event.target.value)} />
         </div>
       )}
@@ -94,30 +94,30 @@ function EditorForm({
       {isTable && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Masa Adı</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Masa Adı</label>
             <input className="f-input" value={form.tableName || ''} onChange={event => onChange('tableName', event.target.value)} />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Masa Numarası</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Masa Numarası</label>
             <input className="f-input" value={form.tableNumber || ''} onChange={event => onChange('tableNumber', event.target.value)} />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Masa Kodu</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Masa Kodu</label>
             <input className="f-input" value={form.tableCode || ''} onChange={event => onChange('tableCode', event.target.value)} />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Masa Tipi</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Masa Tipi</label>
             <select className="f-input" value={form.tableType || 'round'} onChange={event => onChange('tableType', event.target.value)}>
               <option value="round">Yuvarlak</option>
               <option value="square">Kare</option>
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Kapasite</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Kapasite</label>
             <input className="f-input" value={form.capacity || ''} onChange={event => onChange('capacity', event.target.value)} type="number" />
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem' }}>Durum</label>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '.9rem', color: '#111111' }}>Durum</label>
             <select className="f-input" value={form.status || 'active'} onChange={event => onChange('status', event.target.value)}>
               <option value="active">Aktif</option>
               <option value="inactive">Pasif</option>
@@ -126,9 +126,9 @@ function EditorForm({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
-        <button type="button" className="btn-o" onClick={onCancel}>İptal</button>
-        <button type="button" className="btn-p" disabled={saving} onClick={onSubmit}>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 16 }}>
+        <button type="button" className="btn-o table-mgmt-btn" style={{ padding: '10px 24px' }} onClick={onCancel}>İptal</button>
+        <button type="button" className="btn-p table-mgmt-btn" style={{ padding: '10px 24px', background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} disabled={saving} onClick={onSubmit}>
           {saving ? 'Kaydediliyor...' : 'Kaydet'}
         </button>
       </div>
@@ -145,26 +145,50 @@ function TableNodeDetail({
   onPrintSingle,
   onPrintGroup,
 }) {
+  const badgeStyle = (color) => ({
+    width: 48,
+    height: 48,
+    borderRadius: '12px',
+    background: color,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    fontSize: '1.25rem',
+    flexShrink: 0,
+  })
+
+  const cardContainerStyle = { padding: 24, display: 'flex', flexDirection: 'column', gap: 20, borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }
+
   if (!node) {
     return (
-      <div className="card" style={{ padding: 24, minHeight: 260, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        Soldaki ağaçtan salon, bölge veya masa seçin.
+      <div className="card" style={{ ...cardContainerStyle, minHeight: 320, alignItems: 'center', justifyContent: 'center' }}>
+        <i className="fa-solid fa-sitemap" style={{ fontSize: 56, color: '#888888', marginBottom: 16 }} />
+        <h3 style={{ margin: 0, color: '#111111', fontSize: '1.25rem', fontWeight: 700 }}>Bir salon, bölge veya masa seçin</h3>
+        <p style={{ margin: '8px 0 0', color: '#888888', textAlign: 'center' }}>Sol panelden bir öğeye tıklayarak detaylarını görüntüleyin veya düzenleyin.</p>
       </div>
     )
   }
 
   if (node.entityType === 'hall') {
     return (
-      <div className="card" style={{ padding: 24, display: 'grid', gap: 16 }}>
-        <div>
-          <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', color: '#0f172a' }}>{node.hall.name || 'Salon'}</h3>
-          <p style={{ margin: '4px 0 0', color: '#64748b' }}>Kod: {node.hall.code || '-'}</p>
+      <div className="card" style={cardContainerStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={badgeStyle('#38bdf8')}>
+            <i className="fa-solid fa-warehouse" />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem', color: '#111111' }}>{node.hall.name || 'Salon'}</h3>
+            <p style={{ margin: '4px 0 0', color: '#888888' }}>Kod: {node.hall.code || '-'}</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button type="button" className="btn-p" onClick={() => onOpenEditor('edit-hall', node)}>Salon Düzenle</button>
-          <button type="button" className="btn-o" style={{ color: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={() => onOpenEditor('create-section', node)}>Altına Bölge Ekle</button>
-          <button type="button" className="btn-o" style={{ color: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => onPrintGroup('hall', node)}>Salon QR Yazdır</button>
-          <button type="button" className="btn-o" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => onArchive(node)}>Arşivle</button>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" className="btn-p table-mgmt-btn" style={{ background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} onClick={() => onOpenEditor('edit-hall', node)}>Salon Düzenle</button>
+            <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#a78bfa', borderColor: '#a78bfa' }} onClick={() => onOpenEditor('create-section', node)}>Altına Bölge Ekle</button>
+            <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#38bdf8', borderColor: '#38bdf8' }} onClick={() => onPrintGroup('hall', node)}>QR Yazdır</button>
+          </div>
+          <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#ef4444', borderColor: '#ef4444', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => onArchive(node)}>Arşivle</button>
         </div>
       </div>
     )
@@ -172,16 +196,23 @@ function TableNodeDetail({
 
   if (node.entityType === 'section') {
     return (
-      <div className="card" style={{ padding: 24, display: 'grid', gap: 16 }}>
-        <div>
-          <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', color: '#0f172a' }}>{node.section.name || 'Bölge'}</h3>
-          <p style={{ margin: '4px 0 0', color: '#64748b' }}>Bağlı Salon: {node.parentLabel || '-'}</p>
+      <div className="card" style={cardContainerStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={badgeStyle('#a78bfa')}>
+            <i className="fa-solid fa-folder-tree" />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem', color: '#111111' }}>{node.section.name || 'Bölge'}</h3>
+            <p style={{ margin: '4px 0 0', color: '#888888' }}>Bağlı Salon: {node.parentLabel || '-'}</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button type="button" className="btn-p" onClick={() => onOpenEditor('edit-section', node)}>Bölge Düzenle</button>
-          <button type="button" className="btn-o" style={{ color: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={() => onOpenEditor('create-table', node)}>Altına Masa Ekle</button>
-          <button type="button" className="btn-o" style={{ color: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => onPrintGroup('section', node)}>Bölge QR Yazdır</button>
-          <button type="button" className="btn-o" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => onArchive(node)}>Arşivle</button>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" className="btn-p table-mgmt-btn" style={{ background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} onClick={() => onOpenEditor('edit-section', node)}>Bölge Düzenle</button>
+            <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#a78bfa', borderColor: '#a78bfa' }} onClick={() => onOpenEditor('create-table', node)}>Altına Masa Ekle</button>
+            <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#38bdf8', borderColor: '#38bdf8' }} onClick={() => onPrintGroup('section', node)}>QR Yazdır</button>
+          </div>
+          <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#ef4444', borderColor: '#ef4444', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => onArchive(node)}>Arşivle</button>
         </div>
       </div>
     )
@@ -195,24 +226,44 @@ function TableNodeDetail({
     baseUrl: getQrMenuBaseUrl(),
   })
 
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(qrPayload)
+  }
+
+  const isActive = node.table.status === 'active'
+
   return (
-    <div className="card" style={{ padding: 24, display: 'grid', gap: 16 }}>
-      <div>
-        <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', color: '#0f172a' }}>{node.table.table_name || node.table.table_number || 'Masa'}</h3>
-        <p style={{ margin: '4px 0 0', color: '#64748b' }}>Masa No: {node.table.table_number || '-'}</p>
-        <p style={{ margin: '4px 0 0', color: '#64748b' }}>Tip: {node.table.table_type === 'square' ? 'Kare' : 'Yuvarlak'} / Kapasite: {node.table.capacity || '-'}</p>
-        <p style={{ margin: '4px 0 0', fontWeight: 700, color: node.table.status === 'active' ? '#10b981' : '#ef4444' }}>
-          Durum: {node.table.status === 'active' ? 'Aktif' : 'Pasif'}
-        </p>
+    <div className="card" style={cardContainerStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={badgeStyle('#f5a623')}>
+          <i className="fa-solid fa-utensils" />
+        </div>
+        <div>
+          <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem', color: '#111111' }}>{node.table.table_name || node.table.table_number || 'Masa'}</h3>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <span style={{ background: '#f1f5f9', color: '#334155', padding: '4px 8px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600 }}>🔢 No: {node.table.table_number || '-'}</span>
+            <span style={{ background: '#f1f5f9', color: '#334155', padding: '4px 8px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600 }}>👥 {node.table.capacity || '-'} Kişi</span>
+            <span style={{ background: isActive ? '#dcfce7' : '#fee2e2', color: isActive ? '#166534' : '#991b1b', padding: '4px 8px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600 }}>
+              {isActive ? '🟢 Aktif' : '🔴 Pasif'}
+            </span>
+          </div>
+        </div>
       </div>
-      <div style={{ padding: 12, background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, fontSize: '.85rem', color: '#64748b', wordBreak: 'break-all' }}>
-        {qrPayload}
+      <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', borderRadius: 8, padding: '12px 16px', gap: 12 }}>
+        <code style={{ flex: 1, fontSize: '.85rem', color: '#111111', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+          {qrPayload}
+        </code>
+        <button type="button" onClick={copyToClipboard} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#888888', padding: 4 }} title="Kopyala">
+          <i className="fa-regular fa-copy" style={{ fontSize: '1.1rem' }} />
+        </button>
       </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <button type="button" className="btn-p" onClick={() => onOpenEditor('edit-table', node)}>Masa Düzenle</button>
-        <button type="button" className="btn-o" style={{ color: '#38bdf8', borderColor: '#38bdf8' }} onClick={() => onRegenerateQr(node)}>QR Yenile</button>
-        <button type="button" className="btn-o" style={{ color: '#10b981', borderColor: '#10b981' }} onClick={() => onPrintSingle(node)}>QR Yazdır</button>
-        <button type="button" className="btn-o" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => onArchive(node)}>Arşivle</button>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button type="button" className="btn-p table-mgmt-btn" style={{ background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} onClick={() => onOpenEditor('edit-table', node)}>Düzenle</button>
+          <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#a78bfa', borderColor: '#a78bfa' }} onClick={() => onRegenerateQr(node)}>QR Yenile</button>
+          <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#38bdf8', borderColor: '#38bdf8' }} onClick={() => onPrintSingle(node)}>QR Yazdır</button>
+        </div>
+        <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#ef4444', borderColor: '#ef4444', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => onArchive(node)}>Arşivle</button>
       </div>
     </div>
   )
@@ -220,7 +271,7 @@ function TableNodeDetail({
 
 export default function TableManagement() {
   const { branchId, branch } = useWorkspace()
-  const { addToast } = useToast()
+  const toast = useToast()
   
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -246,7 +297,7 @@ export default function TableManagement() {
 
     refreshCatalog()
       .catch(loadError => {
-        if (!cancelled) addToast({ title: 'Hata', description: loadError?.message || 'Masa kataloğu yüklenemedi.', type: 'error' })
+        if (!cancelled) toast(loadError?.message || 'Masa kataloğu yüklenemedi.', 'error')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -363,9 +414,9 @@ export default function TableManagement() {
 
       await refreshCatalog(nextSelectedId)
       closeEditor()
-      addToast({ title: 'Başarılı', description: 'Kayıt güncellendi.', type: 'success' })
+      toast('Kayıt güncellendi.', 'success')
     } catch (saveError) {
-      addToast({ title: 'Hata', description: saveError?.message || 'Kayıt kaydedilemedi.', type: 'error' })
+      toast(saveError?.message || 'Kayıt kaydedilemedi.', 'error')
     } finally {
       setSaving(false)
     }
@@ -381,9 +432,9 @@ export default function TableManagement() {
       else if (node.entityType === 'section') await archiveSection(node.section.id, branchId)
       else await archiveTable(node.table.id, branchId)
       await refreshCatalog()
-      addToast({ title: 'Başarılı', description: 'Kayıt arşive alındı.', type: 'success' })
+      toast('Kayıt arşive alındı.', 'success')
     } catch (archiveError) {
-      addToast({ title: 'Hata', description: archiveError?.message || 'Kayıt arşivlenemedi.', type: 'error' })
+      toast(archiveError?.message || 'Kayıt arşivlenemedi.', 'error')
     }
   }
 
@@ -393,9 +444,9 @@ export default function TableManagement() {
     try {
       const nextTable = await regenerateTableQr(node.table.id, branchId)
       await refreshCatalog(`table:${nextTable.id}`)
-      addToast({ title: 'Başarılı', description: 'QR yenilendi.', type: 'success' })
+      toast('QR yenilendi.', 'success')
     } catch (qrError) {
-      addToast({ title: 'Hata', description: qrError?.message || 'QR yenilenemedi.', type: 'error' })
+      toast(qrError?.message || 'QR yenilenemedi.', 'error')
     }
   }
 
@@ -415,15 +466,37 @@ export default function TableManagement() {
 
   return (
     <div>
+      <style>{`
+        .table-mgmt-btn {
+          transition: transform 0.15s ease;
+        }
+        .table-mgmt-btn:hover {
+          transform: translateY(-1px);
+        }
+        .tree-breadcrumb-header {
+          background: #fef3c7;
+          color: #b45309;
+          padding: 8px 16px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .tree-panel-wrap > div > .flex.justify-between,
+        .tree-panel-wrap .tree-explorer-header {
+          display: none !important;
+        }
+      `}</style>
       <Header
         title="Masa Düzeni"
         subtitle={`${branch?.name || 'Şube'} için salon, bölge ve masaları yönetin`}
         actions={
           <div style={{ display: 'flex', gap: 12 }}>
-            <button type="button" className="btn-o" style={{ color: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => openPrint('branch', selectedDecoratedNode)}>
-              Toplu QR Yazdır
+            <button type="button" className="btn-o table-mgmt-btn" style={{ color: '#111111', borderColor: '#e2e8f0', padding: '8px 12px' }} title="Toplu QR Yazdır" onClick={() => openPrint('branch', selectedDecoratedNode)}>
+              <i className="fa-solid fa-print" />
             </button>
-            <button type="button" className="btn-p" onClick={() => openEditor('create-hall')}>
+            <button type="button" className="btn-p table-mgmt-btn" style={{ background: '#f5a623', borderColor: '#f5a623', color: '#fff' }} onClick={() => openEditor('create-hall')}>
               <i className="fa-solid fa-plus" style={{ marginRight: 8 }} />
               Salon Ekle
             </button>
@@ -431,28 +504,37 @@ export default function TableManagement() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: editor ? '380px minmax(0, 1fr)' : '380px minmax(0, 1fr)', gap: 24, marginTop: 24, alignItems: 'start' }}>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <TreeExplorer
-            nodes={treeWithParents}
-            loading={loading}
-            emptyText="Bu şube için kayıt bulunamadı."
-            sectionTitle="Ağaç Görünümü"
-            sectionSubtitle="Salon > Bölge > Masa"
-            selectedId={selectedId}
-            expandedIds={expandedIds}
-            onSelect={node => setSelectedId(node.id)}
-            onToggle={nodeId => {
-              setExpandedIds(current => (
-                current.includes(nodeId)
-                  ? current.filter(id => id !== nodeId)
-                  : [...current, nodeId]
-              ))
-            }}
-            onExpandAll={() => setExpandedIds(getTreeExpandableIds(treeWithParents))}
-            onCollapseAll={() => setExpandedIds([])}
-            getNodeMeta={getNodeMeta}
-          />
+      <div style={{ display: 'grid', gridTemplateColumns: '480px minmax(0, 1fr)', gap: 20, marginTop: 24, alignItems: 'start' }}>
+        <div className="card tree-panel-wrap" style={{ padding: 0, overflow: 'hidden', minHeight: 'calc(100vh - 180px)', background: '#f8fafc', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+          <div className="tree-breadcrumb-header">
+            <span>AĞAÇ GÖRÜNÜMÜ &bull; Salon &gt; Bölge &gt; Masa</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button type="button" onClick={() => setExpandedIds(getTreeExpandableIds(treeWithParents))} title="Tümünü Aç" style={{ background: 'transparent', border: 'none', color: '#b45309', cursor: 'pointer', padding: 4 }}>
+                <i className="fa-solid fa-expand-alt" />
+              </button>
+              <button type="button" onClick={() => setExpandedIds([])} title="Tümünü Kapat" style={{ background: 'transparent', border: 'none', color: '#b45309', cursor: 'pointer', padding: 4 }}>
+                <i className="fa-solid fa-compress-alt" />
+              </button>
+            </div>
+          </div>
+          <div style={{ padding: '8px 0' }}>
+            <TreeExplorer
+              nodes={treeWithParents}
+              loading={loading}
+              emptyText="Bu şube için kayıt bulunamadı."
+              selectedId={selectedId}
+              expandedIds={expandedIds}
+              onSelect={node => setSelectedId(node.id)}
+              onToggle={nodeId => {
+                setExpandedIds(current => (
+                  current.includes(nodeId)
+                    ? current.filter(id => id !== nodeId)
+                    : [...current, nodeId]
+                ))
+              }}
+              getNodeMeta={getNodeMeta}
+            />
+          </div>
         </div>
 
         <div style={{ display: 'grid', gap: 24 }}>

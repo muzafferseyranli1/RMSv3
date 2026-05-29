@@ -340,8 +340,8 @@ function AppShell() {
               <Route path="/prices" element={<Prices />} />
               <Route path="/price-changes" element={<PriceChanges />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/cihaz-yonetimi" element={<DeviceSettings />} />
-              <Route path="/masa-duzeni" element={<WorkspaceBranchScope><TableManagement /></WorkspaceBranchScope>} />
+              <Route path="/:branchId/cihazlar" element={<WorkspaceBranchScope><DeviceSettings /></WorkspaceBranchScope>} />
+              <Route path="/:branchId/masalar" element={<WorkspaceBranchScope><TableManagement /></WorkspaceBranchScope>} />
               <Route path="/reports" element={<Reports scopeVariant="center" initialTab="overview" />} />
               <Route path="/activity-logs" element={<ActivityLogs />} />
               <Route path="/stock-items" element={<StockItems />} />

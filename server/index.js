@@ -284,6 +284,7 @@ function normalizeWriteValue(table, column, value) {
     form_templates: new Set(['schema_json', 'target_branches', 'scoring', 'recurrence']),
     form_submissions: new Set(['answers_json', 'metadata']),
     form_submission_photos: new Set(['metadata']),
+    pos_terminals: new Set(['config_data']),
   }
 
   // These columns accept nested arrays/objects. Stringifying here keeps the generic

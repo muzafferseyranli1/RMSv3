@@ -28,15 +28,20 @@ export default function PairingScreen({ onComplete }) {
     setError(null);
     
     try {
+      const searchCode = pairKey.startsWith('SUT-') ? pairKey : `SUT-${pairKey}`;
+
       // Production db query
-      const res = await db.query(
-        `SELECT id, branch_id, device_type, is_master, config_data FROM pos_terminals WHERE pair_key = $1 LIMIT 1`, 
-        [pairKey]
-      );
+      const { data, error: dbError } = await db.from('pos_terminals')
+        .select('id,branch_id,device_type,is_master,terminal_role,screen_mode,terminal_name,config_data')
+        .eq('activation_code', searchCode)
+        .limit(1);
+
+      if (dbError) throw dbError;
+      const res = data || [];
       
       // If no result, fallback for dev/testing
       if (res.length === 0 && pairKey === 'DEV-123') {
-          finalizePairing({
+          await finalizePairing({
              id: 'test-terminal-id',
              branch_id: 'test-branch-id',
              device_type: 'pos',
@@ -44,14 +49,15 @@ export default function PairingScreen({ onComplete }) {
              config_data: {}
           });
       } else if (res.length > 0) {
-          finalizePairing(res[0]);
+          await db.from('pos_terminals').eq('id', res[0].id).update({ is_used: true });
+          await finalizePairing(res[0]);
       } else {
           setError('Geçersiz Pair Key. Lütfen tekrar deneyin.');
       }
     } catch (err) {
        console.error("Pairing Error:", err);
        if (pairKey === 'DEV-123') {
-          finalizePairing({
+          await finalizePairing({
              id: 'test-terminal-id',
              branch_id: 'test-branch-id',
              device_type: 'pos',
@@ -59,32 +65,32 @@ export default function PairingScreen({ onComplete }) {
              config_data: {}
           });
        } else {
-          setError('Sunucu bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
+          setError(`Bağlantı veya Sorgu Hatası: ${err?.message || err}`);
        }
     } finally {
       setLoading(false);
     }
   };
 
-  const finalizePairing = (terminal) => {
+  const finalizePairing = async (terminal) => {
     // Check if it's a slave and needs master IP
     let masterIp = '127.0.0.1';
     
     // In a full implementation, if is_master is false, we should fetch the master's IP
     // For now, we assume local network discovery or fallback to localhost if testing
     if (!terminal.is_master) {
-      masterIp = prompt('Ana kasa (Master) IP adresini giriniz:', '192.168.1.100') || '127.0.0.1';
+      masterIp = '';
     }
     
     // Map device_type to screenMode
     // pos -> pos, masa -> garson (or pos-masalar based on usage), kds -> kds, pickup -> pickup
-    let screenMode = terminal.device_type;
+    let screenMode = terminal.screen_mode || terminal.device_type;
     if (screenMode === 'masa') screenMode = 'garson'; // For tablet waiter mode
 
     const payload = {
        terminalId: terminal.id,
        branchId: terminal.branch_id,
-       terminalRole: terminal.is_master ? 'master' : 'slave',
+       terminalRole: terminal.terminal_role || (terminal.is_master ? 'master' : 'slave'),
        masterIp: masterIp,
        screenMode: screenMode,
        configData: terminal.config_data || {},
@@ -93,6 +99,10 @@ export default function PairingScreen({ onComplete }) {
     
     // Save to sessionStorage (cache)
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+
+    if (window.electronAPI?.saveTerminalConfig) {
+      await window.electronAPI.saveTerminalConfig(payload);
+    }
     
     // Dispatch custom event for Electron main process to catch (via preload)
     window.dispatchEvent(new CustomEvent('terminal:pairing-complete', { detail: payload }));

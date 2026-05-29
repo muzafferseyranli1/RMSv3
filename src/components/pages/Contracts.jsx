@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
@@ -689,7 +689,7 @@ const EMPTY = {
 }
 
 export default function Contracts() {
-  const { toast } = useToast()
+  const toast = useToast()
   const [contracts, setContracts]   = useState([])
   const [suppliers, setSuppliers]   = useState([])
   const [stockItems, setStockItems] = useState([])
