@@ -2330,7 +2330,7 @@ export default function KioskBig() {
       setDeviceKioskCode(nextDeviceCode)
       setKioskStationDraft(nextDeviceCode)
 
-      const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes] = await Promise.all([
+      const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes, devicesRes] = await Promise.all([
         settingsPromise,
         db.from('sale_categories').select('id,name,parent_id').is('deleted_at', null),
         db.from('sale_items').select('id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes').is('deleted_at', null).eq('active', true),
@@ -2338,6 +2338,7 @@ export default function KioskBig() {
         db.from('taxes').select('id,name,rate').is('deleted_at', null),
         db.from('settings').select('value').eq('key', 'combo_menus_v1').maybeSingle(),
         db.from('option_groups').select('id,name,options').is('deleted_at', null),
+        effectiveBranchId ? db.from('pos_terminals').select('*').eq('branch_id', effectiveBranchId).in('device_type', ['kiosk', 'kiosk_tablet']) : Promise.resolve({ data: [] }),
       ])
       if (catRes.error) throw catRes.error
       if (prodRes.error) throw prodRes.error
@@ -2346,6 +2347,20 @@ export default function KioskBig() {
       if (optionGroupsRes.error) throw optionGroupsRes.error
       const categorySnapshot = await ensureComboMenuCategory(catRes.data || [])
       const safeCategories = categorySnapshot.categories || sortSaleCategoriesWithComboFirst(catRes.data || [])
+      
+      if (settingsData && devicesRes?.data) {
+        settingsData.kiosk_stations = (devicesRes.data || []).sort((left, right) => (
+          String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
+        )).map((device, index) => ({
+          id: device.id,
+          code: device.pair_key,
+          name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
+          kiosk_number: index + 1,
+          active: true,
+          order: index + 1,
+          device_type: device.device_type
+        }))
+      }
       setSettings(settingsData || KIOSK_DEFAULT_SETTINGS)
       setCategories(safeCategories
         .map(item => ({

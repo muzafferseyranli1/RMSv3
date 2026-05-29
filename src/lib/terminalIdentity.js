@@ -8,7 +8,7 @@ export function readTerminalConfig() {
   try {
     if (typeof window === 'undefined') return null
     if (window.__ELECTRON_TERMINAL_CONFIG__) return window.__ELECTRON_TERMINAL_CONFIG__
-    const raw = sessionStorage.getItem(CACHE_KEY)
+    const raw = localStorage.getItem(CACHE_KEY)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }

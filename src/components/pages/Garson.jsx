@@ -5094,7 +5094,13 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
             )}
 
             {/* Kapat */}
-            <button onClick={() => navigate('/dashboard')} style={{
+            <button onClick={() => {
+              if (typeof window !== 'undefined' && window.__DESKTOP_MODE__ && window.electronAPI?.exitApp) {
+                window.electronAPI.exitApp()
+              } else {
+                navigate('/dashboard')
+              }
+            }} style={{
               display:'flex',alignItems:'center',gap:6,
               padding:'8px 16px',borderRadius:10,border:'1.5px solid rgba(239,68,68,.4)',
               background:'rgba(239,68,68,.1)',color:'#f87171',fontWeight:700,

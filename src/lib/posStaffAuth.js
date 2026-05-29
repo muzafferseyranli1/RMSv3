@@ -45,7 +45,7 @@ function findPersonnelRecordForBranchPin(employees, branchId, normalizedPin) {
     if (employee?.deletedAt) continue
     if (!employee?.pin || employee.pin !== normalizedPin) continue
     if (!canPersonnelAccessBranch(employee, branchId)) continue
-    return employee
+    return { ...employee, name: getPersonnelDisplayName(employee) }
   }
   return null
 }

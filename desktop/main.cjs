@@ -207,6 +207,7 @@ app.whenReady().then(async () => {
       } catch { return 0 }
     })
     ipcMain.handle('update:apply', () => autoUpdater.quitAndInstall(false, true))
+    ipcMain.handle('app:exit', () => app.quit())
 
     const serverState = await createStaticServer()
     staticServer = serverState.server

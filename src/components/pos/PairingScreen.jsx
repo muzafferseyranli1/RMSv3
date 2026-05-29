@@ -97,8 +97,8 @@ export default function PairingScreen({ onComplete }) {
        pairedAt: new Date().toISOString()
     };
     
-    // Save to sessionStorage (cache)
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+    // Save to localStorage (cache)
+    localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
 
     if (window.electronAPI?.saveTerminalConfig) {
       await window.electronAPI.saveTerminalConfig(payload);

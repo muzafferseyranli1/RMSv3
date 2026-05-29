@@ -113,6 +113,8 @@ export default function DeviceSettings() {
       case 'kds': return <Server className="w-5 h-5" />
       case 'pickup': return <Smartphone className="w-5 h-5" />
       case 'queue_screen': return <Presentation className="w-5 h-5" />
+      case 'kiosk': return <Monitor className="w-5 h-5" />
+      case 'kiosk_tablet': return <Tablet className="w-5 h-5" />
       default: return <Monitor className="w-5 h-5" />
     }
   }
@@ -124,6 +126,8 @@ export default function DeviceSettings() {
       case 'kds': return 'Mutfak (KDS)'
       case 'pickup': return 'Teslimat (Pickup)'
       case 'queue_screen': return 'Sıra Ekranı'
+      case 'kiosk': return 'Kiosk'
+      case 'kiosk_tablet': return 'Kiosk Tablet'
       default: return type
     }
   }
@@ -252,7 +256,7 @@ export default function DeviceSettings() {
                 const newType = e.target.value
                 // If switching to a type that can't be master, auto uncheck
                 let newIsMaster = formData.is_master
-                if (['kds', 'pickup', 'queue_screen'].includes(newType)) {
+                if (['kds', 'pickup', 'queue_screen', 'kiosk', 'kiosk_tablet'].includes(newType)) {
                   newIsMaster = false
                 }
                 setFormData({
@@ -268,6 +272,8 @@ export default function DeviceSettings() {
               <option value="kds">Mutfak (KDS)</option>
               <option value="pickup">Teslimat (Pickup)</option>
               <option value="queue_screen">Sıra Ekranı</option>
+              <option value="kiosk">Kiosk</option>
+              <option value="kiosk_tablet">Kiosk Tablet</option>
             </select>
           </div>
 
@@ -283,7 +289,9 @@ export default function DeviceSettings() {
                 masa: 'örn. Bahçe Tableti, Garson 2',
                 kds: 'örn. Mutfak Ekranı, Sıcak Bölüm',
                 pickup: 'örn. Paket Ekranı',
-                queue_screen: 'örn. Sıra TV'
+                queue_screen: 'örn. Sıra TV',
+                kiosk: 'örn. Kiosk 1',
+                kiosk_tablet: 'örn. Kiosk Tablet 1'
               }[formData.device_type] || 'Cihaz adı girin'}
               value={formData.terminal_name || ''}
               onChange={e => setFormData({ ...formData, terminal_name: e.target.value })}

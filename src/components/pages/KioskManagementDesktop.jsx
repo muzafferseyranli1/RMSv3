@@ -1,4 +1,4 @@
-﻿import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import { useToast } from '@/hooks/useToast'
@@ -15,6 +15,7 @@ import {
   normalizeKioskStationCode,
   saveKioskSettings,
 } from '@/lib/kioskSettings'
+import { useWorkspace } from '@/context/WorkspaceContext'
 
 const DAY_OPTIONS = [
   ['mon', 'Pzt'],
@@ -440,7 +441,7 @@ function ScheduleRuleEditor({
   )
 }
 
-function KioskStationEditor({ station, onChange, onRemove }) {
+function KioskStationEditor({ station }) {
   return (
     <div
       style={{
@@ -452,8 +453,8 @@ function KioskStationEditor({ station, onChange, onRemove }) {
         gap: 12,
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '110px 1.2fr 1.2fr 120px auto', gap: 10, alignItems: 'end' }}>
-        <Field label="Kiosk no" hint="Ilk olusturmada sabitlenir, bu panelden degismez.">
+      <div style={{ display: 'grid', gridTemplateColumns: '110px 1.2fr 1.2fr 120px', gap: 10, alignItems: 'end' }}>
+        <Field label="Kiosk no" hint="Otomatik atanır.">
           <div style={{
             ...inputStyle(),
             display: 'flex',
@@ -467,45 +468,32 @@ function KioskStationEditor({ station, onChange, onRemove }) {
             <span style={{ fontSize: '.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Sabit</span>
           </div>
         </Field>
-        <Field label="Kiosk ID" hint="Cihazda girilecek sabit kimlik.">
-          <input
-            value={station.code || ''}
-            onChange={event => onChange({ code: normalizeKioskStationCode(event.target.value) })}
-            style={inputStyle()}
-            placeholder="KIOSK-01"
-          />
-        </Field>
-        <Field label="Gorunen ad" hint="Panel ve raporda kullanilir.">
-          <input
-            value={station.name || ''}
-            onChange={event => onChange({ name: event.target.value })}
-            style={inputStyle()}
-            placeholder="Kiosk 1"
-          />
-        </Field>
-        <label style={{ display: 'grid', gap: 7 }}>
-          <div>
-            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '.84rem' }}>Durum</div>
-            <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 3, lineHeight: 1.45 }}>Pasif kiosk secilemez.</div>
+        <Field label="Kiosk ID (Pair Key)" hint="Cihaz yönetiminden gelir.">
+          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
+            {station.code || ''}
           </div>
-          <label className="tog" style={{ marginTop: 2 }}>
-            <input type="checkbox" checked={station.active !== false} onChange={event => onChange({ active: event.target.checked })} />
-            <span className="tog-sl" />
-          </label>
-        </label>
-        <button type="button" className="btn-o" onClick={onRemove} style={{ color: '#b91c1c', minHeight: 42 }}>
-          Sil
-        </button>
+        </Field>
+        <Field label="Görünen ad" hint="Cihaz yönetiminden gelir.">
+          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
+            {station.name || ''}
+          </div>
+        </Field>
+        <Field label="Cihaz Tipi" hint="Kiosk Tipi">
+          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
+            {station.device_type === 'kiosk_tablet' ? 'Kiosk Tablet' : 'Kiosk'}
+          </div>
+        </Field>
       </div>
 
       <div style={subtleNoteStyle('#f8fafc', '#dbe2ea', '#334155')}>
-        Bu kiosk icin cihaz tarafinda ayni <strong>Kiosk ID</strong> girildiginde sistem otomatik olarak <strong>Kiosk {station.kiosk_number || 1}</strong> olarak eslesir. Kiosk numarasi burada kilitlidir; cihazdaki degisiklikler yalnizca gizli kurulum akisi ile yapilmalidir.
+        Bu kiosk icin cihaz tarafinda ayni <strong>Kiosk ID ({station.code})</strong> girildiginde sistem otomatik olarak <strong>Kiosk {station.kiosk_number || 1}</strong> olarak eslesir. Bu cihazların tanımlamaları artık <strong>POS ve Cihazlar</strong> menüsünden yönetilmektedir.
       </div>
     </div>
   )
 }
 
 export default function KioskManagementDesktop() {
+  const { branchId } = useWorkspace()
   const toast = useToast()
   const navigate = useNavigate()
   const [settings, setSettings] = useState(KIOSK_DEFAULT_SETTINGS)
@@ -515,6 +503,7 @@ export default function KioskManagementDesktop() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [kioskChannel, setKioskChannel] = useState(null)
+  const [kioskDevices, setKioskDevices] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [activeSection, setActiveSection] = useState(DESKTOP_SECTIONS[0].id)
 
@@ -523,7 +512,7 @@ export default function KioskManagementDesktop() {
     ;(async () => {
       try {
         setLoading(true)
-        const [settingsResult, categoryResult, productResult, channelResult] = await Promise.allSettled([
+        const [settingsResult, categoryResult, productResult, channelResult, devicesResult] = await Promise.allSettled([
           loadKioskSettings(),
           db.from('sale_categories').select('id,name,parent_id').is('deleted_at', null).order('name'),
           db
@@ -532,6 +521,7 @@ export default function KioskManagementDesktop() {
             .is('deleted_at', null)
             .order('name'),
           db.from('sales_channels').select('id,name').is('deleted_at', null).ilike('name', 'kiosk').maybeSingle(),
+          branchId ? db.from('pos_terminals').select('*').eq('branch_id', branchId).in('device_type', ['kiosk', 'kiosk_tablet']) : Promise.resolve({ data: [] })
         ])
         if (ignore) return
 
@@ -542,12 +532,14 @@ export default function KioskManagementDesktop() {
         setCategories(categoryResult.status === 'fulfilled' ? (categoryResult.value?.data || []) : [])
         setProducts(productResult.status === 'fulfilled' ? (productResult.value?.data || []) : [])
         setKioskChannel(channelResult.status === 'fulfilled' ? (channelResult.value?.data || null) : null)
+        setKioskDevices(devicesResult.status === 'fulfilled' ? (devicesResult.value?.data || []) : [])
 
         const errors = [
           settingsResult.status === 'rejected' ? settingsResult.reason?.message : '',
           categoryResult.status === 'rejected' ? categoryResult.reason?.message : '',
           productResult.status === 'rejected' ? productResult.reason?.message : '',
           channelResult.status === 'rejected' ? channelResult.reason?.message : '',
+          devicesResult.status === 'rejected' ? devicesResult.reason?.message : '',
         ].filter(Boolean)
 
         if (errors.length > 0) {
@@ -560,7 +552,7 @@ export default function KioskManagementDesktop() {
       }
     })()
     return () => { ignore = true }
-  }, [toast])
+  }, [toast, branchId])
 
   useEffect(() => {
     if (loading) return undefined
@@ -903,16 +895,19 @@ export default function KioskManagementDesktop() {
     return ids.map(id => products.find(product => String(product.id) === String(id))).filter(Boolean)
   }, [products, settings.quick_pick_product_ids])
   const kioskStations = useMemo(() => (
-    [...(settings.kiosk_stations || [])].sort((left, right) => (
-      (left.order || 0) - (right.order || 0)
-      || (left.kiosk_number || 0) - (right.kiosk_number || 0)
-      || String(left.name || '').localeCompare(String(right.name || ''), 'tr')
-    ))
-  ), [settings.kiosk_stations])
-  const activeKioskStationCount = useMemo(
-    () => kioskStations.filter(station => station.active !== false).length,
-    [kioskStations],
-  )
+    [...kioskDevices].sort((left, right) => (
+      String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
+    )).map((device, index) => ({
+      id: device.id,
+      code: device.pair_key,
+      name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
+      kiosk_number: index + 1,
+      active: true,
+      order: index + 1,
+      device_type: device.device_type
+    }))
+  ), [kioskDevices])
+  const activeKioskStationCount = kioskStations.length
 
   const bannerActionSummary = useMemo(() => {
     switch (settings.main_banner_action_type) {
@@ -990,11 +985,11 @@ export default function KioskManagementDesktop() {
             id="kioskler"
             icon="fa-tablet-screen-button"
             accent="#0f766e"
-            title="Kioskler"
-            subtitle="Ayni subedeki fiziksel kiosklarin sabit numara ve ID tanimlari burada tutulur."
+            title="Tanımlı Kiosk Cihazları"
+            subtitle="Aynı şubedeki fiziksel kioskların listesi. (POS ve Cihazlar menüsünden eklenir)"
           >
             <div style={subtleNoteStyle('#eff6ff', '#bfdbfe', '#1d4ed8')}>
-              Loyalty entegrasyonunda her kiosk icin benzersiz bir <strong>Kiosk ID</strong> tanimlayin. Fiziksel kiosk cihazinda ayni ID girildiginde cihaz ilgili kiosk numarasini bilir. Kiosk numarasi ilk olusturmadan sonra bu ekranda degistirilmez.
+              Loyalty entegrasyonunda her kiosk icin benzersiz bir <strong>Kiosk ID</strong> tanimlayin. Fiziksel kiosk cihazinda ayni ID girildiginde cihaz ilgili kiosk numarasini bilir. Yeni cihazları <strong>POS ve Cihazlar</strong> menüsünden ekleyebilirsiniz.
             </div>
 
             {kioskStations.length > 0 ? (
@@ -1003,22 +998,19 @@ export default function KioskManagementDesktop() {
                   <KioskStationEditor
                     key={station.id}
                     station={station}
-                    onChange={patch => updateKioskStation(station.id, patch)}
-                    onRemove={() => removeKioskStation(station.id)}
                   />
                 ))}
               </div>
             ) : (
               <div style={subtleNoteStyle('#f8fafc', '#dbe2ea', '#475569')}>
-                Henuz bir kiosk tanimlanmadi. Asagidan <strong>+ Kiosk Ekle</strong> diyerek subedeki kiosklar icin numara ve ID olusturabilirsiniz.
+                Henuz bir kiosk tanimlanmadi. <strong>POS ve Cihazlar</strong> menüsünden şubedeki kiosklar icin yeni cihaz oluşturabilirsiniz.
               </div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ color: '#64748b', fontSize: '.82rem' }}>
-                Toplam {kioskStations.length} kiosk, aktif {activeKioskStationCount} kiosk.
+                Toplam {kioskStations.length} tanımlı kiosk cihazı.
               </div>
-              <button type="button" className="btn-o" onClick={addKioskStation}>+ Kiosk Ekle</button>
             </div>
           </SectionBlock>
 

@@ -122,6 +122,7 @@ const NAV = [
     items: [
       { label: 'Masa Düzeni', path: '/:branchId/masalar', icon: 'fa-chair', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'POS ve Cihazlar', path: '/:branchId/cihazlar', icon: 'fa-cash-register', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+      { label: 'Kiosk YÃ¶netimi', path: '/kiosk-management', icon: 'fa-sliders', color: '#a78bfa', bg: 'rgba(167,139,250,.18)' },
       { label: 'Tahmin', path: '/forecast', icon: 'fa-chart-line', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'SipariÅŸler', path: '/orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
       { label: 'Mal Kabul', path: '/mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
@@ -192,16 +193,11 @@ const NAV = [
         group: 'pos-garson',
         screenPath: '/garson-screen',
       },
-      {
-        label: 'Kiosk', icon: 'fa-tablet-screen-button', color: '#a78bfa', bg: 'rgba(167,139,250,.18)',
-        group: 'kiosk-group',
-        children: [
-          { label: 'Kiosk YÃ¶netimi', path: '/kiosk-management', icon: 'fa-sliders', color: '#a78bfa', bg: 'rgba(167,139,250,.18)' },
-          { label: 'KDS (Mutfak)', path: '/kds', icon: 'fa-kitchen-set', color: '#f59e0b', bg: 'rgba(245,158,11,.18)', screenPath: '/kds-screen' },
-          { label: 'Teslim EkranÄ±', path: '/pickup', icon: 'fa-hand-holding-box', color: '#22c55e', bg: 'rgba(34,197,94,.18)', screenPath: '/pickup-screen' },
-          { label: 'SÄ±ra EkranÄ±', path: '/queue', icon: 'fa-tv', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-        ],
-      },
+      { label: 'Kiosk', path: '/kiosk', icon: 'fa-tablet-screen-button', color: '#a78bfa', bg: 'rgba(167,139,250,.18)' },
+      { label: 'Kiosk Tablet', path: '/kiosk-tablet', icon: 'fa-tablet', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
+      { label: 'KDS (Mutfak)', path: '/kds', icon: 'fa-kitchen-set', color: '#f59e0b', bg: 'rgba(245,158,11,.18)', screenPath: '/kds-screen' },
+      { label: 'Teslim EkranÄ±', path: '/pickup', icon: 'fa-hand-holding-box', color: '#22c55e', bg: 'rgba(34,197,94,.18)', screenPath: '/pickup-screen' },
+      { label: 'SÄ±ra EkranÄ±', path: '/queue', icon: 'fa-tv', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
     ],
   },
   {
