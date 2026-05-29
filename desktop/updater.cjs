@@ -19,8 +19,8 @@ function initAutoUpdater(mainWindow) {
   // GitHub Releases — repo ve owner uygulamaya göre ayarlanacak
   autoUpdater.setFeedURL({
     provider: 'github',
-    owner: 'muzafferseyranli',
-    repo: 'SuitableRMS-Releases',
+    owner: 'muzafferseyranli1',
+    repo: 'RMSv3',
     private: false,
   })
 

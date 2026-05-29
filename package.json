@@ -99,8 +99,8 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "muzafferseyranli",
-      "repo": "SuitableRMS-Releases"
+      "owner": "muzafferseyranli1",
+      "repo": "RMSv3"
     },
     "win": {
       "target": [
