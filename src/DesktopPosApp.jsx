@@ -11,8 +11,6 @@ import PairingScreen from '@/components/pos/PairingScreen'
 
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
-const POSMasa = lazy(() => import('@/components/pages/POSMasa'))
-const POSMasalar = lazy(() => import('@/components/pages/POSMasalar'))
 const KDS = lazy(() => import('@/components/pages/KDS'))
 const PickupScreen = lazy(() => import('@/components/pages/PickupScreen'))
 
@@ -66,8 +64,8 @@ function DesktopPosShell() {
           <Route path="/" element={<Navigate to={startPath} replace />} />
           <Route path="/pos" element={<POS />} />
           <Route path="/garson" element={<Garson />} />
-          <Route path="/pos-masa" element={<POSMasa />} />
-          <Route path="/pos-masalar" element={<POSMasalar />} />
+          <Route path="/pos-masa" element={<Navigate to="/garson" replace />} />
+          <Route path="/pos-masalar" element={<Navigate to="/garson" replace />} />
           <Route path="/kds" element={<KDS />} />
           <Route path="/pickup" element={<PickupScreen />} />
           <Route path="*" element={<Navigate to={startPath} replace />} />

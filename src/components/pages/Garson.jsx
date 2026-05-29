@@ -8,7 +8,6 @@ import LoyaltyCampaignCatalog from '@/components/pos/LoyaltyCampaignCatalog'
 import LoyaltyCheckoutPrompt from '@/components/pos/LoyaltyCheckoutPrompt'
 import PosCustomerLinkModal from '@/components/pos/PosCustomerLinkModal'
 import StaffPinGate from '@/components/pos/StaffPinGate'
-import TableManagementModal from '@/components/pos/TableManagementModal'
 import ComboBuilderModal, {
   expandCartItemsForPayload,
   findComboDefinitionForProduct,
@@ -2898,7 +2897,6 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
   const [tableTickets, setTableTickets] = useState(() => readLocalOpenTableTicketsSnapshot(initialLayoutDirectory))
   const [showTableLayout, setShowTableLayout] = useState(false)
   const activeStaff = forcedActiveStaff
-  const [showTableManagementModal, setShowTableManagementModal] = useState(false)
   const [loyaltyCampaignCatalog, setLoyaltyCampaignCatalog] = useState([])
   const [saleTemplates, setSaleTemplates] = useState([])
   const [loyaltyCampaignLoading, setLoyaltyCampaignLoading] = useState(false)
@@ -5064,7 +5062,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
             {isTableLayoutView && isMasaChannel && canEditCurrentTable && (
               <button
                 className="touch-btn"
-                onClick={() => setShowTableManagementModal(true)}
+                onClick={() => navigate('/masa-duzeni')}
                 style={{
                   minHeight:44,
                   minWidth:112,
@@ -5676,13 +5674,6 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
           onSelect={branchId => setSelectedBranchId(branchId)}
         />
       )}
-
-      <TableManagementModal
-        open={showTableManagementModal}
-        branchId={selectedBranchContext?.branchId || ''}
-        branchName={selectedBranchContext?.branchName || ''}
-        onClose={() => setShowTableManagementModal(false)}
-      />
 
       <style>{`
         *{box-sizing:border-box}

@@ -7199,3 +7199,36 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Handoff Contract`: `created_by_terminal alan enjeksiyon altyapısı hem veri istemci (db.js) hem de terminal kimlik (terminalIdentity.js) katmanlarında %100 başarıyla tamamlanmış ve test edilmiştir.`
 
 
+## Entry 180 - 2026-05-29
+
+- `Timestamp`: `2026-05-29T20:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Eksik Bağımlılık (lucide-react) Kurulumu ve Atıl POSMasa/POSMasalar/TableManagementModal Kodlarının Temizlenmesi`
+- `Intent`: `Vite'ın dev sunucu başlatılırken eksik olduğunu bildirdiği 'lucide-react' bağımlılığını projeye kurmak ve yakın zamanda emekli edilen (commit 49ce2d1'de silinen) POSMasa/POSMasalar/TableManagementModal bileşenlerine ait App.jsx, DesktopPosApp.jsx ve Garson.jsx içindeki atıl/hatalı lazy-import ve route'ları temizlemek.`
+- `Files Read`:
+  - `package.json`
+  - `src/components/pages/DeviceSettings.jsx`
+  - `src/App.jsx`
+  - `src/DesktopPosApp.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pos/PosTableLayoutFromCatalog.jsx`
+- `Files Changed`:
+  - `package.json` (MODIFY) — `lucide-react` bağımlılığı başarıyla eklendi.
+  - `src/App.jsx` (MODIFY) — Atıl `POSMasa` ve `POSMasalar` lazy import'ları temizlendi.
+  - `src/DesktopPosApp.jsx` (MODIFY) — Silinen `POSMasa` ve `POSMasalar` importları temizlendi; `/pos-masa` ve `/pos-masalar` rotaları `/garson` sayfasına güvenle yönlendirildi.
+  - `src/components/pages/Garson.jsx` (MODIFY) — Silinen `TableManagementModal` bileşeniyle ilgili tüm atıl import, state ve render alanları kaldırıldı; table layout panelindeki "Düzenle" butonu tıklaması doğrudan yeni `/masa-duzeni` sayfasına gitmesi için `navigate('/masa-duzeni')` şeklinde güncellendi.
+  - `src/components/pages/GarsonTableLayout.jsx` (NEW) — Silinen eski garson masa düzeni şablonunun yerine, yeni `PosTableLayoutFromCatalog` bileşenini saran ve şube bazlı masa kataloğunu asenkron yükleyen uyumlu wrapper bileşen yeniden oluşturuldu.
+- `Commands Run`:
+  - `npm.cmd install lucide-react` (lucide-react paketi projeye başarıyla kuruldu)
+  - `npm.cmd run build` (Tüm proje, atıl imports temizlendikten sonra 0 hata ile başarıyla derlendi)
+- `Findings`:
+  - `POSMasa` ve `POSMasalar` ekran modları son cihaz yapılandırmalarıyla beraber emekliye ayrılmıştı ancak lazy referansları ve route tanımları kaldığı için Vite derleme esnasında hata fırlatıyordu.
+  - `TableManagementModal` tamamen silinerek backoffice altındaki `/masa-duzeni` (TableManagement.jsx) sayfasına taşınmıştı, Garson ekranındaki Düzenle aksiyonu da bu sayfaya yönlendirildi.
+- `Decisions`:
+  - Geriye dönük uyumluluğu korumak ve olası bir eski terminal eşleşme hatasını önlemek adına `/pos-masa` ve `/pos-masalar` rotaları kaldırılmak yerine `/garson` rotasına `Navigate` ile yönlendirildi.
+- `Open Risks`:
+  - Yok.
+- `Handoff Contract`: `Eksik lucide-react bağımlılığı başarıyla kurulmuş, atıl importlar, route'lar ve retired modal referansları temizlenmiş, Garson masa planı yeni şema motoruna bağlanarak proje sıfır hata ile derlenmiştir.`
+
+
+
