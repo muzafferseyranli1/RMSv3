@@ -24,8 +24,11 @@ Modalin içerisindeki adımların (`steps` dizisi) boş olmasının teknik olara
 
 ---
 
-> [!IMPORTANT]  
-> **Kullanıcı Onayı Gerekiyor:** 
-> Bu plan, veritabanından kaynaklı yapısal boşlukları (eksik gruplar veya uyuşmayan ID'ler) arayüzde onarmaya yöneliktir. 
-> 
-> Lütfen planı onaylayın, ben de hemen kodlara müdahale edip Kiosk ve POS ekranlarındaki bu "boş ekran" krizini kalıcı olarak çözeyim.
+# Satış Malları Görsel Depolama ve Yerel/Terminal Ortam Çözümleme Planı
+
+## Kullanıcı İncelemesi Gereken Konular
+> [!IMPORTANT]
+> - **POS ve Kiosk Görsel Tutarsızlığı:** Ürün görselleri için `pos_image` ve `channel_image` alanları kullanılmaktadır. `channel_image` canlı Railway Volume'a taşınmış fakat bağıl `/api/files/...` yolları local Vite ortamında kırık kalmıştır. `pos_image` alanı ise DB şişkinliği oluşturan ham Base64 verisi halinde kalmıştır.
+> - **Kayıpsız Göç Yaklaşımı:** 74 ürünün Base64 `pos_image` verisini Railway Volume depolama alanına (`/api/files/`) kayıpsız taşıyacağız.
+> - **Global Çözümleyici Entegrasyonu:** Tüm istemcilerde (POS, Garson, Kiosk Big, Kiosk Tablet) relative `/api/files/` yollarını merkezi DB istemci düzeyinde (`db.js`) Railway API Base URL (`https://rms-api-production-219d.up.railway.app`) ile eşleyerek hem dev sunucuda hem de Electron tabletlerde sorunsuz render edilmesini sağlayacağız.
+

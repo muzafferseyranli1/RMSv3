@@ -2281,7 +2281,15 @@ function ProductOptionsModal({ prod, channelId, accentColor, onConfirm, onCancel
     const key = `${groupIndex}:${optionIndex}`
     setSelOpts(current => {
       const list = current[groupIndex] || []
-      if (maxSelect > 0 && list.length >= maxSelect && !list.includes(key)) return current
+      const count = list.filter(k => k === key).length
+
+      if (maxSelect <= 1) {
+        return count > 0
+          ? { ...current, [groupIndex]: list.filter(k => k !== key) }
+          : { ...current, [groupIndex]: [key] }
+      }
+
+      if (list.length >= maxSelect) return current
       return { ...current, [groupIndex]: [...list, key] }
     })
   }

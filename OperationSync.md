@@ -7485,3 +7485,15 @@ pm run build.
 - **Global Image Path Resolver:** Implemented a global `resolveImageUrl` helper in `src/lib/db.js` which automatically intercepts database queries for `sale_items` at the `QueryBuilder` client-level and resolves any relative image paths (e.g. `/api/files/...`) to working absolute URLs pointing to the remote production API server (`https://rms-api-production-219d.up.railway.app`).
 - **Unified Screen Integration:** Applied the resolver across KioskBig, KioskTablet, POS, and Garson views. Now, both local Vite development servers (running on localhost) and production installations can perfectly load and render uploaded product/combo images with zero configuration or broken image icons.
 - **Build Validation:** Successfully verified the entire project builds with 0 compile/Vite errors.
+
+## Entry 185 - 2026-05-30
+
+**Tasks Completed (by Agent):**
+- **Çoklu Seçim UI Yeniden Tasarımı & Sınırlandırmalar:**
+  - Tüm ekranlardaki (POS.jsx, Garson.jsx, ComboBuilderModal.jsx, KioskBig.jsx, KioskTablet.jsx) çoklu adet seçim butonlarının genişliği 38px olarak daraltıldı.
+  - Butonların köşelerine kavis (border-radius) eklenerek genel arayüzle bütünlük sağlandı.
+  - Kartların overflow: 'hidden' özelliği kaldırılarak kırmızı adet rozetlerinin (badge) kesilmeden tam olarak oturması ve görünmesi sağlandı.
+  - KioskBig ve KioskTablet modüllerindeki toggleOpt fonksiyonundaki !list.includes(key) kontrol hatası giderildi, böylece max_select sınırına ulaşıldığında yeni seçenek eklenmesi başarıyla engellendi.
+  - Yapılan tüm değişiklikler başarıyla build edilerek npm run build ile doğrulandı.
+- **Hafıza Senkronizasyonu:**
+  - implementation_plan.md, task.md ve walkthrough.md dosyaları ./docs/ klasörüne kopyalandı.
