@@ -2927,7 +2927,7 @@ function OdemeModalFlow({
   )
 }
 
-function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
+function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLogin = null }) {
   const navigate = useNavigate()
   const {
     scope,
@@ -3721,7 +3721,10 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
 
 
   function handleProdClick(prod) {
-    if (!activeStaff) return
+    if (!activeStaff) {
+      triggerPinLogin?.()
+      return
+    }
     continueProductSelection(prod)
   }
 
@@ -4662,7 +4665,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
             Yenile
           </button>
         </div>
-        {activeStaff && (
+        {activeStaff ? (
           <div style={{padding:'0 16px',marginBottom:10}}>
             <button
               type="button"
@@ -4689,6 +4692,33 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null }) {
               >
                 <i className="fa-solid fa-right-from-bracket" />
               </span>
+            </button>
+          </div>
+        ) : (
+          <div style={{padding:'0 16px',marginBottom:10}}>
+            <button
+              type="button"
+              onClick={() => triggerPinLogin?.()}
+              style={{
+                width:'100%',
+                minHeight:48,
+                borderRadius:14,
+                border:'1px dashed rgba(56,189,248,.3)',
+                background:'rgba(56,189,248,.04)',
+                color:'#7dd3fc',
+                display:'flex',
+                alignItems:'center',
+                justifyContent:'center',
+                gap:8,
+                padding:'0 12px',
+                cursor:'pointer',
+                fontWeight:900,
+                fontSize:'.85rem',
+                transition:'all .15s ease'
+              }}
+            >
+              <i className="fa-solid fa-user-lock" />
+              <span>Personel Girişi</span>
             </button>
           </div>
         )}
@@ -5796,7 +5826,13 @@ export default function Garson() {
             activeStaff={activeStaff}
             onStaffLogout={helpers?.logout}
             showTableManagement
-            renderGarson={sharedProps => <POSInner forcedActiveStaff={sharedProps.activeStaff} onStaffLogout={sharedProps.onStaffLogout} />}
+            renderGarson={sharedProps => (
+              <POSInner
+                forcedActiveStaff={sharedProps.activeStaff}
+                onStaffLogout={sharedProps.onStaffLogout}
+                triggerPinLogin={helpers?.triggerPinLogin}
+              />
+            )}
           />
         )}
       </StaffPinGate>

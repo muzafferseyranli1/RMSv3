@@ -2929,7 +2929,7 @@ function PosOrderHubPanel({ branchId, branchName }) {
   )
 }
 
-function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
+function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLogin = null } = {}) {
   const navigate = useNavigate()
   const {
     scope,
@@ -3784,7 +3784,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
   }
   function handleProdClick(prod) {
     if (!activeStaff) {
-      showToast('Personel oturumu bulunamadi. Lutfen yeniden PIN girisi yapin.', '#ef4444')
+      triggerPinLogin?.()
       return
     }
     continueProductSelection(prod)
@@ -4777,7 +4777,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
             {visibleBranchName}
           </div>
 
-          {activeStaff && (
+          {activeStaff ? (
             <button
               type="button"
               onClick={handleStaffLogout}
@@ -4813,6 +4813,31 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null } = {}) {
               }}>
                 <i className="fa-solid fa-right-from-bracket" />
               </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => triggerPinLogin?.()}
+              style={{
+                width:'100%',
+                minHeight:58,
+                borderRadius:16,
+                border:'1px dashed rgba(56,189,248,.3)',
+                background:'rgba(56,189,248,.04)',
+                color:'#7dd3fc',
+                display:'flex',
+                alignItems:'center',
+                justifyContent:'center',
+                gap:8,
+                padding:'0 14px',
+                cursor:'pointer',
+                fontWeight:900,
+                fontSize:'.9rem',
+                transition:'all .15s ease'
+              }}
+            >
+              <i className="fa-solid fa-user-lock" />
+              <span>Personel Girişi</span>
             </button>
           )}
 
@@ -6082,6 +6107,7 @@ export default function POS() {
               <POSInner
                 forcedActiveStaff={sharedProps.activeStaff}
                 onStaffLogout={sharedProps.onStaffLogout}
+                triggerPinLogin={helpers?.triggerPinLogin}
               />
             )}
           />

@@ -38,8 +38,11 @@ export default function StaffPinGate({
     writePosStaffSession(storageKey, null)
   }, [storageKey, branchId])
 
-  // Desktop terminal modunda (pair edilmis cihaz) PIN sorulmaz
+  // Desktop terminal modunda (pair edilmis cihaz) PIN modal olarak calisir, blocking degildir
   const desktopMode = isDesktopMode()
+  const [pinModalOpen, setPinModalOpen] = useState(false)
+  const triggerPinLogin = () => setPinModalOpen(true)
+
   const showPinPrompt = !desktopMode && Boolean(branchId) && !activeStaff
 
   const handleSubmit = async () => {
@@ -66,6 +69,7 @@ export default function StaffPinGate({
         authenticatedAt: new Date().toISOString(),
       })
       setPinInput('')
+      setPinModalOpen(false)
     } finally {
       setStaffLoading(false)
     }
@@ -97,7 +101,33 @@ export default function StaffPinGate({
     )
   }
 
-  return typeof children === 'function'
-    ? children(activeStaff, { logout: handleLogout })
-    : children
+  return (
+    <>
+      {typeof children === 'function'
+        ? children(activeStaff, { logout: handleLogout, triggerPinLogin })
+        : children}
+
+      {desktopMode && pinModalOpen && (
+        <PinLoginScreen
+          title={title}
+          subtitle={subtitle}
+          branchName={branchName}
+          pin={pinInput}
+          error={pinError}
+          loading={staffLoading}
+          embedded={embeddedPin}
+          onPinChange={value => {
+            setPinError('')
+            setPinInput(normalizePinInput(value))
+          }}
+          onSubmit={handleSubmit}
+          onClose={() => {
+            setPinModalOpen(false)
+            setPinInput('')
+            setPinError('')
+          }}
+        />
+      )}
+    </>
+  )
 }
