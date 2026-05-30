@@ -1,4 +1,4 @@
-# OperationSync
+ï»¿# OperationSync
 
 Yururluk tarihi: `2026-05-09`  
 Status: `active`  
@@ -7233,11 +7233,11 @@ pm run build (baÃ…Å¸arÃ„Â±yla tamamlandÃ„Â±, 11.04s)
 
 
 
-## Entry — DeviceSettings 'Oluþtur ve Kaydet' Düzeltmesi
+## Entry ï¿½ DeviceSettings 'Oluï¿½tur ve Kaydet' Dï¿½zeltmesi
 
 - `Timestamp`: `2026-05-29T20:40:00+03:00`
 - `Agent`: `debug-fix-subagent`
-- `Task`: `DeviceSettings.jsx — 'Oluþtur ve Kaydet' butonu çalýþmýyor hatasýný bul ve düzelt`
+- `Task`: `DeviceSettings.jsx ï¿½ 'Oluï¿½tur ve Kaydet' butonu ï¿½alï¿½ï¿½mï¿½yor hatasï¿½nï¿½ bul ve dï¿½zelt`
 - `Files Read`:
   - `src/components/pages/DeviceSettings.jsx`
   - `server/index.js`
@@ -7248,19 +7248,19 @@ pm run build (baÃ…Å¸arÃ„Â±yla tamamlandÃ„Â±, 11.04s)
   - `src/components/pages/DeviceSettings.jsx`
   - `server/index.js`
 - `Commands Run`:
-  - `npm.cmd run build` › ? baþarýlý (7.99s)
+  - `npm.cmd run build` ï¿½ ? baï¿½arï¿½lï¿½ (7.99s)
 - `Findings`:
-  1. Ana hata: DeviceSettings.jsx içinde db.query('pos_terminals') çaðrýlýyordu. Ancak src/lib/db.js'de db.query metodu hiç tanýmlý deðil; yalnýzca db.from var. Bu nedenle buton týklandýðýnda undefined hatasý oluþuyor ve hiçbir iþlem gerçekleþmiyordu.
-  2. Ýkincil sorun: server/index.js'deki normalizeWriteValue'da pos_terminals tablosu yoktu. config_data JSONB alaný ham obje olarak DB'ye gönderiliyordu.
-  3. Insert payload'ý açýk alan listesiyle yeniden yazýldý; is_used: false NOT NULL alaný eklendi.
+  1. Ana hata: DeviceSettings.jsx iï¿½inde db.query('pos_terminals') ï¿½aï¿½rï¿½lï¿½yordu. Ancak src/lib/db.js'de db.query metodu hiï¿½ tanï¿½mlï¿½ deï¿½il; yalnï¿½zca db.from var. Bu nedenle buton tï¿½klandï¿½ï¿½ï¿½nda undefined hatasï¿½ oluï¿½uyor ve hiï¿½bir iï¿½lem gerï¿½ekleï¿½miyordu.
+  2. ï¿½kincil sorun: server/index.js'deki normalizeWriteValue'da pos_terminals tablosu yoktu. config_data JSONB alanï¿½ ham obje olarak DB'ye gï¿½nderiliyordu.
+  3. Insert payload'ï¿½ aï¿½ï¿½k alan listesiyle yeniden yazï¿½ldï¿½; is_used: false NOT NULL alanï¿½ eklendi.
 - `Decisions`:
-  - db.query(...) › db.from(...) ile deðiþtirildi. loadDevices, handleSave, handleDelete düzeltildi.
+  - db.query(...) ï¿½ db.from(...) ile deï¿½iï¿½tirildi. loadDevices, handleSave, handleDelete dï¿½zeltildi.
   - pos_terminals.config_data server/index.js normalizeWriteValue listesine eklendi.
-  - Toast hata mesajý DB'den gelen gerçek hatayý yansýtacak þekilde güncellendi.
+  - Toast hata mesajï¿½ DB'den gelen gerï¿½ek hatayï¿½ yansï¿½tacak ï¿½ekilde gï¿½ncellendi.
 - `Open Risks`:
-  - branchId null ise branch_id NOT NULL ihlali oluþabilir; form validation eklenmeli.
-- `Next Step`: Browser'da smoke-test: Yeni Cihaz Ekle › Kasa (POS) › Ana Kasa (Master) › Oluþtur ve Kaydet.
-- `Handoff Contract`: DeviceSettings.jsx artýk db.from() kullanýyor. db.query() yoktur. config_data JSONB normalize ediliyor.
+  - branchId null ise branch_id NOT NULL ihlali oluï¿½abilir; form validation eklenmeli.
+- `Next Step`: Browser'da smoke-test: Yeni Cihaz Ekle ï¿½ Kasa (POS) ï¿½ Ana Kasa (Master) ï¿½ Oluï¿½tur ve Kaydet.
+- `Handoff Contract`: DeviceSettings.jsx artï¿½k db.from() kullanï¿½yor. db.query() yoktur. config_data JSONB normalize ediliyor.
 
 ## Entry 180 - 2026-05-29
 
@@ -7316,48 +7316,48 @@ pm run build (baÃ…Å¸arÃ„Â±yla tamamlandÃ„Â±, 11.04s)
 - Handoff Contract: useToast() bir fonksiyon dogar. DeviceSettings artik toast(msg, type) seklinde kullaniyor.
 
 
-## Entry - TableManagement useToast API Düzeltmesi
+## Entry - TableManagement useToast API Dï¿½zeltmesi
 
 - Timestamp: 2026-05-29T21:05:00+03:00
 - Agent: Antigravity
-- Task: TableManagement.jsx - Hatalý useToast API kullanýmýný düzelt
+- Task: TableManagement.jsx - Hatalï¿½ useToast API kullanï¿½mï¿½nï¿½ dï¿½zelt
 - Files Read:
   - src/components/pages/TableManagement.jsx
   - src/hooks/useToast.jsx
 - Files Changed:
   - src/components/pages/TableManagement.jsx
 - Commands Run:
-  - npm.cmd run build (Baþarýlý, 8.28s, 0 hata)
+  - npm.cmd run build (Baï¿½arï¿½lï¿½, 8.28s, 0 hata)
 - Findings:
-  - \TableManagement.jsx\ dosyasýnda da týpký \DeviceSettings.jsx\ dosyasýnda olduðu gibi \const { addToast } = useToast()\ þeklinde hatalý bir destructuring yapýldýðý tespit edildi.
-  - \useToast\ hook'u doðrudan toast fonksiyonunu döndürdüðü için \ddToast\ deðeri \undefined\ oluyordu ve çaðrýldýðýnda TypeError fýrlatýyordu.
+  - \TableManagement.jsx\ dosyasï¿½nda da tï¿½pkï¿½ \DeviceSettings.jsx\ dosyasï¿½nda olduï¿½u gibi \const { addToast } = useToast()\ ï¿½eklinde hatalï¿½ bir destructuring yapï¿½ldï¿½ï¿½ï¿½ tespit edildi.
+  - \useToast\ hook'u doï¿½rudan toast fonksiyonunu dï¿½ndï¿½rdï¿½ï¿½ï¿½ iï¿½in \ddToast\ deï¿½eri \undefined\ oluyordu ve ï¿½aï¿½rï¿½ldï¿½ï¿½ï¿½nda TypeError fï¿½rlatï¿½yordu.
 - Decisions:
-  - \const { addToast } = useToast()\ ifadesi \const toast = useToast()\ olarak güncellendi.
-  - Dosya içerisindeki tüm \ddToast({ title, description, type })\ çaðrýlarý \	oast(description, type)\ yapýsýna dönüþtürüldü.
+  - \const { addToast } = useToast()\ ifadesi \const toast = useToast()\ olarak gï¿½ncellendi.
+  - Dosya iï¿½erisindeki tï¿½m \ddToast({ title, description, type })\ ï¿½aï¿½rï¿½larï¿½ \	oast(description, type)\ yapï¿½sï¿½na dï¿½nï¿½ï¿½tï¿½rï¿½ldï¿½.
 - Open Risks: Yok.
-- Next Step: Masa Düzeni ekraný test edilmeli.
-- Handoff Contract: \TableManagement.jsx\ içindeki hatalý toast kullanýmlarý giderildi ve projenin sorunsuz derlendiði doðrulandý.
+- Next Step: Masa Dï¿½zeni ekranï¿½ test edilmeli.
+- Handoff Contract: \TableManagement.jsx\ iï¿½indeki hatalï¿½ toast kullanï¿½mlarï¿½ giderildi ve projenin sorunsuz derlendiï¿½i doï¿½rulandï¿½.
 
 
-## Entry - Contracts useToast API Düzeltmesi
+## Entry - Contracts useToast API Dï¿½zeltmesi
 
 - Timestamp: 2026-05-29T21:06:00+03:00
 - Agent: Antigravity
-- Task: Contracts.jsx - Hatalý useToast API kullanýmýný düzelt
+- Task: Contracts.jsx - Hatalï¿½ useToast API kullanï¿½mï¿½nï¿½ dï¿½zelt
 - Files Read:
   - src/components/pages/Contracts.jsx
 - Files Changed:
   - src/components/pages/Contracts.jsx
 - Commands Run:
-  - npm.cmd run build (Baþarýlý, 9.52s, 0 hata)
+  - npm.cmd run build (Baï¿½arï¿½lï¿½, 9.52s, 0 hata)
 - Findings:
-  - \Contracts.jsx\ dosyasýnda \const { toast } = useToast()\ þeklinde hatalý bir destructuring yapýldýðý tespit edildi.
-  - \useToast\ hook'u doðrudan toast fonksiyonunu döndürdüðü için \	oast\ deðiþkeni \undefined\ oluyordu ve çaðrýldýðýnda TypeError fýrlatýyordu.
+  - \Contracts.jsx\ dosyasï¿½nda \const { toast } = useToast()\ ï¿½eklinde hatalï¿½ bir destructuring yapï¿½ldï¿½ï¿½ï¿½ tespit edildi.
+  - \useToast\ hook'u doï¿½rudan toast fonksiyonunu dï¿½ndï¿½rdï¿½ï¿½ï¿½ iï¿½in \	oast\ deï¿½iï¿½keni \undefined\ oluyordu ve ï¿½aï¿½rï¿½ldï¿½ï¿½ï¿½nda TypeError fï¿½rlatï¿½yordu.
 - Decisions:
-  - \const { toast } = useToast()\ ifadesi \const toast = useToast()\ olarak güncellendi.
+  - \const { toast } = useToast()\ ifadesi \const toast = useToast()\ olarak gï¿½ncellendi.
 - Open Risks: Yok.
-- Next Step: Sözleþmeler ekraný test edilmeli.
-- Handoff Contract: \Contracts.jsx\ içindeki hatalý toast kullanýmý giderildi ve projenin sorunsuz derlendiði doðrulandý.
+- Next Step: Sï¿½zleï¿½meler ekranï¿½ test edilmeli.
+- Handoff Contract: \Contracts.jsx\ iï¿½indeki hatalï¿½ toast kullanï¿½mï¿½ giderildi ve projenin sorunsuz derlendiï¿½i doï¿½rulandï¿½.
 
 - TableManagement and TableQrPrintModal visual redesign completed (A4 sticker format + updated panels).
 
@@ -7366,7 +7366,7 @@ pm run build (baÃ…Å¸arÃ„Â±yla tamamlandÃ„Â±, 11.04s)
 
 - Timestamp: 2026-05-29T21:40:00+03:00
 - Agent: Antigravity
-- Task: DesktopPosApp.jsx içindeki WorkspaceGate modal'ýný desktop modunda atla
+- Task: DesktopPosApp.jsx iï¿½indeki WorkspaceGate modal'ï¿½nï¿½ desktop modunda atla
 - Files Read:
   - src/DesktopPosApp.jsx
   - src/context/WorkspaceContext.jsx
@@ -7375,17 +7375,17 @@ pm run build (baÃ…Å¸arÃ„Â±yla tamamlandÃ„Â±, 11.04s)
   - src/context/WorkspaceContext.jsx
   - src/DesktopPosApp.jsx
 - Commands Run:
-  - npm.cmd run build:desktop:web (Baþarýlý, 4.03s, 0 hata)
+  - npm.cmd run build:desktop:web (Baï¿½arï¿½lï¿½, 4.03s, 0 hata)
 - Findings:
-  - Masaüstü uygulamasýnda (DesktopPosApp.jsx) þube bilgisi \	erminal-config.json\ dosyasýndan otomatik alýnabiliyorken, WorkspaceGate / WorkspacePickerModal'ýn \Uygulama hangi rolde açýlsýn?\ diye sormasý gereksiz bir UX engelidir.
-  - WorkspaceProvider prop olarak \orcedBranchId\ deðerini desteklemiyordu.
+  - Masaï¿½stï¿½ uygulamasï¿½nda (DesktopPosApp.jsx) ï¿½ube bilgisi \	erminal-config.json\ dosyasï¿½ndan otomatik alï¿½nabiliyorken, WorkspaceGate / WorkspacePickerModal'ï¿½n \Uygulama hangi rolde aï¿½ï¿½lsï¿½n?\ diye sormasï¿½ gereksiz bir UX engelidir.
+  - WorkspaceProvider prop olarak \orcedBranchId\ deï¿½erini desteklemiyordu.
 - Decisions:
-  - \WorkspaceContext.jsx\ içerisindeki \WorkspaceProvider\ bileþenine \orcedBranchId\ prop'u eklendi.
-  - \orcedBranchId\ mevcut olduðunda þube seçim modalýnýn açýlmasý engellendi (\pickerOpen\ false set edildi) ve \ranchId\ doðrudan \orcedBranchId\ ile baþlatýldý/senkronize edildi.
-  - \DesktopPosApp.jsx\ içerisindeki \WorkspaceProvider\ çaðrýsýna \orcedBranchId={terminalBranchId}\ parametresi eklendi.
+  - \WorkspaceContext.jsx\ iï¿½erisindeki \WorkspaceProvider\ bileï¿½enine \orcedBranchId\ prop'u eklendi.
+  - \orcedBranchId\ mevcut olduï¿½unda ï¿½ube seï¿½im modalï¿½nï¿½n aï¿½ï¿½lmasï¿½ engellendi (\pickerOpen\ false set edildi) ve \ranchId\ doï¿½rudan \orcedBranchId\ ile baï¿½latï¿½ldï¿½/senkronize edildi.
+  - \DesktopPosApp.jsx\ iï¿½erisindeki \WorkspaceProvider\ ï¿½aï¿½rï¿½sï¿½na \orcedBranchId={terminalBranchId}\ parametresi eklendi.
 - Open Risks: Yok.
-- Next Step: Electron ortamýnda POS / Garson / KDS modlarý açýldýðýnda þube seçme modalýnýn atlandýðý test edilmeli.
-- Handoff Contract: Desktop modunda þube bilgisi \	erminal-config.json\ dosyasýndan otomatik alýnarak \WorkspaceGate\ modalý bypass edildi. Build baþarýlý.
+- Next Step: Electron ortamï¿½nda POS / Garson / KDS modlarï¿½ aï¿½ï¿½ldï¿½ï¿½ï¿½nda ï¿½ube seï¿½me modalï¿½nï¿½n atlandï¿½ï¿½ï¿½ test edilmeli.
+- Handoff Contract: Desktop modunda ï¿½ube bilgisi \	erminal-config.json\ dosyasï¿½ndan otomatik alï¿½narak \WorkspaceGate\ modalï¿½ bypass edildi. Build baï¿½arï¿½lï¿½.
 
 - PairingScreen and Electron IPC fixes applied.
 
@@ -7459,7 +7459,7 @@ pm run build (Verified 100% successful build)
 - **Combo Menu Multi-Select Support:** Refactored option selection logic across POS.jsx, Garson.jsx, KioskBig.jsx, and KioskTablet.jsx to support multiple selections of the same item (e.g. 2x Ketchup). Added explicit '+' and '-' buttons to toggle quantities, ensuring maxSelect constraint is respected.
 - **Empty Combo Modal Fix:** Fixed the issue where ComboBuilderModal and Kiosk modals rendered blank when optionGroupId from the DB did not exactly match the definitions' UUIDs (due to old string IDs like 'sos-secimi'). Added fallback match logic by slug, 
 ame, and normalized text.
-- **Empty State UX:** Added an explicit fallback warning message ("Seçenek Bulunamadý") for Kiosk screens when a combo menu definition returns no valid steps.
+- **Empty State UX:** Added an explicit fallback warning message ("Seï¿½enek Bulunamadï¿½") for Kiosk screens when a combo menu definition returns no valid steps.
 
 
 ## Entry 182 - 2026-05-30
@@ -7643,6 +7643,7 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Modified `StaffPinGate.jsx` to render children components immediately in desktop mode, exposing a `triggerPinLogin` helper.
   - Implemented a modal-based PIN entry dialog inside `StaffPinGate.jsx` that overlays on demand when `pinModalOpen` is triggered.
   - Integrated `triggerPinLogin` in `POS.jsx` and `Garson.jsx` product selection (`handleProdClick`) so that attempting to sell without a login opens the PIN modal.
+  - Integrated `triggerPinLogin` check into the checkout/payment completion button (`SipariÅŸi Tamamla`) in both `POS.jsx` and `Garson.jsx` to prevent checking out when logged out.
   - Added a premium "Personel GiriÅŸi" action button to the sidebar (under the branch name) in both `POS.jsx` and `Garson.jsx` to allow staff to log in or switch sessions at any time.
   - Verified KDS and Pickup modes remain completely unaffected and do not require PIN entry.
 - Open Risks: None.
