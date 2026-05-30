@@ -52,15 +52,11 @@ export function getTerminalConfigData() {
 }
 
 export function getStartupPath() {
-  const PATHS = {
-    pos: '/pos',
-    garson: '/garson',
-    'pos-masa': '/pos-masa',
-    'pos-masalar': '/pos-masalar',
-    kds: '/kds',
-    pickup: '/pickup',
-  }
-  return PATHS[getScreenMode()] ?? '/pos'
+  const mode = String(getScreenMode() || 'pos').toLowerCase().trim()
+  if (mode.includes('garson') || mode.includes('masa')) return '/garson'
+  if (mode.includes('kds')) return '/kds'
+  if (mode.includes('pickup')) return '/pickup'
+  return '/pos'
 }
 
 export function isDesktopMode() {

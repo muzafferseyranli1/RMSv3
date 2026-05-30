@@ -84,8 +84,15 @@ export default function PairingScreen({ onComplete }) {
     
     // Map device_type to screenMode
     // pos -> pos, masa -> garson (or pos-masalar based on usage), kds -> kds, pickup -> pickup
-    let screenMode = terminal.screen_mode || terminal.device_type;
-    if (screenMode === 'masa') screenMode = 'garson'; // For tablet waiter mode
+    let rawMode = String(terminal.screen_mode || terminal.device_type || 'pos').toLowerCase().trim();
+    let screenMode = 'pos';
+    if (rawMode.includes('masa') || rawMode.includes('garson')) {
+      screenMode = 'garson';
+    } else if (rawMode.includes('kds')) {
+      screenMode = 'kds';
+    } else if (rawMode.includes('pickup')) {
+      screenMode = 'pickup';
+    }
 
     const payload = {
        terminalId: terminal.id,

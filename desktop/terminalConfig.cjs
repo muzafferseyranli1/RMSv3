@@ -31,15 +31,11 @@ function getScreenMode() {
 
 // Electron window.loadURL() için başlangıç rotası
 function getStartupRoute() {
-  const ROUTES = {
-    pos: '/pos',
-    garson: '/garson',
-    'pos-masa': '/pos-masa',
-    'pos-masalar': '/pos-masalar',
-    kds: '/kds',
-    pickup: '/pickup',
-  }
-  return ROUTES[getScreenMode()] ?? '/pos'
+  const mode = String(getScreenMode() || 'pos').toLowerCase().trim()
+  if (mode.includes('garson') || mode.includes('masa')) return '/garson'
+  if (mode.includes('kds')) return '/kds'
+  if (mode.includes('pickup')) return '/pickup'
+  return '/pos'
 }
 
 module.exports = { readConfig, writeConfig, isPaired, isMaster, getScreenMode, getStartupRoute, CONFIG_FILE }
