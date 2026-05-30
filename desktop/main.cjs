@@ -6,6 +6,7 @@ const path = require('path')
 const { isPaired, isMaster, readConfig, writeConfig, getStartupRoute } = require('./terminalConfig.cjs')
 const { startEdgeServer, stopEdgeServer } = require('./edgeServer.cjs')
 const { initSyncWorker } = require('./syncWorker.cjs')
+const { getQueueSize } = require('./sqliteStore.cjs')
 const { ipcMain } = require('electron')
 
 const DESKTOP_PORT = Number(process.env.DESKTOP_SERVER_PORT || 4173)
@@ -50,19 +51,26 @@ function getMimeType(filePath) {
 }
 
 function sendFile(response, filePath, statusCode = 200) {
-  fs.readFile(filePath, (error, fileBuffer) => {
-    if (error) {
-      response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
-      response.end('Desktop dosyalari okunamadi.')
-      return
-    }
+  const mimeType = getMimeType(filePath);
+  const isHtml = mimeType.includes('text/html');
+  const cacheControl = isHtml ? 'no-cache' : 'public, max-age=31536000'; // HTML için no-cache, statik dosyalar için 1 yıl cache
 
+  const readStream = fs.createReadStream(filePath);
+
+  readStream.on('open', () => {
     response.writeHead(statusCode, {
-      'Content-Type': getMimeType(filePath),
-      'Cache-Control': 'no-store',
-    })
-    response.end(fileBuffer)
-  })
+      'Content-Type': mimeType,
+      'Cache-Control': cacheControl,
+    });
+    readStream.pipe(response);
+  });
+
+  readStream.on('error', (error) => {
+    if (!response.headersSent) {
+      response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    response.end('Desktop dosyalari okunamadi.');
+  });
 }
 
 function resolveRequestPath(requestPath) {
@@ -202,7 +210,6 @@ app.whenReady().then(async () => {
     })
     ipcMain.handle('queue:getSize', () => {
       try {
-        const { getQueueSize } = require('./sqliteStore.cjs')
         return getQueueSize()
       } catch { return 0 }
     })
