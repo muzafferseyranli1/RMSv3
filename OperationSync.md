@@ -7624,3 +7624,27 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Open Risks: None.
 - Next Step: Kullanici yeni build'i test etmeli. Yayinla.bat ile release olusturulabilir.
 - Handoff Contract: Pair edilmis KDS, Pickup, Garson gibi desktop terminal ekranlari artik PIN modali gostermeyecek.
+
+
+## Entry - Desktop Terminal Non-Blocking PIN Redesign
+
+- Timestamp: 2026-05-31T00:48:00+03:00
+- Agent: Antigravity
+- Task: Redesign desktop POS/Garson PIN authentication flow to show catalog first and ask PIN only on action
+- Files Changed:
+  - src/components/pos/StaffPinGate.jsx
+  - src/components/pages/POS.jsx
+  - src/components/pages/Garson.jsx
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - In desktop mode, StaffPinGate was previously bypassed completely, which was incorrect as POS and Garson still require staff identification before making transactions. However, showing the blocking screen upfront forced users to log in before seeing the catalog, which was bad UX.
+- Decisions:
+  - Modified `StaffPinGate.jsx` to render children components immediately in desktop mode, exposing a `triggerPinLogin` helper.
+  - Implemented a modal-based PIN entry dialog inside `StaffPinGate.jsx` that overlays on demand when `pinModalOpen` is triggered.
+  - Integrated `triggerPinLogin` in `POS.jsx` and `Garson.jsx` product selection (`handleProdClick`) so that attempting to sell without a login opens the PIN modal.
+  - Added a premium "Personel Girişi" action button to the sidebar (under the branch name) in both `POS.jsx` and `Garson.jsx` to allow staff to log in or switch sessions at any time.
+  - Verified KDS and Pickup modes remain completely unaffected and do not require PIN entry.
+- Open Risks: None.
+- Next Step: User can build a new release using `Yayinla.bat` and test the non-blocking PIN flow.
+- Handoff Contract: POS and Garson desktop screens now load catalogs first without PIN gate, prompting for PIN only when selling or through the manual sidebar login button.
