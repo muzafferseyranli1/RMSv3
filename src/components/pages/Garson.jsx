@@ -2927,7 +2927,7 @@ function OdemeModalFlow({
   )
 }
 
-function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLogin = null }) {
+function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLogin = null, isGarsonMode = false }) {
   const navigate = useNavigate()
   const {
     scope,
@@ -3784,7 +3784,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const activeChannelName = channels.find(channel => channel.id === activeChannel)?.name || 'H\u0131zl\u0131 Sat\u0131\u015f'
   const pricingChannelId = masaSalesChannel?.id || activeChannel
   const salesChannelName = masaSalesChannel?.name || activeChannelName || 'H\u0131zl\u0131 Sat\u0131\u015f'
-  const isMasaChannel = normalizeChannelName(salesChannelName) === 'masa'
+  const isMasaChannel = isGarsonMode || (normalizeChannelName(salesChannelName) === 'masa')
   const cart = isMasaChannel ? currentTableTicket.cart : quickSaleCart
   const orderNote = isMasaChannel ? currentTableTicket.orderNote : quickSaleOrderNote
   const activeGuestCounts = isMasaChannel ? currentTableTicket.guestCounts : DEFAULT_GUEST_COUNTS
@@ -5839,6 +5839,7 @@ export default function Garson() {
                 forcedActiveStaff={sharedProps.activeStaff}
                 onStaffLogout={sharedProps.onStaffLogout}
                 triggerPinLogin={helpers?.triggerPinLogin}
+                isGarsonMode={true}
               />
             )}
           />
