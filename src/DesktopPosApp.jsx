@@ -10,6 +10,7 @@ import { getBranchId, getStartupPath, readTerminalConfig } from '@/lib/terminalI
 import PairingScreen from '@/components/pos/PairingScreen'
 import GlobalUnpairGesture from '@/components/pos/GlobalUnpairGesture'
 import GlobalExitButton from '@/components/pos/GlobalExitButton'
+import GlobalUpdaterNotification from '@/components/pos/GlobalUpdaterNotification'
 
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
@@ -62,6 +63,7 @@ function DesktopPosShell() {
     <>
       <GlobalUnpairGesture />
       <GlobalExitButton />
+      <GlobalUpdaterNotification />
       <RouteActivityTracker />
       <Suspense fallback={<PageLoader />}>
         <Routes>

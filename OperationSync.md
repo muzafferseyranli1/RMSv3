@@ -7581,3 +7581,46 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Open Risks: None.
 - Next Step: User builds a new release using \Yayinla.bat\ to test the new global window controls.
 - Handoff Contract: The desktop app now features standard global minimize and exit buttons with safe-exit confirmations.
+
+## Entry - Desktop Auto-Update Notification
+
+- Timestamp: 2026-05-30T23:56:00+03:00
+- Agent: Antigravity
+- Task: Add desktop auto-update notification UI and restart/apply integration
+- Files Read:
+  - desktop/preload.cjs
+  - src/DesktopPosApp.jsx
+- Files Changed:
+  - desktop/preload.cjs
+  - src/components/pos/GlobalUpdaterNotification.jsx (Created)
+  - src/DesktopPosApp.jsx
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - The electron-updater automatically downloads new updates in the background on startup, but the application lacked an interface to notify the user or to trigger the install/restart workflow manually.
+- Decisions:
+  - Exposed `onUpdateReady` event listener subscription and `applyUpdate` invocation in `preload.cjs`.
+  - Created a glassmorphic bottom-left notification banner `GlobalUpdaterNotification.jsx` that listens for the `update:ready` event and shows a "Güncelle ve Yeniden Başlat" button.
+  - Injected the updater component at the root shell of the desktop application so that the notification will appear on any screen when an update becomes ready.
+- Open Risks: None.
+- Next Step: User builds a new release to test the auto-updater notification flow.
+- Handoff Contract: The app will now show a smooth, premium notification when an update is downloaded and ready, prompting the user to install and restart.
+
+## Entry - Fix: Desktop Terminal KDS/Pickup PIN Modal Bug
+
+- Timestamp: 2026-05-31T00:05:00+03:00
+- Agent: Antigravity
+- Task: Desktop modunda pair edilmis KDS/Pickup cihazlari personel PIN modali gosteriyordu, duzeltildi
+- Files Changed:
+  - src/context/WorkspaceContext.jsx
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - WorkspaceProvider, desktop terminal modunda (forcedScope + forcedBranchId prop'lari verilmisse) pickerOpen state'ini zaman zaman true olarak hesapliyordu. Bu, WorkspacePickerModal'in (Personel PIN modali) KDS ve Pickup gibi PIN gerektirmeyen ekranlarda da gozukmesine yol aciyordu.
+- Decisions:
+  - WorkspaceProvider'a terminalLocked degiskeni eklendi: forcedScope + forcedBranchId ikisi birden verilmisse ya da isDesktopMode() true donuyorsa picker hicbir zaman acilmaz.
+  - pickerOpen baslangic state'i, terminalLocked true ise direkt false olarak ayarlandi.
+  - Picker'i acabilecek useEffect'lerin hepsi terminalLocked kontrolu ile kilitlendi.
+- Open Risks: None.
+- Next Step: Kullanici yeni build'i test etmeli. Yayinla.bat ile release olusturulabilir.
+- Handoff Contract: Pair edilmis KDS, Pickup, Garson gibi desktop terminal ekranlari artik PIN modali gostermeyecek.

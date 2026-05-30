@@ -23,6 +23,7 @@ import {
   getPersonnelDisplayName,
   normalizePinInput,
 } from '@/lib/posStaffAuth'
+import { isDesktopMode } from '@/lib/terminalIdentity'
 
 const WorkspaceContext = createContext(null)
 const DEFAULT_ALLOWED_SCOPES = WORKSPACE_SCOPE_OPTIONS.map(option => option.value)
@@ -453,6 +454,8 @@ export function WorkspaceProvider({
 }) {
   const location = useLocation()
   const publicKioskPath = isPublicDisplayPath(location.pathname)
+  // Desktop terminal modunda (forcedScope + forcedBranchId) picker hiç açılmaz
+  const terminalLocked = Boolean(forcedScope && forcedBranchId) || isDesktopMode()
   const normalizedAllowedScopes = normalizeAllowedScopes(allowedScopes)
   const normalizedForcedScope = normalizeWorkspaceScope(forcedScope)
   const initialPathScope = getRequiredScopeForPath(location.pathname)
@@ -463,12 +466,12 @@ export function WorkspaceProvider({
     storedScope: initialStoredScope,
     pathScope: initialPathScope,
   })
-  const [scope, setScope] = useState(() => (
+  const [scope, setScope] = useState(() =>
     initialResolvedScope
-  ))
-  const [branchId, setBranchId] = useState(() => (
+  )
+  const [branchId, setBranchId] = useState(() =>
     forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
-  ))
+  )
   const [persistedBranchMeta, setPersistedBranchMeta] = useState(() => ({
     id: forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY),
     name: readLocalStorage(WORKSPACE_BRANCH_NAME_STORAGE_KEY),
@@ -477,6 +480,7 @@ export function WorkspaceProvider({
   const [branchLoadError, setBranchLoadError] = useState('')
   const [loadingBranches, setLoadingBranches] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(() => {
+    if (terminalLocked) return false
     const initialBranchId = forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
     if (publicKioskPath) return false
     return !initialResolvedScope || (initialResolvedScope === WORKSPACE_SCOPE.branch && !initialBranchId)
@@ -568,6 +572,7 @@ export function WorkspaceProvider({
   }, [persistedBranchMeta.name])
 
   useEffect(() => {
+    if (terminalLocked) { setPickerOpen(false); return }
     if (publicKioskPath) return
     if (forcedBranchId) {
       setPickerOpen(false)
@@ -580,10 +585,11 @@ export function WorkspaceProvider({
     if (isBranchScopedScope(scope) && !branchId) {
       setPickerOpen(true)
     }
-  }, [scope, branchId, publicKioskPath, forcedBranchId])
+  }, [scope, branchId, publicKioskPath, forcedBranchId, terminalLocked])
 
   useEffect(() => {
     if (scope) return
+    if (terminalLocked) return
 
     const pathScope = getRequiredScopeForPath(location.pathname)
     const nextScope = resolveInitialScope({
@@ -614,6 +620,7 @@ export function WorkspaceProvider({
     branches,
     normalizedForcedScope,
     normalizedAllowedScopes,
+    terminalLocked,
   ])
 
   const branchName = useMemo(
