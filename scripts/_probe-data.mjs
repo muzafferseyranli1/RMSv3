@@ -7,12 +7,9 @@ const client = new Client({
 
 async function run() {
   await client.connect();
-  const res = await client.query(`SELECT * FROM company_nodes WHERE type = 'branch' LIMIT 1`);
-  console.log('Branch:', res.rows[0]);
-  
-  const items = await client.query(`SELECT * FROM sale_items WHERE deleted_at IS NULL AND sale_status = true AND setting_active = true LIMIT 1`);
-  console.log('Item:', items.rows[0]);
-
+  const res = await client.query(`SELECT id, type, name FROM company_nodes`);
+  console.log('Nodes Types:', Array.from(new Set(res.rows.map(r => r.type))));
+  console.log('Sample branch:', res.rows.find(r => r.type === 'branch' || r.type === 'SUBE' || r.name.toLowerCase().includes('sube')));
   await client.end();
 }
 run();

@@ -1,30 +1,29 @@
-# Eksik Demo Satışların Tamamlanması
+# Kiosk Görsel Yükleme Optimizasyonu (Base64'ten Storage'a Geçiş)
 
-Bu plan, `demosales.md` kurallarına sadık kalarak, 26.05.2026 tarihinden bugüne kadar olan (bugün hariç) günlerdeki eksik şube satış verilerini tamamlamak için bir Node.js betiğinin yazılmasını ve çalıştırılmasını kapsar.
+Evet, harika bir tespit! Railway'de halihazırda bağlı olan `rms-api-volume` kalıcı disk alanı (`/app/uploads` klasörüne bağlı) Kiosk modülü için biçilmiş kaftandır. 
 
-## Hedef Kapsam
-* **Başlangıç Tarihi:** 27.05.2026
-* **Bitiş Tarihi:** 29.05.2026 (30.05.2026 'bugün' olduğu için hariç)
-* **Şubeler:** Sistemdeki tüm aktif şubeler.
-* **Kural:** Seçili tarihte şube için hali hazırda yeterli düzeyde satış (örn. 100'den fazla) varsa o gün atlanacak. Eğer az sayıda (test amaçlı) satış varsa, bunlar da dikkate alınarak eksik kalan miktar `demosales.md` yönergelerine uygun olarak üretilecek.
+Kiosk Management modülündeki sorunun kaynağı; mevcut yapıda yüklenen görsellerin `Base64` metinlerine dönüştürülüp `JSONB` veritabanı satırına sıkıştırılmasıdır. Bu devasa veri yapısı lokal ortamda 10MB limitli Express sunucusundan geçerken, canlı (production) ortamda Railway'in ağ koruma limitlerine (yaklaşık 1MB) takılarak reddedilmekte; bu sebeple tarayıcı önbelleğinde görünen görseller canlı veritabanına hiç gitmemektedir.
 
-## Open Questions
+## User Review Required
+
 > [!IMPORTANT]
-> Veritabanında (Railway Postgres) her şube için günde ortalama 160-300 arası fiş oluşturulacağı düşünülürse, 3 gün x tüm şubeler hesaba katıldığında binlerce satış fişi üretilecektir. Bu durum test ortamınızdaki raporları büyük ölçüde dolduracaktır. Bu işlem onayınızda mıdır?
-
-> [!WARNING]
-> Aynı tarihte önceden oluşturulmuş 'demo' etiketli eski test satışları varsa, mükerrer veri yaratmamak adına `integration_ref = 'demo-sales-tool'` olan eski dataları (o gün için) silmeli miyiz, yoksa sadece test amaçlı atılmış birkaç satışın eksiğini hesaplayarak üzerine mi ekleme yapmalıyım? (Silip o gün için temiz, kurallı bir demo bloğu basmak genelde raporları daha sağlıklı kılar).
+> Railway'deki kalıcı alanınızı kullanarak Base64 metin yükünü tamamen ortadan kaldıracağım. Mevcut görsellerin çalışmaya devam etmesi için geriye dönük uyumluluğu koruyacağım, yeni yüklenen görseller ise otomatik olarak `rms-api-volume`'a yüklenecek ve URL olarak saklanacak. Onaylıyor musunuz?
 
 ## Proposed Changes
 
-Aşağıdaki script oluşturularak kullanılacaktır:
+### 1. Kiosk Görsel Yükleme Mekanizmasının Değiştirilmesi
+Kiosk modülünde çalışan `UploadField` bileşeninin içindeki `readFileAsDataUrl` (Base64) mantığı `uploadFileAndGetUrl` (Storage Yükleme) fonksiyonu ile değiştirilecek. 
 
-### Scripts
+Görseller lokalde yine HTML5 Canvas yardımıyla `WebP` formatına çevrilip optimize edilecek, ancak bu sefer Base64 metne dönüşmek yerine doğrudan `/api/upload` servisine (sizin `rms-api-volume` diskinize) yüklenecektir.
 
-#### [NEW] [generate-missing-sales.mjs](file:///c:/RMSv3/scripts/generate-missing-sales.mjs)
-Bu script veritabanına bağlanacak, ilgili tarihleri ve şubeleri tarayacak, eksik olan satış miktarını belirleyerek `demosales.md` kural setine göre sepetleri (ürünler, miktarlar, fiyatlandırmalar, varyantlar), indirimleri, ödemeleri ve stok hareketlerini (`inventory_movements`) hesaplayıp "transaction chunk"lar halinde veritabanına yazacaktır.
+### [MODIFY] [KioskManagementDesktop.jsx](file:///c:/RMSv3/src/components/pages/KioskManagementDesktop.jsx)
+- `import { uploadApiFile, buildApiUrl } from '@/lib/db'` eklenecek.
+- `readFileAsDataUrl` adlı eski fonksiyon, Canvas optimizasyonunu koruyacak şekilde `uploadFileAndGetUrl` olarak güncellenecek.
+- Optimize edilen görsel (veya videolar) FormData ile API'ye yüklenecek.
+- API'den dönen dosya URL'si, `buildApiUrl` fonksiyonu ile mutlak (absolute) adrese (`https://rms-api-production.../api/files/...`) çevrilerek veritabanına kaydedilecek.
 
 ## Verification Plan
-1. Script oluşturulduktan sonra `c:\RMSv3` dizininde çalıştırılacak.
-2. İşlem tamamlandığında script tarafından özet rapor loglanacak.
-3. Rapor çıktıları (üretilen fiş sayısı, ciro vb.) `OperationSync.md` dosyasına kaydedilerek süreç doğrulanacak.
+1. Güncelleme sonrası `KioskManagementDesktop` üzerinde örnek bir banner veya karşılama görseli yüklenecek.
+2. Sistemin Base64 yerine `https://rms-api.../api/files/...` URL'si oluşturduğu teyit edilecek.
+3. Kiosk ekranlarının (`/kiosk`, `/kiosk-tablet`) bu URL'yi hatasız okuduğu gözlemlenecek.
+4. "Kaydet" denildiğinde `Payload Too Large` (büyük boyut) engeline takılmadan veritabanına anında yazıldığı doğrulanacak.

@@ -230,3 +230,16 @@ Tüm fişler ve hareketler bellekte oluşturulduktan sonra aşağıdaki kurallar
 3.  Toplam ciro (TRY).
 4.  Oluşan stok hareketi (inventory_movements) satır adedi.
 5.  Varsa karşılaşılan hatalar.
+
+---
+
+## 9. OTOMATİK EKSİK TAMAMLAMA KURALI VE LOGLARI
+
+**KURAL:** Kullanıcı tarafından *"bu dosyayı oku ve eksik günleri tamamla"* talimatı verildiğinde:
+* **Sadece "Kadıköy Şubesi"** için işlem yapılacaktır.
+* İşlem **bugün hariç** geçmişteki eksik günleri kapsayacaktır.
+* İşlemi yapan agent, işlemi tamamladıktan sonra mutlaka bu başlığın altına en son hangi tarihi tamamladığına dair bir log (entry) girmelidir.
+
+### Tamamlama Logları:
+*(Henüz kayıt girilmedi)*
+

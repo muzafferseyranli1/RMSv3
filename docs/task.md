@@ -1,13 +1,5 @@
-- `[/]` 1. Script dosyasının altyapısının hazırlanması (`scripts/generate-missing-sales.mjs`)
-  - `[ ]` Veritabanı bağlantısı ve temel yardımcı fonksiyonların kurulması
-  - `[ ]` Aktif şubelerin listesinin çekilmesi
-  - `[ ]` Belirli tarihler için mevcut satış adetlerinin kontrol edilmesi
-  - `[ ]` Düşük hacimli ("test") satış günlerinin temizlenmesi mantığının yazılması
-- `[ ]` 2. Satış ve sepet (basket) üretme mantığının kodlanması (demosales.md kural setine göre)
-  - `[ ]` Katalog ürünlerinin, kategorilerin ve reçetelerin DB'den okunması
-  - `[ ]` Ortalama sepet tutarı ve ürün tipi ağırlıklandırmasının yapılması
-  - `[ ]` İndirimler ve ödeme tiplerinin (split vb.) simülasyonu
-  - `[ ]` Stok tüketim hareketlerinin (`inventory_movements`) hesaplanması
-- `[ ]` 3. Veritabanına Chunk'lar halinde yazma
-- `[ ]` 4. Scriptin çalıştırılması ve log/rapor üretilmesi
-- `[ ]` 5. Sonuçların `OperationSync.md`'ye kaydedilmesi
+- `[x]` KioskManagementDesktop.jsx içindeki UploadField fonksiyonlarını refactor et
+  - `[x]` `readFileAsDataUrl` adlı fonksiyonu kaldırıp `uploadFileAndGetUrl` ekle
+  - `[x]` `db.js` üzerinden `uploadApiFile` içe aktarılmasını ekle
+  - `[x]` Upload tamamlandığında mutlak API URL'si dönecek şekilde düzenle
+- `[x]` Değişiklikleri doğrula ve walkthrough hazırla

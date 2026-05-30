@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import { useToast } from '@/hooks/useToast'
-import { db } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import {
   KIOSK_DEFAULT_SETTINGS,
@@ -46,7 +46,7 @@ function uid(prefix = 'kiosk') {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
 
-async function readFileAsDataUrl(file) {
+async function uploadFileAndGetUrl(file) {
   if (file?.type?.startsWith('image/')) {
     const objectUrl = URL.createObjectURL(file)
     try {
@@ -67,21 +67,27 @@ async function readFileAsDataUrl(file) {
       const context = canvas.getContext('2d')
       if (context) {
         context.drawImage(image, 0, 0, width, height)
-        return canvas.toDataURL('image/webp', 0.86)
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.86))
+        if (blob) {
+          const formData = new FormData()
+          const originalName = file.name || 'image.webp'
+          const newName = originalName.replace(/\.[^/.]+$/, "") + ".webp"
+          formData.append('file', blob, newName)
+          const uploaded = await uploadApiFile(formData)
+          return buildApiUrl(uploaded.file_url)
+        }
       }
     } catch {
-      // Fallback to original reader below.
+      // Fallback to original uploader below.
     } finally {
       URL.revokeObjectURL(objectUrl)
     }
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = event => resolve(event.target?.result || '')
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+  const formData = new FormData()
+  formData.append('file', file)
+  const uploaded = await uploadApiFile(formData)
+  return buildApiUrl(uploaded.file_url)
 }
 
 function shellCardStyle(padding = 18) {
@@ -246,7 +252,7 @@ function UploadField({
     const file = event.target.files?.[0]
     if (!file) return
     setLastFileName(file.name || '')
-    onChange(await readFileAsDataUrl(file))
+    onChange(await uploadFileAndGetUrl(file))
   }
 
   const hasValue = Boolean(value)
