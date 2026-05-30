@@ -1,8 +1,13 @@
-# Görev Listesi
-
-- `[x]` **Adım 1:** `desktop/preload.cjs` dosyasına `getQueueSize` IPC metodunu ekle.
-- `[x]` **Adım 2:** `src/components/pos/GlobalUnpairGesture.jsx` gizli jest bileşenini oluştur.
-- `[x]` **Adım 3:** `src/DesktopPosApp.jsx` içerisindeki sarmalama hatasını düzelt ve `GlobalUnpairGesture` bileşenini ekle.
-- `[x]` **Adım 4:** Derleme hatası varsa çöz ve değişiklikleri çalışır hale getir.
-- `[x]` **Adım 5:** "X Kapat" butonlarının uygulamayı gerçekten kapatmasını sağla (`main.cjs` ve `preload.cjs` IPC güncellemeleri).
-- `[x]` **Adım 6:** Personel isminin sol üst köşede görünmeme hatasını düzelt (`posStaffAuth.js` içerisine `name` eşlemesi ekle).la.
+- `[/]` 1. Script dosyasının altyapısının hazırlanması (`scripts/generate-missing-sales.mjs`)
+  - `[ ]` Veritabanı bağlantısı ve temel yardımcı fonksiyonların kurulması
+  - `[ ]` Aktif şubelerin listesinin çekilmesi
+  - `[ ]` Belirli tarihler için mevcut satış adetlerinin kontrol edilmesi
+  - `[ ]` Düşük hacimli ("test") satış günlerinin temizlenmesi mantığının yazılması
+- `[ ]` 2. Satış ve sepet (basket) üretme mantığının kodlanması (demosales.md kural setine göre)
+  - `[ ]` Katalog ürünlerinin, kategorilerin ve reçetelerin DB'den okunması
+  - `[ ]` Ortalama sepet tutarı ve ürün tipi ağırlıklandırmasının yapılması
+  - `[ ]` İndirimler ve ödeme tiplerinin (split vb.) simülasyonu
+  - `[ ]` Stok tüketim hareketlerinin (`inventory_movements`) hesaplanması
+- `[ ]` 3. Veritabanına Chunk'lar halinde yazma
+- `[ ]` 4. Scriptin çalıştırılması ve log/rapor üretilmesi
+- `[ ]` 5. Sonuçların `OperationSync.md`'ye kaydedilmesi

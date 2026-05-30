@@ -1,37 +1,30 @@
-# Cihaz Eşleşmesini Kaldırma (Unpairing) ve Wrapper Düzeltmesi Planı
+# Eksik Demo Satışların Tamamlanması
 
-Bu plan, kiosk uygulamasındaki 5 tıklama mantığına benzer evrensel ve gizli bir yöntemle cihaz eşleşmesini güvenli bir şekilde kaldırma işlevini ve bir önceki adımda konuştuğumuz DesktopPosApp sarmalama düzeltmesini içerir.
+Bu plan, `demosales.md` kurallarına sadık kalarak, 26.05.2026 tarihinden bugüne kadar olan (bugün hariç) günlerdeki eksik şube satış verilerini tamamlamak için bir Node.js betiğinin yazılmasını ve çalıştırılmasını kapsar.
+
+## Hedef Kapsam
+* **Başlangıç Tarihi:** 27.05.2026
+* **Bitiş Tarihi:** 29.05.2026 (30.05.2026 'bugün' olduğu için hariç)
+* **Şubeler:** Sistemdeki tüm aktif şubeler.
+* **Kural:** Seçili tarihte şube için hali hazırda yeterli düzeyde satış (örn. 100'den fazla) varsa o gün atlanacak. Eğer az sayıda (test amaçlı) satış varsa, bunlar da dikkate alınarak eksik kalan miktar `demosales.md` yönergelerine uygun olarak üretilecek.
 
 ## Open Questions
-- Gizli dokunmatik alanı ekranın sol üst köşesi (top-left) olarak konumlandırdım. Sağ üst veya başka bir köşe tercih ederseniz belirtebilirsiniz.
+> [!IMPORTANT]
+> Veritabanında (Railway Postgres) her şube için günde ortalama 160-300 arası fiş oluşturulacağı düşünülürse, 3 gün x tüm şubeler hesaba katıldığında binlerce satış fişi üretilecektir. Bu durum test ortamınızdaki raporları büyük ölçüde dolduracaktır. Bu işlem onayınızda mıdır?
+
+> [!WARNING]
+> Aynı tarihte önceden oluşturulmuş 'demo' etiketli eski test satışları varsa, mükerrer veri yaratmamak adına `integration_ref = 'demo-sales-tool'` olan eski dataları (o gün için) silmeli miyiz, yoksa sadece test amaçlı atılmış birkaç satışın eksiğini hesaplayarak üzerine mi ekleme yapmalıyım? (Silip o gün için temiz, kurallı bir demo bloğu basmak genelde raporları daha sağlıklı kılar).
 
 ## Proposed Changes
 
-Tüm 4 ekranda (POS, Garson, KDS, Pickup) ortak çalışması ve ekranların kendi arayüzlerini bozmaması için uygulamanın en tepe katmanına (Shell) görünmez bir tetikleyici (overlay) ekleyeceğiz. Ayrıca eşleşme kaldırma işlemini offline kuyruk kontrolüne bağlayacağız.
+Aşağıdaki script oluşturularak kullanılacaktır:
 
-### 1. Electron Preload Katmanı (Offline Kuyruk Kontrolü İçin)
+### Scripts
 
-#### [MODIFY] desktop/preload.cjs
-- Electron ana sürecinde (`main.cjs`) var olan ancak React tarafına aktarılmamış olan `queue:getSize` IPC fonksiyonunu `window.electronAPI.getQueueSize` olarak erişilebilir hale getireceğiz.
-
-### 2. Ortak Gizli Tetikleyici ve Modal (Yeni Bileşen)
-
-#### [NEW] src/components/pos/GlobalUnpairGesture.jsx
-- Ekranın sol üst köşesine 60x60 piksellik görünmez (transparent) sabit bir alan ekler.
-- Bu alana 3 saniye içinde arka arkaya 5 kez tıklandığında/dokunulduğunda "Cihaz Eşleşmesini Kaldır" modalını açar.
-- Modal açıldığında `getQueueSize()` fonksiyonu ile bekleyen offline işlem sayısını kontrol eder.
-- **Güvenlik Kriteri:** Kuyruk `> 0` ise *"Senkronize edilmemiş [X] adet kayıt bulunuyor. Lütfen bağlantı sağlanana kadar eşleşmeyi kaldırmayın."* uyarısı verir ve işlemi bloklar.
-- Kuyruk `0` ise işlemi onaylatır, `saveTerminalConfig(null)` ile kimliği siler ve sayfayı yenileyerek cihazı eşleştirme (`PairingScreen`) ekranına düşürür.
-
-### 3. Ana Uygulama Kabuğunun (DesktopPosApp) Düzenlenmesi
-
-#### [MODIFY] src/DesktopPosApp.jsx
-- Bir önceki adımda bahsettiğimiz hatayı çözmek için `PairingGuard` bileşenini dışarı, `WorkspaceProvider` bileşenini ise onun içine alarak sarmalama (wrapper) hatasını düzelteceğiz.
-- Yeni oluşturduğumuz `GlobalUnpairGesture` bileşenini `DesktopPosShell` içerisine (veya App'in ortak ana katmanına) ekleyerek, cihazın hangi ekranda (POS, Garson, KDS vs.) olduğuna bakılmaksızın gizli unpair tuşunun her zaman çalışmasını sağlayacağız.
+#### [NEW] [generate-missing-sales.mjs](file:///c:/RMSv3/scripts/generate-missing-sales.mjs)
+Bu script veritabanına bağlanacak, ilgili tarihleri ve şubeleri tarayacak, eksik olan satış miktarını belirleyerek `demosales.md` kural setine göre sepetleri (ürünler, miktarlar, fiyatlandırmalar, varyantlar), indirimleri, ödemeleri ve stok hareketlerini (`inventory_movements`) hesaplayıp "transaction chunk"lar halinde veritabanına yazacaktır.
 
 ## Verification Plan
-
-- Electron preload fonksiyonunun masaüstünde doğru çalışıp çevrimdışı işlem sayısını verebildiği doğrulanacak.
-- Sol üst köşeye 5 kere hızlıca tıklanıldığında modalın sorunsuz açıldığı test edilecek.
-- Eşleşme kaldırma tetiklendiğinde uygulamanın `PairingScreen` ekranına başarılı şekilde döndüğü kontrol edilecek.
-- Verilen onay sonrasında bu adımlar kodlanacaktır.
+1. Script oluşturulduktan sonra `c:\RMSv3` dizininde çalıştırılacak.
+2. İşlem tamamlandığında script tarafından özet rapor loglanacak.
+3. Rapor çıktıları (üretilen fiş sayısı, ciro vb.) `OperationSync.md` dosyasına kaydedilerek süreç doğrulanacak.
