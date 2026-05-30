@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { db } from '@/lib/db'
+import { db, resolveImageUrl } from '@/lib/db'
 import { findPreferredBranchContext, loadBranchContextsFromDb } from '@/lib/branchContexts'
 import { ensureComboMenuCategory } from '@/lib/comboMenuCategory'
 
@@ -227,7 +227,9 @@ export function useUnifiedPosCatalogBootstrap({
         const cats = categorySnapshot.categories || []
         const prods = (prodR.data || []).map(prod => ({
           ...prod,
-          image_url: prod.image_url || prod.channel_image || prod.pos_image || null,
+          pos_image: resolveImageUrl(prod.pos_image),
+          channel_image: resolveImageUrl(prod.channel_image),
+          image_url: resolveImageUrl(prod.image_url || prod.channel_image || prod.pos_image || null),
         }))
 
         setCategories(cats)

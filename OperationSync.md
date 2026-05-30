@@ -7478,3 +7478,10 @@ pm run build.
 - **Lossless Base64 Image Migration:** Identified that 74 products had raw Base64 images directly inside the PostgreSQL channel_image column (up to 2.3MB per product, causing a 20MB+ total JSON payload on load).
 - **Persistent Volume Transfer:** Wrote and executed an automated migration script that decoded all 74 Base64 strings, uploaded them to the production persistent volume (ms-api-volume) at /api/files/... using the /api/upload endpoint, and successfully updated the PostgreSQL database with the clean, lightweight URL references.
 - **Results:** 74/74 images migrated successfully with 0 failures, resolving the "Unterminated string in JSON at position 4141250" crash on the Kiosk and POS screens once and for all.
+## Entry 184 - 2026-05-30
+
+**Tasks Completed (by Agent):**
+- **Lossless POS Image Migration:** Successfully migrated 74/74 products' `pos_image` columns from raw Base64 strings to clean, lightweight `/api/files/...` relative paths inside the production persistent volume (`rms-api-volume`) with 0 failures.
+- **Global Image Path Resolver:** Implemented a global `resolveImageUrl` helper in `src/lib/db.js` which automatically intercepts database queries for `sale_items` at the `QueryBuilder` client-level and resolves any relative image paths (e.g. `/api/files/...`) to working absolute URLs pointing to the remote production API server (`https://rms-api-production-219d.up.railway.app`).
+- **Unified Screen Integration:** Applied the resolver across KioskBig, KioskTablet, POS, and Garson views. Now, both local Vite development servers (running on localhost) and production installations can perfectly load and render uploaded product/combo images with zero configuration or broken image icons.
+- **Build Validation:** Successfully verified the entire project builds with 0 compile/Vite errors.

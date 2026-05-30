@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspace } from '@/context/WorkspaceContext'
-import { db } from '@/lib/db'
+import { db, resolveImageUrl } from '@/lib/db'
 import { loadTableByQrToken } from '@/lib/posTableCatalogService'
 import {
   KIOSK_DEFAULT_SETTINGS,
@@ -695,7 +695,7 @@ function buildKioskComboProducts(comboDefinitions = [], saleItems = [], kioskCha
         channel_prices: kioskChannelId ? [{ channel_id: kioskChannelId, price: roundMoney(price), active: config.active !== false }] : [],
         portions: [],
         option_groups: [],
-        channel_image: form.channel_image || null,
+        channel_image: resolveImageUrl(form.channel_image || null),
         channel_description: form.channel_description || '',
         prep_time_minutes: 0,
       }
@@ -2955,6 +2955,7 @@ export default function KioskTablet() {
           ...item,
           name: repairTurkishText(item?.name),
           channel_description: repairTurkishText(item?.channel_description),
+          channel_image: resolveImageUrl(item?.channel_image),
         }))
         .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr'))
       setProducts(fetchedProducts)

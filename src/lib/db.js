@@ -241,13 +241,13 @@ class QueryBuilder {
     return { data: arr[0] ?? null, error: arr[0] ? null : { message: 'No rows found', code: 'PGRST116' } }
   }
 
-  _execute() {
+  async _execute() {
     let finalData = this._data
     if (isDesktopMode() && this._operation !== 'select') {
       finalData = injectTerminalFields(this._table, this._data)
     }
 
-    return routedQueryApi({
+    const result = await routedQueryApi({
       table: this._table,
       operation: this._operation,
       select: this._select,
@@ -255,6 +255,25 @@ class QueryBuilder {
       data: finalData,
       options: this._options,
     })
+
+    if (result && result.data && this._operation === 'select') {
+      if (this._table === 'sale_items') {
+        if (Array.isArray(result.data)) {
+          for (const row of result.data) {
+            if (row && row.pos_image !== undefined) row.pos_image = resolveImageUrl(row.pos_image);
+            if (row && row.channel_image !== undefined) row.channel_image = resolveImageUrl(row.channel_image);
+            if (row && row.image_url !== undefined) row.image_url = resolveImageUrl(row.image_url);
+          }
+        } else if (typeof result.data === 'object') {
+          const row = result.data;
+          if (row && row.pos_image !== undefined) row.pos_image = resolveImageUrl(row.pos_image);
+          if (row && row.channel_image !== undefined) row.channel_image = resolveImageUrl(row.channel_image);
+          if (row && row.image_url !== undefined) row.image_url = resolveImageUrl(row.image_url);
+        }
+      }
+    }
+
+    return result
   }
 
   then(resolve, reject) {
@@ -275,3 +294,14 @@ export const db = {
     signOut: async () => ({ error: null }),
   },
 }
+
+export function resolveImageUrl(url) {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://')) {
+    return s;
+  }
+  const base = 'https://rms-api-production-219d.up.railway.app';
+  return `${base}${s.startsWith('/') ? s : `/${s}`}`;
+}
+
