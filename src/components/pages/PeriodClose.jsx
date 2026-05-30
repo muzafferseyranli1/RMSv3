@@ -282,13 +282,18 @@ function PreLockTab({ branches, branchTemplates, records, onSave }) {
 
     // Kilidi kaldır — active=false yap
     if (toRemove.length > 0) {
+      const lockIdsToRemove = []
       for (const id of toRemove) {
         const lock = records.find(r => r.branch_id === id && r.type === 'pre_lock' && r.active !== false)
         if (lock?.id) {
-          const { error } = await db.from('branch_period_locks')
-            .update({ active: false }).eq('id', lock.id)
-          if (error) { hasError = true; toast('Kilit kaldırma hatası: '+error.message, 'error') }
+          lockIdsToRemove.push(lock.id)
         }
+      }
+
+      if (lockIdsToRemove.length > 0) {
+        const { error } = await db.from('branch_period_locks')
+          .update({ active: false }).in('id', lockIdsToRemove)
+        if (error) { hasError = true; toast('Kilit kaldırma hatası: '+error.message, 'error') }
       }
     }
 
