@@ -2950,13 +2950,14 @@ export default function KioskTablet() {
           kioskButtonLabel: repairTurkishText(item?.kioskButtonLabel),
         }))
         .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr')))
-      setProducts((prodRes.data || [])
+      const fetchedProducts = (prodRes.data || [])
         .map(item => ({
           ...item,
           name: repairTurkishText(item?.name),
           channel_description: repairTurkishText(item?.channel_description),
         }))
-        .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr')))
+        .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr'))
+      setProducts(fetchedProducts)
       const rawCombos = readComboRecords(comboRes.data)
       const normalizedCombos = rawCombos.map(record => ({
         ...record,
