@@ -23,8 +23,8 @@ export default function GlobalExitButton() {
     <>
       <div style={{
         position: 'fixed',
-        top: 16,
-        right: 16,
+        bottom: 24,
+        right: 24,
         display: 'flex',
         gap: 8,
         zIndex: 9998,
