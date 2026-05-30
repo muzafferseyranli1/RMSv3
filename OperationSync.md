@@ -7672,3 +7672,8 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Open Risks: None.
 - Next Step: Verify that KDS page no longer displays the compatibility warning.
 - Handoff Contract: The database has been successfully migrated, and the master schema is updated. KDS screen will now query the new columns directly without compatibility fallback.
+
+## 2026-05-30T22:31:06.389Z - Desktop POS Routing Fixes
+- Fixed PairingScreen.jsx and terminalIdentity.js mode string parsing.
+- Fixed Desktop POS KDS/Pickup/Garson Routing.
+- Rebuilt desktop web distribution.
