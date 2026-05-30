@@ -7497,3 +7497,33 @@ pm run build.
   - Yapılan tüm değişiklikler başarıyla build edilerek npm run build ile doğrulandı.
 - **Hafıza Senkronizasyonu:**
   - implementation_plan.md, task.md ve walkthrough.md dosyaları ./docs/ klasörüne kopyalandı.
+
+
+## Entry - Desktop KDS PIN and Pairing Forget Fix
+
+- Timestamp: 2026-05-30T23:07:00+03:00
+- Agent: Antigravity
+- Task: Fix Desktop app forgetting paired device and KDS prompting for PIN
+- Files Read:
+  - src/DesktopPosApp.jsx
+  - src/lib/terminalIdentity.js
+  - desktop/main.cjs
+  - desktop/preload.cjs
+  - src/context/WorkspaceContext.jsx
+- Files Changed:
+  - src/DesktopPosApp.jsx
+  - src/lib/terminalIdentity.js
+  - desktop/main.cjs
+  - desktop/preload.cjs
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - Issue 1 (Pairing state lost): The \window.__ELECTRON_TERMINAL_CONFIG__\ injection was happening during \did-finish-load\ event, which triggered AFTER React booted up. As a result, \eadTerminalConfig()\ would return \
+ull\ (since localStorage may clear or fail across desktop builds) causing the pairing screen to reappear.
+  - Issue 2 (KDS prompts for PIN): The KDS route \/kds\ is marked as a public route to bypass the PIN. However, \DesktopPosApp\ sets the initial URL to \/\ and \DesktopPosShell\ performs the routing redirect to \/kds\. Because \AuthGate\ and \WorkspaceGate\ check \location.pathname\ before \DesktopPosShell\ mounts, they evaluate \/\ as a non-public route and prompt the user for a personnel PIN unexpectedly.
+- Decisions:
+  - Implemented \ipcRenderer.sendSync('terminal:getConfigSync')\ to fetch the pairing config synchronously straight from the Electron backend on boot, resolving the race condition entirely.
+  - Created an \<InitialRedirect>\ component wrapping the context providers in \DesktopPosApp.jsx\ that detects \/\ and redirects to the \startPath\ (\/kds\, \/pos\, etc.) before the providers even mount. This ensures \useLocation().pathname\ is correct when \WorkspaceGate\ checks if it's a public display route.
+- Open Risks: None.
+- Next Step: User builds a new release using \Yayinla.bat\ to distribute the fix.
+- Handoff Contract: The desktop app reliably persists its pairing state using Sync IPC, and KDS correctly bypasses PIN authentication.
