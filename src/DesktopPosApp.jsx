@@ -9,6 +9,7 @@ import { WORKSPACE_SCOPE } from '@/lib/workspace'
 import { getBranchId, getStartupPath, readTerminalConfig } from '@/lib/terminalIdentity'
 import PairingScreen from '@/components/pos/PairingScreen'
 import GlobalUnpairGesture from '@/components/pos/GlobalUnpairGesture'
+import GlobalExitButton from '@/components/pos/GlobalExitButton'
 
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
@@ -60,6 +61,7 @@ function DesktopPosShell() {
   return (
     <>
       <GlobalUnpairGesture />
+      <GlobalExitButton />
       <RouteActivityTracker />
       <Suspense fallback={<PageLoader />}>
         <Routes>

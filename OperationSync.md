@@ -7551,3 +7551,33 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Open Risks: None.
 - Next Step: User builds a new release using \Yayinla.bat\ and verifies clicking the top left corner 5 times triggers the unpair modal.
 - Handoff Contract: The unpair gesture is now correctly injected into the DOM on first render.
+
+
+## Entry - Desktop Global Window Controls (Minimize & Exit)
+
+- Timestamp: 2026-05-30T23:48:00+03:00
+- Agent: Antigravity
+- Task: Add global minimize and exit window controls to the desktop application with confirmation modal
+- Files Read:
+  - src/components/pages/POS.jsx
+  - desktop/main.cjs
+- Files Changed:
+  - desktop/main.cjs
+  - desktop/preload.cjs
+  - src/components/pos/GlobalExitButton.jsx (Created)
+  - src/DesktopPosApp.jsx
+  - src/components/pages/POS.jsx
+  - src/components/pages/Garson.jsx
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - The application lacked a global way to minimize or safely exit the app from any screen (KDS, POS, Pickup). The POS and Garson screens had a hardcoded 'X Kapat' button that exited immediately without confirmation.
+- Decisions:
+  - Added \pp:minimize\ IPC handler to \main.cjs\ and exposed \minimizeApp\ in \preload.cjs\.
+  - Created \GlobalExitButton.jsx\ containing a floating \[-]\ (Minimize) and \[X]\ (Exit) button.
+  - Implemented a confirmation modal on the exit button to inform the user that offline queues and unfinished work will be preserved for the next launch.
+  - Removed the hardcoded 'X Kapat' buttons from \POS.jsx\ and \Garson.jsx\.
+  - Injected \GlobalExitButton\ at the root of \DesktopPosShell\ so it overlays on every single desktop screen automatically, as requested.
+- Open Risks: None.
+- Next Step: User builds a new release using \Yayinla.bat\ to test the new global window controls.
+- Handoff Contract: The desktop app now features standard global minimize and exit buttons with safe-exit confirmations.
