@@ -10,14 +10,15 @@ import { loadTableManagementCatalog } from '@/lib/posTableCatalogService'
 export default function DeviceSettings() {
   const { branchId } = useWorkspace()
   const [devices, setDevices] = useState([])
-  const [halls, setHalls] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingDevice, setEditingDevice] = useState(null)
   const [formData, setFormData] = useState({
     device_type: 'pos',
     is_master: false,
     terminal_name: '',
     config_data: {}
   })
+  const [halls, setHalls] = useState([])
   const toast = useToast()
 
   const loadDevices = async () => {
@@ -61,8 +62,33 @@ export default function DeviceSettings() {
     }
 
     // Safety check: if master is forced but there's already a master
-    if (formData.is_master && hasMaster) {
+    if (formData.is_master && hasMaster && (!editingDevice || !editingDevice.is_master)) {
       toast('Sistemde zaten bir Ana Kasa (Master) bulunuyor.', 'error')
+      return
+    }
+
+    if (editingDevice) {
+      const updates = {
+        device_type: formData.device_type,
+        is_master: Boolean(formData.is_master),
+        terminal_role: Boolean(formData.is_master) ? 'master' : 'slave',
+        config_data: formData.config_data ?? {},
+        terminal_name: (formData.terminal_name && formData.terminal_name.trim()) ? formData.terminal_name.trim() : null
+      }
+      const { error } = await db.from('pos_terminals').update(updates).eq('id', editingDevice.id)
+      if (error) {
+        toast(`Cihaz güncellenemedi: ${error.message || JSON.stringify(error)}`, 'error')
+        console.error('[DeviceSettings] update error:', error)
+      } else {
+        const deviceLabel = updates.terminal_name
+          ? `'${updates.terminal_name}' başarıyla güncellendi.`
+          : 'Cihaz başarıyla güncellendi.'
+        toast(deviceLabel, 'success')
+        setEditingDevice(null)
+        setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
+        setIsModalOpen(false)
+        loadDevices()
+      }
       return
     }
 
@@ -90,7 +116,7 @@ export default function DeviceSettings() {
       console.error('[DeviceSettings] insert error:', error)
     } else {
       const deviceLabel = newDevice.terminal_name
-        ? `'​${newDevice.terminal_name}'​ başarıyla oluşturuldu.`
+        ? `'${newDevice.terminal_name}' başarıyla oluşturuldu.`
         : 'Cihaz başarıyla oluşturuldu.'
       toast(deviceLabel, 'success')
       setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
@@ -100,10 +126,32 @@ export default function DeviceSettings() {
   }
 
   const handleDelete = async (id) => {
-    if (confirm('Bu cihazı silmek istediğinize emin misiniz?')) {
-      await db.from('pos_terminals').delete().eq('id', id)
+    if (!window.confirm('Bu cihazı silmek istediğinize emin misiniz?')) return
+
+    const { error } = await db.from('pos_terminals').delete().eq('id', id)
+    if (error) {
+      toast('Cihaz silinirken hata oluştu', 'error')
+    } else {
+      toast('Cihaz başarıyla silindi', 'success')
       loadDevices()
     }
+  }
+
+  const handleAddNew = () => {
+    setEditingDevice(null)
+    setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
+    setIsModalOpen(true)
+  }
+
+  const handleEdit = (device) => {
+    setEditingDevice(device)
+    setFormData({
+      device_type: device.device_type,
+      is_master: device.is_master,
+      terminal_name: device.terminal_name || '',
+      config_data: device.config_data || {}
+    })
+    setIsModalOpen(true)
   }
 
   const getDeviceIcon = (type) => {
@@ -133,9 +181,7 @@ export default function DeviceSettings() {
   }
 
   const hasMaster = devices.some(d => d.is_master)
-  const sourceDevices = devices.filter(d => d.device_type === 'pos' || d.device_type === 'masa')
-  const kdsDevices = devices.filter(d => d.device_type === 'kds')
-  const pickupDevices = devices.filter(d => d.device_type === 'pickup')
+  const sourceDevices = devices.filter(d => ['pos', 'masa', 'kiosk', 'kiosk_tablet'].includes(d.device_type))
 
   // Helper to manage array in config_data
   const toggleConfigArrayItem = (key, value) => {
@@ -158,12 +204,9 @@ export default function DeviceSettings() {
         title="Cihaz Yönetimi" 
         subtitle="Fiziksel POS, Garson, Mutfak (KDS) ve Sıra terminallerinizi merkezi olarak yönetin."
         actions={
-          <button className="btn-p" onClick={() => {
-            setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
-            setIsModalOpen(true)
-          }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Yeni Cihaz Ekle
+          <button className="btn-p gap-2" onClick={handleAddNew}>
+            <Plus className="w-4 h-4" />
+            Yeni Cihaz Oluştur
           </button>
         }
       />
@@ -228,6 +271,9 @@ export default function DeviceSettings() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
+                  <button className="btn-o mr-2" style={{ color: '#3b82f6', borderColor: '#3b82f6', padding: '6px 10px' }} onClick={() => handleEdit(device)}>
+                    <i className="fa-solid fa-pen" />
+                  </button>
                   <button className="btn-o" style={{ color: '#ef4444', borderColor: '#ef4444', padding: '6px 10px' }} onClick={() => handleDelete(device.id)}>
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -245,7 +291,7 @@ export default function DeviceSettings() {
         </table>
       </div>
 
-      <Modal open={isModalOpen} onClose={() => setIsModalOpen(false)} title="Yeni Cihaz Oluştur">
+      <Modal open={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingDevice ? "Cihazı Düzenle" : "Yeni Cihaz Oluştur"}>
         <form onSubmit={handleSave} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Cihaz Tipi</label>
@@ -424,7 +470,7 @@ export default function DeviceSettings() {
 
           <div className="pt-6 flex justify-end gap-2">
             <button className="btn-o" type="button" onClick={() => setIsModalOpen(false)}>İptal</button>
-            <button className="btn-p" type="submit">Oluştur ve Kaydet</button>
+            <button className="btn-p" type="submit">{editingDevice ? "Güncelle" : "Oluştur ve Kaydet"}</button>
           </div>
         </form>
       </Modal>

@@ -7433,3 +7433,31 @@ pm version\), and publishing in a single double-click action.
 - Open Risks: None.
 - Next Step: User tests the auto-update process from the sahadaki cihazlar by incrementing the version and publishing a new release.
 - Handoff Contract: The auto-update publishing mechanism is fully functional and documented.
+
+## Entry - Kiosk and Combo Menu Multi-Select Entegrasyonu
+- **Date**: 2026-05-30
+- **Summary**: Implemented multi-select (increment/decrement) UI for both combo and standard options across KioskBig, KioskTablet, POS, and Garson screens. Added resilient UUID/slug/name fallback matching for combo options and handled empty modal scenarios.
+- **Files Modified**:
+  - src/components/pos/UnifiedPosStaffScreen.jsx
+  - src/components/pos/ComboBuilderModal.jsx
+  - src/components/pages/POS.jsx
+  - src/components/pages/Garson.jsx
+  - src/components/pages/KioskBig.jsx
+  - src/components/pages/KioskTablet.jsx
+- **Commands Run**:
+  - 
+pm run build (Verified 100% successful build)
+- **Decisions**:
+  - Replaced the toggle (filter) logic with a quantity-based increment/decrement array (+ / -) for options with max_select > 1.
+  - Addressed UUID inconsistencies by matching against ID, slug, name, or group_name sequentially in a defsById Map.
+  - Implemented an empty modal fallback message instead of showing blank screens when combo definitions have empty options.
+- **Next Step**: Awaiting further user requests. 
+
+## Entry 181 - 2026-05-30
+
+**Tasks Completed (by Agent):**
+- **Combo Menu Multi-Select Support:** Refactored option selection logic across POS.jsx, Garson.jsx, KioskBig.jsx, and KioskTablet.jsx to support multiple selections of the same item (e.g. 2x Ketchup). Added explicit '+' and '-' buttons to toggle quantities, ensuring maxSelect constraint is respected.
+- **Empty Combo Modal Fix:** Fixed the issue where ComboBuilderModal and Kiosk modals rendered blank when optionGroupId from the DB did not exactly match the definitions' UUIDs (due to old string IDs like 'sos-secimi'). Added fallback match logic by slug, 
+ame, and normalized text.
+- **Empty State UX:** Added an explicit fallback warning message ("Seçenek Bulunamadý") for Kiosk screens when a combo menu definition returns no valid steps.
+

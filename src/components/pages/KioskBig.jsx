@@ -557,7 +557,13 @@ function getKioskComboAlternativeDelta(comboDefinition, group, selectedItemId, c
 }
 
 function buildKioskOptionSteps(comboDefinition, optionGroupDefs, groupSelections) {
-  const defsById = new Map((optionGroupDefs || []).map(def => [String(def.id), def]))
+  const defsById = new Map()
+  for (const def of optionGroupDefs || []) {
+    if (def.id) defsById.set(String(def.id), def)
+    if (def.slug) defsById.set(String(def.slug), def)
+    if (def.name) defsById.set(normalizeText(def.name), def)
+    if (def.group_name) defsById.set(normalizeText(def.group_name), def)
+  }
   const steps = []
 
   for (const group of comboDefinition?.groups || []) {
@@ -567,7 +573,7 @@ function buildKioskOptionSteps(comboDefinition, optionGroupDefs, groupSelections
 
     for (const link of group.optionGroups || []) {
       const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-      const def = defsById.get(optionGroupId)
+      const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
       if (!def) continue
       steps.push({
         type: 'option',
@@ -581,7 +587,7 @@ function buildKioskOptionSteps(comboDefinition, optionGroupDefs, groupSelections
 
   for (const link of comboDefinition?.form?.comboOptionGroups || []) {
     const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-    const def = defsById.get(optionGroupId)
+    const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
     if (!def) continue
     steps.push({
       type: 'option',
@@ -716,11 +722,27 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
   function toggleOption(step, optionId, maxSelect) {
     setOptionSelections(current => {
       const currentIds = current[step.key] || []
-      const exists = currentIds.includes(optionId)
-      if (exists) return { ...current, [step.key]: currentIds.filter(id => id !== optionId) }
-      if (maxSelect <= 1) return { ...current, [step.key]: [optionId] }
+      
+      if (maxSelect <= 1) {
+        const count = currentIds.filter(id => id === optionId).length
+        return count > 0 
+          ? { ...current, [step.key]: currentIds.filter(id => id !== optionId) }
+          : { ...current, [step.key]: [optionId] }
+      }
+
       if (maxSelect > 0 && currentIds.length >= maxSelect) return current
       return { ...current, [step.key]: [...currentIds, optionId] }
+    })
+  }
+
+  function removeOption(step, optionId) {
+    setOptionSelections(current => {
+      const currentIds = current[step.key] || []
+      const index = currentIds.lastIndexOf(optionId)
+      if (index === -1) return current
+      const nextIds = [...currentIds]
+      nextIds.splice(index, 1)
+      return { ...current, [step.key]: nextIds }
     })
   }
 
@@ -861,6 +883,13 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
             <div style={{ fontSize: '.95rem', fontWeight: 900, lineHeight: 1.15, color: '#0f172a' }}>{comboProduct?.name}</div>
           </div>
 
+          {steps.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, opacity: 0.7 }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2.5rem', color: '#fca5a5', marginBottom: 12 }} />
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#334155', marginBottom: 6 }}>Seçenek Bulunamadı</div>
+              <div style={{ fontSize: '.8rem', color: '#64748b', textAlign: 'center', lineHeight: 1.5 }}>Bu menü için bir yapılandırma bulunamadı. Lütfen daha sonra tekrar deneyin.</div>
+            </div>
+          ) : (
           <div style={{ padding: '0 12px 12px', overflowY: 'auto', flex: 1 }}>
             {currentStep?.type === 'group' ? (
               <>
@@ -926,51 +955,105 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
               </>
             ) : currentStep?.type === 'option' ? (
               <>
-                <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 800, marginBottom: 8 }}>
-                  {currentStep.def?.group_name || currentStep.def?.name || 'Seçenek'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 800 }}>
+                    {currentStep.def?.group_name || currentStep.def?.name || 'Seçenek'}
+                  </div>
+                  {(() => {
+                    const rules = extractSelectionRules(parseJsonValue(currentStep.def?.options, []))
+                    const min = rules.minSelect
+                    const max = rules.maxSelect
+                    if (!min && !max) return null
+                    let note = ""
+                    if (min > 0 && max > 0) note = min === max ? `${min} Zorunlu` : `En az ${min}, En fazla ${max}`
+                    else if (min > 0) note = `En az ${min} Seçim`
+                    else if (max > 0) note = `En fazla ${max} Seçim`
+                    
+                    return (
+                      <div style={{
+                        fontSize: '.68rem', fontWeight: 800, color: '#f59e0b', 
+                        background: 'rgba(245, 158, 11, 0.12)', padding: '2px 8px', borderRadius: 8
+                      }}>
+                        {note}
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 18, padding: 14 }}>
                   <div style={{ display: 'grid', gap: 10 }}>
                     {extractSelectionRules(parseJsonValue(currentStep.def?.options, [])).options.map(option => {
                       const optionId = String(option.option_id || option.id || option.name)
-                      const active = (optionSelections[currentStep.key] || []).includes(optionId)
+                      const currentIds = optionSelections[currentStep.key] || []
+                      const count = currentIds.filter(id => id === optionId).length
+                      const active = count > 0
                       const price = roundMoney(option.price)
+                      const maxS = extractSelectionRules(parseJsonValue(currentStep.def?.options, [])).maxSelect
+                      
                       return (
-                        <button
+                        <div
                           key={optionId}
-                          type="button"
-                          onClick={() => toggleOption(currentStep, optionId, extractSelectionRules(parseJsonValue(currentStep.def?.options, [])).maxSelect)}
                           style={{
                             borderRadius: 14,
                             border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
                             background: active ? '#fffbeb' : '#fff',
-                            padding: '12px 14px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 4
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleOption(currentStep, optionId, maxS)}
+                            style={{
+                              background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+                              padding: '8px 10px', flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10
+                            }}
+                          >
                             <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.9rem' }}>{option.name || 'Seçenek'}</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               {price > 0 ? <div style={{ fontSize: '.72rem', color: '#f59e0b', fontWeight: 800 }}>+{fmt(price)} TL</div> : null}
-                              <div
+                              {maxS <= 1 && (
+                                <div
+                                  style={{
+                                    width: 24, height: 24, borderRadius: 999, border: `2px solid ${active ? '#f59e0b' : '#cbd5e1'}`,
+                                    background: active ? '#f59e0b' : '#fff', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0,
+                                  }}
+                                >
+                                  {active ? <i className="fa-solid fa-check" style={{ fontSize: '.68rem' }} /> : null}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                          
+                          {maxS > 1 && active && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,.1)', borderRadius: 10, padding: '4px', alignSelf: 'flex-end', marginRight: 4, marginBottom: 4 }}>
+                              <button
+                                type="button"
+                                onClick={() => removeOption(currentStep, optionId)}
                                 style={{
-                                  width: 24,
-                                  height: 24,
-                                  borderRadius: 999,
-                                  border: `2px solid ${active ? '#f59e0b' : '#cbd5e1'}`,
-                                  background: active ? '#f59e0b' : '#fff',
-                                  color: '#fff',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  flexShrink: 0,
+                                  width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(245,158,11,.2)', color: '#d97706', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
                                 }}
                               >
-                                {active ? <i className="fa-solid fa-check" style={{ fontSize: '.68rem' }} /> : null}
+                                -
+                              </button>
+                              <div style={{ minWidth: 20, textAlign: 'center', color: '#d97706', fontWeight: 900, fontSize: '.9rem' }}>
+                                {count}
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleOption(currentStep, optionId, maxS)}
+                                style={{
+                                  width: 28, height: 28, borderRadius: 8, border: 'none', background: '#f59e0b', color: '#fff', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                                }}
+                              >
+                                +
+                              </button>
                             </div>
-                          </div>
-                        </button>
+                          )}
+                        </div>
                       )
                     })}
                   </div>
@@ -978,6 +1061,7 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
               </>
             ) : null}
           </div>
+          )}
 
           <div style={{ padding: 12, borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gridTemplateColumns: '62px 34px 20px 34px minmax(64px, 1fr) minmax(74px, auto)', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <button
@@ -1886,10 +1970,20 @@ function ProductOptionsModal({ prod, channelId, accentColor, anchorY, onConfirm,
     const key = `${groupIndex}:${optionIndex}`
     setSelOpts(current => {
       const list = current[groupIndex] || []
-      if (list.includes(key)) return { ...current, [groupIndex]: list.filter(item => item !== key) }
-      if (maxSelect <= 1) return { ...current, [groupIndex]: [key] }
-      if (list.length >= maxSelect) return current
+      if (maxSelect > 0 && list.length >= maxSelect && !list.includes(key)) return current
       return { ...current, [groupIndex]: [...list, key] }
+    })
+  }
+
+  function removeOpt(groupIndex, optionIndex) {
+    const key = `${groupIndex}:${optionIndex}`
+    setSelOpts(current => {
+      const list = current[groupIndex] || []
+      const index = list.lastIndexOf(key)
+      if (index === -1) return current
+      const nextArr = [...list]
+      nextArr.splice(index, 1)
+      return { ...current, [groupIndex]: nextArr }
     })
   }
 
@@ -2045,37 +2139,104 @@ function ProductOptionsModal({ prod, channelId, accentColor, anchorY, onConfirm,
             const maxSelect = parseInt(group?.max_select, 10) || 1
             return (
               <div key={`${group?.name || 'group'}-${groupIndex}`} style={{ marginTop: 12 }}>
-                <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 800 }}>
-                  {group.group_name || group.name || `Seçim ${groupIndex + 1}`}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 800 }}>
+                    {group.group_name || group.name || `Seçim ${groupIndex + 1}`}
+                  </div>
+                  {(() => {
+                    const min = parseInt(group.min_select) || (group.required ? 1 : 0)
+                    const max = parseInt(group.max_select) || 0
+                    if (!min && !max) return null
+                    let note = ""
+                    if (min > 0 && max > 0) note = min === max ? `${min} Zorunlu` : `En az ${min}, En fazla ${max}`
+                    else if (min > 0) note = `En az ${min} Seçim`
+                    else if (max > 0) note = `En fazla ${max} Seçim`
+                    
+                    return (
+                      <div style={{
+                        fontSize: '.68rem', fontWeight: 800, color: accentColor, 
+                        background: rgba(accentColor, 0.12), padding: '2px 8px', borderRadius: 8
+                      }}>
+                        {note}
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                   {options.map((option, optionIndex) => {
                     const key = `${groupIndex}:${optionIndex}`
-                    const active = (selOpts[groupIndex] || []).includes(key)
+                    const curSel = selOpts[groupIndex] || []
+                    const count = curSel.filter(k => k === key).length
+                    const active = count > 0
+                    const price = parseFloat(option.price) || 0
+                    const maxS = parseInt(group.max_select) || 1
                     return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => toggleOpt(groupIndex, optionIndex, maxSelect)}
-                        style={{
-                          minHeight: 40,
-                          borderRadius: 12,
-                          border: active ? `2px solid ${accentColor}` : '1px solid rgba(15,23,42,.1)',
-                          background: active ? rgba(accentColor, .12) : '#fff',
-                          color: '#0f172a',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          padding: '0 10px',
-                        }}
-                      >
-                        <span style={{ fontWeight: 700, fontSize: '.78rem' }}>{option.name}</span>
-                        <span style={{ color: accentColor, fontWeight: 800, fontSize: '.78rem' }}>
-                          {parseFloat(option.price) > 0 ? `+${tl(option.price)}` : 'Dahil'}
-                        </span>
-                      </button>
+                      <div key={optionIndex} style={{
+                        borderRadius: 14,
+                        border: `1px solid ${active ? accentColor : 'rgba(15,23,42,.1)'}`,
+                        background: active ? rgba(accentColor, .12) : '#fff',
+                        padding: '4px',
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        transition: '.15s',
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleOpt(groupIndex, optionIndex, maxS)}
+                          style={{
+                            flex: 1, padding: '6px 8px', background: 'transparent', border: 'none', cursor: 'pointer',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>{option.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {price > 0 && <span style={{ color: accentColor, fontWeight: 800, fontSize: '.78rem' }}>+{tl(price)}</span>}
+                            {maxS <= 1 && (
+                              <div style={{
+                                width: 22, height: 22, borderRadius: 999,
+                                border: `2px solid ${active ? accentColor : '#cbd5e1'}`,
+                                background: active ? accentColor : '#fff',
+                                color: '#fff', display: 'grid', placeItems: 'center'
+                              }}>
+                                {active ? <i className="fa-solid fa-check" style={{ fontSize: '.6rem' }} /> : null}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+
+                        {maxS > 1 && active ? (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            background: rgba(accentColor, 0.1), borderRadius: 10, padding: '4px',
+                            alignSelf: 'flex-end', marginRight: 4, marginBottom: 4
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => removeOpt(groupIndex, optionIndex)}
+                              style={{
+                                width: 26, height: 26, borderRadius: 8, border: 'none',
+                                background: rgba(accentColor, 0.2), color: accentColor, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                              }}
+                            >
+                              -
+                            </button>
+                            <div style={{ minWidth: 16, textAlign: 'center', color: accentColor, fontWeight: 900, fontSize: '.9rem' }}>
+                              {count}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleOpt(groupIndex, optionIndex, maxS)}
+                              style={{
+                                width: 26, height: 26, borderRadius: 8, border: 'none',
+                                background: accentColor, color: '#fff', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     )
                   })}
                 </div>
@@ -2167,6 +2328,7 @@ export default function KioskBig() {
   }, [legacyQrRedirect.href])
 
   const [settings, setSettings] = useState(KIOSK_DEFAULT_SETTINGS)
+  const [deviceStations, setDeviceStations] = useState([])
   const [deviceKioskCode, setDeviceKioskCode] = useState('')
   const [kioskStationDraft, setKioskStationDraft] = useState('')
   const [kioskStationModalMode, setKioskStationModalMode] = useState('initial')
@@ -2243,13 +2405,15 @@ export default function KioskBig() {
   const categoryBgColor = settings.category_bg_color || '#0b1221'
   const categoryActiveColor = settings.category_active_color || accentColor
   const kioskStationConfig = useMemo(
-    () => resolveKioskDeviceStation(settings, deviceKioskCode),
-    [settings, deviceKioskCode],
+    () => resolveKioskDeviceStation({ ...settings, kiosk_stations: deviceStations }, deviceKioskCode),
+    [settings, deviceStations, deviceKioskCode],
   )
   const selectedKioskStation = kioskStationConfig.station
   const kioskStationLabel = formatKioskStationLabel(selectedKioskStation, kioskStationConfig.stationCode)
   const branchDisplayLabel = branchName ? displayText(`Şube: ${branchName}`) : displayText('Şube bilgisi bekleniyor')
-  const showVisibleStationSetup = !deviceKioskCode
+  // Show modal when not yet paired OR when paired but code no longer exists in current device list
+  const needsPairing = !deviceKioskCode || (deviceKioskCode && deviceStations.length > 0 && !kioskStationConfig.hasMatch)
+  const showVisibleStationSetup = needsPairing
   const kioskOperatingState = useMemo(
     () => getKioskOperatingState(settings, clockNow),
     [settings, clockNow],
@@ -2349,7 +2513,7 @@ export default function KioskBig() {
       const safeCategories = categorySnapshot.categories || sortSaleCategoriesWithComboFirst(catRes.data || [])
       
       if (settingsData && devicesRes?.data) {
-        settingsData.kiosk_stations = (devicesRes.data || []).sort((left, right) => (
+        const stations = (devicesRes.data || []).sort((left, right) => (
           String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
         )).map((device, index) => ({
           id: device.id,
@@ -2360,6 +2524,8 @@ export default function KioskBig() {
           order: index + 1,
           device_type: device.device_type
         }))
+        setDeviceStations(stations)
+        settingsData.kiosk_stations = stations
       }
       setSettings(settingsData || KIOSK_DEFAULT_SETTINGS)
       setCategories(safeCategories
@@ -2412,6 +2578,25 @@ export default function KioskBig() {
       if (document.hidden) return
       loadKioskSettings().then(setSettings).catch(() => {})
       setDeviceKioskCode(loadKioskDeviceStationCode())
+      // Also refresh device stations from pos_terminals
+      if (effectiveBranchId) {
+        db.from('pos_terminals').select('*').eq('branch_id', effectiveBranchId).in('device_type', ['kiosk', 'kiosk_tablet'])
+          .then(({ data }) => {
+            if (!data) return
+            const stations = (data || []).sort((left, right) => (
+              String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
+            )).map((device, index) => ({
+              id: device.id,
+              code: device.pair_key,
+              name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
+              kiosk_number: index + 1,
+              active: true,
+              order: index + 1,
+              device_type: device.device_type
+            }))
+            setDeviceStations(stations)
+          }).catch(() => {})
+      }
     }
 
     function onStorage(event) {

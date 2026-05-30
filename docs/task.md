@@ -1,7 +1,8 @@
-# created_by_terminal Enjeksiyon Katmanı Görev Takip Listesi
+# Görev Listesi
 
-- `[x]` 1. `src/lib/terminalIdentity.js` dosyasına `injectTerminalFields` fonksiyonunun eklenmesi
-- `[x]` 2. `src/lib/db.js` dosyasının `injectTerminalFields` import'u ve `_execute()` zenginleştirme mantığıyla güncellenmesi
-- `[x]` 3. Enjeksiyon mantığını (tablo isim süzgeci, tekil/çoğul kayıtlar, desktop mod koşulu) test eden doğrulama betiğinin (`scratch/test-terminal-injection.cjs`) hazırlanıp çalıştırılması
-- `[x]` 4. Projenin hatasız derlendiğinin (`npm run build`) doğrulanması
-- `[x]` 5. `OperationSync.md` dosyasının yeni girdilerle (Entry 179) güncellenmesi
+- `[x]` **Adım 1:** `desktop/preload.cjs` dosyasına `getQueueSize` IPC metodunu ekle.
+- `[x]` **Adım 2:** `src/components/pos/GlobalUnpairGesture.jsx` gizli jest bileşenini oluştur.
+- `[x]` **Adım 3:** `src/DesktopPosApp.jsx` içerisindeki sarmalama hatasını düzelt ve `GlobalUnpairGesture` bileşenini ekle.
+- `[x]` **Adım 4:** Derleme hatası varsa çöz ve değişiklikleri çalışır hale getir.
+- `[x]` **Adım 5:** "X Kapat" butonlarının uygulamayı gerçekten kapatmasını sağla (`main.cjs` ve `preload.cjs` IPC güncellemeleri).
+- `[x]` **Adım 6:** Personel isminin sol üst köşede görünmeme hatasını düzelt (`posStaffAuth.js` içerisine `name` eşlemesi ekle).la.

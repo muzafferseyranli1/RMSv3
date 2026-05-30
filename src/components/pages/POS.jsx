@@ -745,10 +745,28 @@ function OptionsModalSafe({
     const key = `${groupIdx}-${optIdx}`
     setSelOpts(prev => {
       const cur = prev[groupIdx] || []
-      if (cur.includes(key)) return { ...prev, [groupIdx]: cur.filter(k => k !== key) }
-      if (maxSelect === 1) return { ...prev, [groupIdx]: [key] }
+      const count = cur.filter(k => k === key).length
+
+      if (maxSelect <= 1) {
+        return count > 0
+          ? { ...prev, [groupIdx]: cur.filter(k => k !== key) }
+          : { ...prev, [groupIdx]: [key] }
+      }
+
       if (cur.length >= maxSelect) return prev
       return { ...prev, [groupIdx]: [...cur, key] }
+    })
+  }
+
+  function removeOpt(groupIdx, optIdx) {
+    const key = `${groupIdx}-${optIdx}`
+    setSelOpts(prev => {
+      const cur = prev[groupIdx] || []
+      const index = cur.lastIndexOf(key)
+      if (index === -1) return prev
+      const nextArr = [...cur]
+      nextArr.splice(index, 1)
+      return { ...prev, [groupIdx]: nextArr }
     })
   }
 
@@ -852,9 +870,28 @@ function OptionsModalSafe({
                   }}>
                     {grp.group_name}
                   </div>
-                  <div style={{fontSize:'.7rem', color:'rgba(165,180,252,.6)', fontWeight:600, flexShrink:0}}>
-                    {grp.required ? UI_TEXT.required : UI_TEXT.optional} {'\u2022'} max {grp.max_select || 1}
-                  </div>
+                  {(() => {
+                    const min = parseInt(grp.min_select) || (grp.required ? 1 : 0)
+                    const max = parseInt(grp.max_select) || 0
+                    if (!min && !max) return (
+                      <div style={{fontSize:'.7rem', color:'rgba(165,180,252,.6)', fontWeight:600, flexShrink:0}}>
+                        {UI_TEXT.optional}
+                      </div>
+                    )
+                    let note = ""
+                    if (min > 0 && max > 0) note = min === max ? `${min} Zorunlu` : `En az ${min}, En fazla ${max}`
+                    else if (min > 0) note = `En az ${min} Seçim`
+                    else if (max > 0) note = `En fazla ${max} Seçim`
+                    
+                    return (
+                      <div style={{
+                        fontSize: '.68rem', fontWeight: 800, color: '#818cf8', 
+                        background: 'rgba(129, 140, 248, 0.12)', padding: '2px 8px', borderRadius: 8, flexShrink:0
+                      }}>
+                        {note}
+                      </div>
+                    )
+                  })()}
                 </div>
                 {invalidGroups.includes(gi) && (
                   <div style={{fontSize:'.74rem', color:'#fca5a5', fontWeight:700, marginBottom:8}}>
@@ -865,25 +902,65 @@ function OptionsModalSafe({
                   {opts.map((opt, oi) => {
                     const key = `${gi}-${oi}`
                     const curSel = selOpts[gi] || []
-                    const isOn = curSel.includes(key)
+                    const count = curSel.filter(k => k === key).length
+                    const isOn = count > 0
                     const optPrice = parseFloat(opt.price) || 0
 
+                    const maxS = parseInt(grp.max_select) || 1
                     return (
-                      <button className="touch-btn touch-card" key={oi} onClick={() => toggleOpt(gi, oi, grp.max_select || 1)} style={{
-                        minHeight:68, padding:'11px 12px', borderRadius:14,
+                      <div className="touch-card" key={oi} style={{
+                        minHeight:68, padding:'4px', borderRadius:14,
                         border:`1.5px solid ${isOn?'#10b981':'rgba(255,255,255,.1)'}`,
                         background:isOn?'rgba(16,185,129,.12)':'rgba(255,255,255,.03)',
-                        color:isOn?'#10b981':'#fff', cursor:'pointer',
-                        display:'flex', justifyContent:'space-between', alignItems:'center', transition:'.15s', gap:8
+                        color:isOn?'#10b981':'#fff',
+                        display:'flex', justifyContent:'space-between', alignItems:'center', transition:'.15s', gap:4,
                       }}>
-                        <span style={{fontWeight:600, fontSize:'.87rem', textAlign:'left'}}>{opt.name}</span>
-                        <span style={{
-                          fontSize:'.75rem', fontWeight:700,
-                          color:optPrice > 0 ? '#10b981' : 'rgba(255,255,255,.4)', marginLeft:6, flexShrink:0
+                        <button type="button" onClick={() => toggleOpt(gi, oi, maxS)} style={{
+                          flex: 1, padding: '7px 8px', background: 'transparent', border: 'none', cursor: 'pointer',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'inherit'
                         }}>
-                          {optPrice > 0 ? `+${fmt(optPrice)}${UI_TEXT.tlSuffix}` : UI_TEXT.free}
-                        </span>
-                      </button>
+                          <span style={{fontWeight:600, fontSize:'.87rem', textAlign:'left'}}>{opt.name}</span>
+                          <span style={{
+                            fontSize:'.75rem', fontWeight:700,
+                            color:optPrice > 0 ? '#10b981' : 'rgba(255,255,255,.4)', marginLeft:6, flexShrink:0
+                          }}>
+                            {optPrice > 0 ? `+${fmt(optPrice)}${UI_TEXT.tlSuffix}` : UI_TEXT.free}
+                          </span>
+                        </button>
+
+                        {maxS > 1 && isOn ? (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            background: 'rgba(0,0,0,.3)', borderRadius: 10, padding: '4px'
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => removeOpt(gi, oi)}
+                              style={{
+                                width: 28, height: 28, borderRadius: 6, border: 'none',
+                                background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                              }}
+                            >
+                              -
+                            </button>
+                            <div style={{ minWidth: 16, textAlign: 'center', color: '#10b981', fontWeight: 900, fontSize: '.9rem' }}>
+                              {count}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleOpt(gi, oi, maxS)}
+                              style={{
+                                width: 28, height: 28, borderRadius: 6, border: 'none',
+                                background: '#10b981', color: '#000', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     )
                   })}
                 </div>

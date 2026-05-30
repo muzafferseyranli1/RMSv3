@@ -190,7 +190,18 @@ export function useUnifiedPosCatalogBootstrap({
           }
 
           if (comboResult.status === 'fulfilled' && !comboResult.value?.error) {
-            setComboDefinitions(Array.isArray(comboResult.value.data?.value) ? comboResult.value.data.value : [])
+            const raw = comboResult.value.data?.value
+            let parsed = raw
+            if (typeof raw === 'string') {
+              try { parsed = JSON.parse(raw) } catch (e) {}
+            }
+            if (Array.isArray(parsed)) {
+              setComboDefinitions(parsed)
+            } else if (parsed && Array.isArray(parsed.records)) {
+              setComboDefinitions(parsed.records)
+            } else {
+              setComboDefinitions([])
+            }
           }
 
           if (optionGroupsResult.status === 'fulfilled' && !optionGroupsResult.value?.error) {

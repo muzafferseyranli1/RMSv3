@@ -84,7 +84,13 @@ function buildOptionStepKey(prefix, ownerId, optionGroupId) {
 }
 
 function buildOptionSteps(comboDefinition, optionGroupDefs, groupSelections) {
-  const defsById = new Map((optionGroupDefs || []).map(def => [String(def.id), def]))
+  const defsById = new Map()
+  for (const def of optionGroupDefs || []) {
+    if (def.id) defsById.set(String(def.id), def)
+    if (def.slug) defsById.set(String(def.slug), def)
+    if (def.name) defsById.set(normalizeText(def.name), def)
+    if (def.group_name) defsById.set(normalizeText(def.group_name), def)
+  }
   const steps = []
 
   for (const group of comboDefinition?.groups || []) {
@@ -93,7 +99,7 @@ function buildOptionSteps(comboDefinition, optionGroupDefs, groupSelections) {
 
     for (const link of group.optionGroups || []) {
       const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-      const def = defsById.get(optionGroupId)
+      const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
       if (!def) continue
       const defName = def.group_name || def.name || 'Secenek Grubu'
       steps.push({
@@ -109,7 +115,7 @@ function buildOptionSteps(comboDefinition, optionGroupDefs, groupSelections) {
 
   for (const link of comboDefinition?.form?.comboOptionGroups || []) {
     const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-    const def = defsById.get(optionGroupId)
+    const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
     if (!def) continue
     const defName = def.group_name || def.name || 'Secenek Grubu'
     steps.push({
@@ -388,29 +394,29 @@ export default function ComboBuilderModal({
     }))
   }
 
-  function handleToggleOption(step, optionId, maxSelect) {
+  function handleAddOption(step, optionId, maxSelect) {
     setOptionSelections(current => {
       const currentIds = current[step.key] || []
-      const exists = currentIds.includes(optionId)
-      if (exists) {
-        return {
-          ...current,
-          [step.key]: currentIds.filter(id => id !== optionId),
-        }
-      }
-
+      
       if (maxSelect <= 1) {
-        return {
-          ...current,
-          [step.key]: [optionId],
-        }
+        const exists = currentIds.includes(optionId)
+        if (exists) return { ...current, [step.key]: currentIds.filter(id => id !== optionId) }
+        return { ...current, [step.key]: [optionId] }
       }
 
       if (maxSelect > 0 && currentIds.length >= maxSelect) return current
-      return {
-        ...current,
-        [step.key]: [...currentIds, optionId],
-      }
+      return { ...current, [step.key]: [...currentIds, optionId] }
+    })
+  }
+
+  function handleRemoveOption(step, optionId) {
+    setOptionSelections(current => {
+      const currentIds = current[step.key] || []
+      const index = currentIds.lastIndexOf(optionId)
+      if (index === -1) return current
+      const nextIds = [...currentIds]
+      nextIds.splice(index, 1)
+      return { ...current, [step.key]: nextIds }
     })
   }
 
@@ -496,7 +502,19 @@ export default function ComboBuilderModal({
           </button>
         </div>
 
-        <div className="hide-scrollbar" style={{ padding: 22, overflowY: 'auto' }}>
+        <div className="hide-scrollbar" style={{ padding: 22, overflowY: 'auto', display: 'flex', flexDirection: 'column', flex: 1 }}>
+          {steps.length === 0 ? (
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: 40, background: 'rgba(255,255,255,.02)', borderRadius: 18, border: '1px dashed rgba(255,255,255,.1)'
+            }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '3rem', color: '#fca5a5', marginBottom: 16 }} />
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: 8 }}>Secenek Bulunamadi</div>
+              <div style={{ fontSize: '.9rem', color: '#94a3b8', textAlign: 'center', maxWidth: 400, lineHeight: 1.5 }}>
+                Bu combo menuye ait herhangi bir grup veya secenek yapilandirmasi bulunamadi. Menude bir eksiklik olabilir.
+              </div>
+            </div>
+          ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1.55fr .9fr', gap: 18, alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {currentStep?.type === 'group' && (
@@ -630,47 +648,97 @@ export default function ComboBuilderModal({
                     <div style={{ display: 'grid', gap: 12 }}>
                       {rules.options.map(option => {
                         const optionId = String(option.option_id || option.id || option.name)
-                        const active = selectedIds.includes(optionId)
+                        const activeCount = selectedIds.filter(id => id === optionId).length
+                        const active = activeCount > 0
                         const price = roundMoney(option.price)
                         return (
-                          <button
-                            type="button"
+                          <div
                             key={`${currentStep.step.key}:${optionId}`}
-                            onClick={() => handleToggleOption(currentStep.step, optionId, maxSelect)}
                             style={{
                               border: `1.5px solid ${active ? activeBorder : 'rgba(255,255,255,.1)'}`,
                               background: active ? activeBackground : 'rgba(255,255,255,.03)',
                               borderRadius: 16,
-                              padding: '15px 18px',
-                              textAlign: 'left',
-                              cursor: 'pointer',
+                              padding: '10px 14px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 12,
+                              transition: '.15s',
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                              <div>
-                                <div style={{ fontWeight: 800, color: active ? activeText : '#fff', fontSize: '.92rem', marginBottom: 4 }}>
-                                  {option.name || 'Secenek'}
-                                </div>
-                                <div style={{ fontSize: '.74rem', color: 'rgba(255,255,255,.5)' }}>
-                                  {price > 0 ? `+${fmt(price)} TL eklenir` : 'Ucretsiz secenek'}
-                                </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddOption(currentStep.step, optionId, maxSelect)}
+                              style={{
+                                flex: 1,
+                                textAlign: 'left',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '5px 4px'
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, color: active ? activeText : '#fff', fontSize: '.92rem', marginBottom: 4 }}>
+                                {option.name || 'Secenek'}
                               </div>
+                              <div style={{ fontSize: '.74rem', color: 'rgba(255,255,255,.5)' }}>
+                                {price > 0 ? `+${fmt(price)} TL eklenir` : 'Ucretsiz secenek'}
+                              </div>
+                            </button>
+                            
+                            {maxSelect > 1 && activeCount > 0 ? (
                               <div style={{
-                                width: 26,
-                                height: 26,
-                                borderRadius: 999,
-                                border: `2px solid ${active ? activeBorder : 'rgba(255,255,255,.3)'}`,
-                                background: active ? activeBorder : 'transparent',
-                                color: '#fff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                background: 'rgba(0,0,0,.2)', borderRadius: 12, padding: '4px 6px'
                               }}>
-                                {active ? <i className="fa-solid fa-check" style={{ fontSize: '.75rem' }} /> : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOption(currentStep.step, optionId)}
+                                  style={{
+                                    width: 32, height: 32, borderRadius: 8, border: 'none',
+                                    background: 'rgba(255,255,255,.1)', color: '#fff', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                                  }}
+                                >
+                                  -
+                                </button>
+                                <div style={{ minWidth: 20, textAlign: 'center', color: '#fff', fontWeight: 800, fontSize: '.9rem' }}>
+                                  {activeCount}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddOption(currentStep.step, optionId, maxSelect)}
+                                  style={{
+                                    width: 32, height: 32, borderRadius: 8, border: 'none',
+                                    background: activeBorder, color: '#000', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
+                                  }}
+                                >
+                                  +
+                                </button>
                               </div>
-                            </div>
-                          </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleAddOption(currentStep.step, optionId, maxSelect)}
+                                style={{
+                                  width: 26,
+                                  height: 26,
+                                  borderRadius: 999,
+                                  border: `2px solid ${active ? activeBorder : 'rgba(255,255,255,.3)'}`,
+                                  background: active ? activeBorder : 'transparent',
+                                  color: '#fff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {active ? <i className="fa-solid fa-check" style={{ fontSize: '.75rem' }} /> : null}
+                              </button>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
@@ -727,6 +795,7 @@ export default function ComboBuilderModal({
               </div>
             </div>
           </div>
+          )}
         </div>
 
         <div style={{
