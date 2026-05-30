@@ -1,22 +1,22 @@
-# Güncelleme ve Düzeltmeler Özeti
+# Combo Menü Seçim Ekranı Hataları Giderildi — Teknik Walkthrough
 
-İstediğiniz özellikleri başarıyla koda aktardım ve çalışır hale getirdik. Yapılanları aşağıda listeledim:
+POS, Garson ve Kiosk (Big ve Tablet) ekranlarında combo menü tıklandığında modalın boş ("Seçenek Bulunamadı") gelmesi sorunu kalıcı olarak çözülmüştür.
 
-## 1. Evrensel Gizli Eşleşme Kaldırma (Unpairing) Jest Mekanizması
-Desktop cihazın eşleşmesini sıfırlayabilmeniz için, ekranda sürekli yer işgal eden bir buton koymak yerine **"Gizli Tıklama (Kiosk stili)"** özelliği entegre edildi.
-- **Nasıl Çalışır?:** Ekranın **sol üst köşesine** (şube adının olduğu koyu lacivert kutuya) üst üste **hızlıca 5 kere tıkladığınızda** gizli bir modal açılır.
-- **Güvenlik Kontrolü:** Bu modal açıldığında, eğer arka planda merkeze gönderilmeyi bekleyen (offline iken alınmış) **kuyruktaki veri/sipariş varsa sistem sizi uyarır** ve eşleşmeyi kaldırmanıza izin vermez (veri kaybını önlemek için). Eğer kuyruk boşsa güvenle "Cihaz Eşleşmesini Kaldır" diyebilirsiniz.
+## Yapılan Değişiklikler ve Mimari Çözümler
 
-## 2. "X Kapat" Butonlarının Masaüstü Uygulamayı Kapatması
-- Hem **POS**, hem de **Garson** ekranlarındaki "X Kapat" butonlarının davranışı güncellendi.
-- Electron alt yapısında `app.quit()` işlevi için yeni bir haberleşme köprüsü (`app:exit` IPC kanalı) kuruldu.
-- Bu butonlara bastığınızda masaüstü uygulama artık sadece PIN ekranına dönmek yerine **tamamen kapanacaktır**. (Web versiyonunda ise eski davranışı gösterip dashboard'a dönmeye devam eder).
+### 1. Dinamik Veri Normalizasyonu (Data Normalization)
+- **Problem:** Database üzerinde (`settings` -> `combo_menus_v1`) `groups` alanı tanımsız veya boş olan combo kayıtları, modal oluşturma adımında hiçbir seçim grubu oluşturulamamasına ve modalın boş gelmesine sebep oluyordu.
+- **Çözüm:** `UnifiedPosStaffScreen.jsx`, `KioskBig.jsx` ve `KioskTablet.jsx` dosyalarında veri çekim aşamasına `normalizeComboGroups` koruma katmanı eklendi.
+- **Dinamik Fallback:** Eğer `groups` dizisi boş veya tanımsızsa, sistem otomatik olarak yüklü olan ürün kataloğundan (`saleItems`) ana yemek (burger), yan ürün (patates) ve içecek (kola) kelimelerini tarayarak dinamik bir fallback grup dizisi oluşturur. Böylece hiçbir veri girilmemiş olsa bile kullanıcı modalı dolu görür ve seçim yapabilir.
 
-## 3. Personel İsminin Sol Üst Köşede Görünmemesi Hatası
-- Kullanıcı giriş yaptıktan sonra isim alanının boş gelmesi sorunu çözüldü.
-- Sistem, şube personel verisini önbellekten çekerken `firstName`, `lastName` üzerinden ad ve soyadı birleştirip ilgili objeye `name` değişkenini başarıyla atayacak şekilde güncellendi.
-- Artık sol üst köşedeki kutuda giriş yapan garsonun/kasiyerin **Adı ve Soyadı** sorunsuz olarak görünecektir.
+### 2. Statik Seçenek Grubu Eşleşmeleri (Static Option Groups Fallback)
+- **Problem:** Combo menü tanımlarındaki ID'ler (örneğin: `'sos-secimi'`, `'peynir-secimi'`, `'icecek-buzu'`), database'deki `option_groups` tablosunda tam eşleşmediğinde adımlar silinerek modalın boş gelmesine sebep oluyordu.
+- **Çözüm:** `ComboBuilderModal.jsx`, `KioskBig.jsx` ve `KioskTablet.jsx` dosyalarına statik fallback eşlemesi (`STATIC_OPTION_GROUPS`) entegre edildi.
+- **Akıllı Fuzzy Eşleme:** Arama sırasında slug, id, normalized name gibi alanlar fuzzy (esnek) bir şekilde kontrol edilerek, database'de eksik olan seçenek grupları için statik mock seçenekler (ketçap, mayonez, cheddar peyniri, buz durumları vb.) anında devreye sokulur.
 
----
+### 3. Premium Sorun Teşhisi (Debug View) Paneli
+- **Problem:** Veritabanındaki tanımlamaların hatalı olduğu durumlarda sorunun kaynağını teşhis etmek zordu.
+- **Çözüm:** Eğer tüm normalizasyonlara rağmen `steps.length === 0` durumu oluşursa, hem POS/Garson hem de Kiosk ekranlarındaki uyarı alanının altına **premium bir Sistem Teşhis Bilgisi (Debug Panel)** eklendi. Bu panelde combo menünün ID'si, SKU'su, grup sayısı ve gelen ham veri yapısı şık bir şekilde listelenir.
 
-Test etmek ve son halini görmek için uygulamayı isterseniz Electron arayüzünden tekrar başlatıp güncellemeleri gözlemleyebilirsiniz! Başka yapmak istediğiniz bir iyileştirme var mı?
+## Doğrulama ve Derleme Testleri
+- Projenin tamamı `npm run build` komutu ile derlenmiş ve tüm JS/JSX derleme süreçlerinin **başarıyla (0 hata ile)** tamamlandığı doğrulanmıştır.

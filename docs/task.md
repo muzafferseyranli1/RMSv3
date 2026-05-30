@@ -1,8 +1,7 @@
-# Görev Listesi
+# Görev Listesi - Combo Menü Boş Gelme Sorunu (Çözüm)
 
-- `[x]` **Adım 1:** `desktop/preload.cjs` dosyasına `getQueueSize` IPC metodunu ekle.
-- `[x]` **Adım 2:** `src/components/pos/GlobalUnpairGesture.jsx` gizli jest bileşenini oluştur.
-- `[x]` **Adım 3:** `src/DesktopPosApp.jsx` içerisindeki sarmalama hatasını düzelt ve `GlobalUnpairGesture` bileşenini ekle.
-- `[x]` **Adım 4:** Derleme hatası varsa çöz ve değişiklikleri çalışır hale getir.
-- `[x]` **Adım 5:** "X Kapat" butonlarının uygulamayı gerçekten kapatmasını sağla (`main.cjs` ve `preload.cjs` IPC güncellemeleri).
-- `[x]` **Adım 6:** Personel isminin sol üst köşede görünmeme hatasını düzelt (`posStaffAuth.js` içerisine `name` eşlemesi ekle).la.
+- `[x]` **Adım 1:** Veri normalizasyonunu sağla (`UnifiedPosStaffScreen.jsx` ve Kiosk dosyalarında `normalizeComboGroups` entegrasyonu).
+- `[x]` **Adım 2:** Eksik seçenek grupları için statik eşleşme ekle (`ComboBuilderModal.jsx`, `KioskBig.jsx`, `KioskTablet.jsx` içerisinde `STATIC_OPTION_GROUPS` entegrasyonu).
+- `[x]` **Adım 3:** `steps.length === 0` durumunda premium sorun teşhisi (Debug View) panelini tasarla ve ekle.
+- `[x]` **Adım 4:** Proje genelinde derleme testi gerçekleştirerek hatasız çalıştığını doğrula.
+- `[x]` **Adım 5:** Değişiklikleri `./docs/` klasörüne kopyala ve `OperationSync.md` dosyasını güncelle.

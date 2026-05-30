@@ -1,37 +1,31 @@
-# Cihaz Eşleşmesini Kaldırma (Unpairing) ve Wrapper Düzeltmesi Planı
+# Combo Menü Seçim Modalinin Boş Gelmesi - Çözüm Planı
 
-Bu plan, kiosk uygulamasındaki 5 tıklama mantığına benzer evrensel ve gizli bir yöntemle cihaz eşleşmesini güvenli bir şekilde kaldırma işlevini ve bir önceki adımda konuştuğumuz DesktopPosApp sarmalama düzeltmesini içerir.
+Mevcut durumda, diğer asistan `POS`, `Garson` ve `Kiosk` ekranlarında çoklu seçim mantığını başarıyla uygulamış ve modal boş geldiğinde ekranda beliren "Seçenek Bulunamadı" uyarısını eklemiştir.
 
-## Open Questions
-- Gizli dokunmatik alanı ekranın sol üst köşesi (top-left) olarak konumlandırdım. Sağ üst veya başka bir köşe tercih ederseniz belirtebilirsiniz.
+Ancak, belirttiğiniz üzere **Combo Menü Seçim Modali hala boş gelmektedir**.
 
-## Proposed Changes
+## Sorunun Temel Analizi
+Modalin içerisindeki adımların (`steps` dizisi) boş olmasının teknik olarak iki olası nedeni vardır:
+1. **Veritabanındaki `combo_menus_v1` Kaydı Eksik veya Uyumsuz:** Eski projedeki veritabanında `groups` (gruplar) dizisi dolu olarak kayıtlıyken, yeni projenin veritabanında `groups` verisi boş, tanımsız veya eski bir formatta kalmış olabilir. Arayüz tarafında bu veri alınırken herhangi bir normalizasyon işleminden geçirilmediği için doğrudan `undefined` veya `[]` (boş dizi) olarak işleniyor. Bu nedenle `ComboBuilderModal` hiçbir grup adımı üretemiyor.
+2. **Mock ID vs Real UUID Uyuşmazlığı Devam Ediyor:** Daha önceki güncellemede isim bazlı (slug, name) fallback eşleşmeleri eklenmiş olsa da, eğer yeni veritabanındaki "Opsiyon Grupları" tablosunda (`option_groups`) eski projede yer alan "Sos Seçimi" vb. isimler tamamen farklı veya yoksa, opsiyon eşleşmeleri yine başarısız olur ve opsiyon adımları da atlanır.
 
-Tüm 4 ekranda (POS, Garson, KDS, Pickup) ortak çalışması ve ekranların kendi arayüzlerini bozmaması için uygulamanın en tepe katmanına (Shell) görünmez bir tetikleyici (overlay) ekleyeceğiz. Ayrıca eşleşme kaldırma işlemini offline kuyruk kontrolüne bağlayacağız.
+## Yapılacak Değişiklikler (Proposed Changes)
 
-### 1. Electron Preload Katmanı (Offline Kuyruk Kontrolü İçin)
+### 1. Veri Normalizasyonu (Data Normalization)
+- `UnifiedPosStaffScreen.jsx`, `KioskBig.jsx` ve `KioskTablet.jsx` dosyalarında veritabanından `combo_menus_v1` çekilirken, doğrudan JSON verisini state'e atmak yerine, `ComboMenu.jsx` içerisindeki `normalizeGroups` benzeri bir güvenlik filtresinden geçireceğim.
+- Eğer çekilen bir combo menüsünde `groups` tanımlı değilse, sistemin çökmesini veya boş ekran gelmesini önlemek adına `buildInitialGroups()` ile varsayılan (fallback) verileri yerleştireceğim.
 
-#### [MODIFY] desktop/preload.cjs
-- Electron ana sürecinde (`main.cjs`) var olan ancak React tarafına aktarılmamış olan `queue:getSize` IPC fonksiyonunu `window.electronAPI.getQueueSize` olarak erişilebilir hale getireceğiz.
+### 2. `ComboBuilderModal` ve Eksik Veri Yönetimi
+- `ComboBuilderModal.jsx` içerisinde `comboDefinition.groups` boş gelse bile, uygulamanın tıkanmaması için menü tanımlamasının anlık olarak varsayılan bir grupla başlatılmasını sağlayacağım.
+- Eğer `steps.length === 0` uyarısı hala ekranda kalırsa, bu uyarı ekranına "Sorun Teşhisi (Debug)" amaçlı küçük bir detay ekleyeceğim. Böylece veritabanından gelen verinin içeriğini (hangi ID'lerin eşleşmediğini) doğrudan arayüzde görebileceğiz.
 
-### 2. Ortak Gizli Tetikleyici ve Modal (Yeni Bileşen)
+### 3. Option Groups (Opsiyon Grupları) Fallback Kurgusu
+- Eğer veritabanındaki gerçek `option_groups` ile Combo Menü tanımındaki ID'ler eşleşmiyorsa, sistemin eski projede olduğu gibi sorunsuz çalışabilmesi için statik bir `OPTION_GROUPS` fallback listesini doğrudan `ComboBuilderModal` içerisine ekleyeceğim (veya eşleşme bulunamazsa bu varsayılan listeyi devreye sokacağım).
 
-#### [NEW] src/components/pos/GlobalUnpairGesture.jsx
-- Ekranın sol üst köşesine 60x60 piksellik görünmez (transparent) sabit bir alan ekler.
-- Bu alana 3 saniye içinde arka arkaya 5 kez tıklandığında/dokunulduğunda "Cihaz Eşleşmesini Kaldır" modalını açar.
-- Modal açıldığında `getQueueSize()` fonksiyonu ile bekleyen offline işlem sayısını kontrol eder.
-- **Güvenlik Kriteri:** Kuyruk `> 0` ise *"Senkronize edilmemiş [X] adet kayıt bulunuyor. Lütfen bağlantı sağlanana kadar eşleşmeyi kaldırmayın."* uyarısı verir ve işlemi bloklar.
-- Kuyruk `0` ise işlemi onaylatır, `saveTerminalConfig(null)` ile kimliği siler ve sayfayı yenileyerek cihazı eşleştirme (`PairingScreen`) ekranına düşürür.
+---
 
-### 3. Ana Uygulama Kabuğunun (DesktopPosApp) Düzenlenmesi
-
-#### [MODIFY] src/DesktopPosApp.jsx
-- Bir önceki adımda bahsettiğimiz hatayı çözmek için `PairingGuard` bileşenini dışarı, `WorkspaceProvider` bileşenini ise onun içine alarak sarmalama (wrapper) hatasını düzelteceğiz.
-- Yeni oluşturduğumuz `GlobalUnpairGesture` bileşenini `DesktopPosShell` içerisine (veya App'in ortak ana katmanına) ekleyerek, cihazın hangi ekranda (POS, Garson, KDS vs.) olduğuna bakılmaksızın gizli unpair tuşunun her zaman çalışmasını sağlayacağız.
-
-## Verification Plan
-
-- Electron preload fonksiyonunun masaüstünde doğru çalışıp çevrimdışı işlem sayısını verebildiği doğrulanacak.
-- Sol üst köşeye 5 kere hızlıca tıklanıldığında modalın sorunsuz açıldığı test edilecek.
-- Eşleşme kaldırma tetiklendiğinde uygulamanın `PairingScreen` ekranına başarılı şekilde döndüğü kontrol edilecek.
-- Verilen onay sonrasında bu adımlar kodlanacaktır.
+> [!IMPORTANT]  
+> **Kullanıcı Onayı Gerekiyor:** 
+> Bu plan, veritabanından kaynaklı yapısal boşlukları (eksik gruplar veya uyuşmayan ID'ler) arayüzde onarmaya yöneliktir. 
+> 
+> Lütfen planı onaylayın, ben de hemen kodlara müdahale edip Kiosk ve POS ekranlarındaki bu "boş ekran" krizini kalıcı olarak çözeyim.

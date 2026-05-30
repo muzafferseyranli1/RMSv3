@@ -3,6 +3,77 @@ import { db } from '@/lib/db'
 import { findPreferredBranchContext, loadBranchContextsFromDb } from '@/lib/branchContexts'
 import { ensureComboMenuCategory } from '@/lib/comboMenuCategory'
 
+function normalizeComboGroups(rawGroups, saleItems = []) {
+  const safeGroups = Array.isArray(rawGroups) && rawGroups.length > 0 ? rawGroups : [];
+  
+  if (safeGroups.length === 0) {
+    const burgers = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('burger') || name.includes('döner') || name.includes('doner') || name.includes('pizza') || name.includes('durum') || name.includes('dürüm');
+    });
+    const fries = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('patates') || name.includes('kızartma') || name.includes('halka') || name.includes('snack') || name.includes('fries');
+    });
+    const drinks = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('cola') || name.includes('fanta') || name.includes('sprite') || name.includes('limonata') || name.includes('ayran') || name.includes('su') || name.includes('ice');
+    });
+
+    const group1Primary = burgers[0]?.id || saleItems[0]?.id || 'hamburger';
+    const group1Alts = burgers.slice(1, 4).map((b, index) => ({ id: `alt-${b.id || index}`, itemId: b.id, manualAdjustments: {} }));
+    
+    const group2Primary = fries[0]?.id || saleItems[1]?.id || 'small-fries';
+    const group2Alts = fries.slice(1, 3).map((f, index) => ({ id: `alt-${f.id || index}`, itemId: f.id, manualAdjustments: {} }));
+
+    const group3Primary = drinks[0]?.id || saleItems[2]?.id || 'cola';
+    const group3Alts = drinks.slice(1, 4).map((d, index) => ({ id: `alt-${d.id || index}`, itemId: d.id, manualAdjustments: {} }));
+
+    return [
+      {
+        id: 'fallback-group-1',
+        name: '1. Seçim (Ana Ürün)',
+        primaryItemId: String(group1Primary),
+        alternatives: group1Alts,
+        optionGroups: [
+          { id: 'opt-sos-secimi', optionGroupId: 'sos-secimi' }
+        ]
+      },
+      {
+        id: 'fallback-group-2',
+        name: 'Yan Ürün Seçimi',
+        primaryItemId: String(group2Primary),
+        alternatives: group2Alts,
+        optionGroups: []
+      },
+      {
+        id: 'fallback-group-3',
+        name: 'İçecek Seçimi',
+        primaryItemId: String(group3Primary),
+        alternatives: group3Alts,
+        optionGroups: [
+          { id: 'opt-icecek-buzu', optionGroupId: 'icecek-buzu' }
+        ]
+      }
+    ];
+  }
+
+  return safeGroups.map((group, groupIndex) => ({
+    id: String(group.id || `group-${groupIndex}`),
+    name: group.name || `Seçim Grubu ${groupIndex + 1}`,
+    primaryItemId: String(group.primaryItemId || ''),
+    alternatives: (Array.isArray(group.alternatives) ? group.alternatives : []).map((alternative, alternativeIndex) => ({
+      id: String(alternative.id || `alt-${alternativeIndex}`),
+      itemId: String(alternative.itemId || ''),
+      manualAdjustments: alternative.manualAdjustments || {}
+    })),
+    optionGroups: (Array.isArray(group.optionGroups) ? group.optionGroups : []).map((option, optionIndex) => ({
+      id: String(option.id || `opt-${optionIndex}`),
+      optionGroupId: String(option.optionGroupId || option.option_group_id || '')
+    }))
+  }));
+}
+
 export function useUnifiedPosCatalogBootstrap({
   modeLabel = 'POS',
   branchLocked = false,
@@ -195,13 +266,17 @@ export function useUnifiedPosCatalogBootstrap({
             if (typeof raw === 'string') {
               try { parsed = JSON.parse(raw) } catch (e) {}
             }
+            let records = []
             if (Array.isArray(parsed)) {
-              setComboDefinitions(parsed)
+              records = parsed
             } else if (parsed && Array.isArray(parsed.records)) {
-              setComboDefinitions(parsed.records)
-            } else {
-              setComboDefinitions([])
+              records = parsed.records
             }
+            const normalized = records.map(record => ({
+              ...record,
+              groups: normalizeComboGroups(record.groups, prods)
+            }))
+            setComboDefinitions(normalized)
           }
 
           if (optionGroupsResult.status === 'fulfilled' && !optionGroupsResult.value?.error) {

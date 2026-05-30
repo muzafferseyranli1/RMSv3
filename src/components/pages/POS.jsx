@@ -905,62 +905,91 @@ function OptionsModalSafe({
                     const count = curSel.filter(k => k === key).length
                     const isOn = count > 0
                     const optPrice = parseFloat(opt.price) || 0
-
                     const maxS = parseInt(grp.max_select) || 1
-                    return (
+                    
+                    return maxS > 1 && isOn ? (
                       <div className="touch-card" key={oi} style={{
-                        minHeight:68, padding:'4px', borderRadius:14,
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'stretch',
+                        minHeight: 68,
+                        borderRadius: 14,
+                        border: `1.5px solid #10b981`,
+                        background: 'rgba(16,185,129,.12)',
+                        padding: 0
+                      }}>
+                        <div style={{
+                          position: 'absolute', top: -6, right: -6,
+                          background: '#ef4444', color: '#fff', fontSize: '.75rem', fontWeight: 900,
+                          width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 4px rgba(0,0,0,.3)', zIndex: 2
+                        }}>
+                          {count}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeOpt(gi, oi)}
+                          style={{
+                            width: 38, border: 'none', background: '#334155', color: '#fff', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                            fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                            borderTopLeftRadius: 12, borderBottomLeftRadius: 12
+                          }}
+                        >
+                          -
+                        </button>
+
+                        <div style={{
+                          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          padding: '6px 4px', color: '#10b981'
+                        }}>
+                          <div style={{ fontWeight: 700, fontSize: '.9rem', textAlign: 'center', lineHeight: 1.2 }}>{opt.name}</div>
+                          <div style={{ fontSize: '.75rem', fontWeight: 800, marginTop: 4, opacity: 0.9 }}>
+                            {optPrice > 0 ? `+${fmt(optPrice)}${UI_TEXT.tlSuffix}` : UI_TEXT.free}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleOpt(gi, oi, maxS)}
+                          style={{
+                            width: 38, border: 'none', background: '#10b981', color: '#fff', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                            fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                            borderTopRightRadius: 12, borderBottomRightRadius: 12
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="touch-card" key={oi} type="button" onClick={() => toggleOpt(gi, oi, maxS)} style={{
+                        minHeight:68, padding:'7px 12px', borderRadius:14,
                         border:`1.5px solid ${isOn?'#10b981':'rgba(255,255,255,.1)'}`,
                         background:isOn?'rgba(16,185,129,.12)':'rgba(255,255,255,.03)',
                         color:isOn?'#10b981':'#fff',
-                        display:'flex', justifyContent:'space-between', alignItems:'center', transition:'.15s', gap:4,
+                        display:'flex', justifyContent:'space-between', alignItems:'center', transition:'.15s', gap:8,
+                        cursor: 'pointer', width: '100%', position: 'relative'
                       }}>
-                        <button type="button" onClick={() => toggleOpt(gi, oi, maxS)} style={{
-                          flex: 1, padding: '7px 8px', background: 'transparent', border: 'none', cursor: 'pointer',
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'inherit'
-                        }}>
-                          <span style={{fontWeight:600, fontSize:'.87rem', textAlign:'left'}}>{opt.name}</span>
-                          <span style={{
-                            fontSize:'.75rem', fontWeight:700,
-                            color:optPrice > 0 ? '#10b981' : 'rgba(255,255,255,.4)', marginLeft:6, flexShrink:0
-                          }}>
-                            {optPrice > 0 ? `+${fmt(optPrice)}${UI_TEXT.tlSuffix}` : UI_TEXT.free}
-                          </span>
-                        </button>
-
-                        {maxS > 1 && isOn ? (
+                        {isOn && maxS === 1 && (
                           <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            background: 'rgba(0,0,0,.3)', borderRadius: 10, padding: '4px'
+                            position: 'absolute', top: -6, right: -6,
+                            background: '#10b981', color: '#fff', fontSize: '.7rem', fontWeight: 900,
+                            width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,.2)'
                           }}>
-                            <button
-                              type="button"
-                              onClick={() => removeOpt(gi, oi)}
-                              style={{
-                                width: 28, height: 28, borderRadius: 6, border: 'none',
-                                background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                              }}
-                            >
-                              -
-                            </button>
-                            <div style={{ minWidth: 16, textAlign: 'center', color: '#10b981', fontWeight: 900, fontSize: '.9rem' }}>
-                              {count}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleOpt(gi, oi, maxS)}
-                              style={{
-                                width: 28, height: 28, borderRadius: 6, border: 'none',
-                                background: '#10b981', color: '#000', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                              }}
-                            >
-                              +
-                            </button>
+                            <i className="fa-solid fa-check" style={{ fontSize: '.6rem' }} />
                           </div>
-                        ) : null}
-                      </div>
+                        )}
+                        <span style={{fontWeight:600, fontSize:'.87rem', textAlign:'left', flex: 1}}>{opt.name}</span>
+                        <span style={{
+                          fontSize:'.75rem', fontWeight:700, flexShrink:0,
+                          color:optPrice > 0 ? (isOn ? '#10b981' : 'rgba(255,255,255,.4)') : (isOn ? 'rgba(16,185,129,.8)' : 'rgba(255,255,255,.4)')
+                        }}>
+                          {optPrice > 0 ? `+${fmt(optPrice)}${UI_TEXT.tlSuffix}` : UI_TEXT.free}
+                        </span>
+                      </button>
                     )
                   })}
                 </div>

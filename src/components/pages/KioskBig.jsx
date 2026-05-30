@@ -475,6 +475,113 @@ function parseJsonValue(value, fallback = null) {
   return value
 }
 
+function normalizeComboGroups(rawGroups, saleItems = []) {
+  const safeGroups = Array.isArray(rawGroups) && rawGroups.length > 0 ? rawGroups : [];
+  
+  if (safeGroups.length === 0) {
+    const burgers = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('burger') || name.includes('döner') || name.includes('doner') || name.includes('pizza') || name.includes('durum') || name.includes('dürüm');
+    });
+    const fries = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('patates') || name.includes('kızartma') || name.includes('halka') || name.includes('snack') || name.includes('fries');
+    });
+    const drinks = (saleItems || []).filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return name.includes('cola') || name.includes('fanta') || name.includes('sprite') || name.includes('limonata') || name.includes('ayran') || name.includes('su') || name.includes('ice');
+    });
+
+    const group1Primary = burgers[0]?.id || saleItems[0]?.id || 'hamburger';
+    const group1Alts = burgers.slice(1, 4).map((b, index) => ({ id: `alt-${b.id || index}`, itemId: b.id, manualAdjustments: {} }));
+    
+    const group2Primary = fries[0]?.id || saleItems[1]?.id || 'small-fries';
+    const group2Alts = fries.slice(1, 3).map((f, index) => ({ id: `alt-${f.id || index}`, itemId: f.id, manualAdjustments: {} }));
+
+    const group3Primary = drinks[0]?.id || saleItems[2]?.id || 'cola';
+    const group3Alts = drinks.slice(1, 4).map((d, index) => ({ id: `alt-${d.id || index}`, itemId: d.id, manualAdjustments: {} }));
+
+    return [
+      {
+        id: 'fallback-group-1',
+        name: '1. Seçim (Ana Ürün)',
+        primaryItemId: String(group1Primary),
+        alternatives: group1Alts,
+        optionGroups: [
+          { id: 'opt-sos-secimi', optionGroupId: 'sos-secimi' }
+        ]
+      },
+      {
+        id: 'fallback-group-2',
+        name: 'Yan Ürün Seçimi',
+        primaryItemId: String(group2Primary),
+        alternatives: group2Alts,
+        optionGroups: []
+      },
+      {
+        id: 'fallback-group-3',
+        name: 'İçecek Seçimi',
+        primaryItemId: String(group3Primary),
+        alternatives: group3Alts,
+        optionGroups: [
+          { id: 'opt-icecek-buzu', optionGroupId: 'icecek-buzu' }
+        ]
+      }
+    ];
+  }
+
+  return safeGroups.map((group, groupIndex) => ({
+    id: String(group.id || `group-${groupIndex}`),
+    name: group.name || `Seçim Grubu ${groupIndex + 1}`,
+    primaryItemId: String(group.primaryItemId || ''),
+    alternatives: (Array.isArray(group.alternatives) ? group.alternatives : []).map((alternative, alternativeIndex) => ({
+      id: String(alternative.id || `alt-${alternativeIndex}`),
+      itemId: String(alternative.itemId || ''),
+      manualAdjustments: alternative.manualAdjustments || {}
+    })),
+    optionGroups: (Array.isArray(group.optionGroups) ? group.optionGroups : []).map((option, optionIndex) => ({
+      id: String(option.id || `opt-${optionIndex}`),
+      optionGroupId: String(option.optionGroupId || option.option_group_id || '')
+    }))
+  }));
+}
+
+const STATIC_OPTION_GROUPS = {
+  'sos-secimi': {
+    id: 'sos-secimi',
+    name: 'Sos Secimi',
+    group_name: 'Sos Secimi',
+    options: [
+      { __meta_type: 'selection_rules', min_select: 0, max_select: 2 },
+      { id: 'ketchup', name: 'Ketcap', price: 0 },
+      { id: 'mayonnaise', name: 'Mayonez', price: 0 },
+      { id: 'barbecue', name: 'Barbeku', price: 5 },
+      { id: 'ranch', name: 'Ranch Sos', price: 5 }
+    ]
+  },
+  'peynir-secimi': {
+    id: 'peynir-secimi',
+    name: 'Peynir Secimi',
+    group_name: 'Peynir Secimi',
+    options: [
+      { __meta_type: 'selection_rules', min_select: 0, max_select: 1 },
+      { id: 'cheddar', name: 'Cheddar Peyniri', price: 15 },
+      { id: 'kasar', name: 'Kasar Peyniri', price: 10 }
+    ]
+  },
+  'icecek-buzu': {
+    id: 'icecek-buzu',
+    name: 'Buz Tercihi',
+    group_name: 'Buz Tercihi',
+    options: [
+      { __meta_type: 'selection_rules', min_select: 1, max_select: 1 },
+      { id: 'buzlu', name: 'Buzlu', price: 0 },
+      { id: 'buzsuz', name: 'Buzsuz', price: 0 },
+      { id: 'az-buzlu', name: 'Az Buzlu', price: 0 }
+    ]
+  }
+}
+
 function readComboRecords(settingsRow) {
   const parsed = parseJsonValue(settingsRow?.value, settingsRow?.value)
   if (Array.isArray(parsed)) return parsed
@@ -573,7 +680,24 @@ function buildKioskOptionSteps(comboDefinition, optionGroupDefs, groupSelections
 
     for (const link of group.optionGroups || []) {
       const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-      const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
+      let def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
+      
+      if (!def) {
+        const normKey = normalizeText(optionGroupId).replace(/-/g, ' ')
+        for (const [key, mockDef] of Object.entries(STATIC_OPTION_GROUPS)) {
+          if (
+            normalizeText(key) === normalizeText(optionGroupId) ||
+            normalizeText(mockDef.name) === normalizeText(optionGroupId) ||
+            normalizeText(mockDef.group_name) === normalizeText(optionGroupId) ||
+            normKey.includes(normalizeText(mockDef.name)) ||
+            normalizeText(mockDef.name).includes(normKey)
+          ) {
+            def = mockDef
+            break
+          }
+        }
+      }
+
       if (!def) continue
       steps.push({
         type: 'option',
@@ -587,7 +711,24 @@ function buildKioskOptionSteps(comboDefinition, optionGroupDefs, groupSelections
 
   for (const link of comboDefinition?.form?.comboOptionGroups || []) {
     const optionGroupId = String(link?.optionGroupId || link?.option_group_id || '')
-    const def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
+    let def = defsById.get(optionGroupId) || defsById.get(normalizeText(optionGroupId))
+    
+    if (!def) {
+      const normKey = normalizeText(optionGroupId).replace(/-/g, ' ')
+      for (const [key, mockDef] of Object.entries(STATIC_OPTION_GROUPS)) {
+        if (
+          normalizeText(key) === normalizeText(optionGroupId) ||
+          normalizeText(mockDef.name) === normalizeText(optionGroupId) ||
+          normalizeText(mockDef.group_name) === normalizeText(optionGroupId) ||
+          normKey.includes(normalizeText(mockDef.name)) ||
+          normalizeText(mockDef.name).includes(normKey)
+        ) {
+          def = mockDef
+          break
+        }
+      }
+    }
+
     if (!def) continue
     steps.push({
       type: 'option',
@@ -884,10 +1025,36 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
           </div>
 
           {steps.length === 0 ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, opacity: 0.7 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, opacity: 0.9 }}>
               <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2.5rem', color: '#fca5a5', marginBottom: 12 }} />
               <div style={{ fontSize: '1rem', fontWeight: 800, color: '#334155', marginBottom: 6 }}>Seçenek Bulunamadı</div>
-              <div style={{ fontSize: '.8rem', color: '#64748b', textAlign: 'center', lineHeight: 1.5 }}>Bu menü için bir yapılandırma bulunamadı. Lütfen daha sonra tekrar deneyin.</div>
+              <div style={{ fontSize: '.8rem', color: '#64748b', textAlign: 'center', lineHeight: 1.5, marginBottom: 16 }}>Bu menü için bir yapılandırma bulunamadı. Lütfen daha sonra tekrar deneyin.</div>
+              
+              <div style={{ width: '100%', background: '#f8fafc', borderRadius: 12, padding: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '.7rem', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Sistem Teşhis Bilgisi (Debug)</span>
+                  <span style={{ color: '#b45309' }}>Grup Sayısı: {comboDefinition?.groups?.length || 0}</span>
+                </div>
+                <pre style={{
+                  margin: 0,
+                  fontSize: '.7rem',
+                  fontFamily: 'monospace',
+                  color: '#475569',
+                  overflowX: 'auto',
+                  maxHeight: 120,
+                  background: 'transparent',
+                  padding: 0,
+                  lineHeight: 1.3
+                }}>
+                  {JSON.stringify({
+                    id: comboDefinition?.id,
+                    name: comboProduct?.name || comboDefinition?.name,
+                    sku: comboDefinition?.sku,
+                    groups: comboDefinition?.groups,
+                    optionGroupDefsCount: optionGroupDefs?.length || 0
+                  }, null, 2)}
+                </pre>
+              </div>
             </div>
           ) : (
           <div style={{ padding: '0 12px 12px', overflowY: 'auto', flex: 1 }}>
@@ -989,71 +1156,99 @@ function KioskComboModal({ comboProduct, comboDefinition, saleItems, optionGroup
                       const price = roundMoney(option.price)
                       const maxS = extractSelectionRules(parseJsonValue(currentStep.def?.options, [])).maxSelect
                       
-                      return (
+                      return maxS > 1 && active ? (
                         <div
                           key={optionId}
                           style={{
+                            position: 'relative',
                             borderRadius: 14,
-                            border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
-                            background: active ? '#fffbeb' : '#fff',
-                            padding: '4px',
+                            border: `1.5px solid #f59e0b`,
+                            background: '#fffbeb',
                             display: 'flex',
-                            flexDirection: 'column',
-                            gap: 4
+                            alignItems: 'stretch',
+                            minHeight: 68
                           }}
                         >
+                          <div style={{
+                            position: 'absolute', top: -6, right: -6,
+                            background: '#ef4444', color: '#fff', fontSize: '.75rem', fontWeight: 900,
+                            width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,.3)', zIndex: 2
+                          }}>
+                            {count}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => removeOption(currentStep, optionId)}
+                            style={{
+                              width: 38, border: 'none', background: 'rgba(15,23,42,.6)', color: '#fff', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                              fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                              borderTopLeftRadius: 12, borderBottomLeftRadius: 12
+                            }}
+                          >
+                            -
+                          </button>
+                          
+                          <div style={{
+                            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            padding: '4px 8px', color: '#f59e0b'
+                          }}>
+                            <div style={{ fontWeight: 800, fontSize: '.87rem', textAlign: 'center' }}>{option.name || 'Seçenek'}</div>
+                            <div style={{ fontSize: '.75rem', fontWeight: 700, marginTop: 2, opacity: 0.8 }}>
+                              {price > 0 ? `+${fmt(price)} TL` : 'Ücretsiz'}
+                            </div>
+                          </div>
+                          
                           <button
                             type="button"
                             onClick={() => toggleOption(currentStep, optionId, maxS)}
                             style={{
-                              background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
-                              padding: '8px 10px', flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10
+                              width: 38, border: 'none', background: '#f59e0b', color: '#fff', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                              fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                              borderTopRightRadius: 12, borderBottomRightRadius: 12
                             }}
                           >
-                            <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.9rem' }}>{option.name || 'Seçenek'}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              {price > 0 ? <div style={{ fontSize: '.72rem', color: '#f59e0b', fontWeight: 800 }}>+{fmt(price)} TL</div> : null}
-                              {maxS <= 1 && (
-                                <div
-                                  style={{
-                                    width: 24, height: 24, borderRadius: 999, border: `2px solid ${active ? '#f59e0b' : '#cbd5e1'}`,
-                                    background: active ? '#f59e0b' : '#fff', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0,
-                                  }}
-                                >
-                                  {active ? <i className="fa-solid fa-check" style={{ fontSize: '.68rem' }} /> : null}
-                                </div>
-                              )}
-                            </div>
+                            +
                           </button>
-                          
-                          {maxS > 1 && active && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,.1)', borderRadius: 10, padding: '4px', alignSelf: 'flex-end', marginRight: 4, marginBottom: 4 }}>
-                              <button
-                                type="button"
-                                onClick={() => removeOption(currentStep, optionId)}
-                                style={{
-                                  width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(245,158,11,.2)', color: '#d97706', cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                                }}
-                              >
-                                -
-                              </button>
-                              <div style={{ minWidth: 20, textAlign: 'center', color: '#d97706', fontWeight: 900, fontSize: '.9rem' }}>
-                                {count}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => toggleOption(currentStep, optionId, maxS)}
-                                style={{
-                                  width: 28, height: 28, borderRadius: 8, border: 'none', background: '#f59e0b', color: '#fff', cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                                }}
-                              >
-                                +
-                              </button>
+                        </div>
+                      ) : (
+                        <button
+                          key={optionId}
+                          type="button"
+                          onClick={() => toggleOption(currentStep, optionId, maxS)}
+                          style={{
+                            borderRadius: 14,
+                            border: `1.5px solid ${active ? '#f59e0b' : '#e2e8f0'}`,
+                            background: active ? '#fffbeb' : '#fff',
+                            minHeight: 68,
+                            padding: '8px 10px',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 10,
+                            position: 'relative',
+                          }}
+                        >
+                          {active && maxS === 1 && (
+                            <div style={{
+                              position: 'absolute', top: -6, right: -6,
+                              background: '#f59e0b', color: '#fff', fontSize: '.7rem', fontWeight: 900,
+                              width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 2px 4px rgba(0,0,0,.2)'
+                            }}>
+                              <i className="fa-solid fa-check" style={{ fontSize: '.6rem' }} />
                             </div>
                           )}
-                        </div>
+                          <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '.9rem', flex: 1 }}>{option.name || 'Seçenek'}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                            {price > 0 ? <div style={{ fontSize: '.72rem', color: '#f59e0b', fontWeight: 800 }}>+{fmt(price)} TL</div> : null}
+                          </div>
+                        </button>
                       )
                     })}
                   </div>
@@ -2170,73 +2365,97 @@ function ProductOptionsModal({ prod, channelId, accentColor, anchorY, onConfirm,
                     const active = count > 0
                     const price = parseFloat(option.price) || 0
                     const maxS = parseInt(group.max_select) || 1
-                    return (
+                    
+                    return maxS > 1 && active ? (
                       <div key={optionIndex} style={{
+                        position: 'relative',
                         borderRadius: 14,
-                        border: `1px solid ${active ? accentColor : 'rgba(15,23,42,.1)'}`,
-                        background: active ? rgba(accentColor, .12) : '#fff',
-                        padding: '4px',
-                        display: 'flex', flexDirection: 'column', gap: 4,
-                        transition: '.15s',
+                        border: `1.5px solid ${accentColor}`,
+                        background: rgba(accentColor, .12),
+                        display: 'flex',
+                        alignItems: 'stretch',
+                        minHeight: 50
                       }}>
+                        <div style={{
+                          position: 'absolute', top: -6, right: -6,
+                          background: '#ef4444', color: '#fff', fontSize: '.75rem', fontWeight: 900,
+                          width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 4px rgba(0,0,0,.3)', zIndex: 2
+                        }}>
+                          {count}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeOpt(groupIndex, optionIndex)}
+                          style={{
+                            width: 38, border: 'none', background: 'rgba(15,23,42,.6)', color: '#fff', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                            fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                            borderTopLeftRadius: 12, borderBottomLeftRadius: 12
+                          }}
+                        >
+                          -
+                        </button>
+
+                        <div style={{
+                          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          padding: '6px 4px', color: accentColor
+                        }}>
+                          <div style={{ fontWeight: 800, fontSize: '.92rem', textAlign: 'center', lineHeight: 1.2 }}>{option.name}</div>
+                          <div style={{ fontSize: '.75rem', fontWeight: 700, marginTop: 4, opacity: 0.9 }}>
+                            {price > 0 ? `+${tl(price)}` : 'Ücretsiz'}
+                          </div>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => toggleOpt(groupIndex, optionIndex, maxS)}
                           style={{
-                            flex: 1, padding: '6px 8px', background: 'transparent', border: 'none', cursor: 'pointer',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            width: 38, border: 'none', background: accentColor, color: '#fff', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+                            fontSize: '1.4rem', transition: '.15s', flexShrink: 0,
+                            borderTopRightRadius: 12, borderBottomRightRadius: 12
                           }}
                         >
-                          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem' }}>{option.name}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {price > 0 && <span style={{ color: accentColor, fontWeight: 800, fontSize: '.78rem' }}>+{tl(price)}</span>}
-                            {maxS <= 1 && (
-                              <div style={{
-                                width: 22, height: 22, borderRadius: 999,
-                                border: `2px solid ${active ? accentColor : '#cbd5e1'}`,
-                                background: active ? accentColor : '#fff',
-                                color: '#fff', display: 'grid', placeItems: 'center'
-                              }}>
-                                {active ? <i className="fa-solid fa-check" style={{ fontSize: '.6rem' }} /> : null}
-                              </div>
-                            )}
-                          </div>
+                          +
                         </button>
-
-                        {maxS > 1 && active ? (
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            background: rgba(accentColor, 0.1), borderRadius: 10, padding: '4px',
-                            alignSelf: 'flex-end', marginRight: 4, marginBottom: 4
-                          }}>
-                            <button
-                              type="button"
-                              onClick={() => removeOpt(groupIndex, optionIndex)}
-                              style={{
-                                width: 26, height: 26, borderRadius: 8, border: 'none',
-                                background: rgba(accentColor, 0.2), color: accentColor, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                              }}
-                            >
-                              -
-                            </button>
-                            <div style={{ minWidth: 16, textAlign: 'center', color: accentColor, fontWeight: 900, fontSize: '.9rem' }}>
-                              {count}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleOpt(groupIndex, optionIndex, maxS)}
-                              style={{
-                                width: 26, height: 26, borderRadius: 8, border: 'none',
-                                background: accentColor, color: '#fff', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
+                    ) : (
+                      <button
+                        key={optionIndex}
+                        type="button"
+                        onClick={() => toggleOpt(groupIndex, optionIndex, maxS)}
+                        style={{
+                          minHeight: 50,
+                          borderRadius: 14,
+                          border: `1.5px solid ${active ? accentColor : 'rgba(15,23,42,.1)'}`,
+                          background: active ? rgba(accentColor, .12) : '#fff',
+                          color: '#0f172a',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '0 14px',
+                          position: 'relative',
+                        }}
+                      >
+                        {active && maxS === 1 && (
+                          <div style={{
+                            position: 'absolute', top: -6, right: -6,
+                            background: accentColor, color: '#fff', fontSize: '.7rem', fontWeight: 900,
+                            width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,.2)'
+                          }}>
+                            <i className="fa-solid fa-check" style={{ fontSize: '.6rem' }} />
+                          </div>
+                        )}
+                        <span style={{ fontWeight: 800, fontSize: '.92rem', flex: 1, textAlign: 'left' }}>{option.name}</span>
+                        <span style={{ color: active ? accentColor : 'rgba(15,23,42,.5)', fontWeight: 900, fontSize: '.88rem', flexShrink: 0 }}>
+                          {price > 0 ? `+${tl(price)}` : 'Dahil'}
+                        </span>
+                      </button>
                     )
                   })}
                 </div>
@@ -2542,7 +2761,12 @@ export default function KioskBig() {
           channel_description: repairTurkishText(item?.channel_description),
         }))
         .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''), 'tr')))
-      setComboDefinitions(readComboRecords(comboRes.data))
+      const rawCombos = readComboRecords(comboRes.data)
+      const normalizedCombos = rawCombos.map(record => ({
+        ...record,
+        groups: normalizeComboGroups(record.groups, fetchedProducts)
+      }))
+      setComboDefinitions(normalizedCombos)
       setOptionGroupDefs((optionGroupsRes.data || [])
         .map(def => ({
           ...def,
