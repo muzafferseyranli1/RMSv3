@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "api:dev": "node server/index.js",
+    "test": "vitest run",
     "build": "npm run build:web",
     "build:web": "vite build",
     "start:web": "node scripts/start-web-preview.mjs",
@@ -85,7 +86,8 @@
     "pg": "^8.16.3",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
-    "vite": "^5.2.12"
+    "vite": "^5.2.12",
+    "vitest": "^4.1.7"
   },
   "build": {
     "appId": "com.suitable.rms.pos",
