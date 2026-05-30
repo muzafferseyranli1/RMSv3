@@ -88,6 +88,15 @@ function PairingGuard({ children }) {
   return children
 }
 
+function InitialRedirect({ children }) {
+  const location = useLocation()
+  const startPath = getStartupPath()
+  if (location.pathname === '/') {
+    return <Navigate to={startPath} replace />
+  }
+  return children
+}
+
 export default function DesktopPosApp() {
   // Terminal eşleşmesi yapılmışsa, branchId'yi localStorage'a yazarak 
   // WorkspaceContext'in PIN/Şube sormasını (PickerModal) bypass et.
@@ -100,22 +109,24 @@ export default function DesktopPosApp() {
   const terminalBranchId = getBranchId()
 
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <AuthGate>
-          <PairingGuard>
-            <WorkspaceProvider
-              allowedScopes={[WORKSPACE_SCOPE.branch]}
-              forcedScope={WORKSPACE_SCOPE.branch}
-              forcedBranchId={terminalBranchId}
-            >
-              <WorkspaceGate>
-                <DesktopPosShell />
-              </WorkspaceGate>
-            </WorkspaceProvider>
-          </PairingGuard>
-        </AuthGate>
-      </AuthProvider>
-    </ToastProvider>
+    <InitialRedirect>
+      <ToastProvider>
+        <AuthProvider>
+          <AuthGate>
+            <PairingGuard>
+              <WorkspaceProvider
+                allowedScopes={[WORKSPACE_SCOPE.branch]}
+                forcedScope={WORKSPACE_SCOPE.branch}
+                forcedBranchId={terminalBranchId}
+              >
+                <WorkspaceGate>
+                  <DesktopPosShell />
+                </WorkspaceGate>
+              </WorkspaceProvider>
+            </PairingGuard>
+          </AuthGate>
+        </AuthProvider>
+      </ToastProvider>
+    </InitialRedirect>
   )
 }

@@ -7,6 +7,10 @@ const CACHE_KEY = 'suitable_terminal_config_v1'
 export function readTerminalConfig() {
   try {
     if (typeof window === 'undefined') return null
+    if (window.electronAPI?.getConfigSync) {
+      const cfg = window.electronAPI.getConfigSync()
+      if (cfg) return cfg
+    }
     if (window.__ELECTRON_TERMINAL_CONFIG__) return window.__ELECTRON_TERMINAL_CONFIG__
     const raw = localStorage.getItem(CACHE_KEY)
     return raw ? JSON.parse(raw) : null

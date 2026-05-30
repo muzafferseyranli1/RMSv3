@@ -196,6 +196,9 @@ app.whenReady().then(async () => {
     const { initAutoUpdater, autoUpdater } = require('./updater.cjs')
 
     ipcMain.handle('terminal:getConfig', () => readConfig())
+    ipcMain.on('terminal:getConfigSync', (event) => {
+      event.returnValue = readConfig()
+    })
     ipcMain.handle('terminal:save-config', async (_, payload) => {
       writeConfig(payload)
       return { ok: true }
