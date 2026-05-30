@@ -5134,7 +5134,15 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
               <i className="fa-regular fa-trash-can" />
             </button>
             <button
-              onClick={() => cart.length > 0 && canEditCurrentTable && setModal({ type:'odeme', cartSnapshot: cart.map(item => ({ ...item })) })}
+              onClick={() => {
+                if (!activeStaff) {
+                  triggerPinLogin?.()
+                  return
+                }
+                if (cart.length > 0 && canEditCurrentTable) {
+                  setModal({ type:'odeme', cartSnapshot: cart.map(item => ({ ...item })) })
+                }
+              }}
               disabled={cart.length === 0 || !canEditCurrentTable}
               style={{
                 flex:1,padding:'12px 10px',borderRadius:12,border:'none',
