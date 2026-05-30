@@ -66,7 +66,7 @@ export function getStartupPath() {
 export function isDesktopMode() {
   return Boolean(
     typeof window !== 'undefined' &&
-    (window.__ELECTRON_TERMINAL_CONFIG__ || window.__DESKTOP_MODE__ === true)
+    (window.electronAPI || window.__ELECTRON_TERMINAL_CONFIG__ || window.__DESKTOP_MODE__ === true)
   )
 }
 

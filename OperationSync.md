@@ -7527,3 +7527,27 @@ ull\ (since localStorage may clear or fail across desktop builds) causing the pa
 - Open Risks: None.
 - Next Step: User builds a new release using \Yayinla.bat\ to distribute the fix.
 - Handoff Contract: The desktop app reliably persists its pairing state using Sync IPC, and KDS correctly bypasses PIN authentication.
+
+
+## Entry - Desktop Unpair Gesture Visibility Fix
+
+- Timestamp: 2026-05-30T23:38:00+03:00
+- Agent: Antigravity
+- Task: Fix global unpair gesture not working in POS view
+- Files Read:
+  - src/components/pos/GlobalUnpairGesture.jsx
+  - src/lib/terminalIdentity.js
+- Files Changed:
+  - src/components/pos/GlobalUnpairGesture.jsx
+  - src/lib/terminalIdentity.js
+- Commands Run:
+  - npm.cmd run build:desktop:web (Successfully built)
+- Findings:
+  - The \GlobalUnpairGesture\ component was checking if it's running in Electron by reading \window.__DESKTOP_MODE__\. Because this variable was injected in the \did-finish-load\ event of Electron, it was undefined when React booted up. As a result, the component evaluated \isDesktop\ to \alse\ and returned \
+ull\, completely removing the invisible unpair trigger from the DOM.
+- Decisions:
+  - Updated \GlobalUnpairGesture.jsx\ to rely on the centralized \isDesktopMode()\ helper instead of checking the global directly.
+  - Updated \isDesktopMode()\ in \	erminalIdentity.js\ to check for \window.electronAPI\, which is reliably injected by \preload.cjs\ BEFORE React executes.
+- Open Risks: None.
+- Next Step: User builds a new release using \Yayinla.bat\ and verifies clicking the top left corner 5 times triggers the unpair modal.
+- Handoff Contract: The unpair gesture is now correctly injected into the DOM on first render.

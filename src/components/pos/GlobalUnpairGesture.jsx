@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { isDesktopMode } from '@/lib/terminalIdentity'
 
 export default function GlobalUnpairGesture() {
   const [clickCount, setClickCount] = useState(0)
@@ -7,7 +8,7 @@ export default function GlobalUnpairGesture() {
   const [loading, setLoading] = useState(false)
   const timerRef = useRef(null)
 
-  const isDesktop = typeof window !== 'undefined' && window.__DESKTOP_MODE__
+  const isDesktop = isDesktopMode()
 
   useEffect(() => {
     if (clickCount > 0) {
