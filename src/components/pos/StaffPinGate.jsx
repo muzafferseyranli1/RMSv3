@@ -7,6 +7,7 @@ import {
   readPosStaffSession,
   writePosStaffSession,
 } from '@/lib/posStaffAuth'
+import { isDesktopMode } from '@/lib/terminalIdentity'
 
 export default function StaffPinGate({
   storageKey,
@@ -37,7 +38,9 @@ export default function StaffPinGate({
     writePosStaffSession(storageKey, null)
   }, [storageKey, branchId])
 
-  const showPinPrompt = Boolean(branchId) && !activeStaff
+  // Desktop terminal modunda (pair edilmis cihaz) PIN sorulmaz
+  const desktopMode = isDesktopMode()
+  const showPinPrompt = !desktopMode && Boolean(branchId) && !activeStaff
 
   const handleSubmit = async () => {
     const normalizedPin = normalizePinInput(pinInput)
