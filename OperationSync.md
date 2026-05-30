@@ -7472,3 +7472,9 @@ ormalizeComboGroups parser in UnifiedPosStaffScreen.jsx, KioskBig.jsx, and Kiosk
 - **Premium Diagnostik Panel:** Replaced the generic "SeÃ§enek BulunamadÄ±" screen with a premium Debug Panel displaying exact system diagnostic info (SKU, ID, group count, and raw definition payload) when steps resolve to 0.
 - **Build Validation:** Successfully built and validated all modified files (0 errors) using 
 pm run build.
+## Entry 183 - 2026-05-30
+
+**Tasks Completed (by Agent):**
+- **Lossless Base64 Image Migration:** Identified that 74 products had raw Base64 images directly inside the PostgreSQL channel_image column (up to 2.3MB per product, causing a 20MB+ total JSON payload on load).
+- **Persistent Volume Transfer:** Wrote and executed an automated migration script that decoded all 74 Base64 strings, uploaded them to the production persistent volume (ms-api-volume) at /api/files/... using the /api/upload endpoint, and successfully updated the PostgreSQL database with the clean, lightweight URL references.
+- **Results:** 74/74 images migrated successfully with 0 failures, resolving the "Unterminated string in JSON at position 4141250" crash on the Kiosk and POS screens once and for all.
