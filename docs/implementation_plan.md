@@ -1,34 +1,58 @@
-# KDS, Pickup ve POS/Garson Sorunlarının Çözüm Planı
+# Desktop Terminal Architecture & Routing Redesign
 
-Kullanıcının ilettiği hataların (KDS/Pickup anahtarlarının yanlış ekran açması, POS anahtarının Garson açması ve Garson anahtarının web sürümünden farklı görünmesi) kök nedenleri tespit edilmiş olup, uygulanacak çözüm adımları aşağıda listelenmiştir.
+Mevcut yapıda POS, Garson, KDS ve Pickup ekranlarının yanlış açılmasına (örneğin POS anahtarının Garson ekranını açması) neden olan temel mimari hatalar tespit edilmiştir:
+1. **Dev/Prod Uyuşmazlığı**: Geliştirme (Dev) ortamında `index.html` üzerinden `App.jsx` çalışırken, production ortamında `desktop.html` üzerinden `DesktopPosApp.jsx` çalışmaktadır. Bu durum, rotaların ve PairingGuard'ın farklı tepkiler vermesine yol açmaktadır.
+2. **Race Condition (Yarış Durumu)**: Eşleştirme sonrasında `window.location.replace()` yapıldığında, Electron tarafında konfigürasyon dosyaya henüz tam olarak yansımamış veya web ortamında (localStorage) eski veri okunmuş olabiliyor.
+3. **Route Karmaşası**: `/garson-screen`, `/pos-screen` gibi rotalar ile `DesktopPosApp.jsx` içindeki `/garson` ve `/pos` rotaları çakışmaktadır.
 
-## 1. KDS ve Pickup Anahtarlarının POS Ekranını Açması
-**Kök Neden:** 
-Kod seviyesinde `PairingScreen.jsx` ve `DesktopPosApp.jsx` rotaları tamamen doğru çalışmaktadır. KDS anahtarı `device_type: 'kds'` olarak tanımlanmışsa, sistem kusursuz biçimde KDS ekranını açar. 
-Ancak kullanıcı bu anahtarları oluştururken veritabanına `device_type: 'pos'` olarak kaydedilmiş (veya kullanıcı KDS cihazında yanlışlıkla bir POS anahtarı kullanmış). Sistem de veritabanından 'pos' yanıtını aldığı için doğal olarak POS ekranını açıyor.
+Bu sorunları kökten çözmek için mimariyi baştan aşağı yeniden yapılandırmalıyız.
 
-**Çözüm (Kullanıcı Aksiyonu):** 
-Uygulama yönetim panelinden (Cihaz Ayarları) yeni bir KDS ve Pickup anahtarı oluşturulmalı, "Tip" olarak mutlaka "Mutfak (KDS)" ve "Teslimat (Pickup)" seçilmelidir. Eski anahtarlar silinmelidir. Kodda yapılacak bir değişiklik yoktur.
+## Önerilen Mimari Yapı
 
-## 2. Garson Anahtarının Web'deki `\garson` Ekranından Farklı Görünmesi
-**Kök Neden:** 
-Geçtiğimiz günlerde Masaüstü (Desktop) sürümü için bir "Personel PIN Girişi (StaffPinGate)" özelliği eklendi. Web sürümünde (tarayıcıda) bu PIN ekranı atlanırken (bypass), masaüstü sürümünde güvenlik gereği PIN ekranı zorunlu olarak karşınıza çıkar.
-Siz web'de `/garson` adresine gidince PIN ekranı görmediğiniz için, masaüstü uygulamasında PIN ekranını görünce "bu tamamen yanlış bir ekran" diye düşündünüz. Aslında ikisi de aynı Garson ekranı, sadece masaüstü sürümünde PIN kilidi var.
+### 1. Tekil Giriş Noktası (Unified Entry)
+Desktop uygulaması ve Web uygulaması arasındaki ayrımı `index.html` veya `desktop.html` seviyesinde yapmak yerine, uygulamanın tek bir giriş noktasından (`App.jsx`) yönetilmesi sağlanmalıdır.
+- `App.jsx` içerisinde `isDesktopMode()` kontrolü yapılarak, eğer uygulama masaüstü ortamında (Electron) çalışıyorsa standart Web arayüzü yerine **`DesktopTerminalShell`** bileşeni render edilecektir.
+- Böylece dev ve prod ortamlarındaki tutarsızlıklar tamamen ortadan kalkacaktır.
 
-**Çözüm:**
-Masaüstü sürümündeki PIN ekranı tasarım gereği orada olmalıdır (personel güvenliği için). Eğer katalogların PIN girilmeden de görünmesini istiyorsak, `StaffPinGate` bileşenini "non-blocking" (engelleyici olmayan, sadece işlem sırasında modal olarak çıkan) formata dönüştürebiliriz (ki bu daha önceki planda belirtilmişti ancak tam uygulanmamıştı).
+### 2. DesktopTerminalShell ve PairingGuard
+- **`DesktopTerminalShell`**: Sadece masaüstü ortamında çalışacak olan ana kapsayıcıdır.
+- İçerisinde **`PairingGuard`** bulunur. Uygulama açıldığında lokal konfigürasyon (`terminal-config.json`) okunur. 
+- Eğer cihaz henüz eşleştirilmemişse (veya eşleştirme anahtarı geçersizse), ekranda sadece **`PairingScreen`** gösterilir.
+- Eşleştirme tamamlandığında sayfa **yenilenmez** (`window.location.replace` KULLANILMAZ). Bunun yerine React state güncellenir ve yeni konfigürasyon anında devreye girerek doğru ekrana geçiş yapılır.
 
-## 3. POS Anahtarının Garson (Masa Düzeni) Ekranını Açması
-**Kök Neden:**
-POS ekranı (kasa), aslında masaların hesaplarını alabilmek için "Masa Düzeni"ni de içinde barındırır. Eğer şubenizde "Hızlı Satış" kanalı silinmişse veya POS cihazı otomatik olarak ilk kanal olan "Masa" kanalını seçerse, POS ekranı anında Masa Düzeni görünümüne (Garson ekranına benzer bir görünüme) geçer. Siz de "POS anahtarı girdim ama Garson açıldı" diye düşünürsünüz (çünkü yan menü dışında ortadaki kısım tamamen masalardan oluşur).
+### 3. Screen Mode Yönlendirmesi (Routing)
+Eşleştirme işlemi sonrası (veya cihaz zaten eşleşmişse) alınan `device_type` verisi üzerinden cihazın açması gereken ekran net bir şekilde belirlenir:
+- `pos` -> `/pos`
+- `masa` veya `garson` -> `/garson`
+- `kds` -> `/kds`
+- `pickup` -> `/pickup`
 
-**Çözüm (Kod Değişikliği):**
-POS ekranının (`POS.jsx`) açılış kanalını belirleyen `resolveBootChannel` algoritmasını güncelleyeceğiz. POS ekranı açıldığında her zaman "Hızlı Satış" (veya türevi bir sipariş kanalı) kanalında kalmaya zorlanacak. Eğer Hızlı Satış kanalı yoksa bile Masa kanalını otomatik seçmek yerine boş bir POS ekranı gösterecek.
+Terminal konfigürasyonunda yer alan `screenMode` değerine göre React Router doğrudan ilgili sayfayı yükler.
+
+## Mimari Akış Diyagramı (Mermaid)
+
+```mermaid
+graph TD
+    A[Electron main.cjs] -->|Yükler| B(index.html / main.jsx)
+    B --> C{isDesktopMode?}
+    C -->|Hayır| D[Web App Yüklenir]
+    C -->|Evet| E[DesktopTerminalShell]
+    E --> F{isPaired?}
+    F -->|Hayır| G[PairingScreen]
+    G -->|Key Girilir & Başarılı| H[Config Kaydedilir ve State Güncellenir]
+    H --> F
+    F -->|Evet| I{screenMode Nedir?}
+    I -->|pos| J[POS Bileşeni Render Edilir]
+    I -->|garson| K[Garson Bileşeni Render Edilir]
+    I -->|kds| L[KDS Bileşeni Render Edilir]
+    I -->|pickup| M[Pickup Bileşeni Render Edilir]
+```
 
 ## User Review Required
+
 > [!IMPORTANT]
-> Lütfen yukarıdaki açıklamaların mantıklı gelip gelmediğini teyit edin. 
-> 1. KDS ve Pickup için **Cihaz Ayarları** menüsünden doğru tipleri seçerek yeniden anahtar üretmeniz gerekmektedir.
-> 2. POS ekranının Garson gibi görünmesini engellemek için kod güncellemesi yapacağım.
-> 
-> Onaylarsanız `POS.jsx` içindeki kanal seçim algoritmasını değiştireceğim.
+> - `main.desktop.jsx` ve `desktop.html` gibi karmaşaya yol açan ara dosyalar kullanımdan kaldırılacak ve tüm yapı `App.jsx` üzerinden yönetilecektir.
+> - Eşleştirme sonrasında sayfa yenilenmesi kaldırılacağı için, geçişler anında ve sorunsuz olacaktır.
+> - Veritabanındaki `device_type` ne ise (`pos`, `masa`, `kds`, `pickup`), terminal **sadece ve kesinlikle** o ekran modunda başlayacaktır.
+
+Bu yeni mimari planı onaylıyorsanız, eski `DesktopPosApp.jsx` yapısını temizleyip bu temiz ve sağlam mimariyi `App.jsx` ve `main.cjs` üzerine entegre edeceğim. Lütfen onay verin.

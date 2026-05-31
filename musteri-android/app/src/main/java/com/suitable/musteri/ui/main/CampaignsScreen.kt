@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -115,7 +116,7 @@ fun CampaignsScreen(
     val stackableGroup = campaigns.filter { it.stackable }
     val exclusiveGroup = campaigns.filter { !it.stackable }
 
-    AppScaffold(config = config, customerInfo = customerInfo, onNavigate = onNavigate) {
+    AppScaffold(config = config, customerInfo = customerInfo, onNavigate = onNavigate, showMenu = false) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -273,121 +274,122 @@ fun CampaignBanner(
     isDisabled: Boolean = false,
     onLongPress: () -> Unit
 ) {
-    val gradientIndex = campaign.id.hashCode().let { abs(it) % CAMPAIGN_PALETTE.size }
+    val gradientIndex = kotlin.math.abs(campaign.id.hashCode()) % CAMPAIGN_PALETTE.size
     val gradColors = CAMPAIGN_PALETTE[gradientIndex]
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .combinedClickable(
-                onClick = {},
-                onLongClick = onLongPress
-            )
-            .alpha(if (isDisabled) 0.4f else 1f)
+            .alpha(if (isDisabled) 0.38f else 1f)
+            .combinedClickable(onClick = {}, onLongClick = onLongPress)
     ) {
-        // Banner gradient
+        // ── Banner arka plan ─────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
+                .height(108.dp)
+                .clip(RoundedCornerShape(16.dp))
                 .background(
-                    Brush.horizontalGradient(
-                        listOf(gradColors[0].copy(alpha = 0.9f), gradColors[1].copy(alpha = 0.95f))
-                    ),
-                    shape = RoundedCornerShape(20.dp)
+                    Brush.horizontalGradient(listOf(gradColors[0], gradColors[1]))
                 )
                 .then(
-                    if (isSelected) Modifier.border(3.dp, Color.White, RoundedCornerShape(20.dp))
+                    if (isSelected) Modifier.border(2.5.dp, Color.White, RoundedCornerShape(16.dp))
                     else Modifier
                 )
         ) {
-            // Rope / banner holes decoration
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                BannerHole(); BannerHole()
-            }
+            // Üst ip çizgisi
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .padding(horizontal = 24.dp)
+                    .background(Color.White.copy(alpha = 0.25f))
+            )
+            // Alt ip çizgisi
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .padding(horizontal = 24.dp)
+                    .background(Color.White.copy(alpha = 0.25f))
+            )
 
-            // Content
+            // ─ İçerik ─────────────────────────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = campaign.name.uppercase(),
+                    text = campaign.name,
                     color = Color.White,
-                    fontSize = 16.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (campaign.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = campaign.description,
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.88f),
+                        fontSize = 13.sp,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-
-            // Bottom rope decoration
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                BannerHole(); BannerHole()
-            }
         }
 
-        // Selected chip
+        // ── Köşe perçinleri (4 adet, küçük) ─────────────────────────────
+        listOf(
+            Alignment.TopStart,
+            Alignment.TopEnd,
+            Alignment.BottomStart,
+            Alignment.BottomEnd
+        ).forEach { align ->
+            Box(
+                modifier = Modifier
+                    .align(align)
+                    .padding(10.dp)
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f))
+                    .border(1.5.dp, gradColors[1], CircleShape)
+            )
+        }
+
+        // ── Seçili chip (sağ üst) ────────────────────────────────────────
         if (isSelected) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp)
+                    .padding(top = 8.dp, end = 30.dp)
                     .clip(RoundedCornerShape(50))
                     .background(Color.White)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 3.dp)
             ) {
                 Text("✓ AKTİF", color = gradColors[0], fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
             }
         }
 
-        // Long press hint (bottom)
+        // ── Uzun basma ipucu ─────────────────────────────────────────────
         if (!isSelected && !isDisabled) {
             Text(
                 text = "Seçmek için uzun basın",
-                color = Color.White.copy(alpha = 0.6f),
+                color = Color.White.copy(alpha = 0.55f),
                 fontSize = 10.sp,
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 12.dp, bottom = 6.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 6.dp)
             )
         }
     }
 }
 
-@Composable
-fun BannerHole() {
-    Box(
-        modifier = Modifier
-            .size(10.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.3f))
-            .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-    )
-}
+
 
 @Composable
 fun SectionHeader(title: String, subtitle: String = "") {
@@ -511,7 +513,7 @@ fun parseCampaign(raw: Any?, index: Int, customerInfo: CustomerInfo?): CampaignI
     val source = metadata?.get("source") as? String ?: ""
     if (source.contains("smoke", ignoreCase = true)) return null
 
-    val colorIdx = abs(id.hashCode()) % CAMPAIGN_PALETTE.size
+    val colorIdx = kotlin.math.abs(id.hashCode()) % CAMPAIGN_PALETTE.size
     return CampaignItem(
         id = id, name = name, description = description,
         stackable = stackable, priority = priority,
@@ -541,4 +543,3 @@ fun generateQrBitmap(content: String, size: Int = 512): Bitmap? {
     } catch (e: Exception) { null }
 }
 
-private fun abs(n: Int): Int = if (n < 0) -n else n

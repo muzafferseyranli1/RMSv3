@@ -101,25 +101,48 @@ async function routedQueryApi(body) {
   const role = getTerminalRole()
 
   if (role === 'slave') {
-    // YAN KASA → Ana Kasanın LAN HTTP sunucusuna gönder
-    const { masterIp, masterPort } = getSlaveConfig()
-    const response = await fetch(`http://${masterIp}:${masterPort}/lan/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Terminal-Id': getTerminalId() ?? '',
-        'X-Branch-Id': getBranchId() ?? '',
-      },
-      body: JSON.stringify(body),
-    })
-    if (!response.ok) throw new Error(`LAN query failed: ${response.status}`)
-    return response.json()
+    // YAN KASA → Önce online (Railway) dene, başarısız olursa LAN'a düş
+    const result = await queryApi(body)
+    
+    const isNetworkError = result?.error && (
+      result.error.message?.includes('Failed to fetch') ||
+      result.error.message?.includes('API erisilemedi') ||
+      result.error.message?.includes('Network Error')
+    )
+
+    if (!isNetworkError) {
+      // Başarılı veya normal bir SQL/Supabase hatası
+      return result
+    }
+
+    // Online erişilemiyor (Network Error) → LAN Ana Kasa'ya düş
+    const slaveCfg = getSlaveConfig()
+    if (!slaveCfg?.masterIp) {
+      // LAN yapılandırması da yoksa asıl hatayı döndür
+      return result
+    }
+
+    const { masterIp, masterPort } = slaveCfg
+    try {
+      const response = await fetch(`http://${masterIp}:${masterPort}/lan/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Terminal-Id': getTerminalId() ?? '',
+          'X-Branch-Id': getBranchId() ?? '',
+        },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) return { data: null, error: { message: `LAN query failed: ${response.status}` } }
+      return response.json()
+    } catch (lanError) {
+      // Her iki yol da başarısız → asıl online hatasını döndür
+      return result
+    }
   }
 
   if (role === 'master') {
-    // ANA KASA → Kendi LAN sunucusuna istek atmadan doğrudan IPC ile
-    // (main process'te executeQuery çağrılır — FAZ 6'da IPC handler eklenir)
-    // Şimdilik fallback: normal Railway yolu
+    // ANA KASA → normal Railway yolu
     return queryApi(body)
   }
 

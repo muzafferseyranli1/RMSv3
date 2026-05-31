@@ -43,3 +43,23 @@ Bu belgede, Sadakat (Loyalty) modülünde yapılan konsolidasyon çalışmaları
   - Eğer müşterinin en az bir adet aktif damga kampanyası varsa, kart başlığı **"Damga"** / **"Damgalarım"** olarak değişir ve içerik olarak damga ilerleme oranları (örn. tekli ise `2/5`, çoklu ise `2/5 | 4/10`) gösterilir.
   - Bu özet karta tıklanarak doğrudan Kampanyalar sekmesine hızlıca yönlendirilmesi sağlandı.
   - Aktif damga kampanyası yoksa sistem otomatik olarak eski "Seviye" görünümüne geri döner.
+
+---
+
+## 3. Son Yapılan Arayüz & Arka Plan Düzeltmeleri (31 Mayıs 2026)
+
+Müşterinin son geri bildirimleri doğrultusunda, görsel uyumu artırmak ve damga biriktirme fonksiyonundaki aksaklıkları gidermek için kapsamlı bir optimizasyon yapılmıştır:
+
+### Mobil Arayüz & Hamburger Menü (HomeScreen.kt)
+- **3 Eşit Üst Daire Düzeni**: Ana sayfa üst kısmındaki dikey yığılı yapı kaldırıldı. Bunun yerine yan yana kusursuz hizalanmış **72dp** boyutunda üç adet dairesel gösterge eklendi:
+  1. **KOD (Sol)**: Müşterinin QR kod penceresini açan, birincil renk detaylı beyaz QR butonu.
+  2. **PUAN (Orta)**: Birincil renkli arka plana sahip, güncel puan bakiyesini gösteren daire.
+  3. **DAMGA (Sağ)**: Slate renkli arka planı olan ve **Canvas ile dairesel (arc) ilerleme çizgisi** çizilerek `4/5` şeklinde anlık damga durumunu gösteren circular damga göstergesi.
+- **Bare Hamburger Butonu (≡)**: Hamburger menü butonu arka planındaki siyah daire ve kenarlıktan arındırıldı. Sağ üst köşede son derece sade, şık ve premium görünümlü bir **bare icon button** olarak tasarlandı. Diğer dairelerin boyutlarıyla çakışması ve görsel kalabalık tamamen önlendi.
+- **Yatay Damga İndikatörünün Kaldırılması**: Arayüz bütünlüğünü bozan eski yatay damga şeridi arayüzden kaldırılarak 3. daire olarak üst kısma konsolide edildi.
+
+### Arka Plan Damga Motoru & Türkçe Karakter Fix (loyaltyValueLedger.js)
+- **JSONB RPC Parametre Uyuşmazlığı Çözümü**: `db.rpc('get_customer_period_stats')` fonksiyonu çağrılırken `p_product_masks` parametresi JS dizisi olarak geçirildiğinde PG tarafında `invalid input syntax for type json` hatasına sebep oluyordu. Bu parametre `JSON.stringify(productMasks)` ile stringleştirilerek postgres jsonb uyuşmazlığı tamamen giderildi.
+- **Kanal Adı Türkçe Karakter Collation Çözümü**: POS üzerinden tamamlanan satışlar veritabanına `"Hızlı Satış"` adıyla yazılmaktaydı. Ancak veritabanındaki `normalize_sales_channel_key` fonksiyonu sadece `'hizli_satis'` veya `'hizli satis'` kelimelerini `'pos'` ile eşleştiriyordu; Türkçe karakterli ve boşluklu `'hızlı satış'` dizesi bu listede yer almadığı için eşleşmiyor ve sayım `0` dönüyordu. Veritabanındaki bu fonksiyonu güncelleyerek `'hızlı satış'`, `'hızlı satis'`, `'hizli satış'` gibi tüm Türkçe kombinasyonlarını da başarıyla `'pos'` kanalına bağladım.
+- **Otomatik Kampanya İlerleme Güncellemesi**: Kampanyanın kasadan manuel seçilmesine gerek kalmadan, müşteri herhangi bir sipariş tamamladığında arka planda müşterinin yararlanabileceği **tüm aktif damga/frekans kuralları (`period_product_quantity` ve `period_order_count`) otomatik olarak taranıp eşleştirilerek** damga durumunun güncellenmesi sağlandı.
+- **Müşteri Geçmiş Verisi Backfill**: Muzaffer SEYRANLI (`d8d3477f-1fba-4171-be4d-703285c47004`) isimli müşterinin geçmiş satın alımları üzerinden bir backfill betiği çalıştırılarak damga ilerlemesi veritabanında başarıyla **4/5** olarak güncellendi ve arayüze yansıdı!

@@ -1,0 +1,1 @@
+import{j as r}from"./index-O112q4kh.js";import{H as t}from"./Header-GkB45ndD.js";import"./notificationService-CypThMMC.js";function o(){return r.jsx("div",{className:"page-enter",children:r.jsx(t,{title:"Dashboard",subtitle:""})})}export{o as default};

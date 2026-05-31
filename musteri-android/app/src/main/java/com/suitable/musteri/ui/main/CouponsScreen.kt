@@ -115,14 +115,25 @@ fun CouponsScreen(
         }
     }
 
-    // Load stored coupons on start
+    // Load stored coupons on start (DB'den atananlar + manuel eklenenler)
     LaunchedEffect(Unit) {
         isLoading = true
-        coupons = loadCoupons(prefs)
+        val dbCoupons = if (customerInfo?.id != null) loadDbCoupons(customerInfo.id) else emptyList()
+        val walletCoupons = loadCoupons(prefs)
+        // DB kuponlarını cüzdan kodlarına da ekle (duplicate'i engelle)
+        val allCodes = walletCoupons.map { it.code }.toMutableSet()
+        val merged = walletCoupons.toMutableList()
+        for (dc in dbCoupons) {
+            if (!allCodes.contains(dc.code)) {
+                merged.add(dc)
+                allCodes.add(dc.code)
+            }
+        }
+        coupons = merged
         isLoading = false
     }
 
-    AppScaffold(config = config, customerInfo = customerInfo, onNavigate = onNavigate) {
+    AppScaffold(config = config, customerInfo = customerInfo, onNavigate = onNavigate, showMenu = false) {
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -709,8 +720,75 @@ fun parseBenefit(seriesName: String): CouponBenefit {
 
     // Hediye / bedava / free / ücretsiz
     if (lower.contains("hediye") || lower.contains("bedava") || lower.contains("free") ||
-        lower.contains("ücretsiz") || lower.contains("gift")) {
+        lower.contains("ücretsiz") || lower.contains("gift") || lower.contains("kahve")) {
         return CouponBenefit.Gift
     }
     return CouponBenefit.Gift
 }
+
+// DB'den müşteriye atanmış kuponları çeker (damga ödülü, kampanya vb.)
+suspend fun loadDbCoupons(customerId: String): List<CouponWalletItem> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val res = ApiClient.apiService.executeQuery(
+                QueryRequest(
+                    table = "loyalty_coupons",
+                    select = "id,code,series_id,is_used,active,redemption_status",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "customer_id", "val" to customerId),
+                        mapOf("type" to "eq", "col" to "is_used", "val" to false),
+                        mapOf("type" to "eq", "col" to "active", "val" to true)
+                    )
+                )
+            )
+            val list = (res.data as? List<*>)?.mapNotNull { it as? Map<*, *> } ?: return@withContext emptyList()
+            val result = mutableListOf<CouponWalletItem>()
+
+            list.forEach { coupon ->
+                val status = coupon["redemption_status"] as? String ?: ""
+                if (status == "used" || status == "redeemed") return@forEach
+
+                val code = coupon["code"] as? String ?: return@forEach
+                val seriesId = coupon["series_id"] as? String ?: ""
+
+                var seriesName = "Ücretsiz Ürün"
+                if (seriesId.isNotBlank()) {
+                    try {
+                        val sRes = ApiClient.apiService.executeQuery(
+                            QueryRequest(
+                                table = "loyalty_coupon_series",
+                                select = "id,name",
+                                filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to seriesId))
+                            )
+                        )
+                        val sList = (sRes.data as? List<*>)?.mapNotNull { it as? Map<*, *> }
+                        seriesName = sList?.firstOrNull()?.get("name") as? String ?: seriesName
+                    } catch (e: Exception) {
+                        Log.e("CouponsScreen", "loadDbCoupons: series fetch error", e)
+                    }
+                }
+
+                val benefit = parseBenefit(seriesName)
+                val colorIdx = kotlin.math.abs(code.hashCode()) % COUPON_PALETTE.size
+
+                result.add(
+                    CouponWalletItem(
+                        id = coupon["id"] as? String ?: code,
+                        code = code,
+                        seriesName = seriesName,
+                        campaignName = seriesName,
+                        description = "Kampanya ödülü",
+                        benefit = benefit,
+                        isUsed = false,
+                        colorIdx = colorIdx
+                    )
+                )
+            }
+            result
+        } catch (e: Exception) {
+            Log.e("CouponsScreen", "loadDbCoupons error", e)
+            emptyList()
+        }
+    }
+}
+

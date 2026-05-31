@@ -7710,3 +7710,40 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - src/components/pages/KioskManagementDesktop.jsx
 - Decisions: pair_key tamamen kaldýrýldý, activation_code tek anahtar oldu, screen_mode constraint geniþletildi
 - Next Step: Kullanýcý desktop build yaparak test etmeli
+
+## Entry - Musteri Android: Stamp/Coupon Bug Fix & UI Overlap Fix
+- Timestamp: 2026-05-31T19:13:00+03:00
+- Agent: Antigravity (Conversation: 0efa3bd1-bf15-45f7-8c46-12310af179fd)
+- Gorev: Musteri Android uygulamasinda damga kuponu hatas? ve kuponlar sayfas? UI cakisma duzeltmesi
+
+### Yapilan Degisiklikler:
+1. HomeScreen.kt - AppScaffold'a showMenu parametresi eklendi (hamburger overlay duzeltmesi)
+2. CouponsScreen.kt - showMenu=false, loadDbCoupons() fonksiyonu eklendi (otomatik DB kuponu yukleme)
+3. CampaignsScreen.kt - showMenu=false (overlay duzeltmesi)
+4. loyaltyValueLedger.js - syncCampaignStampProgress completedNow=true oldugunda kupon entitlement otomatik olusturuluyor
+
+### DB Manuel Backfill:
+- Muzaffer Seyranli musteri damga ilerlemesi 4/5'ten 1/5 (cycles=1) olarak duzeltildi
+- KHV2088 Ucretsiz Kahve kuponu olusturuldu ve musteriye atandi
+- Reward entitlement kaydi olusturuldu (UUID: a359b6e6-...)
+
+### APK:
+- assembleDebug basariyla derlendi: 39.9 MB
+- Konum: musteri-android/app/build/outputs/apk/debug/app-debug.apk
+
+- Artifacts kopyalandi: docs/walkthrough.md guncellendi
+
+## Entry - Desktop UI and Network Fallback Fixes
+- Timestamp: 2026-05-31T17:45:00+03:00
+- Agent: Antigravity
+- Task: Fixed Desktop UI Channel Initialization (Garson vs POS), Database LAN Fallback (Failed to fetch), and created_by_terminal column insertion bug.
+- Files Changed:
+  - src/components/pages/Garson.jsx
+  - src/components/pages/POS.jsx
+  - src/lib/db.js
+  - src/lib/terminalIdentity.js
+- Decisions:
+  - Fixed POS/Garson React components to ignore local storage channels belonging to different device types.
+  - Fixed db.js routedQueryApi to properly fallback to LAN when Railway is offline by checking for network error messages instead of relying on thrown exceptions.
+  - Added created_by_terminal column to sale_lines table in Railway Postgres database to fix SQL error during payments.
+- Next Step: Await user feedback.

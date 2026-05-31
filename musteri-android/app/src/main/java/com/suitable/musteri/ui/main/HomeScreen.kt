@@ -42,6 +42,7 @@ fun AppScaffold(
     config: AppConfig?,
     customerInfo: CustomerInfo?,
     onNavigate: (String) -> Unit,
+    showMenu: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -51,49 +52,51 @@ fun AppScaffold(
     Box(modifier = Modifier.fillMaxSize()) {
         content()
 
-        // Hamburger button always on top-right
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(12.dp)
-        ) {
+        // Hamburger button — only shown on screens that don't have their own top bar
+        if (showMenu) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xCC1E1E1E))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                    .clickable { showSidebarMenu = true },
-                contentAlignment = Alignment.Center
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 16.dp, end = 16.dp)
             ) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White, modifier = Modifier.size(24.dp))
-            }
+                IconButton(
+                    onClick = { showSidebarMenu = true },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
 
-            DropdownMenu(
-                expanded = showSidebarMenu,
-                onDismissRequest = { showSidebarMenu = false }
-            ) {
-                DropdownMenuItem(text = { Text("Hesabım") }, onClick = { showSidebarMenu = false })
-                DropdownMenuItem(
-                    text = { Text("🎁  Kampanyalar") },
-                    onClick = { showSidebarMenu = false; onNavigate("campaigns") }
-                )
-                DropdownMenuItem(
-                    text = { Text("🎟️  Kuponlarım") },
-                    onClick = { showSidebarMenu = false; onNavigate("coupons") }
-                )
-                DropdownMenuItem(text = { Text("Menü") }, onClick = { showSidebarMenu = false })
-                DropdownMenuItem(text = { Text("Şubeler") }, onClick = { showSidebarMenu = false })
-                DropdownMenuItem(text = { Text("Bize Ulaş") }, onClick = { showSidebarMenu = false })
-                DropdownMenuItem(
-                    text = { Text("Çıkış Yap", color = Color.Red) },
-                    onClick = {
-                        showSidebarMenu = false
-                        sharedPref.edit().remove("customerId").apply()
-                        onNavigate("login")
-                    }
-                )
+                DropdownMenu(
+                    expanded = showSidebarMenu,
+                    onDismissRequest = { showSidebarMenu = false }
+                ) {
+                    DropdownMenuItem(text = { Text("Hesabım") }, onClick = { showSidebarMenu = false })
+                    DropdownMenuItem(
+                        text = { Text("🎁  Kampanyalar") },
+                        onClick = { showSidebarMenu = false; onNavigate("campaigns") }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("🎟️  Kuponlarım") },
+                        onClick = { showSidebarMenu = false; onNavigate("coupons") }
+                    )
+                    DropdownMenuItem(text = { Text("Menü") }, onClick = { showSidebarMenu = false })
+                    DropdownMenuItem(text = { Text("Şubeler") }, onClick = { showSidebarMenu = false })
+                    DropdownMenuItem(text = { Text("Bize Ulaş") }, onClick = { showSidebarMenu = false })
+                    DropdownMenuItem(
+                        text = { Text("Çıkış Yap", color = Color.Red) },
+                        onClick = {
+                            showSidebarMenu = false
+                            sharedPref.edit().remove("customerId").apply()
+                            onNavigate("login")
+                        }
+                    )
+                }
             }
         }
     }
@@ -150,53 +153,105 @@ fun HomeScreen(
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars)
             ) {
-                // Top row: Points circle (left) | spacer | (menu is in AppScaffold overlay)
+                // Top row: 3 identical circles side-by-side (QR, Points, Stamp Progress)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, top = 12.dp, end = 70.dp, bottom = 0.dp),
-                    verticalAlignment = Alignment.Top
+                        .padding(start = 16.dp, top = 16.dp, end = 76.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left: Points & QR
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Points Circle
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(primaryColor)
-                                .border(2.dp, Color.White, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("PUAN", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                val formatter = NumberFormat.getNumberInstance(Locale("tr", "TR"))
-                                val points = formatter.format(customerInfo?.pointsBalance ?: 0)
-                                Text(points, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                            }
+                    // Circle 1: QR Code
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(2.dp, primaryColor, CircleShape)
+                            .clickable { showQrModal = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.QrCode,
+                                contentDescription = "QR Code",
+                                tint = primaryColor,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("KOD", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                    // Circle 2: Puan (Points)
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor)
+                            .border(2.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("PUAN", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            val formatter = NumberFormat.getNumberInstance(Locale("tr", "TR"))
+                            val points = formatter.format(customerInfo?.pointsBalance ?: 0)
+                            Text(points, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
 
-                        // QR Icon Circle
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .clickable { showQrModal = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.QrCode, contentDescription = "QR Code", tint = Color.Black, modifier = Modifier.size(28.dp))
+                    // Circle 3: Damga (Stamp Progress Circular Arc)
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1E293B))
+                            .border(2.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val progress = customerInfo?.stampCampaigns?.firstOrNull()
+                        val current = progress?.current ?: 0
+                        val target = progress?.target ?: 5
+                        val sweepAngle = (current.toFloat() / target.toFloat()) * 360f
+
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                                drawArc(
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    startAngle = -90f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = 4.dp.toPx(),
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                )
+                                if (sweepAngle > 0) {
+                                    drawArc(
+                                        color = primaryColor,
+                                        startAngle = -90f,
+                                        sweepAngle = sweepAngle,
+                                        useCenter = false,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                            width = 4.dp.toPx(),
+                                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                        )
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("DAMGA", color = Color.White.copy(alpha = 0.7f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text("$current/$target", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                            }
                         }
                     }
                 }
 
-                // Logo (center) — fixed height so stamp section doesn't compress it
+                // Logo — kalan alanı doldurur, butonlar hiç küçülmez
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp),
+                        .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!logoUrl.isNullOrBlank()) {
@@ -234,23 +289,15 @@ fun HomeScreen(
                     )
                 }
 
-                // Loyalty Stamp & Points Section
-                LoyaltyStampSection(
-                    customerInfo = customerInfo,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp)
-                )
-
-                // Grid Buttons
+                // Grid Buttons — her zaman sabit yükseklik
                 val buttons = config?.homeButtons ?: emptyList()
                 if (buttons.isNotEmpty()) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(Color.Transparent)
-                            .padding(16.dp),
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 16.dp, top = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         for (i in buttons.indices step 2) {
@@ -276,12 +323,12 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
         }
     }
+
 
     // QR Modal
     if (showQrModal) {

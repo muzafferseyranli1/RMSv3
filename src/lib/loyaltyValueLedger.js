@@ -747,7 +747,7 @@ async function syncCampaignStampProgress({
       p_customer_id: customerId,
       p_period: period,
       p_period_days: periodDays,
-      p_product_masks: productMasks,
+      p_product_masks: JSON.stringify(productMasks),
       p_exclude_free_items: excludeFreeItems,
       p_allow_same_item_repeat: allowSameItemRepeat,
       p_current_product_ids: [],
@@ -1013,13 +1013,116 @@ export async function postSaleLoyaltyValueLedger({
     saleId: normalizedSaleId,
   })
 
-  posted.campaignFrequency = await syncCampaignStampProgress({
-    customerId,
-    campaignId,
-    rule,
-    saleId: normalizedSaleId,
-    options: { runtimeChannel: sourceChannel }
-  })
+  if (campaignId && rule) {
+    posted.campaignFrequency = await syncCampaignStampProgress({
+      customerId,
+      campaignId,
+      rule,
+      saleId: normalizedSaleId,
+      options: { runtimeChannel: sourceChannel }
+    })
+
+    // Damga tamamlandıysa → kural action_json'dan ödül kuponunu çıkar ve entitlement oluştur
+    if (posted.campaignFrequency?.completedNow) {
+      let stampRuleActionJson = {}
+      try {
+        stampRuleActionJson = typeof rule.action_json === 'string'
+          ? JSON.parse(rule.action_json)
+          : (rule.action_json || {})
+      } catch (e) { stampRuleActionJson = {} }
+
+      const stampActionType = rule.action_type || stampRuleActionJson?.type || ''
+      if (stampActionType === 'issue_coupon' || stampRuleActionJson?.type === 'issue_coupon') {
+        const seriesIds = stampRuleActionJson?.seriesIds || []
+        const seriesId = seriesIds[0] || stampRuleActionJson?.seriesId || null
+        if (seriesId) {
+          posted.stampCycleEntitlementId = (await createRewardEntitlement({
+            customerId,
+            programId,
+            campaignId,
+            walletId: wallet.id,
+            saleId: normalizedSaleId,
+            sourceChannel,
+            title: `Damga kampanyası tamamlandı - Ücretsiz ürün`,
+            entitlementType: 'coupon',
+            rewardPayload: {
+              type: 'issue_coupon',
+              seriesId,
+              seriesIds,
+              actionConfig: stampRuleActionJson,
+            },
+            note: 'Damga hedefi tamamlandiginda kazanilan kupon',
+          }))?.id || null
+          console.log(`[postSaleLoyaltyValueLedger] Stamp cycle completed → coupon entitlement: ${posted.stampCycleEntitlementId}`)
+        }
+      }
+    }
+  }
+
+
+  try {
+    const { data: activeRules, error: rulesErr } = await db
+      .from('loyalty_campaign_rules')
+      .select('id, campaign_id, rule_scope, action_type, action_json, condition_key, condition_json')
+      .in('condition_key', ['period_product_quantity', 'period_order_count'])
+      .eq('active', true);
+      
+    if (!rulesErr && Array.isArray(activeRules)) {
+      const otherRules = activeRules.filter(r => r.campaign_id !== campaignId);
+      for (const otherRule of otherRules) {
+        const syncResult = await syncCampaignStampProgress({
+          customerId,
+          campaignId: otherRule.campaign_id,
+          rule: otherRule,
+          saleId: normalizedSaleId,
+          options: { runtimeChannel: sourceChannel }
+        });
+
+        // Bu kampanya da tamamlandıysa kupon entitlement çıkar
+        if (syncResult?.completedNow) {
+          try {
+            let otherActionJson = {}
+            try {
+              otherActionJson = typeof otherRule.action_json === 'string'
+                ? JSON.parse(otherRule.action_json)
+                : (otherRule.action_json || {})
+            } catch (e) { otherActionJson = {} }
+
+            const otherActionType = otherRule.action_type || otherActionJson?.type || ''
+            if (otherActionType === 'issue_coupon' || otherActionJson?.type === 'issue_coupon') {
+              const otherSeriesIds = otherActionJson?.seriesIds || []
+              const otherSeriesId = otherSeriesIds[0] || otherActionJson?.seriesId || null
+              if (otherSeriesId) {
+                await createRewardEntitlement({
+                  customerId,
+                  programId: null,
+                  campaignId: otherRule.campaign_id,
+                  walletId: wallet.id,
+                  saleId: normalizedSaleId,
+                  sourceChannel,
+                  title: `Damga kampanyası tamamlandı - Ücretsiz ürün`,
+                  entitlementType: 'coupon',
+                  rewardPayload: {
+                    type: 'issue_coupon',
+                    seriesId: otherSeriesId,
+                    seriesIds: otherSeriesIds,
+                    actionConfig: otherActionJson,
+                  },
+                  note: 'Auto-sync: Damga hedefi tamamlandiginda kazanilan kupon',
+                })
+                console.log(`[postSaleLoyaltyValueLedger] Auto-sync stamp cycle completed for campaign ${otherRule.campaign_id}`)
+              }
+            }
+          } catch (entErr) {
+            console.error('[postSaleLoyaltyValueLedger] Auto-sync entitlement error:', entErr)
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[postSaleLoyaltyValueLedger] Failed to auto-sync active stamp campaigns:', err);
+  }
+
   if (posted.frequency) {
     const frequencyWallet = await ensureWallet({
       customerId,
