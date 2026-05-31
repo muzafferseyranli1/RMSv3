@@ -75,7 +75,14 @@ fun AppScaffold(
                 onDismissRequest = { showSidebarMenu = false }
             ) {
                 DropdownMenuItem(text = { Text("Hesabım") }, onClick = { showSidebarMenu = false })
-                DropdownMenuItem(text = { Text("Kampanyalar") }, onClick = { showSidebarMenu = false; onNavigate("coupons") })
+                DropdownMenuItem(
+                    text = { Text("🎁  Kampanyalar") },
+                    onClick = { showSidebarMenu = false; onNavigate("campaigns") }
+                )
+                DropdownMenuItem(
+                    text = { Text("🎟️  Kuponlarım") },
+                    onClick = { showSidebarMenu = false; onNavigate("coupons") }
+                )
                 DropdownMenuItem(text = { Text("Menü") }, onClick = { showSidebarMenu = false })
                 DropdownMenuItem(text = { Text("Şubeler") }, onClick = { showSidebarMenu = false })
                 DropdownMenuItem(text = { Text("Bize Ulaş") }, onClick = { showSidebarMenu = false })
@@ -185,11 +192,11 @@ fun HomeScreen(
                     }
                 }
 
-                // Logo (center)
+                // Logo (center) — fixed height so stamp section doesn't compress it
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .height(180.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!logoUrl.isNullOrBlank()) {
@@ -197,9 +204,8 @@ fun HomeScreen(
                             model = logoUrl,
                             contentDescription = "Logo",
                             modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .wrapContentHeight()
-                                .clip(RoundedCornerShape(16.dp)),
+                                .fillMaxWidth(1f)
+                                .fillMaxHeight(),
                             contentScale = ContentScale.Fit
                         )
                     }
@@ -417,7 +423,21 @@ fun handleButtonClick(
             val page = config?.get("targetPage") as? String
             if (!page.isNullOrBlank()) onNavigate(page)
         }
-        "geri_bildirim", "feedback" -> { /* todo */ }
+        "geri_bildirim", "feedback" -> {
+            @Suppress("UNCHECKED_CAST")
+            val surveyIds: List<String> = when {
+                config?.get("surveyFormIds") is List<*> ->
+                    (config["surveyFormIds"] as List<*>).mapNotNull { it as? String }
+                config?.get("formTemplateId") is String && (config["formTemplateId"] as String).isNotBlank() ->
+                    listOf(config["formTemplateId"] as String)
+                else -> emptyList()
+            }
+            if (surveyIds.isNotEmpty()) {
+                onNavigate("feedback:" + surveyIds.joinToString(","))
+            } else {
+                onNavigate("feedback:")
+            }
+        }
     }
 }
 

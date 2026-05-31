@@ -85,15 +85,50 @@ fun MainScreen(
                     }
                 )
             }
+            "campaigns" -> {
+                CampaignsScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
             else -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "Yapım Aşamasında",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onBackground
+                // feedback:id1,id2,id3
+                if (currentRoute.startsWith("feedback")) {
+                    val idsParam = currentRoute.removePrefix("feedback:").trim()
+                    val surveyIds = if (idsParam.isBlank()) emptyList()
+                                   else idsParam.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    FeedbackScreen(
+                        surveyFormIds = surveyIds,
+                        customerInfo = customerInfo,
+                        config = config,
+                        onNavigate = { dest ->
+                            if (dest == "login") {
+                                sharedPref.edit().remove("customerId").apply()
+                                customerId = null
+                                customerInfo = null
+                            }
+                            currentRoute = dest
+                        }
                     )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "Yapım Aşamasında",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 }
             }
+
         }
     }
 }

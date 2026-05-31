@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { db, resolveImageUrl } from '@/lib/db';
-import toast from 'react-hot-toast';
 
 const PREDEFINED_BUTTON_TYPES = [
   { id: 'kampanyalar', label: 'Kampanyalar', desc: 'Kampanyalar sayfasına gider.' },
@@ -18,6 +17,7 @@ export default function CustomerAppAdminSettings() {
   const [configId, setConfigId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [customerSurveys, setCustomerSurveys] = useState([]);
   
   // Branding state
   const [branding, setBranding] = useState({
@@ -52,7 +52,23 @@ export default function CustomerAppAdminSettings() {
         setIsLoading(false);
       }
     };
+
+    const fetchSurveys = async () => {
+      try {
+        const { data } = await db
+          .from('form_templates')
+          .select('id, title')
+          .eq('form_type', 'customer_survey')
+          .is('deleted_at', null)
+          .eq('active', true);
+        setCustomerSurveys(data || []);
+      } catch (err) {
+        console.error('Survey loading error', err);
+      }
+    };
+
     fetchConfig();
+    fetchSurveys();
   }, []);
 
   const handleSave = async () => {
@@ -383,18 +399,79 @@ export default function CustomerAppAdminSettings() {
                   </div>
                 )}
 
-                {btn.type === 'geri_bildirim' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Form ID (Opsiyonel)</label>
-                    <input 
-                      type="text" 
-                      placeholder="Müşteri anketi form ID'si"
-                      className="w-full border rounded p-2"
-                      value={btn.config?.formTemplateId || ''}
-                      onChange={e => updateButtonConfig(index, 'formTemplateId', e.target.value)}
-                    />
-                  </div>
-                )}
+                {btn.type === 'geri_bildirim' && (() => {
+                  const selectedIds = Array.isArray(btn.config?.surveyFormIds)
+                    ? btn.config.surveyFormIds
+                    : (btn.config?.formTemplateId ? [btn.config.formTemplateId] : []);
+
+                  const addSurvey = (id) => {
+                    if (!id || selectedIds.includes(id)) return;
+                    const newBtns = [...buttons];
+                    if (!newBtns[index].config) newBtns[index].config = {};
+                    newBtns[index].config.surveyFormIds = [...selectedIds, id];
+                    // backward compat
+                    newBtns[index].config.formTemplateId = [...selectedIds, id][0];
+                    setButtons(newBtns);
+                  };
+
+                  const removeSurvey = (id) => {
+                    const newBtns = [...buttons];
+                    if (!newBtns[index].config) newBtns[index].config = {};
+                    const newIds = selectedIds.filter(s => s !== id);
+                    newBtns[index].config.surveyFormIds = newIds;
+                    newBtns[index].config.formTemplateId = newIds[0] || '';
+                    setButtons(newBtns);
+                  };
+
+                  const availableToAdd = customerSurveys.filter(s => !selectedIds.includes(s.id));
+
+                  return (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium mb-1">Bağlı Müşteri Anketleri</label>
+
+                      {/* Seçili anketler */}
+                      {selectedIds.length > 0 && (
+                        <div className="space-y-1">
+                          {selectedIds.map(id => {
+                            const survey = customerSurveys.find(s => s.id === id);
+                            return (
+                              <div key={id} className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded px-3 py-1.5 text-sm">
+                                <span className="font-medium text-blue-800">
+                                  {survey ? survey.title : id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSurvey(id)}
+                                  className="text-red-500 hover:text-red-700 font-bold ml-2"
+                                >✕</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Anket ekle dropdown */}
+                      {availableToAdd.length > 0 && (
+                        <div className="flex gap-2">
+                          <select
+                            className="flex-1 border rounded p-2 text-sm bg-white"
+                            defaultValue=""
+                            onChange={e => { addSurvey(e.target.value); e.target.value = ''; }}
+                          >
+                            <option value="" disabled>— Anket seç ve ekle —</option>
+                            {availableToAdd.map(s => (
+                              <option key={s.id} value={s.id}>{s.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {customerSurveys.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Henüz "Müşteri Anketi" tipinde form şablonu oluşturulmamış.</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {btn.type === 'ozel_web' && (
                   <div>
