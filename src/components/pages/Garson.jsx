@@ -3002,7 +3002,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const [tableServiceRequests, setTableServiceRequests] = useState([])
   const [layoutTableDirectory, setLayoutTableDirectory] = useState(() => initialLayoutDirectory)
   const [tableTickets, setTableTickets] = useState(() => readLocalOpenTableTicketsSnapshot(initialLayoutDirectory))
-  const [showTableLayout, setShowTableLayout] = useState(false)
+  const [showTableLayout, setShowTableLayout] = useState(true)
   const activeStaff = forcedActiveStaff
   const [loyaltyCampaignCatalog, setLoyaltyCampaignCatalog] = useState([])
   const [saleTemplates, setSaleTemplates] = useState([])
@@ -3014,6 +3014,22 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const [preOrderLinkedCustomer, setPreOrderLinkedCustomer] = useState(null)
   const [showPreOrderCustomerLink, setShowPreOrderCustomerLink] = useState(false)
   const [manualCouponCode, setManualCouponCode] = useState('')
+
+  // Set default active channel (Garson'da masa öncelikli)
+  useEffect(() => {
+    if (channels.length > 0) {
+      const mChannel = channels.find(isMasaChannel)
+      const currentCh = channels.find(c => c.id === activeChannel)
+      
+      // Eger aktif kanal yoksa veya aktif kanal bir 'masa' kanali degilse, masa kanalina zorla
+      if (mChannel && (!currentCh || !isMasaChannel(currentCh))) {
+        setActiveChannel(mChannel.id)
+        setShowTableLayout(true)
+      } else if (!activeChannel) {
+        setActiveChannel(channels[0].id)
+      }
+    }
+  }, [channels, activeChannel])
 
   // Toast helper
   function showToast(msg, color='#10b981') {

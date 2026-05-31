@@ -91,4 +91,7 @@ dependencies {
 
   // Coroutines
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+  // ZXing for QR Code
+  implementation("com.google.zxing:core:3.5.3")
 }

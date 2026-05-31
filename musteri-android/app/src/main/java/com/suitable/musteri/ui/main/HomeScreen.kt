@@ -4,16 +4,22 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -22,30 +28,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.suitable.musteri.data.AppConfig
+import com.suitable.musteri.data.CustomerInfo
+import java.text.NumberFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     config: AppConfig?,
-    customerName: String,
+    customerInfo: CustomerInfo?,
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+    
     var showOrderModal by remember { mutableStateOf(false) }
     var orderModalConfig by remember { mutableStateOf<Map<String, Any>?>(null) }
     var showSocialModal by remember { mutableStateOf(false) }
     var socialModalConfig by remember { mutableStateOf<Map<String, Any>?>(null) }
+    var showQrModal by remember { mutableStateOf(false) }
+    var showSidebarMenu by remember { mutableStateOf(false) }
 
     val bgColor = try { Color(android.graphics.Color.parseColor(config?.branding?.get("backgroundColor") as? String ?: "#0F172A")) } catch (e: Exception) { Color(0xFF0F172A) }
-    val logoBgColor = try { 
-        val colorStr = config?.branding?.get("logoAreaBackgroundColor") as? String ?: "transparent"
-        if (colorStr == "transparent") Color.Transparent else Color(android.graphics.Color.parseColor(colorStr))
-    } catch (e: Exception) { Color.Transparent }
-    
     val bgImageUrl = config?.branding?.get("backgroundImageUrl") as? String
     val logoUrl = config?.branding?.get("logoUrl") as? String
+    val buttonShape = config?.branding?.get("buttonShape") as? String ?: "rounded"
 
     Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+        // Background Image
         if (!bgImageUrl.isNullOrBlank()) {
             AsyncImage(
                 model = bgImageUrl,
@@ -53,91 +63,171 @@ fun HomeScreen(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            // Fallback dark overlay if no image
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xAA000000)))
         }
 
+        // Top Content Layer
         Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Top Section (Logo and Welcome)
-            Box(
+            // Header Row: Points/QR (Left) and Hamburger Menu (Right)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .background(logoBgColor),
-                contentAlignment = Alignment.Center
+                    .padding(16.dp)
+                    .padding(top = 16.dp), // status bar padding approximation
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
+                // Left: Points & QR
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (!logoUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = logoUrl,
-                            contentDescription = "Logo",
-                            modifier = Modifier.size(120.dp).clip(CircleShape)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    Text(
-                        text = "Hoş Geldiniz,\n$customerName",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    // Stamp Indicator Mock
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Points Circle
+                    Box(
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFD32F2F)) // Red circle
+                            .border(2.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("3", color = Color.White, fontWeight = FontWeight.Bold)
-                        repeat(3) {
-                            Box(modifier = Modifier.size(30.dp, 10.dp).background(Color(0xFFA3E635), RoundedCornerShape(2.dp)))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("PUAN", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            val formatter = NumberFormat.getNumberInstance(Locale("tr", "TR"))
+                            val points = formatter.format(customerInfo?.pointsBalance ?: 0)
+                            Text(points, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
                         }
-                        repeat(2) {
-                            Box(modifier = Modifier.size(30.dp, 10.dp).background(Color(0xFFFCA5A5), RoundedCornerShape(2.dp)))
-                        }
-                        Text("2", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // QR Icon Circle
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .clickable { showQrModal = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.QrCode, contentDescription = "QR Code", tint = Color.Black, modifier = Modifier.size(30.dp))
+                    }
+                }
+
+                // Right: Menu Button
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1E1E1E))
+                            .clickable { showSidebarMenu = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White, modifier = Modifier.size(28.dp))
+                    }
+
+                    DropdownMenu(
+                        expanded = showSidebarMenu,
+                        onDismissRequest = { showSidebarMenu = false },
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        DropdownMenuItem(text = { Text("Hesabım") }, onClick = { showSidebarMenu = false })
+                        DropdownMenuItem(text = { Text("Kampanyalar") }, onClick = { showSidebarMenu = false; onNavigate("coupons") })
+                        DropdownMenuItem(text = { Text("Menü") }, onClick = { showSidebarMenu = false })
+                        DropdownMenuItem(text = { Text("Şubeler") }, onClick = { showSidebarMenu = false })
+                        DropdownMenuItem(text = { Text("Bize Ulaş") }, onClick = { showSidebarMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("Çıkış Yap") }, 
+                            onClick = { 
+                                showSidebarMenu = false
+                                sharedPref.edit().remove("customerId").apply()
+                                onNavigate("login")
+                            }
+                        )
                     }
                 }
             }
 
-            // Bottom Section (Grid Buttons)
-            val buttons = config?.homeButtons ?: emptyList()
-            Column(
+            // Logo
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                for (i in buttons.indices step 2) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(120.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        val btn1 = buttons[i]
-                        DynamicButton(btn1, Modifier.weight(1f)) {
-                            handleButtonClick(btn1, context, onNavigate) { modalType, cfg ->
-                                if (modalType == "order") { orderModalConfig = cfg; showOrderModal = true }
-                                if (modalType == "social") { socialModalConfig = cfg; showSocialModal = true }
-                            }
-                        }
-                        
-                        if (i + 1 < buttons.size) {
-                            val btn2 = buttons[i + 1]
-                            DynamicButton(btn2, Modifier.weight(1f)) {
-                                handleButtonClick(btn2, context, onNavigate) { modalType, cfg ->
+                if (!logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = "Logo",
+                        modifier = Modifier
+                            .size(220.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
+
+            // Welcome Banner
+            val welcomeText = if (customerInfo?.adSoyad.isNullOrBlank()) "Hoş Geldiniz" else "Hoş Geldiniz, ${customerInfo?.adSoyad}"
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFD32F2F)) // Red banner
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = welcomeText,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Grid Buttons Layer
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0x99000000)) // Semi-transparent overlay behind buttons for readability
+                    .padding(16.dp)
+            ) {
+                val buttons = config?.homeButtons ?: emptyList()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    for (i in buttons.indices step 2) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            val btn1 = buttons[i]
+                            DynamicButton(btn1, buttonShape, Modifier.weight(1f)) {
+                                handleButtonClick(btn1, context, onNavigate) { modalType, cfg ->
                                     if (modalType == "order") { orderModalConfig = cfg; showOrderModal = true }
                                     if (modalType == "social") { socialModalConfig = cfg; showSocialModal = true }
                                 }
                             }
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
+                            
+                            if (i + 1 < buttons.size) {
+                                val btn2 = buttons[i + 1]
+                                DynamicButton(btn2, buttonShape, Modifier.weight(1f)) {
+                                    handleButtonClick(btn2, context, onNavigate) { modalType, cfg ->
+                                        if (modalType == "order") { orderModalConfig = cfg; showOrderModal = true }
+                                        if (modalType == "social") { socialModalConfig = cfg; showSocialModal = true }
+                                    }
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -161,7 +251,6 @@ fun HomeScreen(
                 Button(
                     onClick = {
                         showOrderModal = false
-                        // Later: navigate to Masa Siparişi screen
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
@@ -192,27 +281,62 @@ fun HomeScreen(
             }
         }
     }
+
+    if (showQrModal) {
+        ModalBottomSheet(onDismissRequest = { showQrModal = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(32.dp).padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Sadakat QR Kodunuz", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                
+                val qrContent = customerInfo?.loyaltyMemberNo.takeIf { !it.isNullOrBlank() } ?: customerInfo?.telefon ?: "BILINMEYEN"
+                val qrBitmap = remember(qrContent) { generateQrCodeBitmap(qrContent, 600) }
+                
+                if (qrBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = qrBitmap.asImageBitmap(),
+                        contentDescription = "QR Code",
+                        modifier = Modifier.size(250.dp)
+                    )
+                } else {
+                    Text("QR Kod oluşturulamadı.", color = Color.Red)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(text = qrContent, fontSize = 16.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
 }
 
 @Composable
-fun DynamicButton(button: Map<String, Any>, modifier: Modifier, onClick: () -> Unit) {
-    val btnColor = try { Color(android.graphics.Color.parseColor(button["color"] as? String ?: "#3B82F6")) } catch (e: Exception) { Color(0xFF3B82F6) }
+fun DynamicButton(button: Map<String, Any>, shape: String, modifier: Modifier, onClick: () -> Unit) {
+    val btnColor = try { Color(android.graphics.Color.parseColor(button["color"] as? String ?: "#1E1E1E")) } catch (e: Exception) { Color(0xFF1E1E1E) }
     
+    val shapeModifier = when (shape) {
+        "square" -> RoundedCornerShape(4.dp)
+        "pill" -> RoundedCornerShape(50)
+        else -> RoundedCornerShape(16.dp)
+    }
+
     Card(
-        modifier = modifier.fillMaxHeight().clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.fillMaxHeight().clickable { onClick() }.shadow(4.dp, shapeModifier),
+        shape = shapeModifier,
         colors = CardDefaults.cardColors(containerColor = btnColor)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // If the icon field has a name from fontawesome, we would map it. For now, just show text.
             Text(
                 text = button["label"] as? String ?: "",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center
             )
         }
     }

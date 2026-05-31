@@ -10,7 +10,9 @@ import { logActivity } from '@/lib/activityLogger'
 import { isPublicDisplayPath } from '@/lib/publicDisplayRoutes'
 import { canAccessPath, getDefaultPathForScope } from '@/lib/workspace'
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext'
+import { isDesktopMode } from '@/lib/terminalIdentity'
 
+const DesktopTerminalShell = lazy(() => import('@/components/desktop/DesktopTerminalShell'))
 const Dashboard = lazy(() => import('@/components/pages/Dashboard'))
 const Suppliers = lazy(() => import('@/components/pages/Suppliers'))
 const Units = lazy(() => import('@/components/pages/Units'))
@@ -85,6 +87,7 @@ const PersonnelMobileAppPage = lazy(() => import('@/components/pages/PersonnelMo
 const KDS = lazy(() => import('@/components/pages/KDS'))
 const PickupScreen = lazy(() => import('@/components/pages/PickupScreen'))
 const QueueScreen = lazy(() => import('@/components/pages/QueueScreen'))
+const PublicQueueScreen = lazy(() => import('@/components/pages/PublicQueueScreen'))
 const ScreenFrame = lazy(() => import('@/components/pos/ScreenFrame'))
 const DesignDemo = lazy(() => import('@/components/pages/DesignDemo'))
 const TicketCategories = lazy(() => import('@/components/pages/TicketCategories'))
@@ -95,7 +98,7 @@ const QualityReports = lazy(() => import('@/components/pages/QualityReports'))
 const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -281,6 +284,16 @@ function AppShell() {
     }
   }, [location.pathname])
 
+  if (isDesktopMode()) {
+    return (
+      <PageErrorBoundary key="desktop-shell">
+        <Suspense fallback={<PageLoader />}>
+          <DesktopTerminalShell />
+        </Suspense>
+      </PageErrorBoundary>
+    )
+  }
+
   if (!isPublicDisplay && scope && location.pathname !== '/' && !canAccessPath(scope, location.pathname)) {
     return <Navigate to={defaultPath} replace />
   }
@@ -309,6 +322,7 @@ function AppShell() {
             <Route path="/kds" element={<WorkspaceBranchScope><WorkspaceGate><KDS /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup" element={<WorkspaceBranchScope><WorkspaceGate><PickupScreen /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/queue" element={<WorkspaceBranchScope><WorkspaceGate><QueueScreen /></WorkspaceGate></WorkspaceBranchScope>} />
+            <Route path="/sira-ekrani/:code" element={<PublicQueueScreen />} />
             <Route path="/pos-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><POS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/garson-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><Garson /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/kds-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><KDS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />

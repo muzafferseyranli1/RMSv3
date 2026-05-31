@@ -17,21 +17,26 @@ class ConfigRepository {
                 val request = QueryRequest(
                     table = "customer_app_config",
                     operation = "select",
-                    filters = mapOf("config_key" to "default")
+                    filters = listOf(mapOf("type" to "eq", "col" to "config_key", "val" to "default"))
                 )
                 val response = ApiClient.apiService.executeQuery(request)
                 
-                if (response.success && response.data != null && response.data.isNotEmpty()) {
-                    val row = response.data[0]
-                    val branding = row["branding"] as? Map<String, Any>
-                    val homeButtons = row["home_buttons"] as? List<Map<String, Any>>
-                    val active = row["active"] as? Boolean ?: true
+                if (response.error == null) {
+                    val dataList = response.data as? List<Map<String, Any>>
+                    if (dataList != null && dataList.isNotEmpty()) {
+                        val row = dataList[0]
+                        val branding = row["branding"] as? Map<String, Any>
+                        val homeButtons = row["home_buttons"] as? List<Map<String, Any>>
+                        val active = row["active"] as? Boolean ?: true
                     
-                    AppConfig(
-                        branding = branding,
-                        homeButtons = homeButtons,
-                        maintenanceMode = !active
-                    )
+                        AppConfig(
+                            branding = branding,
+                            homeButtons = homeButtons,
+                            maintenanceMode = !active
+                        )
+                    } else {
+                        null
+                    }
                 } else {
                     null
                 }

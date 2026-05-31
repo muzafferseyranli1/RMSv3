@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import api from '../../../utils/api';
+import { db, resolveImageUrl } from '@/lib/db';
 import toast from 'react-hot-toast';
 
 const PREDEFINED_BUTTON_TYPES = [
@@ -17,6 +16,8 @@ const PREDEFINED_BUTTON_TYPES = [
 
 export default function CustomerAppAdminSettings() {
   const [configId, setConfigId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Branding state
   const [branding, setBranding] = useState({
@@ -24,7 +25,8 @@ export default function CustomerAppAdminSettings() {
     logoUrl: '',
     backgroundImageUrl: '',
     backgroundColor: '#0f172a',
-    logoAreaBackgroundColor: 'transparent'
+    logoAreaBackgroundColor: 'transparent',
+    buttonShape: 'rounded'
   });
 
   // Buttons state (max 4)
@@ -35,53 +37,45 @@ export default function CustomerAppAdminSettings() {
     { id: 'btn4', type: 'kurumsal', label: 'Kurumsal', icon: 'fa-building', color: '#f59e0b', config: { url: '', text: '' } }
   ]);
 
-  const fetchConfig = async () => {
-    const res = await api.post('/api/query', {
-      table: 'customer_app_config',
-      filters: { config_key: 'default' }
-    });
-    return res.data?.[0];
-  };
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['customerAppConfig'],
-    queryFn: fetchConfig,
-    onSuccess: (data) => {
-      if (data) {
-        setConfigId(data.id);
-        if (data.branding) setBranding(data.branding);
-        if (data.home_buttons && data.home_buttons.length > 0) setButtons(data.home_buttons);
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const { data, error } = await db.from('customer_app_config').select('*').eq('config_key', 'default').maybeSingle();
+        if (data) {
+          setConfigId(data.id);
+          if (data.branding) setBranding(data.branding);
+          if (data.home_buttons && data.home_buttons.length > 0) setButtons(data.home_buttons);
+        }
+      } catch (err) {
+        console.error('Config loading error', err);
+      } finally {
+        setIsLoading(false);
       }
-    }
-  });
+    };
+    fetchConfig();
+  }, []);
 
-  const mutation = useMutation({
-    mutationFn: async (payload) => {
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const payload = { branding, home_buttons: buttons };
+      let res;
       if (configId) {
-        return api.post('/api/query', {
-          table: 'customer_app_config',
-          operation: 'update',
-          data: payload,
-          filters: { id: configId }
-        });
+        res = await db.from('customer_app_config').update(payload).eq('id', configId);
       } else {
-        return api.post('/api/query', {
-          table: 'customer_app_config',
-          operation: 'insert',
-          data: { ...payload, config_key: 'default' }
-        });
+        res = await db.from('customer_app_config').insert({ ...payload, config_key: 'default' });
       }
-    },
-    onSuccess: () => {
-      toast.success('Müşteri uygulaması ayarları başarıyla kaydedildi.');
-    },
-    onError: () => {
+      
+      if (res && res.error) {
+        toast.error('Ayarlar kaydedilirken bir hata oluştu: ' + res.error.message);
+      } else {
+        toast.success('Müşteri uygulaması ayarları başarıyla kaydedildi.');
+      }
+    } catch (err) {
       toast.error('Ayarlar kaydedilirken bir hata oluştu.');
+    } finally {
+      setIsSaving(false);
     }
-  });
-
-  const handleSave = () => {
-    mutation.mutate({ branding, home_buttons: buttons });
   };
 
   const updateButton = (index, field, value) => {
@@ -105,10 +99,10 @@ export default function CustomerAppAdminSettings() {
         <h1 className="text-2xl font-bold">Müşteri Uygulaması Ayarları (Ana Ekran)</h1>
         <button 
           onClick={handleSave}
-          disabled={mutation.isLoading}
+          disabled={isSaving}
           className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 disabled:opacity-50"
         >
-          {mutation.isLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+          {isSaving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
         </button>
       </div>
 
@@ -128,14 +122,41 @@ export default function CustomerAppAdminSettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Logo URL</label>
-            <input 
-              type="text" 
-              placeholder="https://..."
-              className="w-full border rounded p-2"
-              value={branding.logoUrl || ''}
-              onChange={e => setBranding({...branding, logoUrl: e.target.value})}
-            />
+            <label className="block text-sm font-medium mb-1">Logo Yükle</label>
+            <div className="flex items-center gap-4">
+              {branding.logoUrl && (
+                <img src={branding.logoUrl} alt="Logo" className="h-12 w-12 object-contain border rounded bg-gray-50" />
+              )}
+              <input 
+                type="file" 
+                accept="image/*"
+                className="w-full border rounded p-2"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const toastId = toast.loading('Logo yükleniyor...');
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const { uploadApiFile } = await import('@/lib/db');
+                    const uploadResult = await uploadApiFile(formData);
+                    const url = typeof uploadResult === 'string' 
+                      ? uploadResult 
+                      : (uploadResult?.url || uploadResult?.publicUrl || uploadResult?.public_url || uploadResult?.path || uploadResult?.fileUrl || uploadResult?.file_url || '');
+                    if (url) {
+                      const absoluteUrl = resolveImageUrl(url);
+                      setBranding({ ...branding, logoUrl: absoluteUrl });
+                      toast.success('Logo yüklendi', { id: toastId });
+                    } else {
+                      throw new Error('Geçersiz yanıt');
+                    }
+                  } catch (err) {
+                    toast.error('Logo yüklenemedi: ' + err.message, { id: toastId });
+                  }
+                }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Mevcut URL: {branding.logoUrl}</p>
           </div>
 
           <div>
@@ -158,14 +179,54 @@ export default function CustomerAppAdminSettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Sayfa Zemin Resmi (URL)</label>
-            <input 
-              type="text" 
-              placeholder="https://..."
-              className="w-full border rounded p-2"
-              value={branding.backgroundImageUrl || ''}
-              onChange={e => setBranding({...branding, backgroundImageUrl: e.target.value})}
-            />
+            <label className="block text-sm font-medium mb-1">Buton Şekli</label>
+            <select
+              className="w-full border rounded p-2 bg-white"
+              value={branding.buttonShape || 'rounded'}
+              onChange={e => setBranding({ ...branding, buttonShape: e.target.value })}
+            >
+              <option value="square">Kare (Square)</option>
+              <option value="rounded">Yuvarlatılmış (Rounded)</option>
+              <option value="pill">Tam Oval (Pill)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Sayfa Zemin Resmi Yükle</label>
+            <div className="flex items-center gap-4">
+              {branding.backgroundImageUrl && (
+                <img src={branding.backgroundImageUrl} alt="Zemin" className="h-12 w-12 object-cover border rounded bg-gray-50" />
+              )}
+              <input 
+                type="file" 
+                accept="image/*"
+                className="w-full border rounded p-2"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const toastId = toast.loading('Zemin resmi yükleniyor...');
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const { uploadApiFile } = await import('@/lib/db');
+                    const uploadResult = await uploadApiFile(formData);
+                    const url = typeof uploadResult === 'string' 
+                      ? uploadResult 
+                      : (uploadResult?.url || uploadResult?.publicUrl || uploadResult?.public_url || uploadResult?.path || uploadResult?.fileUrl || uploadResult?.file_url || '');
+                    if (url) {
+                      const absoluteUrl = resolveImageUrl(url);
+                      setBranding({ ...branding, backgroundImageUrl: absoluteUrl });
+                      toast.success('Zemin resmi yüklendi', { id: toastId });
+                    } else {
+                      throw new Error('Geçersiz yanıt');
+                    }
+                  } catch (err) {
+                    toast.error('Zemin resmi yüklenemedi: ' + err.message, { id: toastId });
+                  }
+                }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Mevcut URL: {branding.backgroundImageUrl}</p>
           </div>
 
           <div>

@@ -8,14 +8,14 @@ import retrofit2.http.POST
 data class QueryRequest(
     val table: String,
     val operation: String = "select",
-    val filters: Map<String, Any>? = null,
+    val select: String = "*",
+    val filters: List<Map<String, Any>>? = null,
     val data: Map<String, Any>? = null
 )
 
 data class QueryResponse(
-    val success: Boolean,
-    val data: List<Map<String, Any>>? = null,
-    val error: String? = null
+    val data: Any? = null,
+    val error: Map<String, Any>? = null
 )
 
 interface ApiService {
@@ -24,7 +24,7 @@ interface ApiService {
 }
 
 object ApiClient {
-    private const val BASE_URL = "https://rmsv3-production.up.railway.app/"
+    private const val BASE_URL = "https://rms-api-production-219d.up.railway.app/"
 
     val apiService: ApiService by lazy {
         Retrofit.Builder()

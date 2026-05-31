@@ -27,6 +27,7 @@ fun LoginScreen(
 ) {
     var phone by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var showNameField by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -69,22 +70,45 @@ fun LoginScreen(
 
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = { phone = it },
+                    onValueChange = { phone = it.take(10) },
                     label = { Text("Telefon Numarası") },
+                    placeholder = { Text("5xx-xxx xx xx") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        cursorColor = Color.Black,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color.Gray,
+                        focusedPlaceholderColor = Color.LightGray,
+                        unfocusedPlaceholderColor = Color.LightGray,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = Color.Gray
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                if (showNameField) {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Ad Soyad (İlk girişte zorunludur)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Ad Soyad (İlk girişte zorunludur)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            cursorColor = Color.Black,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.Gray,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = Color.Gray
+                        )
+                    )
+                }
 
                 if (errorMsg != null) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -104,23 +128,34 @@ fun LoginScreen(
                         errorMsg = null
                         scope.launch {
                             try {
-                                val findReq = QueryRequest(
-                                    table = "musteriler",
-                                    operation = "select",
-                                    filters = mapOf("telefon" to phone)
-                                )
-                                val response = ApiClient.apiService.executeQuery(findReq)
-                                
-                                if (response.success && response.data != null && response.data.isNotEmpty()) {
-                                    // User exists
-                                    val customerId = response.data[0]["id"].toString()
+                                if (!showNameField) {
+                                    val findReq = QueryRequest(
+                                        table = "musteriler",
+                                        operation = "select",
+                                        filters = listOf(mapOf("type" to "eq", "col" to "telefon", "val" to phone))
+                                    )
+                                    val response = ApiClient.apiService.executeQuery(findReq)
                                     
-                                    val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
-                                    sharedPref.edit().putString("customerId", customerId).apply()
-                                    
-                                    onLoginSuccess(customerId)
+                                    if (response.error == null) {
+                                        val dataList = response.data as? List<Map<String, Any>>
+                                        if (dataList != null && dataList.isNotEmpty()) {
+                                            // User exists
+                                            val customerId = dataList[0]["id"].toString()
+                                            
+                                            val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+                                            sharedPref.edit().putString("customerId", customerId).apply()
+                                            
+                                            onLoginSuccess(customerId)
+                                        } else {
+                                            // User doesn't exist, show name field
+                                            showNameField = true
+                                            errorMsg = "Lütfen ad soyad girerek kaydınızı tamamlayın."
+                                        }
+                                    } else {
+                                        errorMsg = "Sorgu başarısız: ${response.error["message"]}"
+                                    }
                                 } else {
-                                    // User doesn't exist, create new
+                                    // We are in register mode
                                     if (name.isBlank()) {
                                         errorMsg = "Lütfen ad soyadınızı girin (Yeni kayıt)"
                                         isLoading = false
@@ -136,14 +171,19 @@ fun LoginScreen(
                                         )
                                     )
                                     val createRes = ApiClient.apiService.executeQuery(createReq)
-                                    if (createRes.success && createRes.data != null && createRes.data.isNotEmpty()) {
-                                        val newCustomerId = createRes.data[0]["id"].toString()
-                                        val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
-                                        sharedPref.edit().putString("customerId", newCustomerId).apply()
-                                        
-                                        onLoginSuccess(newCustomerId)
+                                    if (createRes.error == null) {
+                                        val dataList = createRes.data as? List<Map<String, Any>>
+                                        if (dataList != null && dataList.isNotEmpty()) {
+                                            val newCustomerId = dataList[0]["id"].toString()
+                                            val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+                                            sharedPref.edit().putString("customerId", newCustomerId).apply()
+                                            
+                                            onLoginSuccess(newCustomerId)
+                                        } else {
+                                            errorMsg = "Kayıt tamamlandı ancak kullanıcı ID'si alınamadı."
+                                        }
                                     } else {
-                                        errorMsg = "Kayıt işlemi başarısız: ${createRes.error}"
+                                        errorMsg = "Kayıt işlemi başarısız: ${createRes.error["message"]}"
                                     }
                                 }
                             } catch (e: Exception) {

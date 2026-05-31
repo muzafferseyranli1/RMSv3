@@ -16,7 +16,7 @@ export default defineConfig({
     outDir: 'dist-desktop-web',
     emptyOutDir: false,
     rollupOptions: {
-      input: path.resolve(__dirname, 'desktop.html'),
+      input: path.resolve(__dirname, 'index.html'),
     },
   },
 })

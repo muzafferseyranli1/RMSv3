@@ -12,7 +12,6 @@ const DESKTOP_PORT = Number(process.env.DESKTOP_SERVER_PORT || 4173)
 const HOST = '127.0.0.1'
 const DIST_DIR = path.join(__dirname, '..', 'dist-desktop-web')
 const INDEX_FILE_CANDIDATES = [
-  path.join(DIST_DIR, 'desktop.html'),
   path.join(DIST_DIR, 'index.html'),
 ]
 

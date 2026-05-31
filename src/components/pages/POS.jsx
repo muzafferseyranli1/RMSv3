@@ -3448,15 +3448,19 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   useEffect(() => {
     if (!channels.length) return
     const currentChannel = channels.find(channel => channel.id === activeChannel) || null
-    if (currentChannel && isPrimaryPosSalesChannel(currentChannel)) return
-    if (quickSaleChannel?.id) {
-      setActiveChannel(quickSaleChannel.id)
-      return
+    if (channels.length > 0) {
+      const qsChannel = channels.find(isQuickSaleChannel)
+      const currentCh = channels.find(c => c.id === activeChannel)
+      
+      // Eger aktif kanal yoksa veya masa kanali seciliyse (POS modunda hizli satis onceliklidir), hizli satisa zorla
+      if (qsChannel && (!currentCh || isMasaChannel(currentCh))) {
+        setActiveChannel(qsChannel.id)
+        setShowTableLayout(false)
+      } else if (!activeChannel) {
+        setActiveChannel(channels[0].id)
+      }
     }
-    if (headerChannels.length > 0) {
-      setActiveChannel(headerChannels[0].id)
-    }
-  }, [channels, headerChannels, activeChannel, quickSaleChannel])
+  }, [channels, activeChannel])
 
   useEffect(() => {
     if (!branchLocked || !workspaceBranchId) return

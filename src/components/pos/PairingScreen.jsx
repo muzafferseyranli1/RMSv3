@@ -95,7 +95,19 @@ export default function PairingScreen({ onComplete }) {
     }
     const deviceType = String(terminal.device_type || '').toLowerCase().trim()
     const screenModeRaw = String(terminal.screen_mode || '').toLowerCase().trim()
-    const screenMode = DEVICE_TO_SCREEN[deviceType] || DEVICE_TO_SCREEN[screenModeRaw] || 'pos'
+    
+    let screenMode = DEVICE_TO_SCREEN[deviceType] || DEVICE_TO_SCREEN[screenModeRaw]
+    if (!screenMode) {
+      if (deviceType.includes('garson') || deviceType.includes('masa') || screenModeRaw.includes('garson') || screenModeRaw.includes('masa')) {
+        screenMode = 'garson'
+      } else if (deviceType.includes('kds') || screenModeRaw.includes('kds')) {
+        screenMode = 'kds'
+      } else if (deviceType.includes('pickup') || screenModeRaw.includes('pickup')) {
+        screenMode = 'pickup'
+      } else {
+        screenMode = 'pos'
+      }
+    }
 
     const payload = {
        terminalId: terminal.id,

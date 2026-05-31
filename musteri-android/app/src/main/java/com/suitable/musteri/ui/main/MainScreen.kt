@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavKey
 import com.suitable.musteri.data.AppConfig
+import com.suitable.musteri.data.CustomerInfo
+import com.suitable.musteri.data.CustomerRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,6 +25,14 @@ fun MainScreen(
     val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
     var customerId by remember { mutableStateOf(sharedPref.getString("customerId", null)) }
     var currentRoute by remember { mutableStateOf(if (customerId != null) "home" else "login") }
+    var customerInfo by remember { mutableStateOf<CustomerInfo?>(null) }
+    
+    LaunchedEffect(customerId) {
+        if (customerId != null) {
+            val repo = CustomerRepository()
+            customerInfo = repo.getCustomerInfo(customerId!!)
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -45,7 +55,7 @@ fun MainScreen(
                     "home" -> {
                         HomeScreen(
                             config = config,
-                            customerName = "", // We would need to fetch the customer name, but for now we'll just display config or leave blank until full fetch
+                            customerInfo = customerInfo,
                             onNavigate = { dest -> currentRoute = dest }
                         )
                     }
