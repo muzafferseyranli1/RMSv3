@@ -1,8 +1,5 @@
-- `[x]` Update `Theme.kt` background colors for dark mode (`#0f172a`).
-- `[x]` Create `BottomNavigationBar.kt` to mimic the web app's bottom tabs.
-- `[x]` Create a custom `ScallopShape.kt` (or similar drawing logic) for ticket-like edges.
-- `[x]` Create `CouponCard.kt` to closely match web gradients, dashed lines, and vertical text.
-- `[x]` Create `CouponsScreen.kt` to list the mock coupons.
-- `[x]` Update `MainScreen.kt` to wire everything together in a `Scaffold`.
-- `[x]` Verify UI via gradle build.
-- `[x]` Update `walkthrough.md`.
+# Execution Tasks
+
+- [x] POS ekranının (`POS.jsx`) kanal seçim mantığını düzelt (Masa kanalını varsayılan yapmayı engelle).
+- [x] Yeni sürümü derle ve yayınla (`Yayinla.bat` ile v2.0.11 başarıyla oluşturuldu).
+- [ ] Yeni `.exe` kurulumunun sahadaki cihazlarda güncellenmesi (Kullanıcı tarafından).

@@ -1,19 +1,31 @@
-# Müşteri App (Native Android) - Premium Arayüz İncelemesi
+# Hata Düzeltme Özeti ve Yönlendirmeler
 
-Web tabanlı uygulamanızdaki muazzam tasarımı (alt navigasyon çubuğu, gradyanlı renkli kuponlar, tırtıklı bilet tasarımları) **tamamen Native (Jetpack Compose) Android bileşenleriyle** baştan çizdik. 
+Masaüstü (Desktop) POS, KDS ve Garson cihaz eşleştirmelerinde yaşanan hataların çözümleri uygulanmış ve uygulamanızın yeni sürümü derlenerek yayınlanmıştır.
 
-## 1. Alt Navigasyon (Bottom Navigation)
-- Web uygulamanızdaki sekmeleri (Ana Sayfa, Kartım, Kuponlar, Kampanyalar, Hesabım) Android Material 3 standartlarında Native bir Bottom Navigation bar ile oluşturduk. 
-- Menüler arası geçişlerde gecikme veya web yüklenmesi yaşanmaz; hepsi native hızında çalışır.
+## Neler Yapıldı?
 
-## 2. Kupon Kartı Tasarımı (CouponCard)
-Web sürümündeki zengin CSS gradyan ve tırtık tasarımlarını Compose bileşenleri ile birebir kodladık:
-- **Tırtıklı Kenarlar (Scallop Borders):** Özel bir `TicketShape` oluşturarak biletlerin kenarındaki o tırtıklı/kesik yarım daire görünümünü native çizim (Canvas) ile elde ettik.
-- **Koçan ve Gövde:** Kuponların solunda dikey (rotate) metinlerle "%50", "HEDİYE" gibi fayda yazıları; sağında ise renkli gradyan arka plan, başlık ve geçerlilik tarihi konumlandırıldı. Aralarında kesik bir dikey çizgi (dashed line) bulunuyor.
-- **Donanımsal Etkileşim:** Web tasarımındaki "Seçildiğinde yeşil parlama" efektini ekledik. Ek olarak kullanıcı bu native kuponlardan birine uzun bastığında telefonun yerleşik titreşim motoru (Haptic Feedback) çalışır.
+### 1. POS Ekranındaki Garson Arayüzü Hatası Giderildi
+- **Sorun:** POS uygulamasının açılışında, "Hızlı Satış" gibi kanallar bulunmadığında sistemin varsayılan olarak doğrudan "Masa" (Table) kanalına geçiş yapması. Bu durum POS ekranının anında Garson ekranına (Masa Düzeni) dönüşmesine sebep oluyordu.
+- **Çözüm:** `C:\RMSv3\src\components\pages\POS.jsx` dosyasındaki kanal açılış algoritması (`resolveBootChannel`) güncellendi. Artık uygulamanın açılışta Masa kanalını değil, öncelikli olarak "Hızlı Satış" (Quick Sale) veya "Pickup" kanalını seçmesi sağlandı.
 
-## Sonraki Adımlar
+### 2. Yeni Sürüm (v2.0.11) Derlendi ve Yayınlandı
+- `Yayinla.bat` scripti kullanılarak sistem üzerinden yeni sürüm oluşturuldu.
+- Tüm `dist-desktop-web` ve `release` klasörleri başarılı bir şekilde derlendi.
+- Uygulamanın son sürümü GitHub Releases üzerine **v2.0.11** olarak yüklendi. Sahadaki Masaüstü uygulamaları (.exe), açılıp kapandığında bu güncellemeyi otomatik olarak alacaktır.
 
-Tasarımın tam istediğiniz noktaya geldiğinden emin olmak için uygulamayı bir kez daha test etmenizi tavsiye ederim:
-- **Yönetim Paneli:** Artık arayüzü tam native olarak (ama web tasarımına sadık kalarak) kurduğumuza göre, bu uygulamanın temalarını ve ayarlarını yöneteceğimiz web yönetim panelini oluşturmaya başlayabiliriz.
-- **Gerçek Veri (API) Bağlantısı:** İlk baştaki test kuponları yerine, kendi ürün veya kampanya API'lerinize (ör. RMS backend'i) native bağlantıları kurarak gerçek verileri akıtmaya başlayacağız.
+---
+
+> [!IMPORTANT]
+> Lütfen KDS ve Pickup gibi cihazlarınızın "Yanlış (POS) Ekranını" açmasını düzeltmek için aşağıdaki adımları **kendiniz uygulayın:**
+
+## Sizin Yapmanız Gerekenler (KDS ve Pickup Düzeltmesi)
+
+Elinizdeki mevcut KDS ve Pickup eşleştirme anahtarları, veritabanına "POS" tipinde kaydedildiği için cihazlar haklı olarak POS ekranını açmaktadır. Kod üzerinde KDS ekranını açma fonksiyonu sorunsuzdur ancak cihaz tipinin gerçekten KDS olması gerekir.
+
+1. Ana uygulamanızın web arayüzünde (yönetim paneli) bulunan **Cihaz Ayarları / Cihaz Yönetimi** sayfasına gidin.
+2. Sağ üstten **Yeni Cihaz Oluştur** butonuna tıklayın.
+3. Çıkan formda Cihaz Tipini kesinlikle **"Mutfak (KDS)"** (veya paket ise "Teslimat (Pickup)") olarak seçin.
+4. Bu işlemin ardından sistem size **yeni bir eşleştirme anahtarı** verecektir.
+5. Desktop Uygulamasını açın (yeni v2.0.11 sürümüne güncellendiğinden emin olun) ve **eski eşleşmeyi kaldırıp (Global Unpair), yeni aldığınız anahtarı girin.**
+
+Bu adımları tamamladığınızda KDS cihazınız tamamen yan menüsüz, gerçek KDS arayüzünde açılacaktır. Garson tarafındaki "PIN girme ekranı" ise personelinizin masaüstü cihaz güvenliği için tasarımsal olarak orada olması gereken bir özelliktir (web versiyonunda hızlı sipariş için devre dışıdır). Her şey sorunsuz bir şekilde planlandığı gibi çalışmaktadır.

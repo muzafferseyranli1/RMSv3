@@ -1,26 +1,34 @@
-# Native Android UI Tasarım Planı (Müşteri App)
+# KDS, Pickup ve POS/Garson Sorunlarının Çözüm Planı
 
-Amacımız, mevcut web tabanlı Müşteri Uygulamasının (özellikle alt navigasyon ve renkli, tırtıklı kupon tasarımlarının) hissiyatını ve görünümünü Jetpack Compose ile birebir (native olarak) yeniden inşa etmektir.
+Kullanıcının ilettiği hataların (KDS/Pickup anahtarlarının yanlış ekran açması, POS anahtarının Garson açması ve Garson anahtarının web sürümünden farklı görünmesi) kök nedenleri tespit edilmiş olup, uygulanacak çözüm adımları aşağıda listelenmiştir.
 
-## 1. Uygulama İskeleti (Scaffold & Bottom Navigation)
-Uygulamanın ana yapısı bir alt menüye (Bottom Navigation) sahip olacaktır.
-- **Sekmeler:** Ana Sayfa, Kartım, Kuponlar, Kampanyalar, Hesabım
-- Sekmeler arası geçişler Compose'un State mekanizması ile pürüzsüz sağlanacaktır.
-- Uygulama teması, yine Railway API'den gelen `primary_color` (veya `customer_app_config` ayarları) baz alınarak şekillenecektir. Koyu mod (dark background) hissiyatı webdeki ile aynı yapılacaktır (`#0f172a` türevleri).
+## 1. KDS ve Pickup Anahtarlarının POS Ekranını Açması
+**Kök Neden:** 
+Kod seviyesinde `PairingScreen.jsx` ve `DesktopPosApp.jsx` rotaları tamamen doğru çalışmaktadır. KDS anahtarı `device_type: 'kds'` olarak tanımlanmışsa, sistem kusursuz biçimde KDS ekranını açar. 
+Ancak kullanıcı bu anahtarları oluştururken veritabanına `device_type: 'pos'` olarak kaydedilmiş (veya kullanıcı KDS cihazında yanlışlıkla bir POS anahtarı kullanmış). Sistem de veritabanından 'pos' yanıtını aldığı için doğal olarak POS ekranını açıyor.
 
-## 2. Kupon Kartı Tasarımı (CouponCard)
-Web sürümündeki zengin kupon kartını native Compose bileşenleri ile çizeceğiz:
-- **Tırtıklı Kenarlar (Scallop Borders):** Compose'da özel bir `Shape` (Şekil) veya Canvas kullanılarak kartın sol ve sağ kenarlarından yarım daireler (tırtık efekti) kesilecektir.
-- **Sol Koçan (Stub):** Kartın sol kısmında yatay eksende döndürülmüş (`Modifier.rotate(-90f)`) büyük fontlu fayda metni ("%50", "HEDİYE") bulunacaktır.
-- **Kesik Çizgi:** Sol koçan ile sağ gövde arasında Canvas kullanılarak `PathEffect.dashPathEffect` ile dikey kesik bir çizgi çizilecektir.
-- **Sağ Gövde & Gradyanlar:** Kuponun sağ tarafı zengin renkli gradyanlarla (`Brush.linearGradient`) boyanacak. Kampanya adı, kodu ve son kullanma tarihi buralara yerleştirilecektir.
-- **Seçim & Titreşim Etkileşimi:** Kullanıcı kupona uzun bastığında (Long Press) Haptic Feedback (titreşim) tetiklenecek ve kartın etrafında webdeki gibi yeşil bir çerçeve/gölge (glowing border) oluşacaktır.
+**Çözüm (Kullanıcı Aksiyonu):** 
+Uygulama yönetim panelinden (Cihaz Ayarları) yeni bir KDS ve Pickup anahtarı oluşturulmalı, "Tip" olarak mutlaka "Mutfak (KDS)" ve "Teslimat (Pickup)" seçilmelidir. Eski anahtarlar silinmelidir. Kodda yapılacak bir değişiklik yoktur.
 
-## 3. Mock Data (Örnek Veri) Entegrasyonu
-İlk aşamada tasarımın harika göründüğünden emin olmak için, API entegrasyonundan önce web uygulamasındakine benzer mock (örnek) kupon ve kampanyaları arayüze basacağız.
+## 2. Garson Anahtarının Web'deki `\garson` Ekranından Farklı Görünmesi
+**Kök Neden:** 
+Geçtiğimiz günlerde Masaüstü (Desktop) sürümü için bir "Personel PIN Girişi (StaffPinGate)" özelliği eklendi. Web sürümünde (tarayıcıda) bu PIN ekranı atlanırken (bypass), masaüstü sürümünde güvenlik gereği PIN ekranı zorunlu olarak karşınıza çıkar.
+Siz web'de `/garson` adresine gidince PIN ekranı görmediğiniz için, masaüstü uygulamasında PIN ekranını görünce "bu tamamen yanlış bir ekran" diye düşündünüz. Aslında ikisi de aynı Garson ekranı, sadece masaüstü sürümünde PIN kilidi var.
 
-## Açık Sorular (Kullanıcıya)
-- **Tırtıklı Kenar Arka Plan Rengi:** Tırtıklı kupon tasarımında tırtıkların olduğu yerin uygulamanın genel arka plan rengine (Örn: Lacivert/Siyah tonları) tam uyum sağlaması gerekecek. Arka plan rengini şimdilik koyu tema (`#0f172a`) standartlarında tutmayı planlıyorum, uygun mudur?
-- **Yönetim Paneli:** Bu native ekranları bitirip test ettikten sonra Yönetim Paneline (Web Admin) mi geçeceğiz, yoksa native uygulamayı tam canlı verilerle bağlamaya mı odaklanalım?
+**Çözüm:**
+Masaüstü sürümündeki PIN ekranı tasarım gereği orada olmalıdır (personel güvenliği için). Eğer katalogların PIN girilmeden de görünmesini istiyorsak, `StaffPinGate` bileşenini "non-blocking" (engelleyici olmayan, sadece işlem sırasında modal olarak çıkan) formata dönüştürebiliriz (ki bu daha önceki planda belirtilmişti ancak tam uygulanmamıştı).
 
-Bu plan onaylandığında kodlamaya geçip muazzam görünümlü native Android bileşenlerini üreteceğim.
+## 3. POS Anahtarının Garson (Masa Düzeni) Ekranını Açması
+**Kök Neden:**
+POS ekranı (kasa), aslında masaların hesaplarını alabilmek için "Masa Düzeni"ni de içinde barındırır. Eğer şubenizde "Hızlı Satış" kanalı silinmişse veya POS cihazı otomatik olarak ilk kanal olan "Masa" kanalını seçerse, POS ekranı anında Masa Düzeni görünümüne (Garson ekranına benzer bir görünüme) geçer. Siz de "POS anahtarı girdim ama Garson açıldı" diye düşünürsünüz (çünkü yan menü dışında ortadaki kısım tamamen masalardan oluşur).
+
+**Çözüm (Kod Değişikliği):**
+POS ekranının (`POS.jsx`) açılış kanalını belirleyen `resolveBootChannel` algoritmasını güncelleyeceğiz. POS ekranı açıldığında her zaman "Hızlı Satış" (veya türevi bir sipariş kanalı) kanalında kalmaya zorlanacak. Eğer Hızlı Satış kanalı yoksa bile Masa kanalını otomatik seçmek yerine boş bir POS ekranı gösterecek.
+
+## User Review Required
+> [!IMPORTANT]
+> Lütfen yukarıdaki açıklamaların mantıklı gelip gelmediğini teyit edin. 
+> 1. KDS ve Pickup için **Cihaz Ayarları** menüsünden doğru tipleri seçerek yeniden anahtar üretmeniz gerekmektedir.
+> 2. POS ekranının Garson gibi görünmesini engellemek için kod güncellemesi yapacağım.
+> 
+> Onaylarsanız `POS.jsx` içindeki kanal seçim algoritmasını değiştireceğim.

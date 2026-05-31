@@ -7687,3 +7687,11 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Haptic feedback on long-press coupon activation.
 - Created HANDOFF.md in the musteri-android directory.
 - Copied AI artifacts (implementation_plan.md, task.md, walkthrough.md) to the /docs/ folder per docs.md rules.
+
+## 2026-05-31T03:21:29Z - Desktop POS Screen Fixes & Release v2.0.11
+- Fixed POS.jsx channel selection logic to prevent the POS terminal from defaulting to the "Masa" (Garson) layout on boot.
+- Updated the esolveBootChannel method to prioritize "Hızlı Satış" (Quick Sale) and "Pickup" over "Masa".
+- Built and published the new desktop release v2.0.11 using Yayinla.bat.
+- Explained to the user why the Garson terminal showed a PIN Gate (due to new security features in Desktop mode).
+- Explained to the user that KDS and Pickup pairing issues require regenerating the keys with the correct device_type in the web panel.
+- Copied AI artifacts (implementation_plan.md, task.md, walkthrough.md) to the /docs/ folder per docs.md rules.
