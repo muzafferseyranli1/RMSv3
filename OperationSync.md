@@ -1,4 +1,4 @@
-ï»¿# OperationSync
+# OperationSync
 
 Yururluk tarihi: `2026-05-09`  
 Status: `active`  
@@ -7695,3 +7695,18 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Explained to the user why the Garson terminal showed a PIN Gate (due to new security features in Desktop mode).
 - Explained to the user that KDS and Pickup pairing issues require regenerating the keys with the correct device_type in the web panel.
 - Copied AI artifacts (implementation_plan.md, task.md, walkthrough.md) to the /docs/ folder per docs.md rules.
+
+## Entry - Desktop Pairing & Routing Architecture Fix
+- Timestamp: 2026-05-31T11:30:14+03:00
+- Agent: Antigravity
+- Task: Fix desktop terminal pairing flow — wrong screen routing, missing variables, pair_key removal
+- Files Changed:
+  - migrations/022_fix_terminal_screen_mode.sql (YENÝ)
+  - schema-railway-master.sql
+  - src/components/pages/DeviceSettings.jsx
+  - src/components/pos/PairingScreen.jsx
+  - src/components/pages/KioskBig.jsx
+  - src/components/pages/KioskTablet.jsx
+  - src/components/pages/KioskManagementDesktop.jsx
+- Decisions: pair_key tamamen kaldýrýldý, activation_code tek anahtar oldu, screen_mode constraint geniþletildi
+- Next Step: Kullanýcý desktop build yaparak test etmeli

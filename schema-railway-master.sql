@@ -1036,8 +1036,11 @@ CREATE TABLE IF NOT EXISTS public.pos_terminals (
   terminal_id UUID NOT NULL,
   branch_id UUID NOT NULL,
   activation_code TEXT NOT NULL,
-  terminal_role TEXT DEFAULT 'slave'::text NOT NULL,
+  device_type TEXT DEFAULT 'pos',
   screen_mode TEXT DEFAULT 'pos'::text NOT NULL,
+  is_master BOOLEAN DEFAULT false NOT NULL,
+  terminal_role TEXT DEFAULT 'slave'::text NOT NULL,
+  config_data JSONB DEFAULT '{}'::jsonb NOT NULL,
   terminal_name TEXT,
   last_seen_at TIMESTAMPTZ,
   app_version TEXT,
@@ -1049,7 +1052,7 @@ CREATE TABLE IF NOT EXISTS public.pos_terminals (
   CONSTRAINT pos_terminals_terminal_id_key UNIQUE (terminal_id),
   CONSTRAINT pos_terminals_activation_code_key UNIQUE (activation_code),
   CONSTRAINT pos_terminals_terminal_role_check CHECK (terminal_role = ANY (ARRAY['master'::text, 'slave'::text])),
-  CONSTRAINT pos_terminals_screen_mode_check CHECK (screen_mode = ANY (ARRAY['pos'::text, 'garson'::text, 'pos-masa'::text, 'pos-masalar'::text]))
+  CONSTRAINT pos_terminals_screen_mode_check CHECK (screen_mode = ANY (ARRAY['pos'::text, 'garson'::text, 'pos-masa'::text, 'pos-masalar'::text, 'kds'::text, 'pickup'::text]))
 );
 
 CREATE TABLE IF NOT EXISTS public.price_changes (

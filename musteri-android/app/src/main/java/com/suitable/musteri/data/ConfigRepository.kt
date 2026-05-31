@@ -5,9 +5,8 @@ import kotlinx.coroutines.withContext
 import android.util.Log
 
 data class AppConfig(
-    val brandColor: String,
-    val headerLogo: String?,
-    val loyaltyEnabled: Boolean,
+    val branding: Map<String, Any>?,
+    val homeButtons: List<Map<String, Any>>?,
     val maintenanceMode: Boolean
 )
 
@@ -15,25 +14,23 @@ class ConfigRepository {
     suspend fun getAppConfig(): AppConfig? {
         return withContext(Dispatchers.IO) {
             try {
-                val query = "SELECT * FROM customer_app_config LIMIT 1"
-                val response = ApiClient.apiService.executeQuery(QueryRequest(query = query))
+                val request = QueryRequest(
+                    table = "customer_app_config",
+                    operation = "select",
+                    filters = mapOf("config_key" to "default")
+                )
+                val response = ApiClient.apiService.executeQuery(request)
                 
                 if (response.success && response.data != null && response.data.isNotEmpty()) {
                     val row = response.data[0]
-                    val themeConfig = row["theme_config"] as? Map<*, *>
-                    val brandColor = themeConfig?.get("primary_color") as? String ?: "#000000"
-                    val headerLogo = themeConfig?.get("logo_url") as? String
-                    
-                    val features = row["features_enabled"] as? Map<*, *>
-                    val loyaltyEnabled = features?.get("loyalty_program") as? Boolean ?: false
-                    
-                    val maintenanceMode = row["maintenance_mode"] as? Boolean ?: false
+                    val branding = row["branding"] as? Map<String, Any>
+                    val homeButtons = row["home_buttons"] as? List<Map<String, Any>>
+                    val active = row["active"] as? Boolean ?: true
                     
                     AppConfig(
-                        brandColor = brandColor,
-                        headerLogo = headerLogo,
-                        loyaltyEnabled = loyaltyEnabled,
-                        maintenanceMode = maintenanceMode
+                        branding = branding,
+                        homeButtons = homeButtons,
+                        maintenanceMode = !active
                     )
                 } else {
                     null

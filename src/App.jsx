@@ -79,6 +79,7 @@ const KioskBig = lazy(() => import('@/components/pages/KioskBig'))
 const KioskTablet = lazy(() => import('@/components/pages/KioskTablet'))
 const KioskBackupPreview = lazy(() => import('@/components/pages/KioskBackupPreview'))
 const KioskManagementDesktop = lazy(() => import('@/components/pages/KioskManagementDesktop'))
+const CustomerAppAdminSettings = lazy(() => import('@/components/pages/CustomerAppAdminSettings'))
 const CustomerMobileAppPage = lazy(() => import('@/components/pages/CustomerMobileAppPage'))
 const PersonnelMobileAppPage = lazy(() => import('@/components/pages/PersonnelMobileAppPage'))
 const KDS = lazy(() => import('@/components/pages/KDS'))
@@ -333,6 +334,7 @@ function AppShell() {
               <Route path="/units" element={<Units />} />
               <Route path="/company" element={<Company />} />
               <Route path="/products" element={<SaleItems />} />
+              <Route path="/customer-app-settings" element={<CustomerAppAdminSettings />} />
               <Route path="/combo-menu" element={<ComboMenu />} />
               <Route path="/combo-menu-preview" element={<ComboMenuBackofficePreview />} />
               <Route path="/semi-products" element={<SemiProducts />} />

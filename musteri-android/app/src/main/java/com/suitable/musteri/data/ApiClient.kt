@@ -6,8 +6,10 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 data class QueryRequest(
-    val query: String,
-    val params: List<Any> = emptyList()
+    val table: String,
+    val operation: String = "select",
+    val filters: Map<String, Any>? = null,
+    val data: Map<String, Any>? = null
 )
 
 data class QueryResponse(

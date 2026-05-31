@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
               CircularProgressIndicator()
           }
       } else {
-          MusteriAppTheme(brandColorHex = config?.brandColor) { 
+          MusteriAppTheme(brandColorHex = config?.branding?.get("backgroundColor") as? String) { 
               Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { 
                   MainNavigation(config = config) 
               } 

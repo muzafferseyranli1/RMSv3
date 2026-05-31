@@ -241,9 +241,10 @@ const NAV = [
     icon: 'fa-gear',
     items: [
       { label: 'Tahmin AyarlarÄ±', path: '/settings', icon: 'fa-gear', color: '#94a3b8', bg: 'rgba(148,163,184,.18)' },
+      { label: 'Müşteri App Ayarları', path: '/customer-app-settings', icon: 'fa-mobile-screen', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
       { label: 'Hesap Ã‡izelgesi', path: '/hesap-cizelgesi', icon: 'fa-book-bookmark', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
       { label: 'Muhasebe EÅŸleÅŸtirmeleri', path: '/muhasebe-eslestirmeleri', icon: 'fa-arrow-right-arrow-left', color: '#0f766e', bg: 'rgba(13,148,136,.16)' },
-      { label: 'P&L Åablonu', path: '/pnl-template', icon: 'fa-table-columns', color: '#dc2626', bg: 'rgba(220,38,38,.16)' },
+      { label: 'P&L Åžablonu', path: '/pnl-template', icon: 'fa-table-columns', color: '#dc2626', bg: 'rgba(220,38,38,.16)' },
       { label: 'SipariÅŸ AkÄ±ÅŸlarÄ±', path: '/order-flows', icon: 'fa-diagram-project', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
       { label: 'SayÄ±m AkÄ±ÅŸlarÄ±', path: '/count-flows', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
       { label: 'Vergi TanÄ±mlamalarÄ±', path: '/taxes', icon: 'fa-percent', color: '#c084fc', bg: 'rgba(192,132,252,.18)' },

@@ -28,7 +28,8 @@ export default function PairingScreen({ onComplete }) {
     setError(null);
     
     try {
-      const searchCode = pairKey.startsWith('SUT-') ? pairKey : `SUT-${pairKey}`;
+      const normalizedInput = pairKey.toUpperCase().trim();
+      const searchCode = normalizedInput.startsWith('SUT-') ? normalizedInput : `SUT-${normalizedInput}`;
 
       // Production db query
       const { data, error: dbError } = await db.from('pos_terminals')
@@ -49,7 +50,7 @@ export default function PairingScreen({ onComplete }) {
              config_data: {}
           });
       } else if (res.length > 0) {
-          await db.from('pos_terminals').eq('id', res[0].id).update({ is_used: true });
+          await db.from('pos_terminals').update({ is_used: true }).eq('id', res[0].id);
           await finalizePairing(res[0]);
       } else {
           setError('Geçersiz Pair Key. Lütfen tekrar deneyin.');
@@ -82,17 +83,19 @@ export default function PairingScreen({ onComplete }) {
       masterIp = '';
     }
     
-    // Map device_type to screenMode
-    // pos -> pos, masa -> garson (or pos-masalar based on usage), kds -> kds, pickup -> pickup
-    let rawMode = String(terminal.screen_mode || terminal.device_type || 'pos').toLowerCase().trim();
-    let screenMode = 'pos';
-    if (rawMode.includes('masa') || rawMode.includes('garson')) {
-      screenMode = 'garson';
-    } else if (rawMode.includes('kds')) {
-      screenMode = 'kds';
-    } else if (rawMode.includes('pickup')) {
-      screenMode = 'pickup';
+    // device_type birincil kaynak — screen_mode sadece fallback
+    const DEVICE_TO_SCREEN = {
+      pos: 'pos',
+      masa: 'garson',
+      garson: 'garson',
+      kds: 'kds',
+      pickup: 'pickup',
+      'pos-masa': 'garson',
+      'pos-masalar': 'garson',
     }
+    const deviceType = String(terminal.device_type || '').toLowerCase().trim()
+    const screenModeRaw = String(terminal.screen_mode || '').toLowerCase().trim()
+    const screenMode = DEVICE_TO_SCREEN[deviceType] || DEVICE_TO_SCREEN[screenModeRaw] || 'pos'
 
     const payload = {
        terminalId: terminal.id,

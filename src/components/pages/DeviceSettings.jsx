@@ -49,8 +49,20 @@ export default function DeviceSettings() {
     loadHalls()
   }, [branchId])
 
-  const generatePairKey = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase()
+  const generateActivationCode = () => {
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase()
+    return `SUT-${random}`
+  }
+
+  // device_type → screen_mode eşlemesi (DB'ye yazılacak)
+  const DEVICE_TYPE_TO_SCREEN_MODE = {
+    pos: 'pos',
+    masa: 'garson',
+    kds: 'kds',
+    pickup: 'pickup',
+    queue_screen: 'pos',
+    kiosk: 'pos',
+    kiosk_tablet: 'pos',
   }
 
   const handleSave = async (e) => {
@@ -70,6 +82,7 @@ export default function DeviceSettings() {
     if (editingDevice) {
       const updates = {
         device_type: formData.device_type,
+        screen_mode: DEVICE_TYPE_TO_SCREEN_MODE[formData.device_type] || 'pos',
         is_master: Boolean(formData.is_master),
         terminal_role: Boolean(formData.is_master) ? 'master' : 'slave',
         config_data: formData.config_data ?? {},
@@ -92,15 +105,14 @@ export default function DeviceSettings() {
       return
     }
 
-    const generatedPairKey = generatePairKey()
     const newDevice = {
       terminal_id: crypto.randomUUID(),
       branch_id: branchId,
       device_type: formData.device_type,
+      screen_mode: DEVICE_TYPE_TO_SCREEN_MODE[formData.device_type] || 'pos',
       is_master: Boolean(formData.is_master),
       terminal_role: Boolean(formData.is_master) ? 'master' : 'slave',
-      pair_key: generatedPairKey,
-      activation_code: `SUT-${generatedPairKey}`,
+      activation_code: generateActivationCode(),
       is_used: false,
       config_data: formData.config_data ?? {}
     }
@@ -182,6 +194,8 @@ export default function DeviceSettings() {
 
   const hasMaster = devices.some(d => d.is_master)
   const sourceDevices = devices.filter(d => ['pos', 'masa', 'kiosk', 'kiosk_tablet'].includes(d.device_type))
+  const kdsDevices = devices.filter(d => d.device_type === 'kds')
+  const pickupDevices = devices.filter(d => d.device_type === 'pickup')
 
   // Helper to manage array in config_data
   const toggleConfigArrayItem = (key, value) => {
@@ -216,7 +230,7 @@ export default function DeviceSettings() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-6 py-3">Tip</th>
-              <th className="px-6 py-3">Bağlantı Anahtarı (Pair Key) / URL</th>
+              <th className="px-6 py-3">Bağlantı Anahtarı / URL</th>
               <th className="px-6 py-3">Rol</th>
               <th className="px-6 py-3">Özel Ayarlar</th>
               <th className="px-6 py-3 text-right">İşlemler</th>
@@ -237,13 +251,13 @@ export default function DeviceSettings() {
                 <td className="px-6 py-4">
                   {device.device_type === 'queue_screen' ? (
                     <div style={{ wordBreak: 'break-all' }}>
-                      <a href={`/sira-ekrani/${device.pair_key}`} target="_blank" rel="noreferrer" className="text-blue-600 font-mono text-xs hover:underline">
-                        {window.location.origin}/sira-ekrani/{device.pair_key}
+                      <a href={`/sira-ekrani/${device.activation_code}`} target="_blank" rel="noreferrer" className="text-blue-600 font-mono text-xs hover:underline">
+                        {window.location.origin}/sira-ekrani/{device.activation_code}
                       </a>
                     </div>
                   ) : (
                     <span className="font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded text-lg font-bold">
-                      {device.pair_key}
+                      {device.activation_code}
                     </span>
                   )}
                 </td>
@@ -394,16 +408,16 @@ export default function DeviceSettings() {
               ) : (
                 <div className="space-y-2">
                   {sourceDevices.map(src => {
-                    const isChecked = (formData.config_data.allowed_sources || []).includes(src.pair_key)
+                    const isChecked = (formData.config_data.allowed_sources || []).includes(src.activation_code)
                     return (
                       <label key={src.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
                         <input 
                           type="checkbox" 
                           checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_sources', src.pair_key)} 
+                          onChange={() => toggleConfigArrayItem('allowed_sources', src.activation_code)} 
                           className="w-4 h-4"
                         />
-                        <span className="text-sm font-medium">{getDeviceTypeName(src.device_type)} - {src.pair_key}</span>
+                        <span className="text-sm font-medium">{getDeviceTypeName(src.device_type)} - {src.activation_code}</span>
                       </label>
                     )
                   })}
@@ -421,16 +435,16 @@ export default function DeviceSettings() {
               ) : (
                 <div className="space-y-2">
                   {kdsDevices.map(kds => {
-                    const isChecked = (formData.config_data.allowed_kds || []).includes(kds.pair_key)
+                    const isChecked = (formData.config_data.allowed_kds || []).includes(kds.activation_code)
                     return (
                       <label key={kds.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
                         <input 
                           type="checkbox" 
                           checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_kds', kds.pair_key)} 
+                          onChange={() => toggleConfigArrayItem('allowed_kds', kds.activation_code)} 
                           className="w-4 h-4"
                         />
-                        <span className="text-sm font-medium">KDS - {kds.pair_key}</span>
+                        <span className="text-sm font-medium">KDS - {kds.activation_code}</span>
                       </label>
                     )
                   })}
@@ -447,16 +461,16 @@ export default function DeviceSettings() {
               ) : (
                 <div className="space-y-2">
                   {pickupDevices.map(pu => {
-                    const isChecked = (formData.config_data.allowed_pickups || []).includes(pu.pair_key)
+                    const isChecked = (formData.config_data.allowed_pickups || []).includes(pu.activation_code)
                     return (
                       <label key={pu.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
                         <input 
                           type="checkbox" 
                           checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_pickups', pu.pair_key)} 
+                          onChange={() => toggleConfigArrayItem('allowed_pickups', pu.activation_code)} 
                           className="w-4 h-4"
                         />
-                        <span className="text-sm font-medium">Pickup - {pu.pair_key}</span>
+                        <span className="text-sm font-medium">Pickup - {pu.activation_code}</span>
                       </label>
                     )
                   })}

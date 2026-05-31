@@ -905,7 +905,7 @@ export default function KioskManagementDesktop() {
       String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
     )).map((device, index) => ({
       id: device.id,
-      code: device.pair_key,
+      code: device.activation_code,
       name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
       kiosk_number: index + 1,
       active: true,
