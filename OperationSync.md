@@ -7677,3 +7677,13 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Fixed PairingScreen.jsx and terminalIdentity.js mode string parsing.
 - Fixed Desktop POS KDS/Pickup/Garson Routing.
 - Rebuilt desktop web distribution.
+
+## 2026-05-31T00:12:00Z - Native Android Müşteri App (Premium UI)
+- Created a new Native Android project at RMSv3/musteri-android using Jetpack Compose.
+- Connected the app to the Railway API to dynamically load customer_app_config for the theme color (brandColor).
+- Recreated the rich Web UI natively in Compose:
+  - Bottom Navigation bar (Home, Card, Coupons, Campaigns, Account).
+  - Premium Coupon layout with Scallop (ticket) shapes using custom Compose Shape.
+  - Haptic feedback on long-press coupon activation.
+- Created HANDOFF.md in the musteri-android directory.
+- Copied AI artifacts (implementation_plan.md, task.md, walkthrough.md) to the /docs/ folder per docs.md rules.

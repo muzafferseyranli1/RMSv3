@@ -1,36 +1,60 @@
 package com.suitable.musteri.ui.main
 
-import android.annotation.SuppressLint
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation3.runtime.NavKey
 import com.suitable.musteri.data.AppConfig
 
-@SuppressLint("SetJavaScriptEnabled")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     config: AppConfig?,
     onItemClick: (NavKey) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AndroidView(
-        modifier = modifier.fillMaxSize(),
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
-                webChromeClient = WebChromeClient()
-                loadUrl("https://rmsv3-production.up.railway.app/musteri-app")
-            }
+    var currentTab by remember { mutableStateOf(TabItem.COUPONS) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(config?.headerLogo ?: "Müşteri App", color = MaterialTheme.colorScheme.onPrimary) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
+            )
         },
-        update = { view ->
-            // Update the view if needed
+        bottomBar = {
+            BottomNavigationBar(
+                currentTab = currentTab,
+                onTabSelected = { currentTab = it }
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        if (config?.maintenanceMode == true) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Sistem Bakımda", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+            }
+        } else {
+            Box(modifier = modifier.padding(padding).fillMaxSize()) {
+                when (currentTab) {
+                    TabItem.COUPONS -> CouponsScreen()
+                    else -> {
+                        // Placeholder for other tabs
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "${currentTab.label} Yapım Aşamasında",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                }
+            }
         }
-    )
+    }
 }
+

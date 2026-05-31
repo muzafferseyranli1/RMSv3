@@ -2944,11 +2944,11 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   )
   const lastTableTicketsSignatureRef = useRef('')
   const resolveBootChannel = useCallback((current, nextChannels = []) => {
-    const nextHeaderChannels = nextChannels.filter(isPrimaryPosSalesChannel)
+    const posFocusedChannels = nextChannels.filter(c => isQuickSaleChannel(c) || isPickupChannel(c))
     if (current && nextChannels.some(channel => channel.id === current)) return current
     const quickSaleChannel = nextChannels.find(isQuickSaleChannel)
     if (quickSaleChannel?.id) return quickSaleChannel.id
-    if (nextHeaderChannels.length) return nextHeaderChannels[0].id
+    if (posFocusedChannels.length) return posFocusedChannels[0].id
     return nextChannels[0]?.id || current || ''
   }, [])
   const tablePersistenceHydratedRef = useRef(false)

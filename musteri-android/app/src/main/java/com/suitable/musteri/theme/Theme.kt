@@ -19,14 +19,31 @@ fun String.toColor(): Color {
     }
 }
 
-private val DarkColorScheme = darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
+val Slate900 = Color(0xFF0F172A)
+val Slate800 = Color(0xFF1E293B)
+val LightSurface = Color(0xFFF8FAFC)
 
-private val LightColorScheme =
-  lightColorScheme(
+private val DarkColorScheme = darkColorScheme(
+    primary = Purple80,
+    secondary = PurpleGrey80,
+    tertiary = Pink80,
+    background = Slate900,
+    surface = Slate800,
+    onPrimary = Color.White,
+    onBackground = Color.White,
+    onSurface = Color.White
+)
+
+private val LightColorScheme = lightColorScheme(
     primary = Purple40,
     secondary = PurpleGrey40,
-    tertiary = Pink40
-  )
+    tertiary = Pink40,
+    background = LightSurface,
+    surface = Color.White,
+    onPrimary = Color.White,
+    onBackground = Slate900,
+    onSurface = Slate900
+)
 
 @Composable
 fun MusteriAppTheme(
