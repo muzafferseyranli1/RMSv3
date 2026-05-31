@@ -3,7 +3,6 @@ package com.suitable.musteri.ui.main
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,51 +25,62 @@ fun MainScreen(
     var customerId by remember { mutableStateOf(sharedPref.getString("customerId", null)) }
     var currentRoute by remember { mutableStateOf(if (customerId != null) "home" else "login") }
     var customerInfo by remember { mutableStateOf<CustomerInfo?>(null) }
-    
+    var isLoadingCustomer by remember { mutableStateOf(false) }
+
     LaunchedEffect(customerId) {
-        if (customerId != null) {
+        val id = customerId
+        if (id != null) {
+            isLoadingCustomer = true
             val repo = CustomerRepository()
-            customerInfo = repo.getCustomerInfo(customerId!!)
+            customerInfo = repo.getCustomerInfo(id)
+            isLoadingCustomer = false
+        } else {
+            customerInfo = null
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        if (config?.maintenanceMode == true) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Sistem Bakımda", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+    if (config?.maintenanceMode == true) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Sistem Bakımda", style = MaterialTheme.typography.headlineMedium)
+        }
+        return
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        when (currentRoute) {
+            "login" -> {
+                LoginScreen(
+                    onLoginSuccess = { newId ->
+                        sharedPref.edit().putString("customerId", newId).apply()
+                        customerId = newId
+                        currentRoute = "home"
+                    }
+                )
             }
-        } else {
-            Box(modifier = modifier.padding(padding).fillMaxSize()) {
-                when (currentRoute) {
-                    "login" -> {
-                        LoginScreen(
-                            onLoginSuccess = { newId ->
-                                customerId = newId
-                                currentRoute = "home"
-                            }
-                        )
-                    }
-                    "home" -> {
-                        HomeScreen(
-                            config = config,
-                            customerInfo = customerInfo,
-                            onNavigate = { dest -> currentRoute = dest }
-                        )
-                    }
-                    "coupons" -> {
-                        CouponsScreen()
-                    }
-                    else -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "Yapım Aşamasında",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
+            "home" -> {
+                HomeScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
                         }
+                        currentRoute = dest
                     }
+                )
+            }
+            "coupons" -> {
+                CouponsScreen()
+            }
+            else -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Yapım Aşamasında",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                 }
             }
         }

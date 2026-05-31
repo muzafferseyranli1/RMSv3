@@ -3018,11 +3018,11 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   // Set default active channel (Garson'da masa öncelikli)
   useEffect(() => {
     if (channels.length > 0) {
-      const mChannel = channels.find(isMasaChannel)
+      const mChannel = channels.find(c => normalizeChannelName(c?.name) === 'masa')
       const currentCh = channels.find(c => c.id === activeChannel)
       
       // Eger aktif kanal yoksa veya aktif kanal bir 'masa' kanali degilse, masa kanalina zorla
-      if (mChannel && (!currentCh || !isMasaChannel(currentCh))) {
+      if (mChannel && (!currentCh || normalizeChannelName(currentCh?.name) !== 'masa')) {
         setActiveChannel(mChannel.id)
         setShowTableLayout(true)
       } else if (!activeChannel) {

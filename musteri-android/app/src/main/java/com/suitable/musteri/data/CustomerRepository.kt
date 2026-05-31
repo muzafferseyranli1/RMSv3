@@ -18,7 +18,7 @@ class CustomerRepository {
                 // Fetch customer details
                 val customerReq = QueryRequest(
                     table = "musteriler",
-                    filters = listOf(mapOf("column" to "id", "operator" to "eq", "value" to customerId))
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to customerId))
                 )
                 val customerRes = ApiClient.apiService.executeQuery(customerReq)
                 val customerList = customerRes.data as? List<Map<String, Any>>
@@ -32,8 +32,8 @@ class CustomerRepository {
                 val walletsReq = QueryRequest(
                     table = "loyalty_wallets",
                     filters = listOf(
-                        mapOf("column" to "customer_id", "operator" to "eq", "value" to customerId),
-                        mapOf("column" to "wallet_type", "operator" to "eq", "value" to "points")
+                        mapOf("type" to "eq", "col" to "customer_id", "val" to customerId),
+                        mapOf("type" to "eq", "col" to "wallet_type", "val" to "points")
                     )
                 )
                 val walletsRes = ApiClient.apiService.executeQuery(walletsReq)

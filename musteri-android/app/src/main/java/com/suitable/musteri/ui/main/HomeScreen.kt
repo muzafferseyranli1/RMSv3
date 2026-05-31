@@ -3,6 +3,7 @@ package com.suitable.musteri.ui.main
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,21 +64,19 @@ fun HomeScreen(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-        } else {
-            // Fallback dark overlay if no image
-            Box(modifier = Modifier.fillMaxSize().background(Color(0xAA000000)))
         }
 
         // Top Content Layer
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.statusBars)
         ) {
             // Header Row: Points/QR (Left) and Hamburger Menu (Right)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .padding(top = 16.dp), // status bar padding approximation
+                    .padding(16.dp),  // status bar handled by windowInsets now
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
@@ -290,11 +289,13 @@ fun HomeScreen(
             ) {
                 Text("Sadakat QR Kodunuz", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
                 
-                val qrContent = customerInfo?.loyaltyMemberNo.takeIf { !it.isNullOrBlank() } ?: customerInfo?.telefon ?: "BILINMEYEN"
+                val qrContent = customerInfo?.loyaltyMemberNo?.takeIf { it.isNotBlank() }
+                    ?: customerInfo?.telefon?.takeIf { it.isNotBlank() }
+                    ?: "MISAFIR"
                 val qrBitmap = remember(qrContent) { generateQrCodeBitmap(qrContent, 600) }
                 
                 if (qrBitmap != null) {
-                    androidx.compose.foundation.Image(
+                    Image(
                         bitmap = qrBitmap.asImageBitmap(),
                         contentDescription = "QR Code",
                         modifier = Modifier.size(250.dp)
