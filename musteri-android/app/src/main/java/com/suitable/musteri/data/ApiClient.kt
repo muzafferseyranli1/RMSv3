@@ -1,9 +1,10 @@
 package com.suitable.musteri.data
 
 import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
+import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import com.google.gson.Gson
 
 data class QueryRequest(
     val table: String,
@@ -26,10 +27,12 @@ interface ApiService {
 object ApiClient {
     private const val BASE_URL = "https://rms-api-production-219d.up.railway.app/"
 
+    val gson: Gson = Gson()
+
     val apiService: ApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .addConverterFactory(MoshiConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(ApiService::class.java)
     }

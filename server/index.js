@@ -281,7 +281,7 @@ function normalizeWriteValue(table, column, value) {
     tickets: new Set(['metadata']),
     ticket_audit_log: new Set(['metadata']),
     sla_policies: new Set(['metadata']),
-    form_templates: new Set(['schema_json', 'target_branches', 'scoring', 'recurrence']),
+    form_templates: new Set(['schema_json', 'target_branches', 'scoring', 'recurrence', 'allowed_contexts']),
     form_submissions: new Set(['answers_json', 'metadata']),
     form_submission_photos: new Set(['metadata']),
     pos_terminals: new Set(['config_data']),

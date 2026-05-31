@@ -72,7 +72,18 @@ fun MainScreen(
                 )
             }
             "coupons" -> {
-                CouponsScreen()
+                CouponsScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
+                        }
+                        currentRoute = dest
+                    }
+                )
             }
             else -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
