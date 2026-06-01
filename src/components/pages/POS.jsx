@@ -4995,7 +4995,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                   ...(item.options||[]).map(o=>o.name)
                 ].filter(Boolean)
             const cartColors = pickButtonColors(item.prod)
-            const cartImage = item.prod.pos_image || item.prod.image_url || null
+            const cartImage = item.prod?.pos_image || item.prod?.image_url || null
             const canRemoveThisItem = !isMasaMode || canPosUserEditTableItem(item, activeStaff)
 
             return (
@@ -5015,7 +5015,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,color:'#fff',fontSize:'.88rem',lineHeight:1.3}}>
-                        {item.prod.name}
+                        {item.prod?.name || item.name}
                       </div>
                       {!!comboChildren.length && (
                         <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>

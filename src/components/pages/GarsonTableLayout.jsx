@@ -63,6 +63,7 @@ export default function GarsonTableLayout({
       occupiedTableKeys={occupiedTableKeys}
       coverCountByTable={coverCountByTable}
       currentTableKey={selectedTableKey}
+      tableSignalsByKey={tableSignalsByKey}
       onSelectTable={onSelectTable}
     />
   )

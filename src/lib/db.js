@@ -280,7 +280,7 @@ class QueryBuilder {
     })
 
     if (result && result.data && this._operation === 'select') {
-      if (this._table === 'sale_items') {
+      if (this._table === 'sale_items' || this._table === 'sale_categories') {
         if (Array.isArray(result.data)) {
           for (const row of result.data) {
             if (row && row.pos_image !== undefined) row.pos_image = resolveImageUrl(row.pos_image);

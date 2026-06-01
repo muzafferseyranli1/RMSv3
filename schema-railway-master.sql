@@ -953,6 +953,132 @@ CREATE TABLE IF NOT EXISTS public.musteriler (
   CONSTRAINT musteriler_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS public.customer_app_config (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  config_key TEXT DEFAULT 'default'::text NOT NULL,
+  branding JSONB DEFAULT '{
+    "companyName": "",
+    "logoUrl": "",
+    "backgroundImageUrl": "",
+    "primaryColor": "#be185d",
+    "headerGradient": ["#111827", "#312e81", "#f97316"],
+    "welcomeText": "Hos Geldiniz"
+  }'::jsonb NOT NULL,
+  home_buttons JSONB DEFAULT '[
+    {
+      "id": "btn1",
+      "type": "order",
+      "label": "Siparis Ver",
+      "icon": "fa-utensils",
+      "config": { "deliveryUrl": "", "enableTableOrder": true }
+    },
+    {
+      "id": "btn2",
+      "type": "app_page",
+      "label": "Kampanyalar",
+      "icon": "fa-bullhorn",
+      "config": { "pageKey": "campaigns" }
+    },
+    {
+      "id": "btn3",
+      "type": "phone",
+      "label": "Bizi Arayin",
+      "icon": "fa-phone",
+      "config": { "phoneNumber": "" }
+    },
+    {
+      "id": "btn4",
+      "type": "app_page",
+      "label": "Geri Bildirim",
+      "icon": "fa-comment-dots",
+      "config": { "pageKey": "account" }
+    }
+  ]'::jsonb NOT NULL,
+  active BOOLEAN DEFAULT true NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT customer_app_config_pkey PRIMARY KEY (id),
+  CONSTRAINT customer_app_config_config_key_key UNIQUE (config_key)
+);
+
+INSERT INTO public.customer_app_config (config_key)
+VALUES ('default')
+ON CONFLICT (config_key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.loyalty_referral_programs (
+  id TEXT NOT NULL,
+  name TEXT DEFAULT 'Yeni Referans Programi'::text NOT NULL,
+  mode TEXT DEFAULT 'unique_multiple'::text NOT NULL,
+  config_json JSONB DEFAULT '{}'::jsonb NOT NULL,
+  allowed_referrer_categories JSONB DEFAULT '[]'::jsonb NOT NULL,
+  success_criteria TEXT DEFAULT 'registration'::text NOT NULL,
+  success_purchase_count INTEGER DEFAULT 1 NOT NULL,
+  active BOOLEAN DEFAULT true NOT NULL,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  branch_id TEXT,
+  scope TEXT DEFAULT 'global'::text NOT NULL,
+  CONSTRAINT loyalty_referral_programs_pkey PRIMARY KEY (id),
+  CONSTRAINT loyalty_referral_programs_mode_check CHECK (mode = ANY (ARRAY['unique_multiple'::text, 'single_reusable_date'::text, 'single_reusable_limit'::text])),
+  CONSTRAINT loyalty_referral_programs_success_criteria_check CHECK (success_criteria = ANY (ARRAY['registration'::text, 'nth_purchase'::text]))
+);
+
+CREATE TABLE IF NOT EXISTS public.loyalty_referral_codes (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  campaign_id TEXT NOT NULL,
+  program_id TEXT,
+  referrer_customer_id UUID NOT NULL,
+  referral_code TEXT NOT NULL,
+  referee_customer_id UUID,
+  is_used BOOLEAN DEFAULT false NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  used_at TIMESTAMPTZ,
+  CONSTRAINT loyalty_referral_codes_pkey PRIMARY KEY (id),
+  CONSTRAINT loyalty_referral_codes_referral_code_key UNIQUE (referral_code),
+  CONSTRAINT loyalty_referral_codes_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES loyalty_campaigns(id) ON DELETE CASCADE,
+  CONSTRAINT loyalty_referral_codes_program_id_fkey FOREIGN KEY (program_id) REFERENCES loyalty_referral_programs(id) ON DELETE CASCADE,
+  CONSTRAINT loyalty_referral_codes_referrer_customer_id_fkey FOREIGN KEY (referrer_customer_id) REFERENCES musteriler(id) ON DELETE CASCADE,
+  CONSTRAINT loyalty_referral_codes_referee_customer_id_fkey FOREIGN KEY (referee_customer_id) REFERENCES musteriler(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.loyalty_referral_tracking (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  program_id TEXT NOT NULL,
+  referrer_customer_id UUID NOT NULL,
+  referee_customer_id UUID NOT NULL,
+  referral_code TEXT NOT NULL,
+  status TEXT DEFAULT 'pending'::text NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  success_at TIMESTAMPTZ,
+  CONSTRAINT loyalty_referral_tracking_pkey PRIMARY KEY (id),
+  CONSTRAINT loyalty_referral_tracking_program_referee_key UNIQUE (program_id, referee_customer_id),
+  CONSTRAINT loyalty_referral_tracking_status_check CHECK (status = ANY (ARRAY['pending'::text, 'successful'::text, 'expired'::text])),
+  CONSTRAINT loyalty_referral_tracking_program_id_fkey FOREIGN KEY (program_id) REFERENCES loyalty_referral_programs(id) ON DELETE CASCADE,
+  CONSTRAINT loyalty_referral_tracking_referrer_customer_id_fkey FOREIGN KEY (referrer_customer_id) REFERENCES musteriler(id) ON DELETE CASCADE,
+  CONSTRAINT loyalty_referral_tracking_referee_customer_id_fkey FOREIGN KEY (referee_customer_id) REFERENCES musteriler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_loyalty_referral_programs_active
+  ON public.loyalty_referral_programs(active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_loyalty_referral_codes_lookup
+  ON public.loyalty_referral_codes(referral_code);
+CREATE INDEX IF NOT EXISTS idx_loyalty_referral_codes_referrer
+  ON public.loyalty_referral_codes(referrer_customer_id);
+CREATE INDEX IF NOT EXISTS idx_loyalty_referral_codes_program
+  ON public.loyalty_referral_codes(program_id);
+CREATE INDEX IF NOT EXISTS idx_referral_tracking_referrer
+  ON public.loyalty_referral_tracking(referrer_customer_id, program_id);
+CREATE INDEX IF NOT EXISTS idx_referral_tracking_referee
+  ON public.loyalty_referral_tracking(referee_customer_id);
+CREATE INDEX IF NOT EXISTS idx_referral_tracking_status
+  ON public.loyalty_referral_tracking(program_id, referrer_customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_musteriler_referral_code
+  ON public.musteriler(referral_code);
+CREATE INDEX IF NOT EXISTS idx_musteriler_referred_by
+  ON public.musteriler(referred_by_customer_id);
+
 CREATE TABLE IF NOT EXISTS public.option_groups (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   name TEXT NOT NULL,
@@ -1237,6 +1363,7 @@ CREATE TABLE IF NOT EXISTS public.sale_categories (
   deleted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   revenue_account_id TEXT,
+  image_url TEXT,
   CONSTRAINT sale_categories_pkey PRIMARY KEY (id),
   CONSTRAINT sale_categories_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES sale_categories(id) ON DELETE CASCADE
 );
@@ -2996,6 +3123,36 @@ CREATE OR REPLACE FUNCTION public.uuid_ns_x500()
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/uuid-ossp', $function$uuid_ns_x500$function$;
 
+CREATE OR REPLACE FUNCTION public.normalize_sales_channel_key(channel_name text)
+RETURNS text AS $$
+DECLARE
+  v_normalized text;
+BEGIN
+  v_normalized := lower(trim(channel_name));
+  IF v_normalized IS NULL OR v_normalized = '' THEN
+    RETURN 'pos';
+  END IF;
+
+  IF v_normalized IN ('call_center', 'call center', 'cagri_merkezi', 'cagri merkezi', 'cagri merkezi') THEN
+    RETURN 'call_center';
+  ELSIF v_normalized IN ('masa', 'garson', 'waiter', 'table_service', 'table') THEN
+    RETURN 'masa';
+  ELSIF v_normalized IN ('kiosk') THEN
+    RETURN 'kiosk';
+  ELSIF v_normalized IN ('mobile', 'mobil') THEN
+    RETURN 'mobile';
+  ELSIF v_normalized IN ('online', 'web') THEN
+    RETURN 'online';
+  ELSIF v_normalized IN ('hizli_satis', 'hizli satis', 'quick', 'quick_service', 'quick service', 'pos') THEN
+    RETURN 'pos';
+  ELSE
+    RETURN v_normalized;
+  END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+DROP FUNCTION IF EXISTS public.get_customer_period_stats(uuid, text, integer, jsonb, boolean, boolean, uuid[]);
+
 CREATE OR REPLACE FUNCTION public.get_customer_period_stats(
   p_customer_id uuid,
   p_period text,
@@ -3003,7 +3160,8 @@ CREATE OR REPLACE FUNCTION public.get_customer_period_stats(
   p_product_masks jsonb DEFAULT '[]'::jsonb,
   p_exclude_free_items boolean DEFAULT false,
   p_allow_same_item_repeat boolean DEFAULT true,
-  p_current_product_ids uuid[] DEFAULT '{}'::uuid[]
+  p_current_product_ids uuid[] DEFAULT '{}'::uuid[],
+  p_sales_channel text DEFAULT NULL
 )
 RETURNS TABLE (
   total_amount numeric,
@@ -3046,10 +3204,11 @@ BEGIN
             FROM sale_lines l
             WHERE l.sale_id IN (
               SELECT s2.id FROM sales s2
-              WHERE s2.customer_id = p_customer_id
+              WHERE (p_customer_id IS NULL OR s2.customer_id = p_customer_id)
                 AND s2.status = 'completed'
                 AND s2.deleted_at IS NULL
                 AND (v_start_date IS NULL OR s2.sale_datetime >= v_start_date)
+                AND (p_sales_channel IS NULL OR public.normalize_sales_channel_key(s2.sales_channel_name) = public.normalize_sales_channel_key(p_sales_channel))
             )
             AND (NOT p_exclude_free_items OR l.line_gross_after_discount > 0)
           )
@@ -3060,10 +3219,11 @@ BEGIN
               FROM sale_lines l
               WHERE l.sale_id IN (
                 SELECT s2.id FROM sales s2
-                WHERE s2.customer_id = p_customer_id
+                WHERE (p_customer_id IS NULL OR s2.customer_id = p_customer_id)
                   AND s2.status = 'completed'
                   AND s2.deleted_at IS NULL
                   AND (v_start_date IS NULL OR s2.sale_datetime >= v_start_date)
+                  AND (p_sales_channel IS NULL OR public.normalize_sales_channel_key(s2.sales_channel_name) = public.normalize_sales_channel_key(p_sales_channel))
               )
               AND (NOT p_exclude_free_items OR l.line_gross_after_discount > 0)
               UNION
@@ -3074,10 +3234,11 @@ BEGIN
         0
       )::numeric AS product_quantity
     FROM sales s
-    WHERE s.customer_id = p_customer_id
+    WHERE (p_customer_id IS NULL OR s.customer_id = p_customer_id)
       AND s.status = 'completed'
       AND s.deleted_at IS NULL
-      AND (v_start_date IS NULL OR s.sale_datetime >= v_start_date);
+      AND (v_start_date IS NULL OR s.sale_datetime >= v_start_date)
+      AND (p_sales_channel IS NULL OR public.normalize_sales_channel_key(s.sales_channel_name) = public.normalize_sales_channel_key(p_sales_channel));
   ELSE
     RETURN QUERY
     SELECT
@@ -3092,11 +3253,12 @@ BEGIN
               SELECT l2.product_id
               FROM sales s2
               JOIN sale_lines l2 ON l2.sale_id = s2.id
-              WHERE s2.customer_id = p_customer_id
+              WHERE (p_customer_id IS NULL OR s2.customer_id = p_customer_id)
                 AND s2.status = 'completed'
                 AND s2.deleted_at IS NULL
                 AND (v_start_date IS NULL OR s2.sale_datetime >= v_start_date)
                 AND (NOT p_exclude_free_items OR l2.line_gross_after_discount > 0)
+                AND (p_sales_channel IS NULL OR public.normalize_sales_channel_key(s2.sales_channel_name) = public.normalize_sales_channel_key(p_sales_channel))
                 AND EXISTS (
                   SELECT 1
                   FROM jsonb_to_recordset(p_product_masks) AS x2("itemId" text, "type" text)
@@ -3121,11 +3283,12 @@ BEGIN
       )::numeric AS product_quantity
     FROM sales s
     JOIN sale_lines l ON l.sale_id = s.id
-    WHERE s.customer_id = p_customer_id
+    WHERE (p_customer_id IS NULL OR s.customer_id = p_customer_id)
       AND s.status = 'completed'
       AND s.deleted_at IS NULL
       AND (v_start_date IS NULL OR s.sale_datetime >= v_start_date)
       AND (NOT p_exclude_free_items OR l.line_gross_after_discount > 0)
+      AND (p_sales_channel IS NULL OR public.normalize_sales_channel_key(s.sales_channel_name) = public.normalize_sales_channel_key(p_sales_channel))
       AND EXISTS (
         SELECT 1
         FROM jsonb_to_recordset(p_product_masks) AS x("itemId" text, "type" text)

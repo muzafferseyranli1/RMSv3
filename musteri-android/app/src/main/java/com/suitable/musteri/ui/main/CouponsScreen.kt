@@ -167,7 +167,7 @@ fun CouponsScreen(
                             .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                             .setPrompt("Kupon QR'ını okutun")
                             .setBeepEnabled(true)
-                            .setOrientationLocked(false)
+                            .setOrientationLocked(true)
                         qrScanLauncher.launch(opts)
                     }) {
                         Icon(Icons.Default.QrCodeScanner, "QR Okut", tint = Color.White)
@@ -262,7 +262,7 @@ fun CouponsScreen(
                     .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                     .setPrompt("Kupon QR'ını okutun")
                     .setBeepEnabled(true)
-                    .setOrientationLocked(false)
+                    .setOrientationLocked(true)
                 qrScanLauncher.launch(opts)
             }
         )

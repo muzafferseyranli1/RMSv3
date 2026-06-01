@@ -9,12 +9,23 @@ export function buildPosTableQrPayload({ branchId, tableId, tableToken, version 
   const safeVersion = Number(version) || 1
   const safeBaseUrl = toSafeText(baseUrl)
 
-  const params = new URLSearchParams({ v: String(safeVersion) })
-  if (safeBranchId) params.set('branch', safeBranchId)
-  if (safeTableToken) params.set('tableToken', safeTableToken)
+  const params = new URLSearchParams()
+  if (safeVersion !== 1) params.set('v', String(safeVersion))
+  if (safeBranchId) params.set('b', safeBranchId)
+  if (safeTableToken) params.set('t', safeTableToken)
   else if (safeTableId) params.set('table', safeTableId)
 
-  if (safeBaseUrl) return `${safeBaseUrl.replace(/\/$/, '')}?${params.toString()}`
+  if (safeBaseUrl) {
+    // Mobil okumayı kolaylaştırmak için çok kısa link üretilir: /q/TOKEN
+    const base = safeBaseUrl.replace(/\/mobil-app\/qr-menu\/?$/, '').replace(/\/$/, '')
+    // Eğer branchId'ye gerçekten ihtiyaç varsa query param eklenebilir, ancak kısa token unique olduğu için genelde gerekmez
+    // Güvence için b parametresini ekliyoruz ama link genel olarak yine kısa kalır: http://localhost:5173/q/TOKEN?b=xxx
+    const query = params.toString()
+    if (safeTableToken && !safeTableId) {
+      return `${base}/q/${safeTableToken}${query ? `?${query}` : ''}`
+    }
+    return `${base}/mobil-app/qr-menu?${query}`
+  }
 
   return `v=${safeVersion};branch=${safeBranchId};${safeTableToken ? `tableToken=${safeTableToken}` : `table=${safeTableId}`}`
 }
@@ -25,9 +36,11 @@ export function getQrMenuBaseUrl() {
 }
 
 export function createPosTableQrToken() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '')
+  // Çok daha kısa (8 karakter) ve kolay okunabilir, global unique token (örn. X7K9A2M4)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let result = ''
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
-
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`
+  return result
 }

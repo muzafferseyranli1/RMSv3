@@ -223,3 +223,13 @@ body { background: var(--app-bg); margin: 0; }
 .tbl tr.deleted td { opacity: .5; }
 .tbl tr.deleted { background: #fafafa; }
 .row-deleted { text-decoration: line-through; color: #94a3b8 !important; }
+
+/* Scrollbar'ı gizleme */
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+

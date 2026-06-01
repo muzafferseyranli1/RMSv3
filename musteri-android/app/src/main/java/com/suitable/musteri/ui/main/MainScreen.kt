@@ -99,6 +99,48 @@ fun MainScreen(
                     }
                 )
             }
+            "table" -> {
+                TableScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
+            "table_order" -> {
+                TableOrderScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
+            "table_orders" -> {
+                TableOrdersScreen(
+                    config = config,
+                    customerInfo = customerInfo,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("customerId").apply()
+                            customerId = null
+                            customerInfo = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
             else -> {
                 // feedback:id1,id2,id3
                 if (currentRoute.startsWith("feedback")) {

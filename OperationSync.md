@@ -7747,3 +7747,223 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Fixed db.js routedQueryApi to properly fallback to LAN when Railway is offline by checking for network error messages instead of relying on thrown exceptions.
   - Added created_by_terminal column to sale_lines table in Railway Postgres database to fix SQL error during payments.
 - Next Step: Await user feedback.
+
+## Entry - Musteri Android QR Scanner Orientation Lock to Portrait
+
+- Timestamp: 2026-06-01T10:20:00+03:00
+- Agent: Antigravity
+- Task: Fix QR Scanner opening camera in landscape orientation by locking it to portrait
+- Files Changed:
+  - app/src/main/AndroidManifest.xml
+  - app/src/main/java/com/suitable/musteri/ui/main/CouponsScreen.kt
+- Decisions:
+  - Modified \"AndroidManifest.xml\" to lock \"MainActivity\" and \"CaptureActivity\" (from barcodescanner library) to \"portrait\" orientation.
+  - Changed \"ScanOptions\" configuration in \"CouponsScreen.kt\" to set \".setOrientationLocked(true)\".
+  - Resolved the issue where the camera scanner forced the screen to rotate to landscape.
+- Next Step: Ready to build and test or perform additional development tasks.
+
+
+## Entry - Sadakat Modulu Read-Only Yapi Incelemesi
+
+- `Timestamp`: `2026-06-01T10:45:41.7625096+03:00`
+- `Agent`: `Codex`
+- `Task`: `Sadakat modulunu read-only incelemek ve eksik/riskli noktalari raporlamak`
+- `Intent`: `Sadakat backoffice, POS/Kiosk/Garson runtime, musteri mobil uygulamasi ve master schema arasindaki uyumu kod degistirmeden haritalamak`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `src/lib/loyalty.js`
+  - `src/lib/posLoyalty.js`
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/checkoutLoyalty.js`
+  - `src/lib/loyaltyWalletReadiness.js`
+  - `src/lib/mobileCustomerApp.js`
+  - `src/lib/customerMobileAppConfig.js`
+  - `src/lib/posCustomerLink.js`
+  - `src/components/pages/LoyaltyManagement.jsx`
+  - `src/components/pages/LoyaltyCouponSets.jsx`
+  - `src/components/pages/LoyaltyCustomerCategories.jsx`
+  - `src/components/pages/LoyaltyReferralPrograms.jsx`
+  - `src/components/pages/CustomerMobileAppPage.jsx`
+  - `src/components/pages/CustomerAppAdminSettings.jsx`
+  - `src/components/pages/Musteriler.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/App.jsx`
+  - `src/lib/workspace.js`
+  - `server/index.js`
+  - `schema-railway-master.sql`
+  - `migrations/013_loyalty_period_sold_product_quantity_channel.sql`
+  - `migrations/014_loyalty_referrals.sql`
+  - `migrations/015_loyalty_referral_programs.sql`
+  - `migrations/customer-app-config.sql`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Date -Format o`
+  - `rg --files`
+  - `rg -n -i "loyalty|sadakat|coupon|kupon|stamp|damga|reward|points|puan|campaign|kampanya|entitlement|ledger|customer_app|musteri" src server migrations schema-railway-master.sql musteri-android package.json`
+  - `Select-String` and `Get-Content` read-only inspections on the files listed above
+- `Findings`:
+  - `Sadakat modulu tek ekran degil; backoffice kampanya/kupon/kategori/referans ekranlari, core persistence, POS/Kiosk/Garson runtime, musteri mobil uygulamasi ve musteri cuzdan modalindan olusuyor.`
+  - `schema-railway-master.sql icindeki get_customer_period_stats fonksiyonu 7 parametreli kalmis; runtime kodu p_sales_channel ile 8 parametre gonderiyor. Bu 8 parametreli surum migrations/013_loyalty_period_sold_product_quantity_channel.sql icinde var ama master schema'ya konsolide edilmemis gorunuyor.`
+  - `src/lib/loyaltyValueLedger.js icindeki createRewardEntitlement kupon serisini code_prefix/code_length/code_charset/expires_at kolonlariyla okuyor; master schema ise prefix/random_length/charset/valid_until/expires_in_days kullaniyor. Damga tamamlaninca otomatik kupon uretimi bu nedenle kirilabilir.`
+  - `loyalty_referral_programs, loyalty_referral_codes ve loyalty_referral_tracking kodda ve migration'larda var; schema-railway-master.sql icinde gorulmedi. Fresh kurulum master schema'dan yapilirsa referans modulu eksik kalir.`
+  - `customer_app_config migration'da ve kodda var; schema-railway-master.sql icinde gorulmedi. Musteri uygulamasi branding/config fresh kurulumda eksik kalabilir.`
+  - `posLoyalty runtime katalog icin localStorage cache ve LoyaltyManagement sessionStorage snapshot kullaniyor. Bunlar yardimci cache olarak tasarlanmis gorunse de sadakat kampanyasi is verisi oldugu icin DB-first/fail-visible cizgisiyle tekrar degerlendirilmeli.`
+- `Decisions`:
+  - `Bu turda kod veya DB degisikligi yapilmadi; bulgular raporlandi ve OperationSync'e not edildi.`
+  - `Oncelikli teknik borc master schema konsolidasyonu ve loyaltyValueLedger kupon kolon hizalamasidir.`
+- `Open Risks`:
+  - `Canli Railway DB'nin schema durumu bu read-only kod incelemesinde dogrulanmadi; canli DB master schema'dan daha ileri olabilir.`
+  - `Damga kampanyasi ve otomatik kupon uretiminde canli veride kolon uyumsuzlugu veya RPC imza uyumsuzlugu varsa satis sonrasi sadakat defteri eksik calisabilir.`
+- `Next Step`: `Canli musteri/satis incelemesi gerekiyorsa sadece SELECT/RPC okumalariyla ilgili musteri, sales/sale_lines, loyalty_frequency_progress, loyalty_coupons, loyalty_reward_entitlements, loyalty_transactions ve loyalty_wallets zinciri kontrol edilmeli.`
+- `Handoff Contract`: `Sonraki agent sadakat modulunde degisiklik yapmadan once bu kaydi, schema-railway-master.sql icindeki loyalty bloklarini ve migrations/013-015 ile migrations/customer-app-config.sql dosyalarini birlikte okusun. Master schema guncellenmeden yeni Railway kurulum dogrulandi varsayilmasin. Damga/kupon hatasi arastirilirken once src/lib/loyaltyValueLedger.js createRewardEntitlement kolon adlari kontrol edilsin.`
+
+## Entry - Musteri Android Sidebar Table Selection Feature
+
+- Timestamp: 2026-06-01T11:05:00+03:00
+- Agent: Antigravity
+- Task: Add Table Selection option to customer Android app's side menu
+- Files Changed:
+  - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/HomeScreen.kt
+- Decisions:
+  - Updated \"AppScaffold\" in \"HomeScreen.kt\" to support a callback and added a \"?? Masa Seçimi\" DropdownMenuItem under the \"Hesabým\" item.
+  - Implemented \"tableNumber\" state (saved in SharedPreferences) and \"showTableDialog\" modal trigger inside \"HomeScreen\" composable.
+  - Added a beautiful \"Active Table Banner\" below the Welcome Banner to display the active table (e.g. \"Masa 5\") and allow the user to change or clear it.
+  - Created the custom \"TableSelectionDialog\" component to enter the table number manually or leave the table (\"Masadan Kalk\").
+- Next Step: Ready to build and run test compilation.
+
+
+## Entry - Sadakat Damga Kupon Cycle Fix ve Canli Backfill
+
+- `Timestamp`: `2026-06-01T12:20:00+03:00`
+- `Task`: `5 Kahveye 1 Kahve damga kampanyasinda eksik otomatik kupon uretimini duzeltmek ve 5332760534 musterisi icin canli DB onarimi yapmak`
+- `Intent`: `Sadakat ledger kupon uretimini master schema ile hizalamak, damga cycle farkina gore idempotent kupon uretmek, master schema eksiklerini konsolide etmek ve canli musteri hak edisini DB-first sekilde tamamlamak`
+- `Files Changed`:
+  - `src/lib/loyaltyValueLedger.js`
+  - `src/lib/posLoyalty.js`
+  - `schema-railway-master.sql`
+  - `scripts/backfill-loyalty-stamp-cycles.mjs`
+  - `package.json`
+- `Commands Run`:
+  - `node --check src/lib/loyaltyValueLedger.js`
+  - `node --check scripts/backfill-loyalty-stamp-cycles.mjs`
+  - `npm.cmd run verify:loyalty-stamp-cycles`
+  - `npm.cmd run build`
+  - `npm.cmd run backfill:loyalty-stamp-cycles:dry-run`
+  - `npm.cmd run backfill:loyalty-stamp-cycles:apply`
+  - `node scripts/backfill-loyalty-stamp-cycles.mjs --phone 5332760534 --campaign-name "5 Kahveye 1 Kahve" --expect-actual-count 18 --expect-missing-coupons 0`
+- `Findings`:
+  - `Dry-run canli DB'de 5332760534 / Muzaffer SEYRANLI icin 18 kanitli Sutlu Kahve, hedef 5, beklenen 3 kupon, mevcut 1 kupon ve eksik cycle [2,3] sonucunu verdi.`
+  - `Apply sonrasi yeni kuponlar KHV6238 ve KHV7349 olusturuldu; mevcut KHV2088 korundu.`
+  - `Readback sonrasi existingCouponEntitlements=3, missingCoupons=0, progress current_count=3, completed_cycles=3, metadata.lastActualCount=18, metadata.lastIssuedCycle=3, issuedCycles=[1,2,3].`
+  - `Puan/cuzdan kontrolu: loyalty_wallets=0 ve loyalty_transactions=0; bu backfill puan veya wallet yazmadi.`
+- `Implementation Notes`:
+  - `loyaltyValueLedger.js createRewardEntitlement artik loyalty_coupon_series icin prefix/random_length/charset/valid_until/expires_in_days/use_after_checkout kolonlarini kullaniyor.`
+  - `Damga kuponu uretimi completedNow tam bolunme kosuluna bagli degil; completedCycles ile onceki issued cycle farki kadar idempotent entitlement/coupon uretiyor.`
+  - `Idempotency source_ref_id formati stamp_cycle:{campaignId}:{customerId}:{cycleNo}.`
+  - `posLoyalty.js localStorage katalog cache'i canli baglanti yoksa kampanya karar kaynagi olarak kullanmiyor; cache display-only/fail-closed isaretleniyor.`
+  - `schema-railway-master.sql icine 8 parametreli get_customer_period_stats, normalize_sales_channel_key, customer_app_config ve referral tablolari eklendi.`
+- `Verification`:
+  - `Self-test PASS.`
+  - `Build PASS: npm.cmd run build.`
+  - `Canli idempotency readback PASS: missingCoupons=0.`
+- `Next Step`: `Yeni POS satislarinda 5/10/15 kahve esiklerinde runtime ledger'in cycle bazli kupon urettigi smoke satisla gozlenebilir; mevcut musteri icin canli onarim tamamlandi.`
+- `Handoff Contract`: `Bu calisma canli DB'de 5332760534 musterisi icin iki kupon uretmistir. Tekrar apply calistirmadan once dry-run missingCoupons=0 beklenmelidir. Puan kampanyasi tanimi olmadigi icin wallet/points transaction olusmamasi beklenen durumdur.`
+
+## Entry - Kategori Resim Yukleme Akisinin Satis Mali Kategorilerine Tasinmasi
+
+- Timestamp: 2026-06-01T17:53:00+03:00
+- Agent: Antigravity
+- Task: Kiosk kategori resimlerinin Satis Mali Kategorileri ekranindan yuklenmesini saglamak, Kiosk Yonetimi ekranindaki yukleme alanini kaldirip salt okunur onizleme yapmak ve DB entegrasyonunu tamamlamak
+- Intent: Gorsel persitence modelini DB-first/fail-visible ilkeleriyle sale_categories tablosuna tasimak, Canvas tabanli WEBP sikistirmasini sale-categories ekraninda korumak ve kiosk runtime entegrasyonunu otomatik image resolver ile guvenceye almak
+- Files Changed:
+  - migrations/024_add_image_url_to_sale_categories.sql
+  - schema-railway-master.sql
+  - src/lib/db.js
+  - src/lib/kioskSettings.js
+  - src/components/pages/SaleCategories.jsx
+  - src/components/ui/CategoryHierarchyView.jsx
+  - src/components/pages/KioskManagementDesktop.jsx
+- Commands Run:
+  - node scratch/run-migration.cjs (applied to live Railway DB)
+  - npm run build (build successfully completed)
+- Decisions:
+  - ALTER TABLE public.sale_categories ADD COLUMN image_url TEXT; SQL migration was successfully executed on the remote database.
+  - db.js's automatic image resolution hook was expanded to include sale_categories table to prevent any image URL breakages.
+  - Category images are now fully compressed as .webp (max 1600px, 86% quality) and uploaded to the Railway persistent volume via rms-api.
+  - Kiosk Management category config renders a beautiful read-only preview of the category image loaded from sale_categories instead of providing a duplicate upload field.
+- Next Step: Ready for user verification in dev/prod environments.
+
+## Entry - Kiosk Yönetimi Kategori Bölümü Sýkýlaþtýrma
+
+- Timestamp: 2026-06-01T16:25:00+03:00
+- Agent: Antigravity
+- Task: Kiosk Yönetimi kategori listesini kompakt hale getirmek ve tüm kategorileri (alt kategoriler dahil) göstermek
+- Files Changed:
+  - src/components/pages/KioskManagementDesktop.jsx
+- Decisions:
+  - rootCategories (sadece parent_id=null olanlar) yerine sortedAllCategories eklendi; tüm kategoriler hiyerarþik sýrayla (kök › alt) Türkçe alfabetik olarak listeleniyor
+  - Satýr düzeni kompaktlaþtýrýldý: görsel 180px×280px yerine 90×90px kare oldu (%50 küçülme)
+  - Tüm alanlar (kategori adý, buton etiketi, sýra, görünürlük, saat kuralý butonu) görsel yüksekliðiyle (90px) ayný yatay satýra sýkýþtýrýldý
+  - Alt kategoriler _depth ile saða kaydýrýlýyor (20px/seviye), 'alt kategori' etiketi ve ok ikonuyla ayýrt ediliyor
+  - Saat kurallarý yoksa boþ not gösterilmiyor; varsa görsel altýna geniþliyor
+- Verification:
+  - Build PASS: npm run build (17.41s)
+- Next Step: Kullanýcý doðrulamasý için hazýr.
+
+## Entry - Kiosk Görsel Yükleme Entegrasyonu Ýyileþtirmesi
+
+- Timestamp: 2026-06-01T19:38:00+03:00
+- Agent: Antigravity
+- Task: KioskBig ve KioskTablet ekranlarýnda sale_categories tablosundan image_url alýnarak yeni resimlerin yüklenmesini saðlamak
+- Files Changed:
+  - src/components/pages/KioskBig.jsx
+  - src/components/pages/KioskTablet.jsx
+- Decisions:
+  - db.from('sale_categories').select('id,name,parent_id') sorgusuna 'image_url,bg,text_color' alanlarý eklendi. Bu sayede kioskSettings.js içindeki resolveKioskCategories fonksiyonu image_url'i otomatik olarak kioskImageUrl olarak çözebiliyor.
+- Verification:
+  - Build PASS: npm run build (18.08s)
+
+## Entry - Kiosk Tüm Kategoriler Filtresi
+
+- Timestamp: 2026-06-01T19:40:00+03:00
+- Agent: Antigravity
+- Task: KioskBig ve KioskTablet ekranlarýnda alt kategoriler dahil tüm kategorilerin listelenmesini saðlamak
+- Files Changed:
+  - src/components/pages/KioskBig.jsx
+  - src/components/pages/KioskTablet.jsx
+- Decisions:
+  - topCategories hesaplamasýnda categories.filter(c => !c.parent_id) þeklinde uygulanan kök kategori filtresi kaldýrýldý. Artýk resolveKioskCategories fonksiyonuna doðrudan tüm categories dizisi aktarýlýyor. Kiosk Yönetimi ekranýnda belirlenen sýra ve saat/görünürlük ayarlarýna göre alt kategoriler de ana menüde listelenmektedir.
+- Verification:
+  - Build PASS: npm run build (17.24s)
+
+## Entry - Kiosk Sol Kategori Paneli Scroll Desteði
+
+- Timestamp: 2026-06-01T19:44:00+03:00
+- Agent: Antigravity
+- Task: KioskBig sol kategori menüsünün taþma durumunda kaydýrýlabilir olmasýný saðlamak
+- Files Changed:
+  - src/components/pages/KioskBig.jsx
+- Decisions:
+  - KioskBig sol kategori paneli container'ýna overflowY: 'auto', overflowX: 'hidden' ve alignContent/stretch kurallarý eklenerek KioskTablet ile uyumlu þekilde kaydýrýlabilir olmasý saðlandý.
+- Verification:
+  - Build PASS: npm run build (18.38s)
+
+## Entry - Kiosk Sol Kategori Paneli Scrollbar Gizleme
+
+- Timestamp: 2026-06-01T19:46:00+03:00
+- Agent: Antigravity
+- Task: KioskBig ve KioskTablet sol kategori menüsünde varsayýlan tarayýcý scrollbar'ýný gizlemek
+- Files Changed:
+  - src/index.css
+  - src/components/pages/KioskBig.jsx
+  - src/components/pages/KioskTablet.jsx
+- Decisions:
+  - index.css içerisine global bir .hide-scrollbar yardýmcý sýnýfý eklendi (-ms-overflow-style, scrollbar-width, ::-webkit-scrollbar display: none kurallarý ile).
+  - KioskBig ve KioskTablet sol kategori div container'larýna bu sýnýf verilerek çirkin varsayýlan scrollbar görünümü tamamen gizlendi, ancak kaydýrma iþlevi korunmuþ oldu.
+- Verification:
+  - Build PASS: npm run build (20.55s)

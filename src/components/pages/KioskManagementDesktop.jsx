@@ -520,7 +520,7 @@ export default function KioskManagementDesktop() {
         setLoading(true)
         const [settingsResult, categoryResult, productResult, channelResult, devicesResult] = await Promise.allSettled([
           loadKioskSettings(),
-          db.from('sale_categories').select('id,name,parent_id').is('deleted_at', null).order('name'),
+          db.from('sale_categories').select('id,name,parent_id,image_url').is('deleted_at', null).order('name'),
           db
             .from('sale_items')
             .select('id,name,channel_image,channel_prices,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5')
@@ -890,6 +890,20 @@ export default function KioskManagementDesktop() {
 
   const dirty = JSON.stringify(settings) !== savedSnapshot
   const rootCategories = useMemo(() => categories.filter(category => !category.parent_id), [categories])
+  // Tüm kategoriler: önce kökler, sonra her kökün alt kategorileri (hiyerarşik sıra)
+  const sortedAllCategories = useMemo(() => {
+    const roots = categories.filter(c => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    const result = []
+    const addWithChildren = (parent, depth) => {
+      result.push({ ...parent, _depth: depth })
+      categories
+        .filter(c => String(c.parent_id) === String(parent.id))
+        .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+        .forEach(child => addWithChildren(child, depth + 1))
+    }
+    roots.forEach(root => addWithChildren(root, 0))
+    return result
+  }, [categories])
   const filteredProducts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return products
@@ -1339,13 +1353,13 @@ export default function KioskManagementDesktop() {
             title="Kategori Yönetimi"
             subtitle="Sol kategori sütunundaki görselleri, etiketleri, sırayı ve saat bazlı görünürlüğü düzenle."
           >
-            {rootCategories.length === 0 ? (
+            {sortedAllCategories.length === 0 ? (
               <div style={subtleNoteStyle()}>
-                Kioskta kullanilabilecek kok kategori bulunamadi. Once satis kategorilerini kontrol etmeni oneririm.
+                Kullanilabilecek kategori bulunamadi. Once satis kategorilerini kontrol etmeni oneririm.
               </div>
             ) : (
-              <div style={{ display: 'grid', gap: 14 }}>
-                {rootCategories.map((category, index) => {
+              <div style={{ display: 'grid', gap: 8 }}>
+                {sortedAllCategories.map((category, index) => {
                   const config = (settings.category_configs || []).find(item => item.categoryId === category.id) || {
                     categoryId: category.id,
                     imageUrl: '',
@@ -1354,27 +1368,63 @@ export default function KioskManagementDesktop() {
                     defaultVisible: true,
                     schedules: [],
                   }
+                  const IMG_H = 90
+                  const IMG_W = 90
+                  const isSubCat = category._depth > 0
                   return (
-                    <div key={category.id} style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 14 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <div>
-                          <div style={{ fontWeight: 800, color: '#0f172a' }}>{category.name}</div>
-                          <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 3 }}>Kategori gorseli ve saat bazli duzen burada yonetilir.</div>
+                    <div key={category.id} style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 12,
+                      padding: '10px 12px',
+                      background: isSubCat ? '#f8fafc' : '#fff',
+                      marginLeft: isSubCat ? category._depth * 20 : 0,
+                    }}>
+                      {/* Kompakt satır: görsel + tüm bilgiler yan yana */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {/* Küçük görsel */}
+                        <div style={{
+                          width: IMG_W,
+                          height: IMG_H,
+                          borderRadius: 10,
+                          overflow: 'hidden',
+                          background: '#f1f5f9',
+                          border: '1.5px dashed #cbd5e1',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          {category.image_url ? (
+                            <img src={category.image_url} alt={category.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: '#cbd5e1' }}>
+                              <i className="fa-solid fa-image" style={{ fontSize: '1.2rem' }} />
+                              <span style={{ fontSize: '.62rem' }}>Görsel yok</span>
+                            </div>
+                          )}
                         </div>
-                        <button type="button" className="btn-o" onClick={() => addCategorySchedule(category.id)}>+ Saat Kurali Ekle</button>
-                      </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 14 }}>
-                        <UploadField label="Kategori gorseli" hint="Kategori butonunda kullanilir." value={config.imageUrl || ''} onChange={value => updateCategoryConfig(category.id, { imageUrl: value })} aspect="1 / 1" fit="cover" />
-                        <div style={{ display: 'grid', gap: 12 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) 160px 180px', gap: 12 }}>
+                        {/* Sağ taraf: kategori adı + alanlar + buton - tüm içerik görsel yüksekliğinde */}
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: IMG_H }}>
+                          {/* Üst satır: kategori adı + saat kuralı butonu */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              {isSubCat && <i className="fa-solid fa-turn-up" style={{ fontSize: '.65rem', color: '#94a3b8', transform: 'rotate(90deg)' }} />}
+                              <span style={{ fontWeight: isSubCat ? 600 : 800, color: '#0f172a', fontSize: isSubCat ? '.82rem' : '.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</span>
+                              {isSubCat && <span style={{ fontSize: '.68rem', color: '#94a3b8', flexShrink: 0 }}>alt kategori</span>}
+                            </div>
+                            <button type="button" className="btn-o" style={{ fontSize: '.72rem', padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => addCategorySchedule(category.id)}>+ Saat Kuralı</button>
+                          </div>
+
+                          {/* Orta: form alanları */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) 110px 150px', gap: 8 }}>
                             <Field label="Buton etiketi">
-                              <input value={config.buttonLabel || ''} onChange={event => updateCategoryConfig(category.id, { buttonLabel: event.target.value })} style={inputStyle()} placeholder={category.name} />
+                              <input value={config.buttonLabel || ''} onChange={event => updateCategoryConfig(category.id, { buttonLabel: event.target.value })} style={{ ...inputStyle(), fontSize: '.78rem', padding: '4px 8px' }} placeholder={category.name} />
                             </Field>
-                            <Field label="Varsayilan sira">
-                              <input type="number" value={config.defaultOrder || index + 1} onChange={event => updateCategoryConfig(category.id, { defaultOrder: Number(event.target.value || index + 1) })} style={inputStyle()} />
+                            <Field label="Sıra">
+                              <input type="number" value={config.defaultOrder || index + 1} onChange={event => updateCategoryConfig(category.id, { defaultOrder: Number(event.target.value || index + 1) })} style={{ ...inputStyle(), fontSize: '.78rem', padding: '4px 8px' }} />
                             </Field>
-                            <Field label="Varsayılan görünürlük">
+                            <Field label="Görünürlük">
                               <SearchableSelect
                                 value={config.defaultVisible === false ? 'hidden' : 'visible'}
                                 onChange={v => updateCategoryConfig(category.id, { defaultVisible: v === 'visible' })}
@@ -1383,27 +1433,24 @@ export default function KioskManagementDesktop() {
                               />
                             </Field>
                           </div>
-
-                          {(config.schedules || []).length > 0 ? (
-                            <div style={{ display: 'grid', gap: 10 }}>
-                              {(config.schedules || []).map(rule => (
-                                <ScheduleRuleEditor
-                                  key={rule.id}
-                                  rule={rule}
-                                  includeVisibility
-                                  includeOrder
-                                  onChange={patch => updateCategorySchedule(category.id, rule.id, patch)}
-                                  onRemove={() => removeCategorySchedule(category.id, rule.id)}
-                                />
-                              ))}
-                            </div>
-                          ) : (
-                            <div style={subtleNoteStyle('#fff7ed', '#fed7aa', '#9a3412')}>
-                              Bu kategori su an varsayilan sira ve gorunurluk ayarlariyla calisiyor. Saat bazli degisim istiyorsan yukaridan yeni bir kural ekleyebilirsin.
-                            </div>
-                          )}
                         </div>
                       </div>
+
+                      {/* Saat kuralları (varsa görsel altına genişler) */}
+                      {(config.schedules || []).length > 0 && (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                          {(config.schedules || []).map(rule => (
+                            <ScheduleRuleEditor
+                              key={rule.id}
+                              rule={rule}
+                              includeVisibility
+                              includeOrder
+                              onChange={patch => updateCategorySchedule(category.id, rule.id, patch)}
+                              onRemove={() => removeCategorySchedule(category.id, rule.id)}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

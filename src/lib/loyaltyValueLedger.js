@@ -27,6 +27,11 @@ function parseJsonValue(value, fallback = null) {
   }
 }
 
+function normalizeInteger(value, fallback = 0) {
+  const parsed = parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function getCustomerId(customer = {}, saleHeader = {}) {
   return toUuidOrNull(
     customer.id
@@ -65,6 +70,54 @@ function getCampaignId(loyaltyCampaign = {}, customer = {}, saleHeader = {}) {
 
 function getSelectedCouponCode(explicitCode, customer = {}) {
   return normalizeText(explicitCode || customer.selectedCouponCode).toUpperCase()
+}
+
+function resolveCouponCharset(charset) {
+  const normalized = normalizeText(charset).toLowerCase()
+  if (!normalized || normalized === 'numeric' || normalized === 'number' || normalized === 'digits') {
+    return '0123456789'
+  }
+  if (normalized === 'alpha' || normalized === 'letters') {
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  }
+  if (normalized === 'alphanumeric' || normalized === 'alpha_numeric' || normalized === 'letters_digits') {
+    return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  }
+  return String(charset)
+}
+
+function resolveCouponExpiresAt(series = {}) {
+  const validUntil = normalizeText(series.valid_until)
+  if (validUntil) return validUntil
+
+  const expiresInDays = normalizeInteger(series.expires_in_days, 0)
+  if (expiresInDays <= 0) return null
+
+  const expiresAt = new Date()
+  expiresAt.setUTCDate(expiresAt.getUTCDate() + expiresInDays)
+  return expiresAt.toISOString()
+}
+
+function buildCouponCodeCandidate(series = {}) {
+  const prefix = normalizeText(series.prefix).toUpperCase()
+  const randomLength = Math.max(1, normalizeInteger(series.random_length, 6))
+  const charset = resolveCouponCharset(series.charset || 'numeric')
+
+  let randomPart = ''
+  for (let i = 0; i < randomLength; i += 1) {
+    randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
+  }
+
+  return `${prefix}${randomPart}`.toUpperCase()
+}
+
+function buildStampCycleSourceRefId({ customerId, campaignId, cycleNo }) {
+  return `stamp_cycle:${campaignId}:${customerId}:${cycleNo}`
+}
+
+function normalizeCycleList(value) {
+  const source = Array.isArray(value) ? value : []
+  return [...new Set(source.map(item => normalizeInteger(item, 0)).filter(item => item > 0))].sort((a, b) => a - b)
 }
 
 function buildActionEntries(rule = null, loyaltyCampaign = {}) {
@@ -526,17 +579,23 @@ async function createRewardEntitlement({
   campaignId,
   walletId,
   saleId,
+  sourceRefId = '',
+  sourceRefNo = '',
   sourceChannel,
   title,
   entitlementType = 'bonus_points',
   rewardPayload = {},
   note = '',
+  metadata = {},
 }) {
+  const normalizedSourceRefId = normalizeText(sourceRefId || saleId)
+  const normalizedSourceRefNo = normalizeText(sourceRefNo || normalizedSourceRefId)
+
   const { data: existing, error: existingError } = await db
     .from('loyalty_reward_entitlements')
     .select('id')
     .eq('customer_id', customerId)
-    .eq('source_ref_id', saleId)
+    .eq('source_ref_id', normalizedSourceRefId)
     .eq('entitlement_type', entitlementType)
     .limit(1)
   if (existingError) throw existingError
@@ -562,7 +621,7 @@ async function createRewardEntitlement({
     if (seriesId) {
       const { data: seriesRows, error: seriesError } = await db
         .from('loyalty_coupon_series')
-        .select('id, name, code_prefix, code_length, code_charset, coupon_count, expires_at, metadata')
+        .select('id, name, prefix, random_length, charset, coupon_count, valid_until, expires_in_days, use_after_checkout, metadata')
         .eq('id', seriesId)
         .limit(1)
 
@@ -601,15 +660,7 @@ async function createRewardEntitlement({
         if (updateError) throw updateError
         assignedCouponCode = coupon.code
       } else if (series) {
-        const prefix = series.code_prefix || ''
-        const length = Number(series.code_length || 8)
-        const charset = series.code_charset || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-        
-        let randomPart = ''
-        for (let i = 0; i < (length - prefix.length); i++) {
-          randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
-        }
-        let uniqueCode = (prefix + randomPart).toUpperCase()
+        let uniqueCode = buildCouponCodeCandidate(series)
 
         let attempts = 0
         while (attempts < 10) {
@@ -621,16 +672,12 @@ async function createRewardEntitlement({
           if (checkError) throw checkError
           if (!existingCodes?.length) break
 
-          randomPart = ''
-          for (let i = 0; i < (length - prefix.length); i++) {
-            randomPart += charset.charAt(Math.floor(Math.random() * charset.length))
-          }
-          uniqueCode = (prefix + randomPart).toUpperCase()
-          attempts++
+          uniqueCode = buildCouponCodeCandidate(series)
+          attempts += 1
         }
 
         const newCouponId = `coupon-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-        const expiresAt = series.expires_at || null
+        const expiresAt = resolveCouponExpiresAt(series)
 
         const { error: insertError } = await db
           .from('loyalty_coupons')
@@ -640,6 +687,7 @@ async function createRewardEntitlement({
             customer_id: customerId,
             code: uniqueCode,
             is_used: false,
+            use_after_checkout: Boolean(series.use_after_checkout),
             active: true,
             redemption_status: 'available',
             expires_at: expiresAt,
@@ -684,8 +732,8 @@ async function createRewardEntitlement({
       title,
       description: note,
       source_channel: sourceChannel || 'sale',
-      source_ref_id: saleId,
-      source_ref_no: saleId,
+      source_ref_id: normalizedSourceRefId,
+      source_ref_no: normalizedSourceRefNo,
       target_scope_type: 'any',
       target_scope_json: {},
       reward_payload: enrichedPayload,
@@ -694,7 +742,8 @@ async function createRewardEntitlement({
       note,
       metadata: {
         createdBy: 'sale_loyalty_value_ledger',
-        ...(assignedCouponCode ? { assignedCouponCode } : {})
+        ...(assignedCouponCode ? { assignedCouponCode } : {}),
+        ...metadata,
       },
     })
     .select('id')
@@ -768,7 +817,7 @@ async function syncCampaignStampProgress({
 
   const { data: rows, error: readError } = await db
     .from('loyalty_frequency_progress')
-    .select('id,current_count,target_count,completed_cycles,metadata')
+    .select('id,current_count,target_count,completed_cycles,last_qualified_at,metadata')
     .eq('customer_id', customerId)
     .eq('campaign_id', campaignId)
     .eq('progress_type', progressType)
@@ -778,14 +827,27 @@ async function syncCampaignStampProgress({
   const current = Array.isArray(rows) ? rows[0] || null : rows
   const completedCycles = targetCount > 0 ? Math.floor(actualCount / targetCount) : 0
   const currentCount = targetCount > 0 ? (actualCount % targetCount) : 0
-  const completedNow = targetCount > 0 && actualCount > 0 && (actualCount % targetCount === 0)
+  const previousMetadata = parseJsonValue(current?.metadata, {}) || {}
+  const previousCompletedCycles = Math.max(0, normalizeInteger(current?.completed_cycles, 0))
+  const metadataIssuedCycles = normalizeCycleList(previousMetadata.issuedCycles)
+  const hasIssuedCycleMetadata = previousMetadata.lastIssuedCycle != null || metadataIssuedCycles.length > 0
+  const previousIssuedCycle = hasIssuedCycleMetadata
+    ? Math.max(normalizeInteger(previousMetadata.lastIssuedCycle, 0), ...metadataIssuedCycles)
+    : previousCompletedCycles
+  const pendingCycles = []
+  for (let cycleNo = previousIssuedCycle + 1; cycleNo <= completedCycles; cycleNo += 1) {
+    pendingCycles.push(cycleNo)
+  }
+  const completedNow = pendingCycles.length > 0
 
   const metadata = {
-    ...(parseJsonValue(current?.metadata, {}) || {}),
+    ...previousMetadata,
     lastSourceRefId: saleId,
     period,
     periodDays,
-    lastActualCount: actualCount
+    lastActualCount: actualCount,
+    previousCompletedCycles,
+    previousIssuedCycle,
   }
 
   if (current?.id) {
@@ -818,7 +880,126 @@ async function syncCampaignStampProgress({
     if (insertError) throw insertError
   }
 
-  return { currentCount, targetCount, completedNow, completedCycles }
+  return {
+    currentCount,
+    targetCount,
+    completedNow,
+    completedCycles,
+    previousCompletedCycles,
+    previousIssuedCycle,
+    pendingCycles,
+    progressType,
+    actualCount,
+  }
+}
+
+async function markStampProgressCyclesIssued({
+  customerId,
+  campaignId,
+  progressType,
+  cycleNos = [],
+}) {
+  const normalizedCycles = normalizeCycleList(cycleNos)
+  if (!customerId || !campaignId || !progressType || normalizedCycles.length === 0) return null
+
+  const { data: rows, error: readError } = await db
+    .from('loyalty_frequency_progress')
+    .select('id,metadata')
+    .eq('customer_id', customerId)
+    .eq('campaign_id', campaignId)
+    .eq('progress_type', progressType)
+    .limit(1)
+  if (readError) throw readError
+
+  const current = Array.isArray(rows) ? rows[0] || null : rows
+  if (!current?.id) return null
+
+  const currentMetadata = parseJsonValue(current.metadata, {}) || {}
+  const issuedCycles = normalizeCycleList([
+    ...normalizeCycleList(currentMetadata.issuedCycles),
+    ...normalizedCycles,
+  ])
+  const lastIssuedCycle = issuedCycles.length ? Math.max(...issuedCycles) : 0
+
+  const { error: updateError } = await db
+    .from('loyalty_frequency_progress')
+    .update({
+      metadata: {
+        ...currentMetadata,
+        issuedCycles,
+        lastIssuedCycle,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', current.id)
+
+  if (updateError) throw updateError
+  return { issuedCycles, lastIssuedCycle }
+}
+
+async function issueStampCycleCouponEntitlements({
+  customerId,
+  programId,
+  campaignId,
+  walletId,
+  saleId,
+  sourceChannel,
+  rule,
+  pendingCycles = [],
+  note = 'Damga hedefi tamamlandiginda kazanilan kupon',
+}) {
+  const cycles = normalizeCycleList(pendingCycles)
+  if (!customerId || !campaignId || !rule || cycles.length === 0) return []
+
+  let actionJson = {}
+  try {
+    actionJson = typeof rule.action_json === 'string'
+      ? JSON.parse(rule.action_json)
+      : (rule.action_json || {})
+  } catch {
+    actionJson = {}
+  }
+
+  const actionType = rule.action_type || actionJson?.type || ''
+  if (actionType !== 'issue_coupon' && actionJson?.type !== 'issue_coupon') return []
+
+  const seriesIds = Array.isArray(actionJson?.seriesIds) ? actionJson.seriesIds : []
+  const seriesId = seriesIds[0] || actionJson?.seriesId || null
+  if (!seriesId) return []
+
+  const issued = []
+  for (const cycleNo of cycles) {
+    const sourceRefId = buildStampCycleSourceRefId({ customerId, campaignId, cycleNo })
+    const entitlement = await createRewardEntitlement({
+      customerId,
+      programId,
+      campaignId,
+      walletId,
+      saleId,
+      sourceRefId,
+      sourceRefNo: sourceRefId,
+      sourceChannel,
+      title: `Damga kampanyasi tamamlandi - Ucretsiz urun`,
+      entitlementType: 'coupon',
+      rewardPayload: {
+        type: 'issue_coupon',
+        seriesId,
+        seriesIds,
+        stampCycleNo: cycleNo,
+        sourceSaleId: saleId,
+        actionConfig: actionJson,
+      },
+      note,
+      metadata: {
+        stampCycleNo: cycleNo,
+        stampCycleSourceRefId: sourceRefId,
+        sourceSaleId: saleId,
+      },
+    })
+    issued.push({ cycleNo, entitlementId: entitlement?.id || null, sourceRefId })
+  }
+
+  return issued
 }
 
 export async function postSaleLoyaltyValueLedger({
@@ -1023,38 +1204,26 @@ export async function postSaleLoyaltyValueLedger({
     })
 
     // Damga tamamlandıysa → kural action_json'dan ödül kuponunu çıkar ve entitlement oluştur
-    if (posted.campaignFrequency?.completedNow) {
-      let stampRuleActionJson = {}
-      try {
-        stampRuleActionJson = typeof rule.action_json === 'string'
-          ? JSON.parse(rule.action_json)
-          : (rule.action_json || {})
-      } catch (e) { stampRuleActionJson = {} }
-
-      const stampActionType = rule.action_type || stampRuleActionJson?.type || ''
-      if (stampActionType === 'issue_coupon' || stampRuleActionJson?.type === 'issue_coupon') {
-        const seriesIds = stampRuleActionJson?.seriesIds || []
-        const seriesId = seriesIds[0] || stampRuleActionJson?.seriesId || null
-        if (seriesId) {
-          posted.stampCycleEntitlementId = (await createRewardEntitlement({
-            customerId,
-            programId,
-            campaignId,
-            walletId: wallet.id,
-            saleId: normalizedSaleId,
-            sourceChannel,
-            title: `Damga kampanyası tamamlandı - Ücretsiz ürün`,
-            entitlementType: 'coupon',
-            rewardPayload: {
-              type: 'issue_coupon',
-              seriesId,
-              seriesIds,
-              actionConfig: stampRuleActionJson,
-            },
-            note: 'Damga hedefi tamamlandiginda kazanilan kupon',
-          }))?.id || null
-          console.log(`[postSaleLoyaltyValueLedger] Stamp cycle completed → coupon entitlement: ${posted.stampCycleEntitlementId}`)
-        }
+    if (posted.campaignFrequency?.pendingCycles?.length) {
+      posted.stampCycleEntitlements = await issueStampCycleCouponEntitlements({
+        customerId,
+        programId,
+        campaignId,
+        walletId: wallet.id,
+        saleId: normalizedSaleId,
+        sourceChannel,
+        rule,
+        pendingCycles: posted.campaignFrequency.pendingCycles,
+      })
+      if (posted.stampCycleEntitlements.length > 0) {
+        posted.stampCycleEntitlementId = posted.stampCycleEntitlements[0]?.entitlementId || null
+        await markStampProgressCyclesIssued({
+          customerId,
+          campaignId,
+          progressType: posted.campaignFrequency.progressType,
+          cycleNos: posted.stampCycleEntitlements.map(item => item.cycleNo),
+        })
+        console.log(`[postSaleLoyaltyValueLedger] Stamp cycles completed -> coupon entitlements: ${posted.stampCycleEntitlements.length}`)
       }
     }
   }
@@ -1079,39 +1248,27 @@ export async function postSaleLoyaltyValueLedger({
         });
 
         // Bu kampanya da tamamlandıysa kupon entitlement çıkar
-        if (syncResult?.completedNow) {
+        if (syncResult?.pendingCycles?.length) {
           try {
-            let otherActionJson = {}
-            try {
-              otherActionJson = typeof otherRule.action_json === 'string'
-                ? JSON.parse(otherRule.action_json)
-                : (otherRule.action_json || {})
-            } catch (e) { otherActionJson = {} }
-
-            const otherActionType = otherRule.action_type || otherActionJson?.type || ''
-            if (otherActionType === 'issue_coupon' || otherActionJson?.type === 'issue_coupon') {
-              const otherSeriesIds = otherActionJson?.seriesIds || []
-              const otherSeriesId = otherSeriesIds[0] || otherActionJson?.seriesId || null
-              if (otherSeriesId) {
-                await createRewardEntitlement({
-                  customerId,
-                  programId: null,
-                  campaignId: otherRule.campaign_id,
-                  walletId: wallet.id,
-                  saleId: normalizedSaleId,
-                  sourceChannel,
-                  title: `Damga kampanyası tamamlandı - Ücretsiz ürün`,
-                  entitlementType: 'coupon',
-                  rewardPayload: {
-                    type: 'issue_coupon',
-                    seriesId: otherSeriesId,
-                    seriesIds: otherSeriesIds,
-                    actionConfig: otherActionJson,
-                  },
-                  note: 'Auto-sync: Damga hedefi tamamlandiginda kazanilan kupon',
-                })
-                console.log(`[postSaleLoyaltyValueLedger] Auto-sync stamp cycle completed for campaign ${otherRule.campaign_id}`)
-              }
+            const issued = await issueStampCycleCouponEntitlements({
+              customerId,
+              programId: null,
+              campaignId: otherRule.campaign_id,
+              walletId: wallet.id,
+              saleId: normalizedSaleId,
+              sourceChannel,
+              rule: otherRule,
+              pendingCycles: syncResult.pendingCycles,
+              note: 'Auto-sync: Damga hedefi tamamlandiginda kazanilan kupon',
+            })
+            if (issued.length > 0) {
+              await markStampProgressCyclesIssued({
+                customerId,
+                campaignId: otherRule.campaign_id,
+                progressType: syncResult.progressType,
+                cycleNos: issued.map(item => item.cycleNo),
+              })
+              console.log(`[postSaleLoyaltyValueLedger] Auto-sync stamp cycles completed for campaign ${otherRule.campaign_id}: ${issued.length}`)
             }
           } catch (entErr) {
             console.error('[postSaleLoyaltyValueLedger] Auto-sync entitlement error:', entErr)

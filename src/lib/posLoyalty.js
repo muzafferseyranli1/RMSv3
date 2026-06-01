@@ -1813,16 +1813,6 @@ export async function loadCachedRuntimeLoyaltyCampaignCatalog({
   const cachedEntry = readRuntimeCatalogCache(scopeKey)
   const now = Date.now()
 
-  if (!preferFresh && cachedEntry?.fetchedAt && (now - Number(cachedEntry.fetchedAt) < maxAgeMs)) {
-    return {
-      ...(cachedEntry.snapshot || {}),
-      fromCache: true,
-      stale: false,
-      fetchedAt: cachedEntry.fetchedAt,
-      expiresAt: Number(cachedEntry.fetchedAt) + maxAgeMs,
-    }
-  }
-
   try {
     const snapshot = await loadRuntimeLoyaltyCampaignCatalog({ branchId, branchName })
     writeRuntimeCatalogCache(scopeKey, {
@@ -1841,13 +1831,18 @@ export async function loadCachedRuntimeLoyaltyCampaignCatalog({
 
     return {
       ...(cachedEntry.snapshot || {}),
+      campaigns: [],
+      couponSeries: [],
+      saleTemplates: [],
       fromCache: true,
       stale: true,
+      runtimeDecisionBlocked: true,
+      displayOnlySnapshot: cachedEntry.snapshot,
       fetchedAt: cachedEntry.fetchedAt,
       expiresAt: Number(cachedEntry.fetchedAt || 0) + maxAgeMs,
       issues: [
         ...(cachedEntry.snapshot?.issues || []),
-        'Canli loyalty baglantisi gecici olarak kullanilamadi. Son senkron katalog gosteriliyor.',
+        'Canli loyalty baglantisi gecici olarak kullanilamadi. Son senkron katalog sadece goruntuleme amacli korunuyor; kampanya karari kapatildi.',
       ],
     }
   }

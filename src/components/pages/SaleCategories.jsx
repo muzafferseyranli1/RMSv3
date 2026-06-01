@@ -1,5 +1,5 @@
-﻿import { useEffect, useState, useCallback, useMemo } from 'react'
-import { db } from '@/lib/db'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
@@ -66,6 +66,51 @@ function catDepth(cats, id) {
   return p ? (p.parent_id ? 1 + catDepth(cats, p.parent_id) : 0) : -1
 }
 
+// ── Upload helpers ───────────────────────────────────────────
+async function uploadFileAndGetUrl(file) {
+  if (file?.type?.startsWith('image/')) {
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const nextImage = new Image()
+        nextImage.onload = () => resolve(nextImage)
+        nextImage.onerror = reject
+        nextImage.src = objectUrl
+      })
+
+      const maxDimension = 1600
+      const scale = Math.min(1, maxDimension / Math.max(image.width || 1, image.height || 1))
+      const width = Math.max(1, Math.round((image.width || 1) * scale))
+      const height = Math.max(1, Math.round((image.height || 1) * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (context) {
+        context.drawImage(image, 0, 0, width, height)
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.86))
+        if (blob) {
+          const formData = new FormData()
+          const originalName = file.name || 'image.webp'
+          const newName = originalName.replace(/\.[^/.]+$/, "") + ".webp"
+          formData.append('file', blob, newName)
+          const uploaded = await uploadApiFile(formData)
+          return buildApiUrl(uploaded.file_url)
+        }
+      }
+    } catch {
+      // Fallback
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+  const uploaded = await uploadApiFile(formData)
+  return buildApiUrl(uploaded.file_url)
+}
+
 // ── Color palette ────────────────────────────────────────────
 const COLORS = [
   { bg: '#fef3c7', text: '#92400e' },
@@ -82,6 +127,7 @@ const EMPTY_FORM = {
   bg: '#fef3c7', text_color: '#92400e',
   sku_mask: '', append_type: '', append_len: 4,
   description: '', acc_cat: '', acc_code: '', revenue_account_id: '',
+  image_url: '',
 }
 
 // ── Default SKU mask panel ───────────────────────────────────
@@ -398,6 +444,7 @@ export default function SaleCategories() {
       description: cat.description || '',
       acc_cat: cat.acc_cat || '', acc_code: cat.acc_code || '',
       revenue_account_id: cat.revenue_account_id || '',
+      image_url: cat.image_url || '',
     })
     setEditId(cat.id)
     setPreParent(null)
@@ -421,6 +468,7 @@ export default function SaleCategories() {
       acc_cat:     form.acc_cat.trim() || null,
       acc_code:    form.acc_code.trim() || null,
       revenue_account_id: form.revenue_account_id || null,
+      image_url:   form.image_url || null,
     }
 
     if (editId) {
@@ -577,6 +625,68 @@ export default function SaleCategories() {
                     style={{ width:26, height:26, background:c.bg, borderRadius:7, cursor:'pointer',
                       border: form.bg === c.bg ? `2px solid ${c.text}` : '2px solid transparent' }}/>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Category Image Upload */}
+          <div>
+            <label className="f-label">Kategori Görseli</label>
+            <div style={{
+              border: '1.5px dashed #cbd5e1',
+              borderRadius: 14,
+              background: '#f8fafc',
+              padding: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              position: 'relative',
+              marginTop: 6
+            }}>
+              <div style={{
+                width: 72,
+                height: 72,
+                borderRadius: 12,
+                overflow: 'hidden',
+                background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                {form.image_url ? (
+                  <img src={form.image_url} alt="Kategori Görseli" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <i className="fa-solid fa-image" style={{ color: '#94a3b8', fontSize: '1.5rem' }} />
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                <span style={{ fontSize: '.78rem', fontWeight: 600, color: '#475569' }}>
+                  {form.image_url ? 'Kategori görseli yüklendi.' : 'Dosya seçilmedi (PNG, JPG, WEBP).'}
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label className="btn-p" style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '.78rem', whiteSpace: 'nowrap', margin: 0 }}>
+                    <i className="fa-solid fa-upload" style={{ marginRight: 4 }} /> Resim Yükle
+                    <input type="file" accept="image/*" onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        try {
+                          const url = await uploadFileAndGetUrl(file)
+                          set('image_url', url)
+                          toast('Görsel başarıyla yüklendi', 'success')
+                        } catch (err) {
+                          toast('Yükleme hatası: ' + err.message, 'error')
+                        }
+                      }
+                    }} style={{ display: 'none' }} />
+                  </label>
+                  {form.image_url && (
+                    <button type="button" className="btn-o" onClick={() => set('image_url', '')} style={{ padding: '6px 12px', fontSize: '.78rem' }}>
+                      Temizle
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

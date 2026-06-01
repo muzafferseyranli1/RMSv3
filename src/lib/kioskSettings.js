@@ -641,7 +641,7 @@ export function resolveKioskCategories(categories, settings, date = new Date()) 
     return {
       ...category,
       name: repairedCategoryName,
-      kioskImageUrl: config.imageUrl,
+      kioskImageUrl: category.image_url || config.imageUrl || '',
       kioskButtonLabel: repairedButtonLabel,
       kioskVisible: activeSchedule ? activeSchedule.visible : config.defaultVisible,
       kioskOrder: activeSchedule ? activeSchedule.order : config.defaultOrder,

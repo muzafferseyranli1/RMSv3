@@ -3143,13 +3143,19 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
 
     keys.forEach(tableKey => {
       const ticket = branchTableTickets?.[tableKey] || {}
-      const requestSummary = summarizeTableServiceRequests(serviceRequestsByTableKey?.[tableKey] || [])
+      const requests = serviceRequestsByTableKey?.[tableKey] || []
+      const requestSummary = summarizeTableServiceRequests(requests)
       const hasQrOrder = Array.isArray(ticket?.cart)
         && ticket.cart.some(item => String(item?.sourceChannel || '').trim() === 'qr' || item?.createdFromQr === true)
+
+      const pendingCallWaiter = requests.some(r => r.requestType === 'call_waiter' && r.status === 'pending')
+      const pendingBillRequest = requests.some(r => r.requestType === 'bill_request' && r.status === 'pending')
 
       nextMap[tableKey] = {
         ...requestSummary,
         hasQrOrder,
+        pendingCallWaiter,
+        pendingBillRequest,
       }
     })
 
@@ -3161,6 +3167,16 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   )
   const currentTableOwnerId = currentTableTicket.ownerId || ''
   const currentTableOwnerName = currentTableTicket.ownerName || ''
+
+  // Masa adisyonundaki müşteriyi otomatik olarak bağla (Android QR sadakat entegrasyonu)
+  useEffect(() => {
+    if (currentTableTicket?.customer) {
+      setPreOrderLinkedCustomer(currentTableTicket.customer)
+    } else {
+      setPreOrderLinkedCustomer(null)
+    }
+  }, [currentTableKey, currentTableTicket?.customer])
+
   const currentTableRequests = currentTableKey ? (serviceRequestsByTableKey[currentTableKey] || []) : []
   const currentTableRequestSummary = useMemo(
     () => summarizeTableServiceRequests(currentTableRequests),
@@ -4899,7 +4915,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                   ...(item.options||[]).map(o=>o.name)
                 ].filter(Boolean)
             const cartColors = pickButtonColors(item.prod)
-            const cartImage = item.prod.pos_image || item.prod.image_url || null
+            const cartImage = item.prod?.pos_image || item.prod?.image_url || null
 
             return (
               <div key={item.id} style={{
@@ -4918,7 +4934,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,color:'#fff',fontSize:'.88rem',lineHeight:1.3}}>
-                        {item.prod.name}
+                        {item.prod?.name || item.name}
                       </div>
                       {!!comboChildren.length && (
                         <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>

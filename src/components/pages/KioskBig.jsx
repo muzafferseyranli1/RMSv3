@@ -2723,7 +2723,7 @@ export default function KioskBig() {
 
       const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes, devicesRes] = await Promise.all([
         settingsPromise,
-        db.from('sale_categories').select('id,name,parent_id').is('deleted_at', null),
+        db.from('sale_categories').select('id,name,parent_id,image_url,bg,text_color').is('deleted_at', null),
         db.from('sale_items').select('id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes').is('deleted_at', null).eq('active', true),
         db.from('sales_channels').select('id,name').is('deleted_at', null).ilike('name', 'kiosk').maybeSingle(),
         db.from('taxes').select('id,name,rate').is('deleted_at', null),
@@ -3011,7 +3011,7 @@ export default function KioskBig() {
 
   // ---- catalog helpers ----
   const topCategories = useMemo(
-    () => resolveKioskCategories(categories.filter(c => !c.parent_id), settings, clockNow),
+    () => resolveKioskCategories(categories, settings, clockNow),
     [categories, settings, clockNow],
   )
   const comboMenuCategoryId = useMemo(
@@ -4644,8 +4644,20 @@ export default function KioskBig() {
               <button type="button" onClick={() => { resetOrder(); setScreen('idle') }} style={{ ...cardSurface('#fff'), width: '100%', height: 40, borderRadius: 14, border: 'none', cursor: 'pointer' }}>
                 <i className="fa-solid fa-house" />
               </button>
-              <div style={{ minHeight: 0, display: 'flex', alignItems: 'center' }}>
-                <div style={{ display: 'grid', gap: 10, width: '100%' }}>
+              <div
+                className="hide-scrollbar"
+                style={{
+                  minHeight: 0,
+                  display: 'flex',
+                  alignItems: 'stretch',
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  paddingRight: 2,
+                  width: '100%',
+                }}
+              >
+                <div style={{ display: 'grid', gap: 10, width: '100%', alignContent: 'start', paddingBottom: 4 }}>
                   {categorySections.map(section => (
                     <CategoryRailButton
                       key={section.category.id}

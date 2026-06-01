@@ -11,6 +11,7 @@ import { isPublicDisplayPath } from '@/lib/publicDisplayRoutes'
 import { canAccessPath, getDefaultPathForScope } from '@/lib/workspace'
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext'
 import { isDesktopMode } from '@/lib/terminalIdentity'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 const DesktopTerminalShell = lazy(() => import('@/components/desktop/DesktopTerminalShell'))
 const Dashboard = lazy(() => import('@/components/pages/Dashboard'))
@@ -98,7 +99,7 @@ const QualityReports = lazy(() => import('@/components/pages/QualityReports'))
 const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -117,6 +118,16 @@ function PageLoader() {
       Sayfa yükleniyor...
     </div>
   )
+}
+
+function QrRedirector() {
+  const { token } = useParams()
+  const [params] = useSearchParams()
+  const branch = params.get('b') || params.get('branch')
+  if (!branch || !token) {
+    return <div style={{ padding: 20 }}>Geçersiz veya eksik QR kodu. Lütfen geçerli bir masa QR kodu okutun.</div>
+  }
+  return <Navigate to={`/mobil-app/qr-menu?branch=${branch}&tableToken=${token}`} replace />
 }
 
 function WarehouseBranchRoute({ title, children }) {
@@ -327,6 +338,7 @@ function AppShell() {
             <Route path="/garson-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><Garson /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/kds-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><KDS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><PickupScreen /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
+            <Route path="/q/:token" element={<QrRedirector />} />
           </Routes>
         </Suspense>
       </PageErrorBoundary>

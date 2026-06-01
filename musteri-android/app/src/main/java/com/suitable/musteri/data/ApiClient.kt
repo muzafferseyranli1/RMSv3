@@ -10,8 +10,8 @@ data class QueryRequest(
     val table: String,
     val operation: String = "select",
     val select: String = "*",
-    val filters: List<Map<String, Any>>? = null,
-    val data: Map<String, Any>? = null
+    val filters: List<Map<String, Any?>>? = null,
+    val data: Map<String, Any?>? = null
 )
 
 data class QueryResponse(
@@ -25,7 +25,7 @@ interface ApiService {
 }
 
 object ApiClient {
-    private const val BASE_URL = "https://rms-api-production-219d.up.railway.app/"
+    const val BASE_URL = "https://rms-api-production-219d.up.railway.app/"
 
     val gson: Gson = Gson()
 
@@ -35,5 +35,16 @@ object ApiClient {
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(ApiService::class.java)
+    }
+
+    /**
+     * Göreli path'i tam URL'ye dönüştür.
+     *  "/api/files/abc.jpg" → "https://rms-api-production-219d.up.railway.app/api/files/abc.jpg"
+     *  Zaten http(s):// ile başlıyorsa dokunma.
+     */
+    fun resolveImageUrl(path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        return if (path.startsWith("http://") || path.startsWith("https://")) path
+        else BASE_URL.trimEnd('/') + "/" + path.trimStart('/')
     }
 }

@@ -11,8 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +32,10 @@ import com.suitable.musteri.data.AppConfig
 import com.suitable.musteri.data.CustomerInfo
 import java.text.NumberFormat
 import java.util.Locale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 
 // ─── Shared Sidebar Composable ──────────────────────────────────────────────
 
@@ -43,6 +46,7 @@ fun AppScaffold(
     customerInfo: CustomerInfo?,
     onNavigate: (String) -> Unit,
     showMenu: Boolean = true,
+    onSelectTableClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -76,7 +80,21 @@ fun AppScaffold(
                     expanded = showSidebarMenu,
                     onDismissRequest = { showSidebarMenu = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("🏠  Ana Sayfa") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("home")
+                        }
+                    )
                     DropdownMenuItem(text = { Text("Hesabım") }, onClick = { showSidebarMenu = false })
+                    DropdownMenuItem(
+                        text = { Text("🪑  Masa") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("table")
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("🎁  Kampanyalar") },
                         onClick = { showSidebarMenu = false; onNavigate("campaigns") }
@@ -112,6 +130,10 @@ fun HomeScreen(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+    var tableNumber by remember { mutableStateOf(sharedPref.getString("tableNumber", null)) }
+    var showTableDialog by remember { mutableStateOf(false) }
+
     var showQrModal by remember { mutableStateOf(false) }
     var showOrderModal by remember { mutableStateOf(false) }
     var orderModalConfig by remember { mutableStateOf<Map<String, Any>?>(null) }
@@ -134,7 +156,12 @@ fun HomeScreen(
         Color(android.graphics.Color.parseColor(config?.branding?.get("primaryColor") as? String ?: "#be185d"))
     } catch (e: Exception) { Color(0xFFbe185d) }
 
-    AppScaffold(config = config, customerInfo = customerInfo, onNavigate = onNavigate) {
+    AppScaffold(
+        config = config,
+        customerInfo = customerInfo,
+        onNavigate = onNavigate,
+        onSelectTableClick = { showTableDialog = true }
+    ) {
         Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
             // Background Image
             if (!bgImageUrl.isNullOrBlank()) {
@@ -289,6 +316,43 @@ fun HomeScreen(
                     )
                 }
 
+                // Active Table Banner
+                if (tableNumber != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xCC000000))
+                            .border(1.dp, primaryColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .clickable { onNavigate("table") }
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("🪑", fontSize = 18.sp)
+                                Column {
+                                    Text("Aktif Masanız", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+                                    Text("Masa $tableNumber", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Text(
+                                "Değiştir",
+                                color = primaryColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 // Grid Buttons — her zaman sabit yükseklik
                 val buttons = config?.homeButtons ?: emptyList()
                 if (buttons.isNotEmpty()) {
@@ -359,7 +423,7 @@ fun HomeScreen(
         ModalBottomSheet(onDismissRequest = { showOrderModal = false }) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp)) {
                 Text("Sipariş Ver", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-                val deliveryUrl = orderModalConfig?.get("deliveryUrl") as? String
+                val deliveryUrl = (orderModalConfig?.get("paketServisUrl") ?: orderModalConfig?.get("deliveryUrl")) as? String
                 Button(
                     onClick = {
                         showOrderModal = false
@@ -370,10 +434,13 @@ fun HomeScreen(
                 ) { Text("Paket Servis Siparişi") }
                 val enableTable = orderModalConfig?.get("enableTableOrder") as? Boolean ?: false
                 Button(
-                    onClick = { showOrderModal = false },
+                    onClick = {
+                        showOrderModal = false
+                        onNavigate("table")
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (enableTable) MaterialTheme.colorScheme.primary else Color.Gray)
-                ) { Text(if (enableTable) "Masa Siparişi" else "Masa Siparişi (Yakında)") }
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) { Text("Masa Siparişi") }
             }
         }
     }
@@ -392,9 +459,118 @@ fun HomeScreen(
             }
         }
     }
+
+    // Table Selection Dialog
+    if (showTableDialog) {
+        TableSelectionDialog(
+            currentTable = tableNumber,
+            onDismiss = { showTableDialog = false },
+            onSave = { newTable ->
+                if (newTable.isNullOrBlank()) {
+                    sharedPref.edit().remove("tableNumber").apply()
+                    tableNumber = null
+                } else {
+                    sharedPref.edit().putString("tableNumber", newTable).apply()
+                    tableNumber = newTable
+                }
+                showTableDialog = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TableSelectionDialog(
+    currentTable: String?,
+    onDismiss: () -> Unit,
+    onSave: (String?) -> Unit
+) {
+    var tableInput by remember { mutableStateOf(currentTable ?: "") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Masa Seçimi", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                
+                Text(
+                    "Lütfen oturduğunuz masanın numarasını giriniz:",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                OutlinedTextField(
+                    value = tableInput,
+                    onValueChange = { tableInput = it },
+                    label = { Text("Masa No", color = Color(0xFF94A3B8)) },
+                    placeholder = { Text("Örn: 5", color = Color(0xFF475569)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF3B82F6),
+                        unfocusedBorderColor = Color(0xFF334155),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+
+                Button(
+                    onClick = { onSave(tableInput.trim()) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                ) {
+                    Icon(Icons.Default.Check, null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Kaydet", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                if (currentTable != null) {
+                    OutlinedButton(
+                        onClick = { onSave(null) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444))
+                    ) {
+                        Icon(Icons.Default.Delete, null, tint = Color(0xFFEF4444))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Masadan Kalk", color = Color(0xFFEF4444))
+                    }
+                }
+
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("İptal", color = Color(0xFF94A3B8))
+                }
+            }
+        }
+    }
 }
 
 // ─── DynamicButton ────────────────────────────────────────────────────────────
+
+private fun getIconForName(iconName: String?, buttonType: String?): androidx.compose.ui.graphics.vector.ImageVector {
+    val name = (iconName ?: "").lowercase()
+    val type = (buttonType ?: "").lowercase()
+    
+    return when {
+        name.contains("order") || name.contains("food") || name.contains("cart") || name.contains("dine") || type.contains("order") || type.contains("siparis") -> Icons.Default.Restaurant
+        name.contains("campaign") || name.contains("gift") || name.contains("offer") || name.contains("coupon") || type.contains("kampanya") -> Icons.Default.Campaign
+        name.contains("phone") || name.contains("call") || name.contains("tel") || type.contains("tel") || type.contains("ulas") || type.contains("bize_ulasin") -> Icons.Default.Phone
+        name.contains("comment") || name.contains("feedback") || name.contains("chat") || name.contains("form") || type.contains("feedback") || type.contains("geri_bildirim") -> Icons.Default.Feedback
+        name.contains("social") || name.contains("share") || name.contains("insta") || name.contains("fb") || name.contains("twitter") || type.contains("sosyal") -> Icons.Default.Share
+        name.contains("info") || name.contains("about") || type.contains("kurumsal") -> Icons.Default.Info
+        else -> Icons.Default.Star
+    }
+}
 
 @Composable
 fun DynamicButton(button: Map<String, Any>, shape: String, modifier: Modifier, onClick: () -> Unit) {
@@ -408,6 +584,8 @@ fun DynamicButton(button: Map<String, Any>, shape: String, modifier: Modifier, o
         else -> RoundedCornerShape(16.dp)
     }
 
+    val icon = getIconForName(button["icon"] as? String, button["type"] as? String)
+
     Card(
         modifier = modifier.fillMaxHeight().clickable { onClick() }.shadow(4.dp, cornerShape),
         shape = cornerShape,
@@ -418,6 +596,13 @@ fun DynamicButton(button: Map<String, Any>, shape: String, modifier: Modifier, o
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = button["label"] as? String ?: "",
                 color = Color.White,

@@ -45,6 +45,7 @@ export default function PosTableLayoutFromCatalog({
   occupiedTableKeys = [],
   coverCountByTable = {},
   currentTableKey = '',
+  tableSignalsByKey = {},
   onSelectTable,
   onNavigateToMasaManagement,
 }) {
@@ -105,42 +106,63 @@ export default function PosTableLayoutFromCatalog({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
-      {grouped.map(hall => (
-        <div key={hall.id} style={{ display: 'grid', gap: 10 }}>
-          <div style={{ color: '#93c5fd', fontSize: '.82rem', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-            {hall.name}
-          </div>
-          {hall.sections.map(section => (
-            <div key={section.id} style={{ display: 'grid', gap: 8 }}>
-              <div style={{ color: '#bae6fd', fontSize: '.75rem', fontWeight: 700 }}>
-                {section.name}
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes swingbell {
+          0% { transform: rotate(0); }
+          15% { transform: rotate(15deg); }
+          30% { transform: rotate(-15deg); }
+          45% { transform: rotate(10deg); }
+          60% { transform: rotate(-10deg); }
+          75% { transform: rotate(4deg); }
+          85% { transform: rotate(-4deg); }
+          100% { transform: rotate(0); }
+        }
+        .swinging-bell {
+          animation: swingbell 1.2s infinite ease-in-out;
+          transform-origin: top center;
+          display: inline-block;
+        }
+      ` }} />
+      <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
+        {grouped.map(hall => (
+          <div key={hall.id} style={{ display: 'grid', gap: 10 }}>
+            <div style={{ color: '#93c5fd', fontSize: '.82rem', fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+              {hall.name}
+            </div>
+            {hall.sections.map(section => (
+              <div key={section.id} style={{ display: 'grid', gap: 8 }}>
+                <div style={{ color: '#bae6fd', fontSize: '.75rem', fontWeight: 700 }}>
+                  {section.name}
+                </div>
+                <TableGrid
+                  tables={section.tables.filter(table => table.status === 'active' && table.is_active !== false)}
+                  selectedId={currentTableKey}
+                  occupiedSet={occupiedSet}
+                  coverCountByTable={coverCountByTable}
+                  tableSignalsByKey={tableSignalsByKey}
+                  onTableClick={handleTableClick}
+                />
               </div>
+            ))}
+            {hall.tables.length > 0 && (
               <TableGrid
-                tables={section.tables.filter(table => table.status === 'active' && table.is_active !== false)}
+                tables={hall.tables.filter(table => table.status === 'active' && table.is_active !== false)}
                 selectedId={currentTableKey}
                 occupiedSet={occupiedSet}
                 coverCountByTable={coverCountByTable}
+                tableSignalsByKey={tableSignalsByKey}
                 onTableClick={handleTableClick}
               />
-            </div>
-          ))}
-          {hall.tables.length > 0 && (
-            <TableGrid
-              tables={hall.tables.filter(table => table.status === 'active' && table.is_active !== false)}
-              selectedId={currentTableKey}
-              occupiedSet={occupiedSet}
-              coverCountByTable={coverCountByTable}
-              onTableClick={handleTableClick}
-            />
-          )}
-        </div>
-      ))}
-    </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
-function TableGrid({ tables, selectedId, occupiedSet, coverCountByTable, onTableClick }) {
+function TableGrid({ tables, selectedId, occupiedSet, coverCountByTable, tableSignalsByKey = {}, onTableClick }) {
   if (!tables.length) return null
 
   return (
@@ -152,6 +174,24 @@ function TableGrid({ tables, selectedId, occupiedSet, coverCountByTable, onTable
         const selected = selectedId === descriptor.tableKey
         const liveCoverCount = Math.max(0, parseInt(coverCountByTable?.[descriptor.tableKey], 10) || 0)
 
+        const signal = tableSignalsByKey?.[descriptor.tableKey] || {}
+        const pendingCallWaiter = signal.pendingCallWaiter || false
+        const pendingBillRequest = signal.pendingBillRequest || false
+        const hasPending = pendingCallWaiter || pendingBillRequest
+
+        const glowColor = pendingCallWaiter ? '249,115,22' : '234,179,8'
+        const borderStyle = hasPending
+          ? `1.5px solid rgba(${glowColor}, 0.8)`
+          : `1px solid ${selected ? 'rgba(251,191,36,.48)' : 'rgba(148,163,184,.16)'}`
+
+        const backgroundStyle = hasPending
+          ? `rgba(${glowColor}, 0.12)`
+          : (selected ? 'rgba(251,191,36,.12)' : 'rgba(15,23,42,.52)')
+
+        const shadowStyle = hasPending
+          ? `0 0 25px rgba(${glowColor}, 0.35)`
+          : `0 10px 24px ${statusMeta.color}22`
+
         return (
           <button
             key={descriptor.tableKey}
@@ -160,27 +200,36 @@ function TableGrid({ tables, selectedId, occupiedSet, coverCountByTable, onTable
             style={{
               minHeight: 112,
               borderRadius: 18,
-              border: `1px solid ${selected ? 'rgba(251,191,36,.48)' : 'rgba(148,163,184,.16)'}`,
-              background: selected ? 'rgba(251,191,36,.12)' : 'rgba(15,23,42,.52)',
-              boxShadow: `0 10px 24px ${statusMeta.color}22`,
+              border: borderStyle,
+              background: backgroundStyle,
+              boxShadow: shadowStyle,
               padding: 14,
               cursor: 'pointer',
               textAlign: 'left',
               display: 'grid',
               gap: 10,
               opacity: occupied ? 1 : 0.86,
+              transition: 'all 0.2s ease',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <span style={{ color: '#fff', fontWeight: 900, fontSize: '.95rem' }}>{descriptor.label}</span>
-              <span style={{
-                width: 12,
-                height: 12,
-                borderRadius: 999,
-                background: statusMeta.color,
-                boxShadow: `0 0 0 4px ${statusMeta.color}22`,
-                flexShrink: 0,
-              }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {pendingCallWaiter && (
+                  <i className="fa-solid fa-bell swinging-bell" style={{ color: '#f97316', fontSize: '1.05rem', filter: 'drop-shadow(0 0 4px rgba(249,115,22,0.6))' }} title="Garson Çağırıyor" />
+                )}
+                {pendingBillRequest && (
+                  <i className="fa-solid fa-wallet swinging-bell" style={{ color: '#eab308', fontSize: '1.05rem', filter: 'drop-shadow(0 0 4px rgba(234,179,8,0.6))' }} title="Hesap İstiyor" />
+                )}
+                <span style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 999,
+                  background: statusMeta.color,
+                  boxShadow: `0 0 0 4px ${statusMeta.color}22`,
+                  flexShrink: 0,
+                }} />
+              </div>
             </div>
             <div style={{ color: 'rgba(191,219,254,.74)', fontSize: '.78rem', fontWeight: 700 }}>
               {table.table_type === 'square' ? 'Kare' : 'Yuvarlak'} / {table.capacity || '-'} kisilik

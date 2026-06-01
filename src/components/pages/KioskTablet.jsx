@@ -2919,7 +2919,7 @@ export default function KioskTablet() {
 
       const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes, devicesRes] = await Promise.all([
         settingsPromise,
-        db.from('sale_categories').select('id,name,parent_id').is('deleted_at', null),
+        db.from('sale_categories').select('id,name,parent_id,image_url,bg,text_color').is('deleted_at', null),
         db.from('sale_items').select('id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes').is('deleted_at', null).eq('active', true),
         db.from('sales_channels').select('id,name').is('deleted_at', null).ilike('name', 'kiosk').maybeSingle(),
         db.from('taxes').select('id,name,rate').is('deleted_at', null),
@@ -3213,7 +3213,7 @@ export default function KioskTablet() {
 
   // ---- catalog helpers ----
   const topCategories = useMemo(
-    () => resolveKioskCategories(categories.filter(c => !c.parent_id), settings, clockNow),
+    () => resolveKioskCategories(categories, settings, clockNow),
     [categories, settings, clockNow],
   )
   const comboMenuCategoryId = useMemo(
@@ -4854,6 +4854,7 @@ export default function KioskTablet() {
                 <i className="fa-solid fa-house" />
               </button>
               <div
+                className="hide-scrollbar"
                 style={{
                   minHeight: 0,
                   display: 'flex',

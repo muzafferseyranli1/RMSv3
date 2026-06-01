@@ -218,6 +218,14 @@ export default function CategoryHierarchyView({
           <FieldList rows={[
             ['Ad', selectedNode.name],
             ['Ust Kategori', parentName || '-'],
+            ['Kategori Görseli', selectedNode.image_url ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+                <img src={selectedNode.image_url} alt={selectedNode.name} style={{ width: 80, height: 80, borderRadius: 8, objectFit: 'cover', border: '1px solid #cbd5e1' }} />
+                <span style={{ fontSize: '.78rem', color: '#64748b' }}>Yüklü kategori görseli</span>
+              </div>
+            ) : (
+              <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Görsel yüklenmemiş</span>
+            )],
             ['SKU Onizleme', selectedSkuState?.preview || '-'],
             ['SKU Kurali', selectedSkuState?.rule || '-'],
             ['Muhasebe Kategorisi', selectedNode.acc_cat || '-'],
