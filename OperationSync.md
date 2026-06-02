@@ -8034,3 +8034,15 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Verification:
   - Web Build: npm run build (Vite built in 49.10s)
   - Android Build: assembleDebug (BUILD SUCCESSFUL in 55s)
+
+## Entry - POS Masa Modu Gecis Hatasinin Giderilmesi
+
+- Timestamp: 2026-06-02T11:04:26+03:00
+- Agent: Antigravity
+- Task: POS ekraninda personelin 'Masa' butonuna (kanalina) tikladiginda ekranin aniden Hizli Satisa geri donmesi (hizlica gorunup kaybolmasi) hatasinin giderilmesi.
+- Files Changed:
+  - src/components/pages/POS.jsx
+- Decisions:
+  - activeChannel'i dinleyen useEffect icerisindeki `isMasaChannel(currentCh)` kisitlamasi kaldirildi. Bu kisitlama, POS modunda masa kanalinin secilmesini engelliyordu. Artik aktif kanal bos oldugunda Hizli Satis varsayilan oluyor ancak personel manuel olarak Masa kanalina gecebiliyor.
+- Verification:
+  - POS ekranindaki Masa butonu davranisi duzeltildi.

@@ -3498,8 +3498,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
       const qsChannel = channels.find(isQuickSaleChannel)
       const currentCh = channels.find(c => c.id === activeChannel)
       
-      // Eger aktif kanal yoksa veya masa kanali seciliyse (POS modunda hizli satis onceliklidir), hizli satisa zorla
-      if (qsChannel && (!currentCh || isMasaChannel(currentCh))) {
+      // Eger aktif kanal yoksa hizli satisa zorla (POS modunda ilk acilista)
+      if (qsChannel && !currentCh) {
         setActiveChannel(qsChannel.id)
         setShowTableLayout(false)
       } else if (!activeChannel) {
