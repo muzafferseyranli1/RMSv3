@@ -2,6 +2,7 @@ package com.suitable.musteri.ui.main
 
 import android.content.Context
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -25,7 +26,9 @@ import androidx.compose.ui.unit.sp
 import com.suitable.musteri.data.AppConfig
 import com.suitable.musteri.data.CustomerInfo
 import com.suitable.musteri.data.TableOrder
+import com.suitable.musteri.data.TableOrderLine
 import com.suitable.musteri.data.TableRepository
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -37,6 +40,7 @@ private val OrdersAccent = Color(0xFFF59E0B)
 private val OrdersTextPrimary = Color(0xFFF1F5F9)
 private val OrdersTextSecondary = Color(0xFF94A3B8)
 private val OrdersGreen = Color(0xFF10B981)
+private val OrdersRed = Color(0xFFEF4444)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,31 +51,40 @@ fun TableOrdersScreen(
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+    val tableId = sharedPref.getString("tableId", null)
     val tableNumber = sharedPref.getString("tableNumber", null)
     val tableName = sharedPref.getString("tableName", null)
     val branchId = sharedPref.getString("tableBranchId", null)
 
     val repo = remember { TableRepository() }
+    val scope = rememberCoroutineScope()
     var orders by remember { mutableStateOf<List<TableOrder>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
+    // Dialog state
+    var showLeaveConfirmDialog by remember { mutableStateOf(false) }
+    var showCannotLeaveDialog by remember { mutableStateOf(false) }
+    var isLeavingTable by remember { mutableStateOf(false) }
+
     fun loadOrders() {
+        if (tableNumber.isNullOrBlank() || branchId.isNullOrBlank()) {
+            isLoading = false
+            return
+        }
         isLoading = true
-        errorMsg = null
+        scope.launch {
+            try {
+                orders = repo.fetchTodayTableOrders(branchId, tableNumber)
+            } catch (e: Exception) {
+                errorMsg = "Siparişler yüklenemedi"
+            }
+            isLoading = false
+        }
     }
 
     LaunchedEffect(tableNumber, branchId) {
-        if (tableNumber.isNullOrBlank() || branchId.isNullOrBlank()) {
-            isLoading = false
-            return@LaunchedEffect
-        }
-        try {
-            orders = repo.fetchTodayTableOrders(branchId, tableNumber)
-        } catch (e: Exception) {
-            errorMsg = "Siparişler yüklenemedi"
-        }
-        isLoading = false
+        loadOrders()
     }
 
     Scaffold(
@@ -101,10 +114,7 @@ fun TableOrdersScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        isLoading = true
-                        // trigger recompose by resetting
-                    }) {
+                    IconButton(onClick = { loadOrders() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Yenile", tint = OrdersTextSecondary)
                     }
                 },
@@ -112,29 +122,89 @@ fun TableOrdersScreen(
             )
         },
         bottomBar = {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF0D1627))
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Ekleme Yap Butonu (Büyük Kehribar Buton)
                 Button(
                     onClick = { onNavigate("table_order") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = OrdersAccent),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Sipariş Ekle",
+                        text = "Siparişime Ekleme Yap",
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 16.sp,
-                        color = Color.White
+                        fontSize = 15.sp,
+                        color = Color.White,
+                        maxLines = 1
                     )
+                }
+
+                // Masayı Değiştir & Masayı Bırak Butonları Yan Yana
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onNavigate("table") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, OrdersCardBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrdersTextSecondary),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Masayı Değiştir", 
+                            fontSize = 12.sp, 
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            if (orders.isNotEmpty()) {
+                                showCannotLeaveDialog = true
+                            } else {
+                                showLeaveConfirmDialog = true
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = OrdersRed),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        if (isLeavingTable) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Default.Logout, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Masayı Bırak", 
+                                fontSize = 12.sp, 
+                                fontWeight = FontWeight.Bold, 
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -146,12 +216,11 @@ fun TableOrdersScreen(
                 .background(OrdersBg)
         ) {
             when {
-                tableNumber.isNullOrBlank() -> {
-                    // Masa seçilmemiş
+                tableNumber.isNullOrBlank() || branchId.isNullOrBlank() -> {
                     EmptyState(
                         icon = Icons.Default.TableRestaurant,
                         title = "Masa Seçilmedi",
-                        subtitle = "Sipariş görmek için önce bir masa seçin",
+                        subtitle = "Siparişlerinizi görmek için önce bir masa seçin",
                         actionLabel = "Masa Seç",
                         onAction = { onNavigate("table") }
                     )
@@ -170,8 +239,8 @@ fun TableOrdersScreen(
                     EmptyState(
                         icon = Icons.Default.ReceiptLong,
                         title = "Henüz Sipariş Yok",
-                        subtitle = "Bu masaya bugün verilmiş sipariş bulunamadı",
-                        actionLabel = "İlk Siparişi Ver",
+                        subtitle = "Bu masaya ait aktif bir sipariş bulunmamaktadır.",
+                        actionLabel = "İlk Siparişimi Ver",
                         onAction = { onNavigate("table_order") }
                     )
                 }
@@ -180,20 +249,87 @@ fun TableOrdersScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // Özet banner
                         item {
                             OrderSummaryBanner(orders = orders)
                         }
 
+                        // Siparişleri saat kırılımına göre listele
                         items(orders, key = { it.id }) { order ->
-                            OrderCard(order = order)
+                            OrderGroupCard(order = order)
                         }
 
-                        item { Spacer(modifier = Modifier.height(8.dp)) }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
                 }
+            }
+
+            // Dialoglar
+            if (showCannotLeaveDialog) {
+                AlertDialog(
+                    onDismissRequest = { showCannotLeaveDialog = false },
+                    title = { Text("Masayı Bırakamazsınız", fontWeight = FontWeight.Bold) },
+                    text = { Text("Aktif siparişiniz bulunduğu için masayı bırakamazsınız. Masayı kapatmak veya hesabı ödemek için lütfen garsona bildirin.") },
+                    confirmButton = {
+                        Button(
+                            onClick = { showCannotLeaveDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = OrdersAccent)
+                        ) {
+                            Text("Tamam", color = Color.White)
+                        }
+                    },
+                    containerColor = OrdersCardBg,
+                    titleContentColor = OrdersTextPrimary,
+                    textContentColor = OrdersTextSecondary
+                )
+            }
+
+            if (showLeaveConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLeaveConfirmDialog = false },
+                    title = { Text("Masayı Bırak", fontWeight = FontWeight.Bold) },
+                    text = { Text("Masayı bırakmak istediğinize emin misiniz? Sepetinizdeki ve masadaki tüm kayıtlar sıfırlanacaktır.") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showLeaveConfirmDialog = false
+                                isLeavingTable = true
+                                scope.launch {
+                                    val success = repo.leaveTable(branchId ?: "", tableId ?: "")
+                                    if (success) {
+                                        // SharedPref temizliği
+                                        sharedPref.edit()
+                                            .remove("tableId")
+                                            .remove("tableName")
+                                            .remove("tableNumber")
+                                            .remove("tableBranchId")
+                                            .apply()
+                                        
+                                        onNavigate("home")
+                                    }
+                                    isLeavingTable = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = OrdersRed)
+                        ) {
+                            Text("Evet, Bırak", color = Color.White)
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(
+                            onClick = { showLeaveConfirmDialog = false },
+                            border = BorderStroke(1.dp, OrdersCardBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = OrdersTextSecondary)
+                        ) {
+                            Text("Vazgeç")
+                        }
+                    },
+                    containerColor = OrdersCardBg,
+                    titleContentColor = OrdersTextPrimary,
+                    textContentColor = OrdersTextSecondary
+                )
             }
         }
     }
@@ -207,7 +343,8 @@ private fun OrderSummaryBanner(orders: List<TableOrder>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2744)),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, OrdersCardBorder)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -226,7 +363,7 @@ private fun OrderSummaryBanner(orders: List<TableOrder>) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("${orders.size} sipariş", color = OrdersTextSecondary, fontSize = 12.sp)
                 Text(
-                    text = "Bugünkü Toplam",
+                    text = "Toplam Masa Hesabı",
                     color = OrdersTextPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -242,10 +379,10 @@ private fun OrderSummaryBanner(orders: List<TableOrder>) {
     }
 }
 
-// ─── Sipariş Kartı ────────────────────────────────────────────────────────────
+// ─── Saat Kırılımı Sipariş Grubu Kartı ──────────────────────────────────────────
 
 @Composable
-private fun OrderCard(order: TableOrder) {
+private fun OrderGroupCard(order: TableOrder) {
     val timeText = remember(order.saleDateTime) {
         try {
             val instant = Instant.parse(order.saleDateTime)
@@ -258,10 +395,10 @@ private fun OrderCard(order: TableOrder) {
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = OrdersCardBg),
         shape = RoundedCornerShape(16.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, OrdersCardBorder)
+        border = BorderStroke(1.dp, OrdersCardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Başlık satırı
+            // Başlık satırı (Saat + Durum + Ara Toplam)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -277,30 +414,129 @@ private fun OrderCard(order: TableOrder) {
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Saat $timeText", color = OrdersTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Alındı", color = OrdersGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Sipariş Saati: $timeText", color = OrdersTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Durum: Hazır", color = OrdersGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
                     text = "₺${String.format("%.2f", order.grossTotal)}",
-                    color = OrdersTextPrimary,
+                    color = OrdersAccent,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp
+                    fontSize = 17.sp
                 )
             }
 
-            // Sipariş notu (içerik olarak ürünleri de içerebilir)
+            // Sipariş Notu
             if (!order.orderNote.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = OrdersCardBorder)
-                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = OrdersTextSecondary, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = order.orderNote,
+                            color = OrdersTextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = OrdersCardBorder)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Ürün Satırları (Her bir line için)
+            if (order.lines.isEmpty()) {
                 Text(
-                    text = order.orderNote,
+                    text = "Sipariş detayları yüklenemedi.",
                     color = OrdersTextSecondary,
                     fontSize = 13.sp,
-                    lineHeight = 19.sp
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    order.lines.forEach { line ->
+                        OrderLineRow(line = line)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Ürün Satır Görünümü ──────────────────────────────────────────────────────
+
+@Composable
+private fun OrderLineRow(line: TableOrderLine) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        // Miktar kutucuğu
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(OrdersTextSecondary.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            val qtyStr = if (line.qty % 1.0 == 0.0) line.qty.toInt().toString() else String.format("%.1f", line.qty)
+            Text(
+                text = "${qtyStr}x",
+                color = OrdersAccent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        // Ürün adı, porsiyon ve seçenekler
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = line.productName,
+                color = OrdersTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+            
+            // Porsiyon varsa göster
+            if (!line.portionName.isNullOrBlank()) {
+                Text(
+                    text = "Porsiyon: ${line.portionName}",
+                    color = OrdersTextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+            
+            // Seçenek özetini göster
+            if (!line.optionsSummary.isNullOrBlank()) {
+                Text(
+                    text = "+ ${line.optionsSummary}",
+                    color = OrdersTextSecondary.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
                 )
             }
         }
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        // Tutar
+        Text(
+            text = "₺${String.format("%.2f", line.lineTotal)}",
+            color = OrdersTextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp
+        )
     }
 }
 

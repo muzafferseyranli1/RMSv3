@@ -209,9 +209,9 @@ function normalizeMasaNo(value) {
 
 function normalizeGuestCounts(counts) {
   return {
-    women: Math.max(0, parseInt(counts?.women, 10) || 0),
-    men: Math.max(0, parseInt(counts?.men, 10) || 0),
-    children: Math.max(0, parseInt(counts?.children, 10) || 0),
+    women: Math.max(0, parseFloat(counts?.women) || 0),
+    men: Math.max(0, parseFloat(counts?.men) || 0),
+    children: Math.max(0, parseFloat(counts?.children) || 0),
   }
 }
 
@@ -230,11 +230,18 @@ function canPosUserEditTableItem(item, staff) {
   return item?.entrySource === 'pos_masa' && String(item?.posOwnerId || '').trim() === ownerId
 }
 
-function sanitizeOpenTicket(ticket) {
+function distributeCover(n) {
+  const women = parseFloat((n * 0.4).toFixed(2));
+  const men = parseFloat((n * 0.4).toFixed(2));
+  const children = parseFloat((n - (women + men)).toFixed(2));
+  return { women, men, children };
+}
+
+function sanitizeOpenTicket(ticket, defaultGuestCounts = DEFAULT_GUEST_COUNTS) {
   return {
     cart: Array.isArray(ticket?.cart) ? ticket.cart : [],
     orderNote: typeof ticket?.orderNote === 'string' ? ticket.orderNote : '',
-    guestCounts: normalizeGuestCounts(ticket?.guestCounts),
+    guestCounts: ticket?.guestCounts ? normalizeGuestCounts(ticket.guestCounts) : defaultGuestCounts,
     ownerId: typeof ticket?.ownerId === 'string' ? ticket.ownerId : '',
     ownerName: typeof ticket?.ownerName === 'string' ? ticket.ownerName : '',
     updatedAt: typeof ticket?.updatedAt === 'string' ? ticket.updatedAt : null,
@@ -242,7 +249,7 @@ function sanitizeOpenTicket(ticket) {
 }
 
 function hasOpenTicketContent(ticket) {
-  const safeTicket = sanitizeOpenTicket(ticket)
+  const safeTicket = sanitizeOpenTicket(ticket, DEFAULT_GUEST_COUNTS)
   return safeTicket.cart.length > 0 || Boolean(safeTicket.orderNote.trim()) || getGuestCoverCount(safeTicket.guestCounts) > 0
 }
 
@@ -2998,6 +3005,36 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const [showPrices, setShowPrices]   = useState(true)
   const [orderNote, setOrderNote]     = useState('')
   const [guestCounts, setGuestCounts] = useState(DEFAULT_GUEST_COUNTS)
+  const [coverSettings, setCoverSettings] = useState({ tracking_enabled: true, default_count: 1 })
+  const defaultGuestCounts = useMemo(() => {
+    if (coverSettings.tracking_enabled) {
+      return DEFAULT_GUEST_COUNTS
+    }
+    return distributeCover(coverSettings.default_count ?? 1)
+  }, [coverSettings])
+
+  useEffect(() => {
+    async function fetchCoverSettings() {
+      try {
+        const { data } = await db.from('settings').select('value').eq('key', 'cover_settings').maybeSingle()
+        if (data && data.value) {
+          setCoverSettings(data.value)
+        }
+      } catch (err) {
+        console.error('Kuver ayarları yüklenemedi', err)
+      }
+    }
+    fetchCoverSettings()
+  }, [])
+
+  useEffect(() => {
+    if (!coverSettings.tracking_enabled) {
+      setGuestCounts(distributeCover(coverSettings.default_count ?? 1))
+    } else {
+      setGuestCounts(DEFAULT_GUEST_COUNTS)
+    }
+  }, [coverSettings])
+
   const [activeSpecialView, setActiveSpecialView] = useState(null)
   const [favoriteOrderIds, setFavoriteOrderIds] = useState(() => readLocalFavoriteOrderSnapshot())
   const [favoriteProductIds, setFavoriteProductIds] = useState(() => readLocalFavoriteProductIdsSnapshot())
@@ -3122,8 +3159,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const isMasaMode = Boolean(masaSalesChannel?.id && activeChannel === masaSalesChannel.id)
   const isTableLayoutView = isMasaMode && showTableLayout
   const currentTableTicket = useMemo(
-    () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null),
-    [branchTableTickets, currentTableKey]
+    () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null, defaultGuestCounts),
+    [branchTableTickets, currentTableKey, defaultGuestCounts]
   )
   const activeTableOptions = useMemo(
     () => tableTransferOptions.filter(table => table.occupied),
@@ -3133,7 +3170,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     const grouped = new Map()
 
     activeTableOptions.forEach(table => {
-      const ticket = sanitizeOpenTicket(branchTableTickets[table.tableKey])
+      const ticket = sanitizeOpenTicket(branchTableTickets[table.tableKey], defaultGuestCounts)
       const floorName = table.floorName || 'Diger'
       const tables = grouped.get(floorName) || []
       tables.push({
@@ -3145,7 +3182,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     })
 
     return Array.from(grouped.entries()).map(([floorName, tables]) => ({ floorName, tables }))
-  }, [activeTableOptions, branchTableTickets])
+  }, [activeTableOptions, branchTableTickets, defaultGuestCounts])
   const tableLayoutSections = useMemo(() => {
     const grouped = new Map()
     const floorOrder = []
@@ -3165,7 +3202,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     strictTableLayoutOptions
       .filter(table => layoutTableKeys.has(String(table?.tableKey || '').trim()))
       .forEach(table => {
-        const ticket = sanitizeOpenTicket(branchTableTickets[table.tableKey])
+        const ticket = sanitizeOpenTicket(branchTableTickets[table.tableKey], defaultGuestCounts)
         const floorName = rememberFloor(table.floorName || 'Diger')
         const occupied = hasOpenTicketContent(ticket)
         grouped.get(floorName).push({
@@ -3750,7 +3787,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     setTableTickets(prev => {
       const normalizedState = normalizeAllTableTickets(prev, layoutTableDirectory)
       const currentBranchTickets = { ...(normalizedState[branchTicketKey] || {}) }
-      const currentTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey])
+      const currentTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey], defaultGuestCounts)
       const nextPartial = typeof updater === 'function' ? updater(currentTicket) : updater
       const nextTicket = sanitizeOpenTicket({
         ...currentTicket,
@@ -3758,7 +3795,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
         ownerId: activeStaff?.id || currentTicket.ownerId || '',
         ownerName: activeStaff?.name || currentTicket.ownerName || '',
         updatedAt: new Date().toISOString(),
-      })
+      }, defaultGuestCounts)
 
       if (hasOpenTicketContent(nextTicket)) currentBranchTickets[currentTableKey] = nextTicket
       else delete currentBranchTickets[currentTableKey]
@@ -3774,7 +3811,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
         [branchTicketKey]: currentBranchTickets,
       }
     })
-  }, [selectedBranchContext?.branchId, branchTicketKey, currentTableKey, activeStaff, layoutTableDirectory])
+  }, [selectedBranchContext?.branchId, branchTicketKey, currentTableKey, activeStaff, layoutTableDirectory, defaultGuestCounts])
 
   function setActiveOrderNoteValue(value) {
     if (isMasaMode) {
@@ -4201,7 +4238,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
       return
     }
 
-    const existingTargetTicket = sanitizeOpenTicket(branchTableTickets[targetKey])
+    const existingTargetTicket = sanitizeOpenTicket(branchTableTickets[targetKey], defaultGuestCounts)
     if (hasOpenTicketContent(existingTargetTicket)) {
       showToast(`${targetTable.label} artik dolu gorunuyor`, '#ef4444')
       return
@@ -4896,62 +4933,64 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
             </button>
           </div>
 
-          <div style={{
-            padding:'14px 14px 12px',
-            borderRadius:16,
-            background:'rgba(255,255,255,.03)',
-            border:'1px solid rgba(255,255,255,.08)',
-          }}>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}}>
-              {GUEST_META.map(guest => (
-                <div key={guest.key} style={{display:'grid',justifyItems:'center',gap:6}}>
-                  <button
-                    type="button"
-                    className="touch-btn"
-                    title={guest.label}
-                    onClick={() => updateGuestCount(guest.key)}
-                    style={{
-                      width:'100%',
-                      minHeight:48,
-                      borderRadius:14,
-                      border:`1px solid ${guest.color}44`,
-                      background:`${guest.color}18`,
-                      color:guest.color,
-                      display:'flex',
-                      alignItems:'center',
-                      justifyContent:'center',
-                      cursor:'pointer',
-                      fontSize:'1rem',
-                    }}
-                  >
-                    <i className={`fa-solid ${guest.icon}`} />
-                  </button>
-                  <button
-                    type="button"
-                    className="touch-btn"
-                    title={activeGuestCounts[guest.key] > 0 ? `${guest.label} sayisini sifirla` : guest.label}
-                    onClick={() => resetGuestCount(guest.key)}
-                    disabled={activeGuestCounts[guest.key] <= 0}
-                    style={{
-                      minWidth:42,
-                      minHeight:28,
-                      borderRadius:999,
-                      border:'1px solid rgba(255,255,255,.12)',
-                      background:'rgba(255,255,255,.04)',
-                      textAlign:'center',
-                      color:'#fff',
-                      fontWeight:900,
-                      fontSize:'.84rem',
-                      cursor:activeGuestCounts[guest.key] > 0 ? 'pointer' : 'default',
-                      opacity: activeGuestCounts[guest.key] > 0 ? 1 : .7,
-                    }}
-                  >
-                    {activeGuestCounts[guest.key]}
-                  </button>
-                </div>
-              ))}
+          {coverSettings.tracking_enabled && (
+            <div style={{
+              padding:'14px 14px 12px',
+              borderRadius:16,
+              background:'rgba(255,255,255,.03)',
+              border:'1px solid rgba(255,255,255,.08)',
+            }}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}}>
+                {GUEST_META.map(guest => (
+                  <div key={guest.key} style={{display:'grid',justifyItems:'center',gap:6}}>
+                    <button
+                      type="button"
+                      className="touch-btn"
+                      title={guest.label}
+                      onClick={() => updateGuestCount(guest.key)}
+                      style={{
+                        width:'100%',
+                        minHeight:48,
+                        borderRadius:14,
+                        border:`1px solid ${guest.color}44`,
+                        background:`${guest.color}18`,
+                        color:guest.color,
+                        display:'flex',
+                        alignItems:'center',
+                        justifyContent:'center',
+                        cursor:'pointer',
+                        fontSize:'1rem',
+                      }}
+                    >
+                      <i className={`fa-solid ${guest.icon}`} />
+                    </button>
+                    <button
+                      type="button"
+                      className="touch-btn"
+                      title={activeGuestCounts[guest.key] > 0 ? `${guest.label} sayisini sifirla` : guest.label}
+                      onClick={() => resetGuestCount(guest.key)}
+                      disabled={activeGuestCounts[guest.key] <= 0}
+                      style={{
+                        minWidth:42,
+                        minHeight:28,
+                        borderRadius:999,
+                        border:'1px solid rgba(255,255,255,.12)',
+                        background:'rgba(255,255,255,.04)',
+                        textAlign:'center',
+                        color:'#fff',
+                        fontWeight:900,
+                        fontSize:'.84rem',
+                        cursor:activeGuestCounts[guest.key] > 0 ? 'pointer' : 'default',
+                        opacity: activeGuestCounts[guest.key] > 0 ? 1 : .7,
+                      }}
+                    >
+                      {activeGuestCounts[guest.key]}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {isTableLayoutView && hasSelectedActiveTable && (
             <button

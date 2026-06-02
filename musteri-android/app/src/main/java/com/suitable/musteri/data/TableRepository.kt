@@ -86,12 +86,23 @@ data class SelectedOption(
     val price: Double
 )
 
+data class TableOrderLine(
+    val id: String,
+    val productName: String,
+    val portionName: String?,
+    val qty: Double,
+    val unitPrice: Double,
+    val lineTotal: Double,
+    val optionsSummary: String?
+)
+
 data class TableOrder(
     val id: String,
     val saleDateTime: String,
     val orderNote: String?,
     val grossTotal: Double,
-    val status: String
+    val status: String,
+    val lines: List<TableOrderLine> = emptyList()
 )
 
 // ─── QR Payload Parsing ───────────────────────────────────────────────────────
@@ -504,7 +515,7 @@ class TableRepository {
                 )
                 val res = ApiClient.apiService.executeQuery(req)
                 val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
-                rows.mapNotNull { row ->
+                val tempOrders = rows.mapNotNull { row ->
                     val id = row["id"] as? String ?: return@mapNotNull null
                     val parseDouble = { v: Any? ->
                         when (v) {
@@ -525,10 +536,152 @@ class TableRepository {
                         grossTotal = finalTotal,
                         status = row["status"] as? String ?: ""
                     )
+                }
+
+                val saleIds = tempOrders.map { it.id }
+                val linesMap = fetchSaleLinesForIds(saleIds)
+
+                tempOrders.map { order ->
+                    order.copy(lines = linesMap[order.id] ?: emptyList())
                 }.sortedByDescending { it.saleDateTime }
             } catch (e: Exception) {
                 Log.e("TableRepository", "fetchTodayTableOrders error", e)
                 emptyList()
+            }
+        }
+    }
+
+    private suspend fun fetchSaleLinesForIds(saleIds: List<String>): Map<String, List<TableOrderLine>> {
+        if (saleIds.isEmpty()) return emptyMap()
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "sale_lines",
+                    select = "id,sale_id,product_name,portion_name,qty,unit_gross_after_discount,line_gross_after_discount,options_json",
+                    filters = listOf(
+                        mapOf("type" to "in", "col" to "sale_id", "val" to saleIds),
+                        mapOf("type" to "is", "col" to "deleted_at", "val" to null)
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                
+                val parseDouble = { v: Any? ->
+                    when (v) {
+                        is Number -> v.toDouble()
+                        is String -> v.toDoubleOrNull() ?: 0.0
+                        else -> 0.0
+                    }
+                }
+                
+                rows.mapNotNull { row ->
+                    val id = row["id"] as? String ?: return@mapNotNull null
+                    val saleId = row["sale_id"] as? String ?: return@mapNotNull null
+                    val productName = row["product_name"] as? String ?: ""
+                    val portionName = row["portion_name"] as? String
+                    val qty = parseDouble(row["qty"])
+                    val unitPrice = parseDouble(row["unit_gross_after_discount"])
+                    val lineTotal = parseDouble(row["line_gross_after_discount"])
+                    
+                    val optionsJson = row["options_json"]
+                    val optionsList = parseJsonList(optionsJson)
+                    val optionsSummary = if (optionsList.isNotEmpty()) {
+                        optionsList.mapNotNull { opt ->
+                            (opt["option_name"] as? String ?: opt["name"] as? String)
+                        }.filter { it.isNotBlank() }.joinToString(", ").ifBlank { null }
+                    } else null
+                    
+                    saleId to TableOrderLine(
+                        id = id,
+                        productName = productName,
+                        portionName = portionName,
+                        qty = qty,
+                        unitPrice = unitPrice,
+                        lineTotal = lineTotal,
+                        optionsSummary = optionsSummary
+                    )
+                }.groupBy({ it.first }, { it.second })
+            } catch (e: Exception) {
+                Log.e("TableRepository", "fetchSaleLinesForIds error", e)
+                emptyMap()
+            }
+        }
+    }
+
+    suspend fun isTableOccupied(branchId: String, tableId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val settingKey = "garson_open_table_tickets_v2"
+                val readReq = QueryRequest(
+                    table = "settings",
+                    select = "value",
+                    filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to settingKey))
+                )
+                val readRes = ApiClient.apiService.executeQuery(readReq)
+                val rows = (readRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                val existingValue = rows.firstOrNull()?.get("value")
+
+                @Suppress("UNCHECKED_CAST")
+                val allState: Map<String, Any> = when (existingValue) {
+                    is Map<*, *> -> existingValue as Map<String, Any>
+                    else -> return@withContext false
+                }
+
+                @Suppress("UNCHECKED_CAST")
+                val branchState = allState[branchId] as? Map<String, Any> ?: return@withContext false
+                val currentTicket = branchState[tableId] as? Map<String, Any> ?: return@withContext false
+                val cart = currentTicket["cart"] as? List<*>
+                cart != null && cart.isNotEmpty()
+            } catch (e: Exception) {
+                Log.e("TableRepository", "isTableOccupied error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun leaveTable(branchId: String, tableId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val settingKey = "garson_open_table_tickets_v2"
+                val readReq = QueryRequest(
+                    table = "settings",
+                    select = "value",
+                    filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to settingKey))
+                )
+                val readRes = ApiClient.apiService.executeQuery(readReq)
+                val rows = (readRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                val existingValue = rows.firstOrNull()?.get("value")
+
+                @Suppress("UNCHECKED_CAST")
+                val allState: MutableMap<String, Any> = when (existingValue) {
+                    is Map<*, *> -> (existingValue as Map<String, Any>).toMutableMap()
+                    else -> mutableMapOf()
+                }
+
+                @Suppress("UNCHECKED_CAST")
+                val branchState: MutableMap<String, Any> = when (val b = allState[branchId]) {
+                    is Map<*, *> -> (b as Map<String, Any>).toMutableMap()
+                    else -> return@withContext true
+                }
+
+                if (branchState.containsKey(tableId)) {
+                    branchState.remove(tableId)
+                    allState[branchId] = branchState
+
+                    val upsertData = mapOf<String, Any>(
+                        "key" to settingKey,
+                        "value" to allState
+                    )
+                    val res = ApiClient.apiService.executeQuery(
+                        QueryRequest(table = "settings", operation = "upsert", data = upsertData)
+                    )
+                    res.error == null
+                } else {
+                    true
+                }
+            } catch (e: Exception) {
+                Log.e("TableRepository", "leaveTable error", e)
+                false
             }
         }
     }

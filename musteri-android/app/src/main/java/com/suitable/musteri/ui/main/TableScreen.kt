@@ -101,11 +101,20 @@ fun TableScreen(
                             val oldTableId = tableId
                             val currentBranchId = tableBranchId
                             val wasChangingTable = isChangingTable
+                            val targetBranchId = payload.branchId ?: info.branchId
+
+                            // Yeni taranan masa şu anki masamızdan farklıysa doluluk kontrolü yap
+                            val isSameTable = info.id == oldTableId
+                            if (!isSameTable && repo.isTableOccupied(targetBranchId, info.id)) {
+                                isScanning = false
+                                scanError = "Bu masa şu an dolu. Lütfen boş bir masa seçin."
+                                return@launch
+                            }
 
                             // Masa değiştiriliyorsa adisyonu transfer et
                             var transferSuccess = true
                             if (wasChangingTable && !oldTableId.isNullOrBlank() && !currentBranchId.isNullOrBlank()) {
-                                transferSuccess = repo.transferTableTicket(payload.branchId ?: "", oldTableId ?: "", info.id)
+                                transferSuccess = repo.transferTableTicket(targetBranchId, oldTableId, info.id)
                             }
 
                             isScanning = false
@@ -355,7 +364,12 @@ private fun TableActionPanel(
     onSnackbar: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var isLoadingServiceRequest by remember { mutableStateOf(false) }
+    var showLeaveConfirmDialog by remember { mutableStateOf(false) }
+    var showCannotLeaveDialog by remember { mutableStateOf(false) }
+    var isCheckingOrders by remember { mutableStateOf(false) }
+    var isLeavingTable by remember { mutableStateOf(false) }
 
     fun sendServiceRequest(type: String, label: String) {
         if (isLoadingServiceRequest) return
@@ -467,22 +481,144 @@ private fun TableActionPanel(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ── Masayı Değiştir (secondary) ──────────────────────────────────────
-        OutlinedButton(
-            onClick = {
-                onChangeTable()
-                onLaunchQrScanner()
-            },
+        // ── Masayı Değiştir & Masayı Bırak Yan Yana ───────────────────────────
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(10.dp))
-            Text("Masayı Değiştir", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            OutlinedButton(
+                onClick = {
+                    onChangeTable()
+                    onLaunchQrScanner()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Masayı Değiştir", 
+                    fontSize = 12.sp, 
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+
+            Button(
+                onClick = {
+                    if (isCheckingOrders || isLeavingTable) return@Button
+                    isCheckingOrders = true
+                    scope.launch {
+                        try {
+                            val orders = repo.fetchTodayTableOrders(branchId, tableNumber)
+                            if (orders.isNotEmpty()) {
+                                showCannotLeaveDialog = true
+                            } else {
+                                showLeaveConfirmDialog = true
+                            }
+                        } catch (e: Exception) {
+                            onSnackbar("Sipariş kontrolü başarısız oldu")
+                        } finally {
+                            isCheckingOrders = false
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                if (isCheckingOrders || isLeavingTable) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                } else {
+                    Icon(Icons.Default.Logout, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Masayı Bırak", 
+                        fontSize = 12.sp, 
+                        fontWeight = FontWeight.Bold, 
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
+        // Dialoglar
+        if (showCannotLeaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showCannotLeaveDialog = false },
+                title = { Text("Masayı Bırakamazsınız", fontWeight = FontWeight.Bold) },
+                text = { Text("Aktif siparişiniz bulunduğu için masayı bırakamazsınız. Masayı kapatmak veya hesabı ödemek için lütfen garsona bildirin.") },
+                confirmButton = {
+                    Button(
+                        onClick = { showCannotLeaveDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
+                    ) {
+                        Text("Tamam", color = Color.White)
+                    }
+                },
+                containerColor = CardBg,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary
+            )
+        }
+
+        if (showLeaveConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showLeaveConfirmDialog = false },
+                title = { Text("Masayı Bırak", fontWeight = FontWeight.Bold) },
+                text = { Text("Masayı bırakmak istediğinize emin misiniz? Sepetinizdeki ve masadaki tüm kayıtlar sıfırlanacaktır.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showLeaveConfirmDialog = false
+                            isLeavingTable = true
+                            scope.launch {
+                                val success = repo.leaveTable(branchId, tableId)
+                                if (success) {
+                                    val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+                                    sharedPref.edit()
+                                        .remove("tableId")
+                                        .remove("tableName")
+                                        .remove("tableNumber")
+                                        .remove("tableBranchId")
+                                        .apply()
+                                    
+                                    onNavigate("home")
+                                } else {
+                                    onSnackbar("Masa bırakılamadı")
+                                }
+                                isLeavingTable = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("Evet, Bırak", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showLeaveConfirmDialog = false },
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+                    ) {
+                        Text("Vazgeç")
+                    }
+                },
+                containerColor = CardBg,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary
+            )
         }
     }
 }

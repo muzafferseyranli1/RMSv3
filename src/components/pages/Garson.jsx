@@ -182,9 +182,9 @@ function normalizeMasaNo(value) {
 
 function normalizeGuestCounts(counts) {
   return {
-    women: Math.max(0, parseInt(counts?.women, 10) || 0),
-    men: Math.max(0, parseInt(counts?.men, 10) || 0),
-    children: Math.max(0, parseInt(counts?.children, 10) || 0),
+    women: Math.max(0, parseFloat(counts?.women) || 0),
+    men: Math.max(0, parseFloat(counts?.men) || 0),
+    children: Math.max(0, parseFloat(counts?.children) || 0),
   }
 }
 
@@ -193,11 +193,18 @@ function getGuestCoverCount(counts) {
   return safeCounts.women + safeCounts.men + safeCounts.children
 }
 
-function sanitizeOpenTicket(ticket) {
+function distributeCover(n) {
+  const women = parseFloat((n * 0.4).toFixed(2));
+  const men = parseFloat((n * 0.4).toFixed(2));
+  const children = parseFloat((n - (women + men)).toFixed(2));
+  return { women, men, children };
+}
+
+function sanitizeOpenTicket(ticket, defaultGuestCounts = DEFAULT_GUEST_COUNTS) {
   return {
     cart: Array.isArray(ticket?.cart) ? ticket.cart : [],
     orderNote: typeof ticket?.orderNote === 'string' ? ticket.orderNote : '',
-    guestCounts: normalizeGuestCounts(ticket?.guestCounts),
+    guestCounts: ticket?.guestCounts ? normalizeGuestCounts(ticket.guestCounts) : defaultGuestCounts,
     ownerId: typeof ticket?.ownerId === 'string' ? ticket.ownerId : '',
     ownerName: typeof ticket?.ownerName === 'string' ? ticket.ownerName : '',
     updatedAt: typeof ticket?.updatedAt === 'string' ? ticket.updatedAt : null,
@@ -2995,6 +3002,27 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const [searchQ, setSearchQ]         = useState('')
   const [showPrices, setShowPrices]   = useState(true)
   const [quickSaleOrderNote, setQuickSaleOrderNote] = useState('')
+  const [coverSettings, setCoverSettings] = useState({ tracking_enabled: true, default_count: 1 })
+  const defaultGuestCounts = useMemo(() => {
+    if (coverSettings.tracking_enabled) {
+      return DEFAULT_GUEST_COUNTS
+    }
+    return distributeCover(coverSettings.default_count ?? 1)
+  }, [coverSettings])
+
+  useEffect(() => {
+    async function fetchCoverSettings() {
+      try {
+        const { data } = await db.from('settings').select('value').eq('key', 'cover_settings').maybeSingle()
+        if (data && data.value) {
+          setCoverSettings(data.value)
+        }
+      } catch (err) {
+        console.error('Kuver ayarları yüklenemedi', err)
+      }
+    }
+    fetchCoverSettings()
+  }, [])
   const [activeSpecialView, setActiveSpecialView] = useState(null)
   const [favoriteOrderIds, setFavoriteOrderIds] = useState(() => readLocalFavoriteOrderSnapshot())
   const [favoriteProductIds, setFavoriteProductIds] = useState(() => readLocalFavoriteProductIdsSnapshot())
@@ -3108,8 +3136,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     [normalizedTableTickets, branchTicketKey]
   )
   const currentTableTicket = useMemo(
-    () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null),
-    [branchTableTickets, currentTableKey]
+    () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null, defaultGuestCounts),
+    [branchTableTickets, currentTableKey, defaultGuestCounts]
   )
   const occupiedTableKeys = useMemo(
     () => Object.entries(branchTableTickets)
@@ -3819,7 +3847,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const isMasaChannel = isGarsonMode || (normalizeChannelName(salesChannelName) === 'masa')
   const cart = isMasaChannel ? currentTableTicket.cart : quickSaleCart
   const orderNote = isMasaChannel ? currentTableTicket.orderNote : quickSaleOrderNote
-  const activeGuestCounts = isMasaChannel ? currentTableTicket.guestCounts : DEFAULT_GUEST_COUNTS
+  const activeGuestCounts = isMasaChannel ? currentTableTicket.guestCounts : defaultGuestCounts
   const activeCoverCount = getGuestCoverCount(activeGuestCounts)
   const isTableLayoutView = isMasaChannel && showTableLayout
   const channelName = salesChannelName
@@ -3830,13 +3858,13 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     setTableTickets(prev => {
       const normalizedState = normalizeAllTableTickets(prev, layoutTableDirectory)
       const currentBranchTickets = normalizedState[branchTicketKey] || {}
-      const currentTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey])
+      const currentTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey], defaultGuestCounts)
       const nextPartial = typeof updater === 'function' ? updater(currentTicket) : updater
       const nextTicket = sanitizeOpenTicket({
         ...currentTicket,
         ...(nextPartial || {}),
         updatedAt: new Date().toISOString(),
-      })
+      }, defaultGuestCounts)
       const nextBranchTickets = { ...currentBranchTickets }
       if (hasOpenTicketContent(nextTicket)) {
         nextBranchTickets[currentTableKey] = nextTicket
@@ -3851,7 +3879,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
       }
       return nextState
     })
-  }, [branchTicketKey, currentTableKey, layoutTableDirectory])
+  }, [branchTicketKey, currentTableKey, layoutTableDirectory, defaultGuestCounts])
   async function acknowledgeCurrentTableRequests() {
     if (!activeStaff || !currentTableRequests.length) return
     const pendingRequests = currentTableRequests.filter(request => request.status === 'pending')
@@ -4123,14 +4151,14 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     setTableTickets(prev => {
       const normalizedState = normalizeAllTableTickets(prev, layoutTableDirectory)
       const currentBranchTickets = { ...(normalizedState[branchTicketKey] || {}) }
-      const sourceTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey])
-      const targetTicket = sanitizeOpenTicket(currentBranchTickets[targetKey])
+      const sourceTicket = sanitizeOpenTicket(currentBranchTickets[currentTableKey], defaultGuestCounts)
+      const targetTicket = sanitizeOpenTicket(currentBranchTickets[targetKey], defaultGuestCounts)
       const result = buildTickets?.({ sourceTicket, targetTicket, targetKey })
       if (!result) return prev
 
       const now = new Date().toISOString()
-      const nextSourceTicket = sanitizeOpenTicket({ ...(result.sourceTicket || EMPTY_OPEN_TICKET), updatedAt: now })
-      const nextTargetTicket = sanitizeOpenTicket({ ...(result.targetTicket || EMPTY_OPEN_TICKET), updatedAt: now })
+      const nextSourceTicket = sanitizeOpenTicket({ ...(result.sourceTicket || EMPTY_OPEN_TICKET), updatedAt: now }, defaultGuestCounts)
+      const nextTargetTicket = sanitizeOpenTicket({ ...(result.targetTicket || EMPTY_OPEN_TICKET), updatedAt: now }, defaultGuestCounts)
 
       if (hasOpenTicketContent(nextSourceTicket)) currentBranchTickets[currentTableKey] = nextSourceTicket
       else delete currentBranchTickets[currentTableKey]
@@ -4781,7 +4809,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
             </button>
           </div>
 
-        {isMasaChannel && (
+        {isMasaChannel && coverSettings.tracking_enabled && (
           <div style={{
             marginTop: 10,
             borderRadius: 14,

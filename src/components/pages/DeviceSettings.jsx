@@ -19,6 +19,7 @@ export default function DeviceSettings() {
     config_data: {}
   })
   const [halls, setHalls] = useState([])
+  const [coverSettings, setCoverSettings] = useState({ tracking_enabled: true, default_count: 1 })
   const toast = useToast()
 
   const loadDevices = async () => {
@@ -41,8 +42,20 @@ export default function DeviceSettings() {
     }
   }
 
+  const loadCoverSettings = async () => {
+    try {
+      const { data, error } = await db.from('settings').select('value').eq('key', 'cover_settings').maybeSingle()
+      if (!error && data && data.value) {
+        setCoverSettings(data.value)
+      }
+    } catch (e) {
+      console.error('Kuver ayarları yüklenemedi', e)
+    }
+  }
+
   useEffect(() => {
     loadDevices()
+    loadCoverSettings()
   }, [branchId])
 
   useEffect(() => {
@@ -93,6 +106,9 @@ export default function DeviceSettings() {
         toast(`Cihaz güncellenemedi: ${error.message || JSON.stringify(error)}`, 'error')
         console.error('[DeviceSettings] update error:', error)
       } else {
+        if (formData.is_master) {
+          await db.from('settings').upsert({ key: 'cover_settings', value: coverSettings })
+        }
         const deviceLabel = updates.terminal_name
           ? `'${updates.terminal_name}' başarıyla güncellendi.`
           : 'Cihaz başarıyla güncellendi.'
@@ -101,6 +117,7 @@ export default function DeviceSettings() {
         setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
         setIsModalOpen(false)
         loadDevices()
+        loadCoverSettings()
       }
       return
     }
@@ -127,6 +144,9 @@ export default function DeviceSettings() {
       toast(`Cihaz eklenemedi: ${error.message || JSON.stringify(error)}`, 'error')
       console.error('[DeviceSettings] insert error:', error)
     } else {
+      if (formData.is_master) {
+        await db.from('settings').upsert({ key: 'cover_settings', value: coverSettings })
+      }
       const deviceLabel = newDevice.terminal_name
         ? `'${newDevice.terminal_name}' başarıyla oluşturuldu.`
         : 'Cihaz başarıyla oluşturuldu.'
@@ -134,6 +154,7 @@ export default function DeviceSettings() {
       setFormData({ device_type: 'pos', is_master: false, terminal_name: '', config_data: {} })
       setIsModalOpen(false)
       loadDevices()
+      loadCoverSettings()
     }
   }
 
@@ -359,22 +380,60 @@ export default function DeviceSettings() {
           </div>
 
           {['pos', 'masa'].includes(formData.device_type) && (
-            <div className={`flex items-center gap-2 mt-4 p-3 rounded-lg border ${hasMaster ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200'}`}>
-              <input 
-                type="checkbox" 
-                id="is_master"
-                disabled={hasMaster}
-                checked={formData.is_master}
-                onChange={e => setFormData({...formData, is_master: e.target.checked})}
-                className="w-4 h-4"
-              />
-              <label htmlFor="is_master" className={`text-sm font-medium ${hasMaster ? 'text-gray-400' : 'text-blue-900'}`}>
-                Ana Kasa (Master) olarak yapılandır
-              </label>
-              {hasMaster && (
-                <span className="text-xs text-red-500 ml-auto">Sistemde zaten bir master var</span>
+            <>
+              <div className={`flex items-center gap-2 mt-4 p-3 rounded-lg border ${hasMaster ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200'}`}>
+                <input 
+                  type="checkbox" 
+                  id="is_master"
+                  disabled={hasMaster}
+                  checked={formData.is_master}
+                  onChange={e => setFormData({...formData, is_master: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="is_master" className={`text-sm font-medium ${hasMaster ? 'text-gray-400' : 'text-blue-900'}`}>
+                  Ana Kasa (Master) olarak yapılandır
+                </label>
+                {hasMaster && (
+                  <span className="text-xs text-red-500 ml-auto">Sistemde zaten bir master var</span>
+                )}
+              </div>
+
+              {formData.is_master && (
+                <div className="mt-4 p-4 border border-orange-200 rounded-lg bg-orange-50 space-y-3">
+                  <h4 className="text-sm font-bold text-orange-950">Kuver Ayarları (Merkezi)</h4>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="tracking_enabled"
+                      checked={coverSettings.tracking_enabled}
+                      onChange={e => setCoverSettings({ ...coverSettings, tracking_enabled: e.target.checked })}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="tracking_enabled" className="text-sm font-medium text-orange-900 cursor-pointer">
+                      İşletmede kuver takibi yapılacak mı?
+                    </label>
+                  </div>
+                  
+                  {!coverSettings.tracking_enabled && (
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-orange-900">Sipariş Başına Varsayılan Kuver Sayısı</label>
+                      <input 
+                        type="number" 
+                        min="0.1" 
+                        step="0.1"
+                        className="f-input text-sm p-2 w-24"
+                        value={coverSettings.default_count ?? 1}
+                        onChange={e => setCoverSettings({ ...coverSettings, default_count: Math.max(0.1, parseFloat(e.target.value) || 1) })}
+                      />
+                      <p className="text-xs text-orange-800 leading-relaxed mt-1">
+                        Kuver takibi kapalıyken her sipariş başına <strong>{coverSettings.default_count ?? 1}</strong> kuver kaydedilecektir. <br/>
+                        Kaydedilen kuver sayısı sabit olarak <strong>%40 Kadın, %40 Erkek, %20 Çocuk</strong> oranlarıyla veritabanına yazılacaktır.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
 
           {formData.device_type === 'masa' && (
