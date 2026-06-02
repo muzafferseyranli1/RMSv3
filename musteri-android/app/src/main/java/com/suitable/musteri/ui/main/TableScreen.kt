@@ -124,6 +124,8 @@ fun TableScreen(
                                 .putString("tableName", info.tableName.ifBlank { "Masa ${info.tableNumber}" })
                                 .putString("tableNumber", info.tableNumber)
                                 .putString("tableBranchId", info.branchId)
+                                .putBoolean("hasPlacedOrder", false)
+                                .putLong("sessionStart", System.currentTimeMillis())
                                 .apply()
 
                             tableId = info.id
@@ -586,12 +588,14 @@ private fun TableActionPanel(
                             scope.launch {
                                 val success = repo.leaveTable(branchId, tableId)
                                 if (success) {
-                                    val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
-                                    sharedPref.edit()
+                                    val prefs = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+                                    prefs.edit()
                                         .remove("tableId")
                                         .remove("tableName")
                                         .remove("tableNumber")
                                         .remove("tableBranchId")
+                                        .remove("hasPlacedOrder")
+                                        .remove("sessionStart")
                                         .apply()
                                     
                                     onNavigate("home")

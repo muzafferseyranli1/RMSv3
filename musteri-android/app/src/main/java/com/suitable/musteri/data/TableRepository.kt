@@ -494,21 +494,26 @@ class TableRepository {
 
     // ─── Masa Siparişleri ─────────────────────────────────────────────────────
 
-    suspend fun fetchTodayTableOrders(branchId: String, tableNumber: String): List<TableOrder> {
+    suspend fun fetchTodayTableOrders(branchId: String, tableNumber: String, sessionStart: Long? = null): List<TableOrder> {
         return withContext(Dispatchers.IO) {
             try {
-                // Bugünün başlangıcı (ISO format, UTC)
-                val todayStart = java.time.LocalDate.now()
-                    .atStartOfDay(java.time.ZoneOffset.UTC)
-                    .toInstant()
-                    .toString()
+                // Eğer sessionStart verilmişse (cihaz saati sapmalarına karşı 5 dk geri alıyoruz)
+                // Verilmemişse günün başından itibaren al.
+                val startTime = if (sessionStart != null) {
+                    java.time.Instant.ofEpochMilli(sessionStart - 5 * 60 * 1000).toString()
+                } else {
+                    java.time.LocalDate.now()
+                        .atStartOfDay(java.time.ZoneOffset.UTC)
+                        .toInstant()
+                        .toString()
+                }
 
                 val req = QueryRequest(
                     table = "sales",
                     filters = listOf<Map<String, Any?>>(
                         mapOf<String, Any?>("type" to "eq", "col" to "branch_id", "val" to branchId),
                         mapOf<String, Any?>("type" to "eq", "col" to "kiosk_table_number", "val" to tableNumber),
-                        mapOf<String, Any?>("type" to "gte", "col" to "sale_datetime", "val" to todayStart),
+                        mapOf<String, Any?>("type" to "gte", "col" to "sale_datetime", "val" to startTime),
                         mapOf<String, Any?>("type" to "not_in", "col" to "status", "val" to listOf("cancelled", "refunded")),
                         mapOf<String, Any?>("type" to "is", "col" to "deleted_at", "val" to null)
                     )

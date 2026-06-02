@@ -1,0 +1,1 @@
+import{j as r}from"./index-CBzNtzWi.js";import{H as t}from"./Header-naTqwQHZ.js";import"./notificationService-BObh-2ff.js";function o(){return r.jsx("div",{className:"page-enter",children:r.jsx(t,{title:"Dashboard",subtitle:""})})}export{o as default};

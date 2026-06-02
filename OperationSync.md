@@ -8046,3 +8046,18 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - activeChannel'i dinleyen useEffect icerisindeki `isMasaChannel(currentCh)` kisitlamasi kaldirildi. Bu kisitlama, POS modunda masa kanalinin secilmesini engelliyordu. Artik aktif kanal bos oldugunda Hizli Satis varsayilan oluyor ancak personel manuel olarak Masa kanalina gecebiliyor.
 - Verification:
   - POS ekranindaki Masa butonu davranisi duzeltildi.
+
+## Entry - Bekleyen Satis, Masa ve KDS Durumlarinin Sifirlanmasi
+
+- Timestamp: 2026-06-02T11:32:50+03:00
+- Agent: Antigravity
+- Task: DB de bekleyen tüm satışların kapatılması, KDS üzerindeki bekleyen ürünlerin tamamlandı yapılması ve açık masaların boşaltılması.
+- Files Changed:
+  - Veritabanı üzerinde doğrudan çalıştırılan Node update scripti (temp_update.cjs)
+- Decisions:
+  - 'garson_open_table_tickets_v2' settings değeri {} olarak ayarlandı.
+  - 'sale_lines' tablosundaki 'kds_completed' değerleri true olarak güncellendi (334,684 satır).
+  - 'sales' tablosundaki 'kds_status' değerleri kural gereği 'delivered' (teslim edildi) olarak güncellendi (135,742 satır).
+  - 'sales' tablosundaki 'status' değerlerinin tamamının 'completed' durumunda olduğu teyit edildi.
+- Verification:
+  - Script output SUCCESS döndürdü, POS masalar ve KDS siparişleri temizlendi.

@@ -285,7 +285,10 @@ fun TableOrderScreen(
         scope.launch {
             val r = repo.submitOrder(tableId ?: "", tableName, tableNumber, branchId, channelId, channelName, cart, orderNote, customerInfo?.id)
             isSubmitting = false
-            if (r.isSuccess) screenState = OrderScreenState.SUCCESS
+            if (r.isSuccess) {
+                sharedPref.edit().putBoolean("hasPlacedOrder", true).apply()
+                screenState = OrderScreenState.SUCCESS
+            }
             else submitError = "Sipariş gönderilemedi: ${r.exceptionOrNull()?.message}"
         }
     }

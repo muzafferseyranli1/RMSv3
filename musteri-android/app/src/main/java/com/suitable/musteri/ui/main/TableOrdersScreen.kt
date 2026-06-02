@@ -75,7 +75,29 @@ fun TableOrdersScreen(
         isLoading = true
         scope.launch {
             try {
-                orders = repo.fetchTodayTableOrders(branchId, tableNumber)
+                val hasPlacedOrder = sharedPref.getBoolean("hasPlacedOrder", false)
+                val occupied = repo.isTableOccupied(branchId, tableId ?: "")
+                
+                if (hasPlacedOrder && !occupied) {
+                    // Masanın hesabı alınmış, masa boşalmış. Otomatik bırak.
+                    sharedPref.edit()
+                        .remove("tableId")
+                        .remove("tableName")
+                        .remove("tableNumber")
+                        .remove("tableBranchId")
+                        .remove("hasPlacedOrder")
+                        .remove("sessionStart")
+                        .apply()
+                    onNavigate("home")
+                    return@launch
+                }
+                
+                if (!occupied && !hasPlacedOrder) {
+                    orders = emptyList()
+                } else {
+                    val sessionStart = sharedPref.getLong("sessionStart", 0L).let { if (it > 0) it else null }
+                    orders = repo.fetchTodayTableOrders(branchId, tableNumber, sessionStart)
+                }
             } catch (e: Exception) {
                 errorMsg = "Siparişler yüklenemedi"
             }
@@ -177,10 +199,19 @@ fun TableOrdersScreen(
 
                     Button(
                         onClick = {
-                            if (orders.isNotEmpty()) {
-                                showCannotLeaveDialog = true
-                            } else {
-                                showLeaveConfirmDialog = true
+                            if (isLeavingTable) return@Button
+                            isLeavingTable = true
+                            scope.launch {
+                                try {
+                                    val occupied = repo.isTableOccupied(branchId ?: "", tableId ?: "")
+                                    if (occupied) {
+                                        showCannotLeaveDialog = true
+                                    } else {
+                                        showLeaveConfirmDialog = true
+                                    }
+                                } finally {
+                                    isLeavingTable = false
+                                }
                             }
                         },
                         modifier = Modifier
@@ -305,6 +336,8 @@ fun TableOrdersScreen(
                                             .remove("tableName")
                                             .remove("tableNumber")
                                             .remove("tableBranchId")
+                                            .remove("hasPlacedOrder")
+                                            .remove("sessionStart")
                                             .apply()
                                         
                                         onNavigate("home")
@@ -379,8 +412,6 @@ private fun OrderSummaryBanner(orders: List<TableOrder>) {
     }
 }
 
-// ─── Saat Kırılımı Sipariş Grubu Kartı ──────────────────────────────────────────
-
 @Composable
 private fun OrderGroupCard(order: TableOrder) {
     val timeText = remember(order.saleDateTime) {
@@ -389,6 +420,16 @@ private fun OrderGroupCard(order: TableOrder) {
             val formatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
             formatter.format(instant)
         } catch (e: Exception) { "--:--" }
+    }
+
+    val (statusText, statusColor, statusIcon) = remember(order.status) {
+        when (order.status) {
+            "pending" -> Triple("Onay Bekliyor", OrdersAccent, Icons.Default.HourglassEmpty)
+            "preparing" -> Triple("Hazırlanıyor", Color(0xFF3B82F6), Icons.Default.Restaurant)
+            "ready" -> Triple("Hazır", OrdersGreen, Icons.Default.CheckCircle)
+            "completed", "paid" -> Triple("Tamamlandı", OrdersGreen, Icons.Default.CheckCircle)
+            else -> Triple(order.status.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }, OrdersTextSecondary, Icons.Default.Info)
+        }
     }
 
     Card(
@@ -407,15 +448,15 @@ private fun OrderGroupCard(order: TableOrder) {
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(OrdersGreen.copy(alpha = 0.15f)),
+                        .background(statusColor.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = OrdersGreen, modifier = Modifier.size(20.dp))
+                    Icon(statusIcon, contentDescription = null, tint = statusColor, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Sipariş Saati: $timeText", color = OrdersTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Durum: Hazır", color = OrdersGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Durum: $statusText", color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
                     text = "₺${String.format("%.2f", order.grossTotal)}",
