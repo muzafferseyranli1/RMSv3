@@ -8079,3 +8079,35 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - personel-android altindaki HANDOFF.md dosyasi guncellendi.
 - Verification:
   - Clean Build PASS: .\gradlew.bat clean assembleDebug --no-configuration-cache (2m 22s) -> APK generated under personel-android/app/build/outputs/apk/debug/app-debug.apk
+
+
+## Entry - Personel Android Uygulaması PIN Giriş Hatası Giderilmesi
+
+- Timestamp: 2026-06-02T23:51:00+03:00
+- Agent: Antigravity
+- Task: PIN girişinde "personel kayıtları bulunamadı" hatasının giderilmesi.
+- Files Changed:
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt
+  - personel-android/local.properties
+- Decisions:
+  - Veritabanındaki settings tablosunda kayıtlı olan anahtarın 'personnel_records' (İngilizce yazım) olmasına karşın, personel-android uygulamasında 'personel_records' (Türkçe yazım) olarak sorgulanmasından kaynaklanan yazım hatası (typo) düzeltildi.
+  - Projenin derlenmesi ve yerel testlerin yapılabilmesi için local.properties dosyası oluşturularak Android SDK yolu tanımlandı.
+- Verification:
+  - Gradle Build: .\gradlew.bat assembleDebug (BUILD SUCCESSFUL in 2m 15s)
+
+## Entry - Android Görevler (Tasks) Modülü Entegrasyonu
+
+- Timestamp: 2026-06-03T00:15:00+03:00
+- Agent: Antigravity
+- Task: Yan menüye Görevler seçeneği açılması ve web paneldeki \tasks sayfasının tüm mobil olanaklarıyla native olarak entegre edilmesi.
+- Files Changed:
+  - personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt
+- Decisions:
+  - Veri katmanında generic API query sistemi kullanılarak tasks, task_participants, task_checklist_items, task_chat_messages ve task_approval_requests tabloları için sorgu mantıkları kuruldu.
+  - Hiyerarşi kontrolü (canReject) settings tablosundan çekilen pozisyon ağacına göre Kotlin tarafında hesaplanarak görevlerin onay gereksinimleri (pending_approval / open) otomatik olarak çözüldü.
+  - Arayüz tamamen Jetpack Compose ile mobil cihaz boyutlarına ve Material3 standartlarına uyumlu (kontrol listesi tıklama, chat tartışma akışı, detaylar ve yeni görev formu) şekilde tasarlandı.
+- Verification:
+  - Gradle Build: .\gradlew.bat assembleDebug (BUILD SUCCESSFUL in 1m 1s)

@@ -107,6 +107,19 @@ fun MainScreen(
                     }
                 )
             }
+            "tasks" -> {
+                TasksScreen(
+                    config = config,
+                    staffSession = staffSession,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            sharedPref.edit().remove("staffSession").apply()
+                            staffSession = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
             else -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(

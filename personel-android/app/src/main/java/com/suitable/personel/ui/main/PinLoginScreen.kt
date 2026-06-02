@@ -97,7 +97,7 @@ fun PinLoginScreen(
                     val request = QueryRequest(
                         table = "settings",
                         operation = "select",
-                        filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personel_records"))
+                        filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
                     )
                     val response = ApiClient.apiService.executeQuery(request)
                     if (response.error == null) {

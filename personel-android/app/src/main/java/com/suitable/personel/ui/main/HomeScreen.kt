@@ -86,6 +86,13 @@ fun AppScaffold(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text("📋  Görevler (Tasks)") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("tasks")
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Çıkış Yap", color = Color.Red) },
                         onClick = {
                             showSidebarMenu = false
@@ -405,6 +412,50 @@ fun HomeScreen(
                                 )
                             }
                         }
+                    }
+                }
+
+                // Card 3: Görevler (Geniş Kart)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(86.dp)
+                        .clickable { onNavigate("tasks") },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    border = BorderStroke(1.dp, Color(0xFF334155))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF10B981).copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Assignment, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Görevler & Takip",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Yapılacak işler ve onay bekleyen talepler",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF94A3B8))
                     }
                 }
 
