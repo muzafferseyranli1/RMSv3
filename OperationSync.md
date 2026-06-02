@@ -8061,3 +8061,21 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - 'sales' tablosundaki 'status' değerlerinin tamamının 'completed' durumunda olduğu teyit edildi.
 - Verification:
   - Script output SUCCESS döndürdü, POS masalar ve KDS siparişleri temizlendi.
+
+## Entry - Personel Android Uygulamasi (personel-android) Gelistirilmesi ve Entegrasyonu
+
+- Timestamp: 2026-06-02T16:40:00+03:00
+- Agent: Antigravity
+- Task: Web tabanli simulasyon olan /personel-app uygulamasinin native Android uygulamasina (personel-android) donusturulmesi, staffSession entegrasyonu ve PDKS dashboard'unun yapilmasi.
+- Files Changed:
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt
+  - personel-android/HANDOFF.md
+- Decisions:
+  - TableOrdersScreen.kt guncellenerek eski CustomerInfo yerine StaffSession parametresi kullanildi.
+  - MainScreen.kt guncellenerek PersonelPrefs uzerinden staffSession yuklemesi yapildi ve oturum kontroluyle PinLoginScreen / HomeScreen yonlendirmeleri eklendi.
+  - HomeScreen.kt dosyasi sifirdan yazilarak personel icin PDKS (Mesaiye Basla/Bitir suresi sayaci), profil bilgileri ve Garson terminali/Siparis listesi hizli erisim kartlari eklendi.
+  - personel-android altindaki HANDOFF.md dosyasi guncellendi.
+- Verification:
+  - Clean Build PASS: .\gradlew.bat clean assembleDebug --no-configuration-cache (2m 22s) -> APK generated under personel-android/app/build/outputs/apk/debug/app-debug.apk

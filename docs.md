@@ -20,6 +20,7 @@ Yapay zeka asistanı, her görevin sonunda veya turn'ünü (turunu) bitirip tesl
 
 ### Adım 3: `OperationSync.md` Güncellemesi
 - Asistan, bu oturumda yaptığı tüm değişiklikleri ve güncellemeleri projenin kök dizinindeki `OperationSync.md` dosyasının sonuna yeni bir `## Entry` (örneğin `## Entry 139`) olarak eklemelidir.
+- eğer android mobil uygulaması geliştirdiysen yıkarıdaklere ek olarak uygulama klasöründek Handout.md dosyasını güncelle
 
 ### Adım 4: Git Takip Doğrulaması
 - Asistan, yukarıdaki kopyalama ve güncellemeleri yaptıktan sonra projenin ana dizininde `git status` komutunu çalıştırarak:

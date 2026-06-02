@@ -12,6 +12,11 @@ export default defineConfig({
   resolve: {
     alias: { '@': '/src' }
   },
+  server: {
+    watch: {
+      ignored: ['**/.env', '**/.env.*']
+    }
+  },
   build: {
     emptyOutDir: false,
   }

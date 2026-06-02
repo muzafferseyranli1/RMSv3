@@ -1,37 +1,35 @@
-# Walkthrough: Küsüratlı Kuver Dağıtımı ve Veritabanı Entegrasyonu
+# Walkthrough - Personel Android Uygulaması Entegrasyonu
 
-Bu güncelleme; 1.5 gibi küsüratlı ortalama kuver sayılarının tam sayıya yuvarlanmadan, birebir oranlara (%40 Kadın, %40 Erkek, %20 Çocuk) göre bölüştürülerek ondalıklı olarak kaydedilmesini, verilerin veritabanında kayıp olmadan saklanabilmesini ve sepet durumlarındaki olası çökmelerin önlenmesini kapsamaktadır.
+Bu belgede, personel-android uygulamasında yapılan son geliştirmelerin ve entegrasyonların özeti yer almaktadır. Müşteri uygulamasından devralınan ekranların personel yapısına (`StaffSession` ve `PersonelPrefs`) uygun hale getirilmesi ve uygulamanın hatasız şekilde derlenmesi sağlanmıştır.
 
-## Yapılan Değişiklikler
+## Değişiklikler
 
-### 1. Veritabanı Şeması Güncellemesi (SQL Migration)
-* **Dosya:** [025_alter_guest_counts_to_numeric.sql](file:///c:/RMSv3/migrations/025_alter_guest_counts_to_numeric.sql)
-* **Açıklama:** Canlı Railway PostgreSQL veritabanındaki `sales` ve `pos_sales` tablolarında yer alan kuver ve misafir kolonları `INTEGER` tipinden `NUMERIC(12,2)` tipine yükseltildi.
-* **Uygulanan Kolonlar:** `cover_count`, `female_guest_count`, `male_guest_count`, `child_guest_count`
+### 1. `TableOrdersScreen.kt` Güncellemesi
+* [TableOrdersScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt) içerisinde, artık kullanılmayan `CustomerInfo` bağımlılığı temizlendi ve yerine `StaffSession` parametresi eklendi.
+* Sayfa imzasındaki parametre `staffSession: StaffSession?` olarak güncellendi.
 
-### 2. Küsüratlı Dağıtım Algoritması (`distributeCover`)
-* **Dosyalar:** [POS.jsx](file:///c:/RMSv3/src/components/pages/POS.jsx) ve [Garson.jsx](file:///c:/RMSv3/src/components/pages/Garson.jsx)
-* **Açıklama:** Tam sayı yuvarlaması kaldırıldı. Yüzen noktalı sayı duyarlılık farkları (precision error) çocuk kuverine eklenerek toplamın tam olarak girilen sayıya (`n`) eşit olması sağlandı.
-  ```javascript
-  function distributeCover(n) {
-    const women = parseFloat((n * 0.4).toFixed(2));
-    const men = parseFloat((n * 0.4).toFixed(2));
-    const children = parseFloat((n - (women + men)).toFixed(2));
-    return { women, men, children };
-  }
-  ```
+### 2. `MainScreen.kt` Entegrasyonu
+* [MainScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt) dosyası tamamen yenilendi.
+* Uygulama açılışında `PersonelPrefs` içerisindeki `"staffSession"` verisini Gson aracılığıyla yükleyecek şekilde ayarlandı.
+* Eğer oturum yoksa `PinLoginScreen`'e yönlendirilir; oturum varsa `HomeScreen` (Personel Dashboard) ekranına yönlendirilir.
+* Personel çıkış yapmak istediğinde `staffSession` verisi SharedPreferences'tan temizlenip tekrar PIN ekranına dönülmesi sağlandı.
+* Navigasyon rotaları `"login"`, `"home"`, `"table"`, `"table_order"`, `"table_orders"` olarak güncellenerek tüm sayfalara aktif `staffSession` nesnesi aktarıldı.
 
-### 3. Arayüz ve Sepet Hotfixi (Undone Properties Hatası Giderildi)
-* **Dosyalar:** [POS.jsx](file:///c:/RMSv3/src/components/pages/POS.jsx) ve [Garson.jsx](file:///c:/RMSv3/src/components/pages/Garson.jsx)
-* **Açıklama:** Arayüzde ödeme alma veya sepet işlemleri sırasında sepet elemanlarında `prod` nesnesinin tanımsız (undefined) olması durumunda `Cannot read properties of undefined (reading 'sale_cat_l5')` hatası alınması engellendi. `getProductCategoryId` fonksiyonu güvenli isteğe bağlı zincirleme (`optional chaining` `item?.`) kullanacak şekilde güncellendi.
-  ```javascript
-  function getProductCategoryId(item) {
-    return item?.sale_cat_l5
-      || item?.sale_cat_l4
-      || item?.sale_cat_l5 // ...
-  }
-  ```
+### 3. `HomeScreen.kt` (Personel Dashboard) Geliştirmesi
+* [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt) sıfırdan yazılarak personel için özel bir yönetim paneline dönüştürüldü:
+  * **Profil Kartı:** Personelin adı-soyadı, şubesi ve yetki seviyesi görüntülendi. Baş harflerden oluşan şık, degrade bir profil resmi eklendi.
+  * **PDKS Kartı (Mesai Takibi):** Personelin "Mesaime Başla" ve "Mesaiyi Sonlandır" işlemlerini yapabileceği, yerel veritabanında (SharedPreferences) tutulan interaktif bir kart tasarlandı. Personel mesaideyken ne kadar süredir çalıştığını saniye saniye güncellenen bir sayaç ile görebiliyor.
+  * **Hızlı Menüler:** "Garson Terminali" (Masa ekranı) ve "Siparişler" sayfalarına hızlı erişim sağlayan M3 kartları eklendi.
+  * **Sistem Bilgisi:** Bağlantı durumunu gösteren bilgi kartı eklendi.
+  * **AppScaffold Güncellemesi:** Sağ üst köşedeki hamburger menü personelin yetkilerine ve gitmesi gereken sayfalara uygun olarak ("Ana Sayfa", "Garson Masaları", "Sipariş Listesi", "Çıkış Yap") düzenlendi.
 
-## Doğrulama Sonuçları
-* ✅ SQL migration Railway veritabanına uygulandı.
-* ✅ `npm run build` komutu çalıştırıldı ve production build **0 hata ile %100 başarılı** bir şekilde tamamlandı.
+## Doğrulama ve Derleme Sonuçları
+
+Gradle derleme komutu başarıyla çalıştırıldı:
+```powershell
+.\gradlew.bat compileDebugKotlin
+```
+
+**Sonuç:**
+* **Derleme Başarılı:** `BUILD SUCCESSFUL`
+* **Hatalar:** Sıfır hata (0 errors). Sadece Material 3 simgeleri için deprecation (AutoMirrored sürüm önerisi) ve gereksiz cast uyarıları alındı, bunlar uygulamanın çalışmasını etkilememektedir.
