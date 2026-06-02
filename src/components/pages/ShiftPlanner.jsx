@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { Fragment } from 'react'
 import { useRef } from 'react'
@@ -209,6 +209,7 @@ function mergeDailySalesRows(preAggregatedRows, rawSalesRows, selectedBranch, se
 function normalizeEntryRecord(entry) {
   return {
     ...entry,
+    schedule_date: entry.schedule_date ? String(entry.schedule_date).slice(0, 10) : null,
     shift_start_time: entry.shift_start_time ? String(entry.shift_start_time).slice(0, 5) : null,
     shift_end_time: entry.shift_end_time ? String(entry.shift_end_time).slice(0, 5) : null,
     break_start_time: entry.break_start_time ? String(entry.break_start_time).slice(0, 5) : null,
@@ -452,8 +453,8 @@ function buildMixProjection(samples, actualMixByDate, priceCatalog, receiptCount
 function buildLiveForecastSummaryMap({ weekDays, dailyRows, lineRows, saleItems, lookbackWeeks, savedForecastRows }) {
   const actualMixByDate = buildActualMixByDate(lineRows)
   const priceCatalog = buildPriceCatalog(saleItems, actualMixByDate)
-  const actualByDate = new Map((dailyRows || []).map(row => [row.sale_date, row]))
-  const savedForecastMap = new Map((savedForecastRows || []).map(row => [row.forecast_date, row]))
+  const actualByDate = new Map((dailyRows || []).map(row => [row.sale_date ? String(row.sale_date).slice(0, 10) : '', row]))
+  const savedForecastMap = new Map((savedForecastRows || []).map(row => [row.forecast_date ? String(row.forecast_date).slice(0, 10) : '', row]))
 
   return Object.fromEntries(weekDays.map(dateKey => {
     const actual = actualByDate.get(dateKey) || null
@@ -492,7 +493,7 @@ function formatMetricPercent(value, digits = 1) {
 }
 
 function getDayDraftMap(days, weekDays) {
-  const dayMap = Object.fromEntries((days || []).map(day => [day.schedule_date, day]))
+  const dayMap = Object.fromEntries((days || []).map(day => [day.schedule_date ? String(day.schedule_date).slice(0, 10) : '', day]))
   return Object.fromEntries(weekDays.map(dayKey => {
     const templateKey = getOperatingHoursTemplateDate(getWeekdayTemplateIndex(dayKey))
     const row = dayMap[templateKey] || dayMap[dayKey]

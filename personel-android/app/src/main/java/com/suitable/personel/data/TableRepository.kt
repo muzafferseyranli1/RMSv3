@@ -13,7 +13,9 @@ data class TableInfo(
     val branchId: String,
     val qrToken: String,
     val hallName: String = "",
-    val sectionName: String = ""
+    val sectionName: String = "",
+    val hallId: String = "",
+    val sectionId: String = ""
 )
 
 data class MenuChannel(val id: String, val name: String)
@@ -99,10 +101,18 @@ data class TableOrderLine(
 data class TableOrder(
     val id: String,
     val saleDateTime: String,
-    val orderNote: String?,
+    val orderNote: String? = null,
     val grossTotal: Double,
     val status: String,
-    val lines: List<TableOrderLine> = emptyList()
+    val lines: List<TableOrderLine> = emptyList(),
+    val tableNumber: String = "",
+    val tableName: String = "",
+    val orderNumber: String = "",
+    val totalAmount: Double = 0.0,
+    val taxTotal: Double = 0.0,
+    val discountTotal: Double = 0.0,
+    val customerName: String = "",
+    val waiterName: String = ""
 )
 
 // ─── QR Payload Parsing ───────────────────────────────────────────────────────
@@ -179,7 +189,9 @@ class TableRepository {
                     tableName = row["table_name"] as? String ?: "",
                     tableNumber = row["table_number"] as? String ?: "",
                     branchId = row["branch_id"] as? String ?: branchId ?: "",
-                    qrToken = row["qr_token"] as? String ?: tableToken
+                    qrToken = row["qr_token"] as? String ?: tableToken,
+                    hallId = row["hall_id"] as? String ?: "",
+                    sectionId = row["section_id"] as? String ?: ""
                 )
             } catch (e: Exception) {
                 Log.e("TableRepository", "lookupTableByQrToken error", e)
@@ -210,7 +222,9 @@ class TableRepository {
                         tableName = row["table_name"] as? String ?: "",
                         tableNumber = row["table_number"] as? String ?: "",
                         branchId = row["branch_id"] as? String ?: branchId,
-                        qrToken = row["qr_token"] as? String ?: ""
+                        qrToken = row["qr_token"] as? String ?: "",
+                        hallId = row["hall_id"] as? String ?: "",
+                        sectionId = row["section_id"] as? String ?: ""
                     )
                 }
             } catch (e: Exception) {
@@ -605,6 +619,70 @@ class TableRepository {
     }
 
     // ─── Masa Siparişleri ─────────────────────────────────────────────────────
+
+    suspend fun acceptWaiterAssignment(orderId: String, waiterId: String, waiterName: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "table_orders",
+                    operation = "update",
+                    data = mapOf(
+                        "status" to "active",
+                        "waiter_id" to waiterId,
+                        "waiter_name" to waiterName
+                    ),
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to orderId))
+                )
+                ApiClient.apiService.executeQuery(req)
+                true
+            } catch (e: Exception) {
+                Log.e("TableRepository", "acceptWaiterAssignment error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun fetchPendingWaiterAssignments(branchId: String): List<TableOrder> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "table_orders",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "branch_id", "val" to branchId),
+                        mapOf("type" to "eq", "col" to "status", "val" to "pending_waiter_assignment")
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                if (rows.isEmpty()) return@withContext emptyList()
+
+                val saleIds = rows.mapNotNull { it["id"] as? String }
+                val linesMap = fetchSaleLinesForIds(saleIds)
+
+                rows.mapNotNull { row ->
+                    val id = row["id"] as? String ?: return@mapNotNull null
+                    TableOrder(
+                        id = id,
+                        saleDateTime = row["sale_datetime"] as? String ?: "",
+                        tableNumber = row["table_number"] as? String ?: "",
+                        tableName = row["table_name"] as? String ?: "",
+                        orderNumber = row["order_number"] as? String ?: "",
+                        status = row["status"] as? String ?: "",
+                        totalAmount = (row["total_amount"] as? Number)?.toDouble() ?: 0.0,
+                        grossTotal = (row["gross_total"] as? Number)?.toDouble() ?: 0.0,
+                        taxTotal = (row["tax_total"] as? Number)?.toDouble() ?: 0.0,
+                        discountTotal = (row["discount_total"] as? Number)?.toDouble() ?: 0.0,
+                        customerName = row["customer_name"] as? String ?: "",
+                        waiterName = row["waiter_name"] as? String ?: "",
+                        lines = linesMap[id] ?: emptyList()
+                    )
+                }.sortedByDescending { it.saleDateTime }
+            } catch (e: Exception) {
+                Log.e("TableRepository", "fetchPendingWaiterAssignments error", e)
+                emptyList()
+            }
+        }
+    }
 
     suspend fun fetchTodayTableOrders(branchId: String, tableNumber: String, sessionStart: Long? = null): List<TableOrder> {
         return withContext(Dispatchers.IO) {

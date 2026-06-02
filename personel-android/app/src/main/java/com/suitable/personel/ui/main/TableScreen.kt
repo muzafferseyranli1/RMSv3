@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -31,8 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.suitable.personel.data.AppConfig
 import com.suitable.personel.data.TableInfo
+import com.suitable.personel.data.TableOrder
 import com.suitable.personel.data.TableRepository
+import com.suitable.personel.data.DeviceRepository
+import com.suitable.personel.data.PosTerminal
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 
 private val TableBg = Color(0xFF0F172A)
 private val CardBg = Color(0xFF1E293B)
@@ -54,13 +61,22 @@ fun TableScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repo = remember { TableRepository() }
+    val deviceRepo = remember { DeviceRepository() }
+
+    val sharedPref = context.getSharedPreferences("PersonelPrefs", Context.MODE_PRIVATE)
 
     val branchId = staffSession?.activeBranchId ?: ""
     val branchName = staffSession?.activeBranchName ?: "Şube"
 
+    var selectedTerminalId by remember { mutableStateOf(sharedPref.getString("selectedGarsonTerminalId", null)) }
+    var selectedTerminal by remember { mutableStateOf<PosTerminal?>(null) }
+    var terminalsList by remember { mutableStateOf<List<PosTerminal>>(emptyList()) }
+    var showTerminalSelection by remember { mutableStateOf(selectedTerminalId == null) }
+
     var tables by remember { mutableStateOf<List<TableInfo>>(emptyList()) }
     var occupiedTables by remember { mutableStateOf<Map<String, List<*>>>(emptyMap()) }
     var pendingRequests by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
+    var pendingAssignments by remember { mutableStateOf<List<TableOrder>>(emptyList()) }
     
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -68,6 +84,9 @@ fun TableScreen(
 
     var selectedTableForAction by remember { mutableStateOf<TableInfo?>(null) }
     var showActionDialog by remember { mutableStateOf(false) }
+    var showAssignmentDialog by remember { mutableStateOf<TableOrder?>(null) }
+    var assignmentPin by remember { mutableStateOf("") }
+    var assignmentError by remember { mutableStateOf<String?>(null) }
 
     // Verileri yükle
     LaunchedEffect(branchId, refreshTrigger) {
@@ -76,14 +95,46 @@ fun TableScreen(
         errorMsg = null
         scope.launch {
             try {
+                // Terminals
+                val allTerminals = deviceRepo.fetchGarsonTerminals(branchId)
+                terminalsList = allTerminals
+
+                if (selectedTerminalId != null) {
+                    selectedTerminal = allTerminals.find { it.id == selectedTerminalId }
+                    // Update active session on initial load
+                    if (selectedTerminal != null && staffSession?.id != null) {
+                        deviceRepo.updateGarsonActiveSession(selectedTerminalId!!, staffSession.id)
+                    }
+                }
+
                 // 1) Masaları çek
-                tables = repo.fetchBranchTables(branchId)
+                val allTables = repo.fetchBranchTables(branchId)
+
+                // 2) Terminal allowed_zones fitrelemesi
+                val allowedZones = selectedTerminal?.getAllowedZones()
+                tables = if (allowedZones.isNullOrEmpty() || allowedZones.contains("*")) {
+                    allTables
+                } else {
+                    allTables.filter { allowedZones.contains(it.hallId) || allowedZones.contains(it.sectionId) }
+                }
                 
-                // 2) Açık adisyonlu (dolu) masaları çek
+                // 3) Açık adisyonlu (dolu) masaları çek
                 occupiedTables = repo.fetchOpenTicketsForBranch(branchId)
                 
-                // 3) Bekleyen servis taleplerini çek
+                // 4) Bekleyen servis taleplerini çek
                 pendingRequests = repo.fetchPendingServiceRequests(branchId)
+
+                // 5) Atanmayı bekleyen müşteri siparişleri
+                val allPendingOrders = repo.fetchPendingWaiterAssignments(branchId)
+                pendingAssignments = allPendingOrders.filter { order ->
+                    tables.any { t -> t.tableNumber == order.tableNumber || t.tableName == order.tableName }
+                }
+
+                if (pendingAssignments.isNotEmpty() && showAssignmentDialog == null) {
+                    showAssignmentDialog = pendingAssignments.first()
+                } else if (pendingAssignments.isEmpty()) {
+                    showAssignmentDialog = null
+                }
             } catch (e: Exception) {
                 errorMsg = "Veriler yüklenirken hata oluştu."
                 Log.e("TableScreen", "Error loading table data", e)
@@ -91,6 +142,63 @@ fun TableScreen(
                 isLoading = false
             }
         }
+    }
+
+    if (showTerminalSelection) {
+        Scaffold(
+            containerColor = TableBg,
+            topBar = {
+                TopAppBar(
+                    title = { Text("Garson Terminali Seçin", color = TextPrimary) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A))
+                )
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize().background(TableBg)) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = AccentBlue)
+                } else if (terminalsList.isEmpty()) {
+                    Text(
+                        "Bu şubede tanımlı masa tipi (Garson) terminal bulunamadı.",
+                        color = TextSecondary,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        lazyItems(terminalsList, key = { it.id }) { terminal ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    selectedTerminalId = terminal.id
+                                    selectedTerminal = terminal
+                                    sharedPref.edit().putString("selectedGarsonTerminalId", terminal.id).apply()
+                                    scope.launch {
+                                        deviceRepo.updateGarsonActiveSession(terminal.id, staffSession?.id)
+                                    }
+                                    showTerminalSelection = false
+                                    refreshTrigger++
+                                },
+                                colors = CardDefaults.cardColors(containerColor = CardBg),
+                                border = if (selectedTerminalId == terminal.id) androidx.compose.foundation.BorderStroke(2.dp, AccentBlue) else null
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(terminal.terminalName ?: "İsimsiz Terminal", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Kod: ${terminal.activationCode}", color = TextSecondary, fontSize = 12.sp)
+                                    val zones = terminal.getAllowedZones()
+                                    if (zones.isNotEmpty()) {
+                                        Text("Bölgeler: ${zones.size}", color = AccentGreen, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return
     }
 
     Scaffold(
@@ -106,7 +214,7 @@ fun TableScreen(
                             fontSize = 20.sp
                         )
                         Text(
-                            text = branchName,
+                            text = "${branchName} • ${selectedTerminal?.terminalName ?: ""}",
                             color = TextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
@@ -114,6 +222,15 @@ fun TableScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showTerminalSelection = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Terminal Seç",
+                            tint = Color.White
+                        )
+                    }
                     IconButton(
                         onClick = { refreshTrigger++ },
                         enabled = !isLoading
@@ -167,7 +284,7 @@ fun TableScreen(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Bu şubeye kayıtlı masa bulunamadı.", color = TextSecondary, fontSize = 15.sp)
+                            Text("Bu yetki bölgesine ait masa bulunamadı.", color = TextSecondary, fontSize = 15.sp)
                         }
                     } else {
                         LazyVerticalGrid(
@@ -197,8 +314,8 @@ fun TableScreen(
                                     hasBill = hasBill,
                                     onClick = {
                                         // Masayı aktif yap ve aksiyon penceresini aç
-                                        val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
-                                        sharedPref.edit()
+                                        val sharedPrefCust = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
+                                        sharedPrefCust.edit()
                                             .putString("tableId", table.id)
                                             .putString("tableName", table.tableName.ifBlank { "Masa ${table.tableNumber}" })
                                             .putString("tableNumber", table.tableNumber)
@@ -367,6 +484,79 @@ fun TableScreen(
                         selectedTableForAction = null
                     }
                 ) {
+                    Text("Kapat", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF1E293B)
+        )
+    }
+
+    if (showAssignmentDialog != null) {
+        val order = showAssignmentDialog!!
+        AlertDialog(
+            onDismissRequest = {
+                showAssignmentDialog = null
+                assignmentPin = ""
+                assignmentError = null
+            },
+            title = {
+                Text("🛎️ Yeni Müşteri Siparişi", color = AccentBlue, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Masa: ${order.tableName.ifBlank { order.tableNumber }}", color = Color.White, fontSize = 16.sp)
+                    Text("Tutar: ₺${String.format("%.2f", order.grossTotal)}", color = TextSecondary)
+                    Text("Siparişi üstünüze almak için PIN girin:", color = TextSecondary, fontSize = 14.sp)
+                    
+                    OutlinedTextField(
+                        value = assignmentPin,
+                        onValueChange = { assignmentPin = it; assignmentError = null },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        placeholder = { Text("PIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = CardBorder,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    
+                    if (assignmentError != null) {
+                        Text(assignmentError!!, color = AccentRed, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (assignmentPin == staffSession?.pin) {
+                            scope.launch {
+                                val success = repo.acceptWaiterAssignment(order.id, staffSession.id, staffSession.getDisplayName())
+                                if (success) {
+                                    showAssignmentDialog = null
+                                    assignmentPin = ""
+                                    refreshTrigger++
+                                } else {
+                                    assignmentError = "İşlem başarısız oldu."
+                                }
+                            }
+                        } else {
+                            assignmentError = "Hatalı PIN"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                ) {
+                    Text("Kabul Et")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showAssignmentDialog = null
+                    assignmentPin = ""
+                    assignmentError = null
+                }) {
                     Text("Kapat", color = TextSecondary)
                 }
             },

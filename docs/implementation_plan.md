@@ -1,48 +1,48 @@
-# Personel Native Android Uygulaması (personel-android) Geliştirme Planı
+# Tekrarlayan Görevler, Görsel Modal Ayrımı ve PDKS Vardiya Kontrolü
 
-Bu plan, web tabanlı simülasyon olarak çalışan `/personel-app` uygulamasının, tıpkı `musteri-android` gibi native bir Android uygulamasına dönüştürülmesini hedefler. İlk aşamada "Garson" sekmesine ağırlık verilecek ve sipariş alma ekranı müşteri uygulamasıyla birebir aynı olacaktır.
-
-## 1. Geliştirme Aşamasında Uygulamaların Karışmasını Önleme Stratejisi
-
-İki farklı mobil uygulamayı aynı projede geliştirirken (Müşteri ve Personel), AI taleplerinin ve kodların birbirine girmemesi için aşağıdaki yöntemleri izleyeceğiz:
-
-*   **Fiziksel İzolasyon:** Personel uygulaması `C:\RMSv3\personel-android` adlı tamamen yeni ve ayrı bir klasörde yaşayacak.
-*   **Paket (Package) Ayrımı:** Müşteri uygulaması `com.suitable.musteri` paketini kullanırken, personel uygulaması `com.suitable.personel` paketini kullanacak.
-*   **Açık İletişim:** Benden (Antigravity'den) bir şey isterken mutlaka hangi uygulamada değişiklik istediğinizi belirtin (Örn: *"Personel uygulamasındaki garson ekranında..."* veya *"Müşteri uygulamasının sepetinde..."*).
-*   **Bağımsız Veri Katmanı:** İlk aşamada (MVP) iki uygulamanın ortak kullandığı sınıfları (Örn: `ApiClient.kt`, Veritabanı modelleri) tek bir kütüphane yapmak yerine **kopyalayarak çoğaltacağız**. Böylece personel uygulamasına eklediğimiz yeni bir yetenek, yanlışlıkla müşteri uygulamasını bozmayacak.
-
-## 2. Mimari ve İlk Kurulum
-
-*   `C:\RMSv3\musteri-android` projesinin temel iskeleti klonlanarak `C:\RMSv3\personel-android` oluşturulacak.
-*   Paket adları, Gradle ayarları ve uygulama adı (`Personel App`) güncellenecek.
-*   Material 3 tasarımı ve Jetpack Compose kullanılmaya devam edilecek.
-
-## 3. Ekranlar (React Simülasyonundan Native'e)
-
-### A. Personel Girişi (PIN Gate)
-*   **Mevcut (React):** `StaffPinGate`
-*   **Native:** `PinLoginScreen.kt`. Sadece yetkili personelin (Garson, Müdür vb.) sisteme PIN ile giriş yapmasını sağlayacak ekran.
-
-### B. Ana Navigasyon (Drawer / Bottom Bar)
-*   Uygulama açıldığında bir Navigation Drawer (Yan Menü) veya Bottom Navigation ile şu sekmeler olacak:
-    *   Ana Sayfa (Dashboard - Görevler, PDKS durumu)
-    *   Görevler
-    *   PDKS (Giriş/Çıkış)
-    *   **Garson Terminali** (Şu anki odak noktamız)
-    *   Siparişler
-    *   Mal Kabul
-
-### C. Garson Terminali ve Sipariş Alma (Odak Noktası)
-*   **Masalar Ekranı:** Garsonların masaları gördüğü, dolu/boş durumunu takip ettiği liste/grid.
-*   **Sipariş Alma Ekranı:** `musteri-android` içindeki `TableOrderScreen.kt` dosyası buraya taşınacak.
-    *   *Fark:* Müşteri uygulamasında sipariş verilirken "Müşteri Bilgisi" giderken, burada "Garson Bilgisi" (`activeStaff`) ile sipariş `sales` tablosuna yazılacak.
-    *   Sipariş ekranı görsel ve fonksiyonel olarak tamamen müşteri ile aynı (uçan animasyonlar, sepet vb.) olacak.
+Bu plan, web panelinde ve personel mobil uygulamasında eksik olan tekrarlayan görev detay alanlarının eklenmesini, modallerin görsel şeritlerle ayrıştırılmasını ve mobil ana sayfada mesai giriş/çıkış işlemlerinde planlanan vardiyaya göre ±5 dakika kontrolünün yapılarak uyarı verilmesini içerir.
 
 ## User Review Required
 
-> [!IMPORTANT]  
-> 1. İki uygulamanın karışmaması için `personel-android` adında yeni bir Android projesi başlatacağım ve ilk adım olarak Garson sekmesini (Masa listesi + Müşteri uygulamasındaki Sipariş Ekranı) yapacağım. Uygun mudur?
-> 2. Projenin iskeletini oluşturmak için `musteri-android` projesini kopyalayıp isimlerini değiştirmek en hızlı ve güvenli yoldur. Bu şekilde ilerleyebilir miyim?
-> 3. İki uygulama arasındaki kodları ortak bir "core" kütüphaneye koymak yerine, ilk aşamada ayrı ayrı tutmayı önerdim (bağımsızlık için). Onaylıyor musunuz?
+> [!WARNING]
+> Görev tekrar kuralları veritabanındaki `task_recurrence_rules` tablosuna tam uyumlu olarak kaydedilecektir. Mobil uygulamadaki `TaskRepository.createTask` metodunun imzası bu parametreleri destekleyecek şekilde genişletilecektir.
 
-Lütfen planı inceleyip onay verin, ardından Android projesini oluşturmaya başlayalım.
+## Proposed Changes
+
+### 1. Web Paneli Görev Ekranı (`Tasks.jsx` ve Modaller)
+- **[MODIFY] [Tasks.jsx](file:///C:/RMSv3/src/components/pages/Tasks.jsx)**
+  - "Tekrar" seçimi "Tek seferlik" dışında bir değere (Günlük, Haftalık, Aylık, Yıllık) ayarlandığında, o türe özgü detay giriş alanları (Sıklık, Günler, Aylık model, Ayın günü, N. gün, Yıllık tarihler) dinamik olarak formda gösterilecektir.
+  - Form verileri `createTask` servisine aktarılırken `buildRecurrencePayload` fonksiyonunun beklentileriyle tam uyumlu olarak gönderilecektir.
+  - Açılan tüm modallerin (Yeni Görev, Duyuru Yayınla) sol tarafına mor, sarı gibi renkli şeritler ve başlığa uygun ikonlar eklenerek görsel olarak ayrışmaları sağlanacaktır.
+- **[MODIFY] [TaskClosureModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskClosureModal.jsx)**
+  - Başlığa yeşil renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
+- **[MODIFY] [TaskSendBackModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskSendBackModal.jsx)**
+  - Başlığa kırmızı renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
+- **[MODIFY] [TaskDelegateModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskDelegateModal.jsx)**
+  - Başlığa mor renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
+
+### 2. Personel Android Uygulaması
+- **[MODIFY] [TaskRepository.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)**
+  - `createTask` metodunun imzası `intervalValue`, `weekdays`, `monthDay`, `monthNth`, `monthWeekday`, `specificDates` parametrelerini alacak şekilde genişletilecek.
+  - `task_recurrence_rules` tablosuna ekleme yapılırken bu alanlar doğru veri tipleriyle (örneğin diziler için String listeleri) SQL Insert sorgusuna eklenecektir.
+- **[MODIFY] [TasksScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)**
+  - Görev oluşturma diyalogunda (`CreateTaskDialog`), seçilen tekrar tekrar türüne göre dinamik form alanları eklenecek:
+    - Günlük için: Tekrarlama sıklığı (gün sayısı) inputu.
+    - Haftalık için: Haftanın günleri seçicisi (Pazartesi - Pazar).
+    - Aylık için: "Belirli bir gün", "Ayın son günü", "N. hafta günü" seçenekleri ve buna bağlı dinamik alanlar.
+    - Yıllık için: Tarih listesi (virgülle ayrılmış).
+  - Bu form alanları `repo.createTask` metoduna iletilecektir.
+- **[MODIFY] [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)**
+  - Personel Bugün kartı üzerinden mesaiye başlarken veya sonlandırırken, o günkü `todayShift` planı kontrol edilecektir.
+  - Giriş yaparken: Planlanan başlangıç saatinden 5 dakikadan fazla erken veya geç ise `"Vardiya planınızda X dk erken/geç giriş yapıyorsunuz."` uyarısı gösterilecektir.
+  - Çıkış yaparken: Planlanan bitiş saatinden 5 dakikadan fazla erken veya geç ise `"Vardiya planınızda X dk erken/geç çıkış yapıyorsunuz."` uyarısı gösterilecektir.
+
+## Verification Plan
+
+### Automated/Compilation Tests
+- `npm run build` ile web projesinin derlenebilirliği doğrulanacaktır.
+- `.\gradlew.bat compileDebugKotlin` ile Android projesinin sıfır hata ile derlendiği teyit edilecektir.
+
+### Manual Verification
+- Web ve Android uygulamalarında görev tanımlama formlarında tekrar kurallarının tam girilip girilemediği kontrol edilecektir.
+- Mobil uygulamada Bugün kartına tıklanarak açılan diyaloglarda doğru Türkçe uyarı metninin çıktığı teyit edilecektir.

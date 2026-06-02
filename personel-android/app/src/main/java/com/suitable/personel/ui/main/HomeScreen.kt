@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.suitable.personel.data.AppConfig
 import com.suitable.personel.data.CustomerInfo
+import com.suitable.personel.data.TaskRepository
+import com.suitable.personel.data.ShiftScheduleEntry
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,31 +119,122 @@ fun HomeScreen(
     val context = LocalContext.current
     val pref = remember { context.getSharedPreferences("PersonelPrefs", Context.MODE_PRIVATE) }
     
-    // Read PDKS status
-    var isPDKSCheckedIn by remember { mutableStateOf(pref.getBoolean("pdksCheckedIn", false)) }
-    var pdksStartTime by remember { mutableStateOf(pref.getLong("pdksStartTime", 0L)) }
-    var elapsedSeconds by remember { mutableStateOf(0L) }
+    val repo = remember { TaskRepository() }
 
-    // PDKS timer
-    LaunchedEffect(isPDKSCheckedIn, pdksStartTime) {
-        if (isPDKSCheckedIn && pdksStartTime > 0L) {
+    // PDKS State Machine
+    var pdksState by remember { mutableStateOf(pref.getString("pdksState", "OUT") ?: "OUT") }
+    var pdksAccumulatedSeconds by remember { mutableStateOf(pref.getLong("pdksAccumulatedSeconds", 0L)) }
+    var pdksSessionStartTime by remember { mutableStateOf(pref.getLong("pdksSessionStartTime", 0L)) }
+    var pdksBreakStartTime by remember { mutableStateOf(pref.getLong("pdksBreakStartTime", 0L)) }
+
+    val savePdksState = { state: String, accum: Long, sessionStart: Long, breakStart: Long ->
+        pdksState = state
+        pdksAccumulatedSeconds = accum
+        pdksSessionStartTime = sessionStart
+        pdksBreakStartTime = breakStart
+        pref.edit()
+            .putString("pdksState", state)
+            .putLong("pdksAccumulatedSeconds", accum)
+            .putLong("pdksSessionStartTime", sessionStart)
+            .putLong("pdksBreakStartTime", breakStart)
+            .apply()
+    }
+
+    var tickingSeconds by remember { mutableStateOf(0L) }
+    var tickingBreakSeconds by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(pdksState, pdksSessionStartTime, pdksBreakStartTime) {
+        if (pdksState == "IN" || pdksState == "BREAK") {
             while (true) {
-                val current = System.currentTimeMillis()
-                elapsedSeconds = (current - pdksStartTime) / 1000L
+                val now = System.currentTimeMillis()
+                if (pdksState == "IN" && pdksSessionStartTime > 0L) {
+                    val activeSession = (now - pdksSessionStartTime) / 1000L
+                    tickingSeconds = pdksAccumulatedSeconds + activeSession
+                    tickingBreakSeconds = 0L
+                } else if (pdksState == "BREAK" && pdksBreakStartTime > 0L) {
+                    tickingSeconds = pdksAccumulatedSeconds
+                    tickingBreakSeconds = (now - pdksBreakStartTime) / 1000L
+                }
                 kotlinx.coroutines.delay(1000L)
             }
         } else {
-            elapsedSeconds = 0L
+            tickingSeconds = pdksAccumulatedSeconds
+            tickingBreakSeconds = 0L
         }
     }
 
-    val displayTimer = remember(elapsedSeconds) {
-        if (elapsedSeconds <= 0L) "00:00:00"
-        else {
-            val hours = elapsedSeconds / 3600
-            val minutes = (elapsedSeconds % 3600) / 60
-            val seconds = elapsedSeconds % 60
-            String.format("%02d:%02d:%02d", hours, minutes, seconds)
+    val displayTimer = remember(tickingSeconds) {
+        val h = tickingSeconds / 3600
+        val m = (tickingSeconds % 3600) / 60
+        val s = tickingSeconds % 60
+        String.format("%02d:%02d:%02d", h, m, s)
+    }
+
+    val displayBreakTimer = remember(tickingBreakSeconds) {
+        val h = tickingBreakSeconds / 3600
+        val m = (tickingBreakSeconds % 3600) / 60
+        val s = tickingBreakSeconds % 60
+        String.format("%02d:%02d:%02d", h, m, s)
+    }
+
+    // 3 Günlük Vardiya Tarihleri (Bugün, Yarın, Öbür Gün)
+    val dates = remember {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val cal = java.util.Calendar.getInstance()
+        val today = sdf.format(cal.time)
+        cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        val tomorrow = sdf.format(cal.time)
+        cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        val afterTomorrow = sdf.format(cal.time)
+        Triple(today, tomorrow, afterTomorrow)
+    }
+
+    var shifts by remember { mutableStateOf<List<ShiftScheduleEntry>>(emptyList()) }
+    var isLoadingShifts by remember { mutableStateOf(true) }
+    val actorId = staffSession?.id ?: ""
+
+    LaunchedEffect(actorId) {
+        if (actorId.isNotBlank()) {
+            isLoadingShifts = true
+            try {
+                shifts = repo.fetchShiftsForPersonnel(actorId, listOf(dates.first, dates.second, dates.third))
+            } catch (e: Exception) {
+                // handle error
+            } finally {
+                isLoadingShifts = false
+            }
+        }
+    }
+
+    val todayShift = remember(shifts, dates) { shifts.find { it.scheduleDate == dates.first } }
+    val tomorrowShift = remember(shifts, dates) { shifts.find { it.scheduleDate == dates.second } }
+    val afterTomorrowShift = remember(shifts, dates) { shifts.find { it.scheduleDate == dates.third } }
+
+    var showStartShiftDialog by remember { mutableStateOf(false) }
+    var showEndOrBreakDialog by remember { mutableStateOf(false) }
+    var showResumeFromBreakDialog by remember { mutableStateOf(false) }
+
+    // Vardiya zaman kontrolü: dk cinsinden fark (+ = geç, - = erken)
+    val shiftTimingDiffMinutes: (String?) -> Long? = { timeStr ->
+        if (timeStr.isNullOrBlank()) null
+        else try {
+            val parts = timeStr.split(":")
+            val shiftH = parts[0].toLong()
+            val shiftM = parts[1].toLong()
+            val cal = java.util.Calendar.getInstance()
+            val nowH = cal.get(java.util.Calendar.HOUR_OF_DAY).toLong()
+            val nowM = cal.get(java.util.Calendar.MINUTE).toLong()
+            val nowTotalMins = nowH * 60 + nowM
+            val shiftTotalMins = shiftH * 60 + shiftM
+            nowTotalMins - shiftTotalMins
+        } catch (_: Exception) { null }
+    }
+
+    val onBugunCardClick = {
+        when (pdksState) {
+            "OUT" -> showStartShiftDialog = true
+            "IN" -> showEndOrBreakDialog = true
+            "BREAK" -> showResumeFromBreakDialog = true
         }
     }
 
@@ -221,106 +314,414 @@ fun HomeScreen(
                     }
                 }
 
-                // PDKS (Mesai Kartı)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    border = BorderStroke(1.dp, Color(0xFF334155))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Mesai Durumu",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (isPDKSCheckedIn) "MESAİDE (ÇALIŞIYOR)" else "MESAİDE DEĞİL (KAPALI)",
-                                    color = if (isPDKSCheckedIn) Color(0xFF10B981) else Color(0xFFEF4444),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-                            Icon(
-                                imageVector = if (isPDKSCheckedIn) Icons.Default.Work else Icons.Default.WorkOff,
-                                contentDescription = null,
-                                tint = if (isPDKSCheckedIn) Color(0xFF10B981) else Color(0xFFEF4444),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
+                // Çalışma Planı (Vardiya)
+                Text(
+                    text = "Çalışma Planı (Vardiya)",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
 
-                        if (isPDKSCheckedIn) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // BUGÜN Card
+                    val shiftColor = when {
+                        todayShift?.shiftKind == "off" || todayShift?.shiftKind == "leave" -> Color(0xFF8B5CF6)
+                        pdksState == "IN" -> Color(0xFF10B981)
+                        pdksState == "BREAK" -> Color(0xFFF59E0B)
+                        todayShift != null -> Color(0xFF3B82F6)
+                        else -> Color(0xFF334155)
+                    }
+                    Card(
+                        modifier = Modifier
+                            .weight(1.4f)
+                            .clickable { onBugunCardClick() },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = shiftColor.copy(alpha = 0.08f)
+                        ),
+                        border = BorderStroke(
+                            2.dp,
+                            shiftColor.copy(alpha = if (pdksState == "OUT") 0.5f else 1f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Başlık satırı
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF0F172A))
-                                    .padding(14.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Çalışma Süresi",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = displayTimer,
+                                    text = "BUGÜN",
                                     color = Color.White,
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 16.sp
+                                    fontSize = 11.sp
+                                )
+                                val todayDateFormatted = remember(dates.first) {
+                                    try {
+                                        val parts = dates.first.split("-")
+                                        val day = parts[2]
+                                        val month = when (parts[1]) {
+                                            "01" -> "Oca"; "02" -> "Şub"; "03" -> "Mar"; "04" -> "Nis"
+                                            "05" -> "May"; "06" -> "Haz"; "07" -> "Tem"; "08" -> "Ağu"
+                                            "09" -> "Eyl"; "10" -> "Eki"; "11" -> "Kas"; "12" -> "Ara"
+                                            else -> parts[1]
+                                        }
+                                        "$day $month"
+                                    } catch(_: Exception) { dates.first }
+                                }
+                                Text(
+                                    text = todayDateFormatted,
+                                    color = shiftColor.copy(alpha = 0.8f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
-                        }
 
-                        Button(
-                            onClick = {
-                                if (isPDKSCheckedIn) {
-                                    isPDKSCheckedIn = false
-                                    pdksStartTime = 0L
-                                    pref.edit()
-                                        .putBoolean("pdksCheckedIn", false)
-                                        .remove("pdksStartTime")
-                                        .apply()
-                                } else {
-                                    val start = System.currentTimeMillis()
-                                    isPDKSCheckedIn = true
-                                    pdksStartTime = start
-                                    pref.edit()
-                                        .putBoolean("pdksCheckedIn", true)
-                                        .putLong("pdksStartTime", start)
-                                        .apply()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isPDKSCheckedIn) Color(0xFFEF4444) else Color(0xFF3B82F6)
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isPDKSCheckedIn) Icons.Default.Logout else Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                tint = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            HorizontalDivider(color = shiftColor.copy(alpha = 0.2f), thickness = 0.5.dp)
+
+                            // Vardiya saatleri (büyük)
+                            val shiftTimeLabel = when {
+                                todayShift == null -> "Vardiya Yok"
+                                todayShift.shiftKind == "off" -> "🏖️ İzin Günü"
+                                todayShift.shiftKind == "leave" -> "🏥 İzinli"
+                                todayShift.shiftStartTime != null && todayShift.shiftEndTime != null ->
+                                    "${todayShift.shiftStartTime.substring(0, 5)} — ${todayShift.shiftEndTime.substring(0, 5)}"
+                                else -> "Vardiya Yok"
+                            }
                             Text(
-                                text = if (isPDKSCheckedIn) "Mesaiyi Sonlandır" else "Mesaime Başla",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                text = shiftTimeLabel,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp
                             )
+
+                            // Short code
+                            if (todayShift?.shiftShortCode != null) {
+                                Box(
+                                    modifier = androidx.compose.ui.Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(shiftColor.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = todayShift.shiftShortCode,
+                                        color = shiftColor,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            // Durum satırı (timer veya başlat)
+                            val (statusIcon, statusText, statusColor) = when (pdksState) {
+                                "IN" -> Triple(Icons.Default.PlayArrow, displayTimer, Color(0xFF10B981))
+                                "BREAK" -> Triple(Icons.Default.Pause, "☕ Mola: $displayBreakTimer", Color(0xFFF59E0B))
+                                else -> Triple(Icons.Default.TouchApp, "Başlatmak için dokun", Color(0xFF94A3B8))
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(statusIcon, contentDescription = null, tint = statusColor, modifier = Modifier.size(14.dp))
+                                Text(statusText, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
+
+                    // YARIN Card
+                    val tomorrowShiftColor = when {
+                        tomorrowShift?.shiftKind == "off" || tomorrowShift?.shiftKind == "leave" -> Color(0xFF8B5CF6)
+                        tomorrowShift != null -> Color(0xFF3B82F6)
+                        else -> Color(0xFF334155)
+                    }
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = tomorrowShiftColor.copy(alpha = 0.06f)),
+                        border = BorderStroke(1.dp, tomorrowShiftColor.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "YARIN",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                            val tomorrowDateFormatted = remember(dates.second) {
+                                try {
+                                    val parts = dates.second.split("-")
+                                    val month = when (parts[1]) {
+                                        "01" -> "Oca"; "02" -> "Şub"; "03" -> "Mar"; "04" -> "Nis"
+                                        "05" -> "May"; "06" -> "Haz"; "07" -> "Tem"; "08" -> "Ağu"
+                                        "09" -> "Eyl"; "10" -> "Eki"; "11" -> "Kas"; "12" -> "Ara"
+                                        else -> parts[1]
+                                    }
+                                    "${parts[2]} $month"
+                                } catch(_: Exception) { dates.second }
+                            }
+                            Text(tomorrowDateFormatted, color = tomorrowShiftColor.copy(alpha = 0.8f), fontSize = 10.sp)
+                            HorizontalDivider(color = tomorrowShiftColor.copy(alpha = 0.2f), thickness = 0.5.dp)
+                            val tmrwLabel = when {
+                                tomorrowShift == null -> "Plan Yok"
+                                tomorrowShift.shiftKind == "off" -> "🏖️ İzin"
+                                tomorrowShift.shiftKind == "leave" -> "🏥 İzin"
+                                tomorrowShift.shiftStartTime != null -> "${tomorrowShift.shiftStartTime.substring(0,5)}—${tomorrowShift.shiftEndTime?.substring(0,5) ?: "?"}"
+                                else -> "Vardiya Yok"
+                            }
+                            Text(tmrwLabel, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                            if (tomorrowShift?.shiftShortCode != null) {
+                                Text(tomorrowShift.shiftShortCode, color = tomorrowShiftColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // SONRAKİ Card
+                    val nextShiftColor = when {
+                        afterTomorrowShift?.shiftKind == "off" || afterTomorrowShift?.shiftKind == "leave" -> Color(0xFF8B5CF6)
+                        afterTomorrowShift != null -> Color(0xFF3B82F6)
+                        else -> Color(0xFF334155)
+                    }
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = nextShiftColor.copy(alpha = 0.06f)),
+                        border = BorderStroke(1.dp, nextShiftColor.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "SONRAKİ",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                            val afterTomorrowDateFormatted = remember(dates.third) {
+                                try {
+                                    val parts = dates.third.split("-")
+                                    val month = when (parts[1]) {
+                                        "01" -> "Oca"; "02" -> "Şub"; "03" -> "Mar"; "04" -> "Nis"
+                                        "05" -> "May"; "06" -> "Haz"; "07" -> "Tem"; "08" -> "Ağu"
+                                        "09" -> "Eyl"; "10" -> "Eki"; "11" -> "Kas"; "12" -> "Ara"
+                                        else -> parts[1]
+                                    }
+                                    "${parts[2]} $month"
+                                } catch(_: Exception) { dates.third }
+                            }
+                            Text(afterTomorrowDateFormatted, color = nextShiftColor.copy(alpha = 0.8f), fontSize = 10.sp)
+                            HorizontalDivider(color = nextShiftColor.copy(alpha = 0.2f), thickness = 0.5.dp)
+                            val nextLabel = when {
+                                afterTomorrowShift == null -> "Plan Yok"
+                                afterTomorrowShift.shiftKind == "off" -> "🏖️ İzin"
+                                afterTomorrowShift.shiftKind == "leave" -> "🏥 İzin"
+                                afterTomorrowShift.shiftStartTime != null -> "${afterTomorrowShift.shiftStartTime.substring(0,5)}—${afterTomorrowShift.shiftEndTime?.substring(0,5) ?: "?"}"
+                                else -> "Vardiya Yok"
+                            }
+                            Text(nextLabel, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                            if (afterTomorrowShift?.shiftShortCode != null) {
+                                Text(afterTomorrowShift.shiftShortCode, color = nextShiftColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Dialogs
+                if (showStartShiftDialog) {
+                    val startDiffMins = shiftTimingDiffMinutes(todayShift?.shiftStartTime)
+                    val timingWarning = when {
+                        startDiffMins == null -> null
+                        startDiffMins > 5 -> "⚠️ Vardiya planınızda ${startDiffMins} dk geç giriş yapıyorsunuz."
+                        startDiffMins < -5 -> "⏰ Vardiya planınızda ${-startDiffMins} dk erken giriş yapıyorsunuz."
+                        else -> null
+                    }
+                    AlertDialog(
+                        onDismissRequest = { showStartShiftDialog = false },
+                        title = {
+                            Column {
+                                Text("Mesai Başlangıcı", color = Color.White, fontWeight = FontWeight.Bold)
+                                if (todayShift?.shiftStartTime != null) {
+                                    Text(
+                                        "Planlanan Giriş: ${todayShift.shiftStartTime.substring(0,5)}",
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (timingWarning != null) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (startDiffMins!! > 0)
+                                                Color(0xFFEF4444).copy(alpha = 0.15f)
+                                            else
+                                                Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                        ),
+                                        border = BorderStroke(1.dp,
+                                            if (startDiffMins > 0) Color(0xFFEF4444).copy(alpha = 0.4f)
+                                            else Color(0xFFF59E0B).copy(alpha = 0.4f)
+                                        )
+                                    ) {
+                                        Text(
+                                            timingWarning,
+                                            color = if (startDiffMins > 0) Color(0xFFEF4444) else Color(0xFFF59E0B),
+                                            modifier = Modifier.padding(12.dp),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "Vardiyanızı başlatmak istiyor musunuz?",
+                                    color = Color.White
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val now = System.currentTimeMillis()
+                                    savePdksState("IN", 0L, now, 0L)
+                                    showStartShiftDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                            ) {
+                                Text("▶ Başlat", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showStartShiftDialog = false }) {
+                                Text("Vazgeç", color = Color(0xFF94A3B8))
+                            }
+                        },
+                        containerColor = Color(0xFF0F2847)
+                    )
+                }
+
+                if (showEndOrBreakDialog) {
+                    val endDiffMins = shiftTimingDiffMinutes(todayShift?.shiftEndTime)
+                    val endTimingWarning = when {
+                        endDiffMins == null -> null
+                        endDiffMins < -5 -> "⏰ Vardiya planınızda ${-endDiffMins} dk erken çıkış yapıyorsunuz."
+                        endDiffMins > 5 -> "⚠️ Vardiya planınızda ${endDiffMins} dk geç çıkış yapıyorsunuz."
+                        else -> null
+                    }
+                    AlertDialog(
+                        onDismissRequest = { showEndOrBreakDialog = false },
+                        title = {
+                            Column {
+                                Text("Mesai / Mola İşlemi", color = Color.White, fontWeight = FontWeight.Bold)
+                                if (todayShift?.shiftEndTime != null) {
+                                    Text(
+                                        "Planlanan Çıkış: ${todayShift.shiftEndTime.substring(0,5)}",
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (endTimingWarning != null) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (endDiffMins!! < 0)
+                                                Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                            else
+                                                Color(0xFFEF4444).copy(alpha = 0.15f)
+                                        ),
+                                        border = BorderStroke(1.dp,
+                                            if (endDiffMins < 0) Color(0xFFF59E0B).copy(alpha = 0.4f)
+                                            else Color(0xFFEF4444).copy(alpha = 0.4f)
+                                        )
+                                    ) {
+                                        Text(
+                                            endTimingWarning,
+                                            color = if (endDiffMins < 0) Color(0xFFF59E0B) else Color(0xFFEF4444),
+                                            modifier = Modifier.padding(12.dp),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "Mola vermek mi istiyorsunuz yoksa bugünkü vardiyanızı sonlandırmak mı?",
+                                    color = Color.White
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        val now = System.currentTimeMillis()
+                                        val worked = pdksAccumulatedSeconds + ((now - pdksSessionStartTime) / 1000L)
+                                        savePdksState("BREAK", worked, 0L, now)
+                                        showEndOrBreakDialog = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
+                                ) {
+                                    Text("☕ Mola", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        savePdksState("OUT", 0L, 0L, 0L)
+                                        showEndOrBreakDialog = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                                ) {
+                                    Text("⏹ Bitir", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showEndOrBreakDialog = false }) {
+                                Text("Vazgeç", color = Color(0xFF94A3B8))
+                            }
+                        },
+                        containerColor = Color(0xFF0F2847)
+                    )
+                }
+
+                if (showResumeFromBreakDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showResumeFromBreakDialog = false },
+                        title = { Text("Molayı Sonlandır", color = Color.White) },
+                        text = { Text("Molayı bitirip mesainize geri dönmek istiyor musunuz?", color = Color.White) },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val now = System.currentTimeMillis()
+                                    savePdksState("IN", pdksAccumulatedSeconds, now, 0L)
+                                    showResumeFromBreakDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                            ) {
+                                Text("Moladan Dön", color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showResumeFromBreakDialog = false }) {
+                                Text("Vazgeç", color = Color(0xFF94A3B8))
+                            }
+                        },
+                        containerColor = Color(0xFF1E293B)
+                    )
                 }
 
                 // Quick Navigation Cards

@@ -25,6 +25,7 @@ data class TaskItem(
     val closureSummaryRequired: Boolean,
     val closureFileRequired: Boolean,
     val closureImageRequired: Boolean,
+    val formTemplateId: String?,
     var participants: List<TaskParticipant> = emptyList(),
     var checklistCount: Int = 0,
     var checklistDoneCount: Int = 0
@@ -98,6 +99,21 @@ data class PositionInfo(
 )
 
 data class BranchInfo(
+    val id: String,
+    val name: String
+)
+
+data class ShiftScheduleEntry(
+    val id: String,
+    val scheduleDate: String,
+    val shiftName: String?,
+    val shiftShortCode: String?,
+    val shiftStartTime: String?,
+    val shiftEndTime: String?,
+    val shiftKind: String
+)
+
+data class FormTemplateInfo(
     val id: String,
     val name: String
 )
@@ -313,6 +329,7 @@ class TaskRepository {
                         closureSummaryRequired = parseBool(row["closure_summary_required"]),
                         closureFileRequired = parseBool(row["closure_file_required"]),
                         closureImageRequired = parseBool(row["closure_image_required"]),
+                        formTemplateId = row["form_template_id"]?.toString(),
                         participants = taskParticipants,
                         checklistCount = checklistCount,
                         checklistDoneCount = checklistDoneCount
@@ -530,13 +547,36 @@ class TaskRepository {
         title: String,
         description: String,
         responsibleId: String,
+        collaboratorIds: List<String>,
+        observerIds: List<String>,
         priority: String,
         dueAt: String?,
+        startAt: String?,
+        hasSpecificTime: Boolean,
+        delegationAllowed: Boolean,
+        approvalRequired: Boolean,
+        closureSummaryRequired: Boolean,
+        closureFileRequired: Boolean,
+        closureImageRequired: Boolean,
+        editDueDateAllowed: Boolean,
+        editScheduleAllowed: Boolean,
+        incompleteIfLate: Boolean,
+        recurrence: String?,
+        recurrenceInterval: Int = 1,
+        recurrenceWeekdays: List<String>? = null,
+        monthlyPattern: String? = null,
+        monthlyDayOfMonth: Int? = null,
+        monthlyNth: Int? = null,
+        monthlyWeekday: String? = null,
+        specificDates: List<String>? = null,
+        timeOfDay: String? = null,
+        formTemplateId: String?,
         branchNodeId: String,
         creatorId: String,
         creatorPositionId: String?,
         assigneePositionId: String?,
         positions: List<PositionInfo>,
+        employees: List<EmployeeInfo>,
         checklistItems: List<String>
     ): Boolean {
         return withContext(Dispatchers.IO) {
@@ -545,10 +585,47 @@ class TaskRepository {
                 val requiresApproval = canReject(creatorPositionId ?: "", assigneePositionId ?: "", positions)
                 val status = if (requiresApproval) "pending_approval" else "open"
 
-                // 2) Görevi oluştur
                 val taskId = java.util.UUID.randomUUID().toString()
                 val now = java.time.Instant.now().toString()
-                
+
+                // 1.5) Recurrence rule creation (if recurring)
+                var recurrenceRuleId: String? = null
+                if (!recurrence.isNullOrBlank()) {
+                    val ruleId = java.util.UUID.randomUUID().toString()
+
+                    val computedMonthDay = when (monthlyPattern) {
+                        "last_day" -> -1
+                        "day_of_month" -> monthlyDayOfMonth
+                        else -> null
+                    }
+                    val computedMonthNth = if (monthlyPattern == "nth_weekday") monthlyNth else null
+                    val computedMonthWeekday = if (monthlyPattern == "nth_weekday") monthlyWeekday else null
+
+                    val timeOfDayFormatted = if (!timeOfDay.isNullOrBlank()) {
+                        if (timeOfDay.length == 5) "$timeOfDay:00" else timeOfDay
+                    } else null
+
+                    val recurrenceData = mutableMapOf<String, Any?>(
+                        "id" to ruleId,
+                        "frequency" to recurrence,
+                        "interval_value" to recurrenceInterval,
+                        "weekdays" to if (recurrence == "weekly") recurrenceWeekdays else null,
+                        "month_day" to if (recurrence == "monthly") computedMonthDay else null,
+                        "month_nth" to if (recurrence == "monthly") computedMonthNth else null,
+                        "month_weekday" to if (recurrence == "monthly") computedMonthWeekday else null,
+                        "specific_dates" to if (recurrence == "yearly") specificDates else null,
+                        "time_of_day" to timeOfDayFormatted,
+                        "created_at" to now
+                    )
+                    val recurrenceInsert = ApiClient.apiService.executeQuery(
+                        QueryRequest(table = "task_recurrence_rules", operation = "insert", data = recurrenceData)
+                    )
+                    if (recurrenceInsert.error == null) {
+                        recurrenceRuleId = ruleId
+                    }
+                }
+
+                // 2) Görevi oluştur
                 val taskData = mutableMapOf<String, Any?>(
                     "id" to taskId,
                     "title" to title,
@@ -556,10 +633,22 @@ class TaskRepository {
                     "status" to status,
                     "priority" to priority,
                     "due_at" to dueAt,
+                    "start_at" to startAt,
+                    "has_specific_time" to hasSpecificTime,
+                    "delegation_allowed" to delegationAllowed,
+                    "approval_required" to approvalRequired,
+                    "closure_summary_required" to closureSummaryRequired,
+                    "closure_file_required" to closureFileRequired,
+                    "closure_image_required" to closureImageRequired,
+                    "edit_due_date_allowed" to editDueDateAllowed,
+                    "edit_schedule_allowed" to editScheduleAllowed,
+                    "incomplete_if_late" to incompleteIfLate,
+                    "form_template_id" to formTemplateId,
                     "created_by_personnel_id" to creatorId,
                     "created_by_position_id" to creatorPositionId,
                     "branch_node_id" to branchNodeId,
-                    "is_recurring" to false,
+                    "is_recurring" to (!recurrence.isNullOrBlank()),
+                    "recurrence_rule_id" to recurrenceRuleId,
                     "created_at" to now,
                     "updated_at" to now
                 )
@@ -569,21 +658,57 @@ class TaskRepository {
                 )
                 if (taskInsert.error != null) return@withContext false
 
-                // 3) Katılımcıları ekle (Assignee)
-                val participantReq = QueryRequest(
-                    table = "task_participants",
-                    operation = "insert",
-                    data = mapOf(
+                // 3) Katılımcıları ekle (Assignee + Collaborators + Watchers)
+                val participantRows = mutableListOf<Map<String, Any?>>()
+                
+                // Main assignee
+                val mainEmp = employees.find { it.id == responsibleId }
+                participantRows.add(mapOf(
+                    "id" to java.util.UUID.randomUUID().toString(),
+                    "task_id" to taskId,
+                    "participant_type" to "assignee",
+                    "personnel_id" to responsibleId,
+                    "position_id" to mainEmp?.positionId,
+                    "node_id" to (mainEmp?.defaultBranchId ?: branchNodeId),
+                    "created_at" to now
+                ))
+
+                // Collaborators
+                collaboratorIds.filter { it.isNotBlank() }.forEach { collabId ->
+                    val emp = employees.find { it.id == collabId }
+                    participantRows.add(mapOf(
                         "id" to java.util.UUID.randomUUID().toString(),
                         "task_id" to taskId,
                         "participant_type" to "assignee",
-                        "personnel_id" to responsibleId,
-                        "position_id" to assigneePositionId,
-                        "node_id" to branchNodeId,
+                        "personnel_id" to collabId,
+                        "position_id" to emp?.positionId,
+                        "node_id" to (emp?.defaultBranchId ?: branchNodeId),
                         "created_at" to now
+                    ))
+                }
+
+                // Watchers (observers)
+                observerIds.filter { it.isNotBlank() }.forEach { obsId ->
+                    val emp = employees.find { it.id == obsId }
+                    participantRows.add(mapOf(
+                        "id" to java.util.UUID.randomUUID().toString(),
+                        "task_id" to taskId,
+                        "participant_type" to "watcher",
+                        "personnel_id" to obsId,
+                        "position_id" to emp?.positionId,
+                        "node_id" to (emp?.defaultBranchId ?: branchNodeId),
+                        "created_at" to now
+                    ))
+                }
+
+                if (participantRows.isNotEmpty()) {
+                    val participantReq = QueryRequest(
+                        table = "task_participants",
+                        operation = "insert",
+                        data = participantRows
                     )
-                )
-                ApiClient.apiService.executeQuery(participantReq)
+                    ApiClient.apiService.executeQuery(participantReq)
+                }
 
                 // 4) Onay Talebi Ekle (Eğer onay gerekiyorsa)
                 if (requiresApproval) {
@@ -653,6 +778,60 @@ class TaskRepository {
             } catch (e: Exception) {
                 Log.e("TaskRepository", "createTask error", e)
                 false
+            }
+        }
+    }
+
+    suspend fun fetchShiftsForPersonnel(personnelId: String, dates: List<String>): List<ShiftScheduleEntry> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "branch_shift_schedule_entries",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "personnel_id", "val" to personnelId),
+                        mapOf("type" to "in", "col" to "schedule_date", "val" to dates)
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                rows.map { row ->
+                    ShiftScheduleEntry(
+                        id = row["id"]?.toString() ?: "",
+                        scheduleDate = row["schedule_date"]?.toString() ?: "",
+                        shiftName = row["shift_name"]?.toString(),
+                        shiftShortCode = row["shift_short_code"]?.toString(),
+                        shiftStartTime = row["shift_start_time"]?.toString(),
+                        shiftEndTime = row["shift_end_time"]?.toString(),
+                        shiftKind = row["shift_kind"]?.toString() ?: "working"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchShiftsForPersonnel error", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun fetchFormTemplates(): List<FormTemplateInfo> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "branch_templates",
+                    filters = listOf(
+                        mapOf("type" to "is", "col" to "deleted_at", "val" to null)
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                rows.map { row ->
+                    FormTemplateInfo(
+                        id = row["id"]?.toString() ?: "",
+                        name = row["name"]?.toString() ?: ""
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchFormTemplates error", e)
+                emptyList()
             }
         }
     }

@@ -17,33 +17,34 @@ Uygulama, %100 modern Android geliştirme standartlarına uygun tasarlanmıştı
 - **Ağ/API:** `Retrofit` ve `Gson` kullanılarak JSON API bağlantıları sağlanır.
 - **Asenkron İşlemler:** `Kotlin Coroutines` (API çağrıları ve arka plan işlemleri için).
 - **Tasarım Deseni:** `MVVM (Model-View-ViewModel)`
-    - *View:* `MainScreen.kt`, `PinLoginScreen.kt`, `HomeScreen.kt` (Dashboard), `TableScreen.kt`, `TableOrderScreen.kt`, `TableOrdersScreen.kt`
+    - *View:* `MainScreen.kt`, `PinLoginScreen.kt`, `HomeScreen.kt` (Dashboard), `TableScreen.kt`, `TableOrderScreen.kt`, `TableOrdersScreen.kt`, `TasksScreen.kt`
     - *ViewModel:* `MainViewModel.kt` ve `MainScreenViewModel.kt`
-    - *Repository/Data:* `TableRepository.kt` (Veritabanı işlemleri, sipariş gönderme, doluluk tespiti, garson talepleri).
+    - *Repository/Data:* `TableRepository.kt` (Veritabanı işlemleri, sipariş gönderme, doluluk tespiti, garson talepleri), `TaskRepository.kt` (Görevler, sohbet, onaylar ve recurrence kuralları).
 
 ## 3. Uygulama Yapısı ve Temel Mantık
 Uygulama, restoran personelinin şube içi operasyonları (masaları izleme, garson çağrılarını yanıtlama, sipariş alma ve adisyon özetini görme) yürütebilmesi amacıyla tasarlanmıştır:
 - **Güvenlik Kapısı (PIN Login):** Personel 4 haneli PIN koduyla sisteme girer. `PinLoginScreen.kt` aracılığıyla veritabanındaki `settings` tablosundan şube ağacı ve çalışan izinleri doğrulanır, şube seçimi yaptırılarak `StaffSession` nesnesi oluşturulur.
 - **Oturum Yönetimi:** `PersonelPrefs` SharedPreferences dosyasında Gson ile serialize edilmiş aktif `StaffSession` saklanır. Çıkış yapıldığında bu oturum verisi silinir.
 - **Dinamik Tema:** `MusteriAppTheme` teması dinamik renk desteğiyle uyumlu şekilde personelde de kullanılmaktadır.
+- **Görev Yönetimi ve Tekrarlar:** `/tasks` sayfası ile tam entegre, veritabanındaki `task_recurrence_rules` tablosunu destekleyen günlük/haftalık/aylık/yıllık dinamik tekrar parametreleri ile yeni görevler oluşturulabilir.
 
 ## 4. Ekran Durumları (UI & UX)
 - **PIN Giriş Ekranı (`PinLoginScreen.kt`):** Sayı tuş takımı, otomatik 4 hane doğrulama ve çoklu şube yetkisi olan personele şube seçtiren M3 diyalog paneli.
-- **Personel Paneli (`HomeScreen.kt`):** Personel adı, rolü ve şubesi. İnteraktif **PDKS (Mesai Başlat/Bitir)** kartı. Personel mesaiye başladığında çalışılan süreyi saniye saniye güncelleyip gösteren bir zamanlayıcı sayaç mevcuttur. Garson terminaline ve sipariş listesine hızlı geçiş kartları bulunur.
-- **Masa Grid Ekranı (`TableScreen.kt`):** Şubedeki tüm masaları, doluluk durumlarını ve masalardan gelen garson çağrılarını (kırmızı yanıp sönen uyarı rozetleriyle) gösterir. Garson masaya tıkladığında servis talebini sonlandırabilir veya masaya sipariş ekleyebilir.
-- **Sipariş Ekranı (`TableOrderScreen.kt`):** Müşteri sipariş ekranı ile görsel olarak aynı, ancak siparişi gönderen personel kimliğini (`personnelId`, `personnelName`) ve `customerId = null` (veya boş) bilgisini veritabanına iletir.
-- **Masa Sipariş Detayı (`TableOrdersScreen.kt`):** Masanın o günkü aktif adisyonlarını, saat bazlı sipariş detaylarını, toplam adisyon tutarını listeler.
+- **Personel Paneli (`HomeScreen.kt`):** PDKS giriş/çıkış (Mesai Başlat/Bitir) kartı. Giriş ve çıkış saatleri planlanan vardiya ile karşılaştırılır ve ±5 dakikalık toleransı aşan durumlarda Türkçe uyarısı (`Vardiya planınızda X dk geç/erken...`) gösterilir.
+- **Garson Terminal Seçimi & Masalar (`TableScreen.kt`):** Garson modülünde aktif terminal eşleştirilerek sadece o terminalin yetki alanındaki masalar listelenir. Masalardan gelen müşteri çağrıları (Garson çağır/hesap iste) animasyonlu (pulse) bildirim olarak kartlarda belirir, tıklandığında çözümlenebilir.
+- **Sipariş Kabulü:** Müşteriden gelen ve henüz garson atanmamış siparişler (`status = 'pending_waiter_assignment'`) için garsona diyalog uyarısı çıkar, garson PIN koduyla siparişi kendi üzerine kabul edebilir.
+- **Görevler Ekranı (`TasksScreen.kt`):** Şirket içi görevlerin takibi, kontrol listeleri, görev içi chat akışı, onay talebi/geri gönderme süreçleri ve detaylı tekrarlama kuralı tanımlama arayüzü sunulur.
 
 ## 5. Nerede Kaldık & Sonraki Adımlar
 Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla üretilmektedir.
-1. **PDKS Arka Plan Kaydı:** Şu an yerel olarak (`PersonelPrefs`) saklanan PDKS giriş/çıkış verileri, API/Veritabanı tarafında personel çalışma saatleri tablosuna kaydedilebilir.
-2. **KDS ve POS Entegrasyon Testleri:** Masalardan alınan siparişlerin POS ekranlarına ve KDS'lere (Mutfak Ekranı) düşme süreleri test edilebilir.
-3. **Mal Kabul ve Diğer Sekmeler:** `MainScreen.kt` içerisinde gelecekte açılacak diğer personel yetkileri (depo, mal kabul vb.) için yeni Composable ekranlar eklenebilir.
+- Tüm planlanan Garson Terminali, Müşteri Talepleri, Görev Recurrence detayları ve PDKS Vardiya Tolerans uyarıları başarıyla tamamlanmıştır.
+- Sonraki çalışmalarda yeni eklenebilecek mal kabul ve depo modülleri için Compose ekranları geliştirilebilir.
 
 ## 6. Önemli Dosyaların Konumları
 - Navigasyon ve Kontrolör: `app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt`
 - PIN Girişi ve Oturum Modeli: `app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt`
-- Personel Dashboard (PDKS): `app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt`
-- Masalar Ekranı: `app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt`
+- Personel Dashboard (PDKS & Vardiya Toleransı): `app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt`
+- Masalar ve Çağrı Yönetimi: `app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt`
+- Görevler ve Tekrarlayan Kurallar: `app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt`
 - Sipariş Alma: `app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt`
 - Masa Hesap & Adisyonlar: `app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt`

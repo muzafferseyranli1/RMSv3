@@ -1013,7 +1013,12 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Yeni Görev"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 4, height: 18, background: '#0284c7', borderRadius: 2 }}></span>
+            <span>Yeni Görev</span>
+          </div>
+        }
         subtitle="Sisteme yeni bir iş/görev tanımlayın."
         width={920}
         flex
@@ -1087,6 +1092,161 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
                 </label>
               </>,
             )}
+            
+            {/* Dynamic Recurrence Sub-Options */}
+            {form.recurrence === 'daily' && (
+              <div style={{ marginTop: 14, maxWidth: 220 }}>
+                <label className="f-label">Tekrarlama Sıklığı (Gün)</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="f-input"
+                  value={form.durationValue || '1'}
+                  onChange={event => setField('durationValue', event.target.value)}
+                  placeholder="Örn. 1"
+                />
+              </div>
+            )}
+
+            {form.recurrence === 'weekly' && (
+              <div style={{ marginTop: 14 }}>
+                <label className="f-label">Tekrarlanacak Günler</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                  {[
+                    { value: 'monday', label: 'Pazartesi' },
+                    { value: 'tuesday', label: 'Salı' },
+                    { value: 'wednesday', label: 'Çarşamba' },
+                    { value: 'thursday', label: 'Perşembe' },
+                    { value: 'friday', label: 'Cuma' },
+                    { value: 'saturday', label: 'Cumartesi' },
+                    { value: 'sunday', label: 'Pazar' }
+                  ].map(day => {
+                    const isSelected = form.weeklyDays?.includes(day.value)
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() => {
+                          const nextDays = isSelected
+                            ? form.weeklyDays.filter(d => d !== day.value)
+                            : [...(form.weeklyDays || []), day.value]
+                          setField('weeklyDays', nextDays)
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          fontSize: '.75rem',
+                          fontWeight: 700,
+                          border: '1px solid',
+                          borderColor: isSelected ? '#0d9488' : '#e2e8f0',
+                          background: isSelected ? '#f0fdfa' : '#fff',
+                          color: isSelected ? '#0f766e' : '#475569',
+                          cursor: 'pointer',
+                          transition: 'all .15s'
+                        }}
+                      >
+                        {day.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {form.recurrence === 'monthly' && (
+              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <div>
+                  <label className="f-label">Aylık Tekrarlama Şekli</label>
+                  <select
+                    className="f-input"
+                    value={form.monthlyPattern || 'day_of_month'}
+                    onChange={event => setField('monthlyPattern', event.target.value)}
+                    style={{ height: 38 }}
+                  >
+                    <option value="day_of_month">Belirli Bir Gün</option>
+                    <option value="last_day">Ayın Son Günü</option>
+                    <option value="nth_weekday">N. Hafta Günü (Örn. 2. Pazartesi)</option>
+                  </select>
+                </div>
+                {form.monthlyPattern === 'day_of_month' && (
+                  <div>
+                    <label className="f-label">Ayın Günü (1-31)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      className="f-input"
+                      value={form.monthlyDayOfMonth || ''}
+                      onChange={event => setField('monthlyDayOfMonth', event.target.value)}
+                      placeholder="Örn. 15"
+                    />
+                  </div>
+                )}
+                {form.monthlyPattern === 'nth_weekday' && (
+                  <>
+                    <div>
+                      <label className="f-label">Kaçıncı Hafta Günü</label>
+                      <select
+                        className="f-input"
+                        value={form.monthlyNth || '1'}
+                        onChange={event => setField('monthlyNth', event.target.value)}
+                        style={{ height: 38 }}
+                      >
+                        <option value="1">1. (İlk)</option>
+                        <option value="2">2.</option>
+                        <option value="3">3.</option>
+                        <option value="4">4.</option>
+                        <option value="5">5. (Son)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="f-label">Hangi Gün</label>
+                      <select
+                        className="f-input"
+                        value={form.monthlyWeekday || 'monday'}
+                        onChange={event => setField('monthlyWeekday', event.target.value)}
+                        style={{ height: 38 }}
+                      >
+                        <option value="monday">Pazartesi</option>
+                        <option value="tuesday">Salı</option>
+                        <option value="wednesday">Çarşamba</option>
+                        <option value="thursday">Perşembe</option>
+                        <option value="friday">Cuma</option>
+                        <option value="saturday">Cumartesi</option>
+                        <option value="sunday">Pazar</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {form.recurrence === 'yearly' && (
+              <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
+                <div>
+                  <label className="f-label">Yıllık Tekrarlama Şekli</label>
+                  <select
+                    className="f-input"
+                    value={form.yearlyPattern || 'specific_dates'}
+                    onChange={event => setField('yearlyPattern', event.target.value)}
+                    style={{ height: 38 }}
+                  >
+                    <option value="specific_dates">Belirli Tarihler</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="f-label">Tarihler (MM-DD veya YYYY-MM-DD formatında, virgülle veya alt alta ayırarak yazın)</label>
+                  <textarea
+                    className="f-input"
+                    rows={3}
+                    value={form.yearlyDates || ''}
+                    onChange={event => setField('yearlyDates', event.target.value)}
+                    placeholder="Örn. 01-01, 10-29"
+                  />
+                </div>
+              </div>
+            )}
+
             {form.has_specific_time && (
               <div style={{ marginTop: 14, maxWidth: 220 }}>
                 <label className="f-label">Saat</label>
@@ -1169,7 +1329,12 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
       <Modal
         open={announcementCreateOpen}
         onClose={() => setAnnouncementCreateOpen(false)}
-        title="Duyuru Yayınla"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 4, height: 18, background: '#f59e0b', borderRadius: 2 }}></span>
+            <span>Duyuru Yayınla</span>
+          </div>
+        }
         subtitle="Sisteme yeni bir duyuru/ilan yayınlayın."
         width={560}
         footer={(

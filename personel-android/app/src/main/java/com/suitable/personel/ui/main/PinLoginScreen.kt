@@ -35,7 +35,8 @@ data class StaffSession(
     val authorityLevel: String?,
     val activeBranchId: String,
     val activeBranchName: String,
-    val authenticatedAt: String
+    val authenticatedAt: String,
+    val pin: String? = null
 ) {
     fun getDisplayName(): String {
         return listOfNotNull(firstName, middleName, lastName)
@@ -393,7 +394,8 @@ private fun createStaffSession(
         activeBranchId = branchId,
         activeBranchName = branchName,
         authenticatedAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
-            .format(java.util.Date())
+            .format(java.util.Date()),
+        pin = employee["pin"]?.toString()
     )
 }
 

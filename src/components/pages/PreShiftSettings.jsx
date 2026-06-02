@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import AddButton from '@/components/ui/AddButton'
 import Modal from '@/components/ui/Modal'
@@ -170,7 +170,7 @@ function formatOperatingDayLabel(dateKey) {
 }
 
 function getOperatingHoursDraftMap(days) {
-  const rowMap = Object.fromEntries((days || []).map(day => [day.schedule_date, day]))
+  const rowMap = Object.fromEntries((days || []).map(day => [day.schedule_date ? String(day.schedule_date).slice(0, 10) : '', day]))
   const fallbackByWeekday = {}
 
   for (const day of days || []) {

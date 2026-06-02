@@ -8111,3 +8111,34 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Arayüz tamamen Jetpack Compose ile mobil cihaz boyutlarına ve Material3 standartlarına uyumlu (kontrol listesi tıklama, chat tartışma akışı, detaylar ve yeni görev formu) şekilde tasarlandı.
 - Verification:
   - Gradle Build: .\gradlew.bat assembleDebug (BUILD SUCCESSFUL in 1m 1s)
+
+## Entry - Vardiya Planlama ve Saatlerinin Tarih Uyumsuzlugu Hatasinin Giderilmesi
+
+- Timestamp: 2026-06-03T01:15:00+03:00
+- Agent: Antigravity
+- Task: Vardiya planlamalarinin kaydedildikten sonra UI'da gorunmemesi, hafta gunu bazli sube saatlerinin kaydedildikten sonra yuklenmemesi ve mobil vardiya takviminde vardiyalarin listelenmemesi hatasinin giderilmesi.
+- Files Changed:
+  - src/components/pages/ShiftPlanner.jsx
+  - src/components/pages/PreShiftSettings.jsx
+  - src/components/pages/MobileAppShells.jsx
+- Decisions:
+  - Veritabanindaki DATE tipi kolonlarin (schedule_date, forecast_date, sale_date) Express API tarafindan ISO-8601 formatiyla ("YYYY-MM-DDT00:00:00.000Z") dondurulmesinden kaynakli, frontend uzerindeki "YYYY-MM-DD" formatiyla yapilan birebir karsilastirmalarin (===) basarisiz olmasi engellendi.
+  - ShiftPlanner.jsx icindeki normalizeEntryRecord, buildLiveForecastSummaryMap ve getDayDraftMap fonksiyonlarinda, PreShiftSettings.jsx icindeki getOperatingHoursDraftMap fonksiyonunda ve MobileAppShells.jsx icindeki setEntries cagrilarinda veritabanindan donen date degerleri .slice(0, 10) sarmaliyla guvenli "YYYY-MM-DD" formatina normalize edildi.
+- Verification:
+  - Web Build: npm run build (Vite built in 15.20s successfully)
+
+
+## Entry - Tekrarlayan Gorev Tanimi, Modal Ayrac Tasarimlari ve PDKS Vardiya Zaman Toleransi
+
+- Timestamp: 2026-06-03T01:50:00+03:00
+- Agent: Antigravity
+- Task: Tekrarlayan gorev form alanlarinin (gunluk, haftalik, aylik, yillik) web panel ve android uygulamasinda tamamlanmasi, modal basliklarina gorsel seritler eklenmesi ve PDKS giris/cikis islemlerinde planlanan vardiyaya gore +-5 dakika tolerans kontrolunun eklenmesi.
+- Files Changed:
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt
+- Decisions:
+  - Android uygulamasindaki bugun kartindan giris/cikis islemleri baslatilirken, planlanan giris/cikis saatine gore +-5 dakikayi asan sapmalarda "Vardiya planinizda {dakika} dk [erken/gec] [giris/cikis] yapiyorsunuz" seklinde Turkce uyar� dialoglari entegre edildi.
+  - Web panel ve Android uygulamasindaki gorev formuna veritabanindaki `task_recurrence_rules` tablosuna uygun detay alanlari eklendi.
+  - Modallere renkli serit ayraclari ve Turkce karakter duzeltmeleri uygulandi.
+- Verification:
+  - Web Build: npm run build (Vite built in 17.26s successfully)
+  - Android Build: .\gradlew.bat compileDebugKotlin (BUILD SUCCESSFUL in 1m 3s)

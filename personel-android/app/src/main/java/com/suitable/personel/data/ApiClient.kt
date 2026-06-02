@@ -11,7 +11,7 @@ data class QueryRequest(
     val operation: String = "select",
     val select: String = "*",
     val filters: List<Map<String, Any?>>? = null,
-    val data: Map<String, Any?>? = null
+    val data: Any? = null
 )
 
 data class QueryResponse(

@@ -1898,7 +1898,10 @@ function PersonnelCalendar({ activeStaff }) {
         .lte('schedule_date', sundayKey)
 
       if (dbErr) throw dbErr
-      setEntries(data || [])
+      setEntries((data || []).map(e => ({
+        ...e,
+        schedule_date: e.schedule_date ? String(e.schedule_date).slice(0, 10) : ''
+      })))
     } catch (err) {
       console.error('Error fetching weekly shifts:', err)
       setError('Vardiya planı yüklenemedi.')

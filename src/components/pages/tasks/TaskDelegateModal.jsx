@@ -15,11 +15,16 @@ export default function TaskDelegateModal({ open, onClose, options = [], onSubmi
     <Modal
       open={open}
       onClose={onClose}
-      title="Delege Et"
-      subtitle="Gorevi baska bir personele yonlendir."
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 4, height: 18, background: '#8b5cf6', borderRadius: 2 }}></span>
+          <span>Delege Et</span>
+        </div>
+      }
+      subtitle="Görevi başka bir personele yönlendir."
       footer={(
         <>
-          <button type="button" className="btn-o" onClick={onClose}>Vazgec</button>
+          <button type="button" className="btn-o" onClick={onClose}>Vazgeç</button>
           <button type="button" className="btn-p" onClick={handleSubmit} disabled={!personnelId}>Delege Et</button>
         </>
       )}
@@ -30,7 +35,7 @@ export default function TaskDelegateModal({ open, onClose, options = [], onSubmi
           value={personnelId}
           onChange={setPersonnelId}
           options={options}
-          placeholder="Personel secin..."
+          placeholder="Personel seçin..."
           searchPlaceholder="Personel ara..."
         />
       </div>
