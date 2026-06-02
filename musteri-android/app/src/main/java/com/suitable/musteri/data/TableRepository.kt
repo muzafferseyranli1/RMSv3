@@ -951,8 +951,8 @@ class TableRepository {
             val prodObj = mapOf(
                 "id" to item.itemId,
                 "name" to (dbProd["name"] as? String ?: item.name),
-                "pos_image" to (dbProd["pos_image"] ?: ""),
-                "channel_image" to (dbProd["channel_image"] ?: ""),
+                "pos_image" to (ApiClient.resolveImageUrl(dbProd["pos_image"] as? String) ?: ""),
+                "channel_image" to (ApiClient.resolveImageUrl(dbProd["channel_image"] as? String) ?: ""),
                 "pos_color" to (dbProd["pos_color"] ?: "#1e293b"),
                 "pos_text_color" to (dbProd["pos_text_color"] ?: "#ffffff")
             )

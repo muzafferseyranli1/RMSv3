@@ -1,58 +1,63 @@
-# Desktop Terminal Architecture & Routing Redesign
+# Merkezi Kuver Takibi ve Otomatik Dağıtım Entegrasyonu
 
-Mevcut yapıda POS, Garson, KDS ve Pickup ekranlarının yanlış açılmasına (örneğin POS anahtarının Garson ekranını açması) neden olan temel mimari hatalar tespit edilmiştir:
-1. **Dev/Prod Uyuşmazlığı**: Geliştirme (Dev) ortamında `index.html` üzerinden `App.jsx` çalışırken, production ortamında `desktop.html` üzerinden `DesktopPosApp.jsx` çalışmaktadır. Bu durum, rotaların ve PairingGuard'ın farklı tepkiler vermesine yol açmaktadır.
-2. **Race Condition (Yarış Durumu)**: Eşleştirme sonrasında `window.location.replace()` yapıldığında, Electron tarafında konfigürasyon dosyaya henüz tam olarak yansımamış veya web ortamında (localStorage) eski veri okunmuş olabiliyor.
-3. **Route Karmaşası**: `/garson-screen`, `/pos-screen` gibi rotalar ile `DesktopPosApp.jsx` içindeki `/garson` ve `/pos` rotaları çakışmaktadır.
+Bu plan; işletmelerin kuver takibi yapıp yapmayacağını cihaz yönetimi ekranındaki Ana Kasa (Master) üzerinden yapılandırmasını, bu yapılandırmaya bağlı olarak POS ve Garson terminallerinde kuver ikon setinin dinamik olarak gizlenmesini/gösterilmesini ve kuver takibi kapalıysa her sipariş için belirtilen varsayılan kuver sayısının sabit oranlarla (%40 Kadın, %40 Erkek, %20 Çocuk) veritabanına kaydedilmesini içerir.
 
-Bu sorunları kökten çözmek için mimariyi baştan aşağı yeniden yapılandırmalıyız.
-
-## Önerilen Mimari Yapı
-
-### 1. Tekil Giriş Noktası (Unified Entry)
-Desktop uygulaması ve Web uygulaması arasındaki ayrımı `index.html` veya `desktop.html` seviyesinde yapmak yerine, uygulamanın tek bir giriş noktasından (`App.jsx`) yönetilmesi sağlanmalıdır.
-- `App.jsx` içerisinde `isDesktopMode()` kontrolü yapılarak, eğer uygulama masaüstü ortamında (Electron) çalışıyorsa standart Web arayüzü yerine **`DesktopTerminalShell`** bileşeni render edilecektir.
-- Böylece dev ve prod ortamlarındaki tutarsızlıklar tamamen ortadan kalkacaktır.
-
-### 2. DesktopTerminalShell ve PairingGuard
-- **`DesktopTerminalShell`**: Sadece masaüstü ortamında çalışacak olan ana kapsayıcıdır.
-- İçerisinde **`PairingGuard`** bulunur. Uygulama açıldığında lokal konfigürasyon (`terminal-config.json`) okunur. 
-- Eğer cihaz henüz eşleştirilmemişse (veya eşleştirme anahtarı geçersizse), ekranda sadece **`PairingScreen`** gösterilir.
-- Eşleştirme tamamlandığında sayfa **yenilenmez** (`window.location.replace` KULLANILMAZ). Bunun yerine React state güncellenir ve yeni konfigürasyon anında devreye girerek doğru ekrana geçiş yapılır.
-
-### 3. Screen Mode Yönlendirmesi (Routing)
-Eşleştirme işlemi sonrası (veya cihaz zaten eşleşmişse) alınan `device_type` verisi üzerinden cihazın açması gereken ekran net bir şekilde belirlenir:
-- `pos` -> `/pos`
-- `masa` veya `garson` -> `/garson`
-- `kds` -> `/kds`
-- `pickup` -> `/pickup`
-
-Terminal konfigürasyonunda yer alan `screenMode` değerine göre React Router doğrudan ilgili sayfayı yükler.
-
-## Mimari Akış Diyagramı (Mermaid)
-
-```mermaid
-graph TD
-    A[Electron main.cjs] -->|Yükler| B(index.html / main.jsx)
-    B --> C{isDesktopMode?}
-    C -->|Hayır| D[Web App Yüklenir]
-    C -->|Evet| E[DesktopTerminalShell]
-    E --> F{isPaired?}
-    F -->|Hayır| G[PairingScreen]
-    G -->|Key Girilir & Başarılı| H[Config Kaydedilir ve State Güncellenir]
-    H --> F
-    F -->|Evet| I{screenMode Nedir?}
-    I -->|pos| J[POS Bileşeni Render Edilir]
-    I -->|garson| K[Garson Bileşeni Render Edilir]
-    I -->|kds| L[KDS Bileşeni Render Edilir]
-    I -->|pickup| M[Pickup Bileşeni Render Edilir]
-```
-
-## User Review Required
+## Kullanıcı İncelemesi Gereken Hususlar
 
 > [!IMPORTANT]
-> - `main.desktop.jsx` ve `desktop.html` gibi karmaşaya yol açan ara dosyalar kullanımdan kaldırılacak ve tüm yapı `App.jsx` üzerinden yönetilecektir.
-> - Eşleştirme sonrasında sayfa yenilenmesi kaldırılacağı için, geçişler anında ve sorunsuz olacaktır.
-> - Veritabanındaki `device_type` ne ise (`pos`, `masa`, `kds`, `pickup`), terminal **sadece ve kesinlikle** o ekran modunda başlayacaktır.
+> Kuver takibi kapalıyken sipariş başına girilen kuver sayısı (örneğin 1 veya 5), veritabanındaki `female_guest_count`, `male_guest_count` ve `child_guest_count` alanlarının `INTEGER` (tam sayı) kısıtlaması nedeniyle deterministik bir dağıtım algoritmasıyla tam sayılara dönüştürülür. Örneğin, 1 kuver için: 1 Kadın, 0 Erkek, 0 Çocuk; 5 kuver için: 2 Kadın, 2 Erkek, 1 Çocuk kaydedilir.
 
-Bu yeni mimari planı onaylıyorsanız, eski `DesktopPosApp.jsx` yapısını temizleyip bu temiz ve sağlam mimariyi `App.jsx` ve `main.cjs` üzerine entegre edeceğim. Lütfen onay verin.
+## Önerilen Değişiklikler
+
+---
+
+### [Veri Yapısı / Ortak Ayarlar]
+
+Genel kuver ayarları veritabanındaki `settings` tablosunda `cover_settings` anahtarı altında JSONB formatında saklanacaktır:
+```json
+{
+  "tracking_enabled": false,
+  "default_count": 1
+}
+```
+
+---
+
+### [Cihaz Yönetimi Ekranı]
+
+#### [MODIFY] [DeviceSettings.jsx](file:///c:/RMSv3/src/components/pages/DeviceSettings.jsx)
+- Cihaz düzenleme/oluşturma modalına, düzenlenen cihaz **Ana Kasa (Master)** ise kuver ayarları bölümü eklenecektir.
+- "İşletmede kuver takibi yapılacak mı?" checkbox'ı ve bu checkbox seçili değilse "Sipariş Başına Varsayılan Kuver Sayısı" nümerik giriş alanı sunulacaktır.
+- Cihaz kaydedilirken bu ayarlar veritabanındaki `settings` tablosunda `cover_settings` anahtarıyla güncellenecektir.
+
+---
+
+### [POS Terminali Uygulaması]
+
+#### [MODIFY] [POS.jsx](file:///c:/RMSv3/src/components/pages/POS.jsx)
+- Üst seviyede kuver sayısını Kadın (%40), Erkek (%40) ve Çocuk (%20) olarak tam sayılara dağıtan deterministik `distributeCover(n)` algoritması tanımlanacaktır.
+- `cover_settings` ayarları `settings` tablosundan dinamik olarak yüklenecektir.
+- Eğer `tracking_enabled` false ise:
+  - Sağ paneldeki 3'lü kuver ikon seti (Kadın, Erkek, Çocuk butonları) gizlenecektir.
+  - Yeni bir adisyon oluşturulurken veya temizlenirken varsayılan olarak `distributeCover(default_count)` oranları otomatik atanacaktır.
+  - `sanitizeOpenTicket` fonksiyonunda bilet yeni oluşturulurken bu dağıtılmış varsayılan kuver oranları atanacaktır.
+
+---
+
+### [Garson (Tablet) Uygulaması]
+
+#### [MODIFY] [Garson.jsx](file:///c:/RMSv3/src/components/pages/Garson.jsx)
+- POS.jsx ile paralel olarak `distributeCover(n)` algoritması ve `cover_settings` durumunun yüklenmesi sağlanacaktır.
+- Eğer `tracking_enabled` false ise:
+  - Adisyon ekranındaki 3'lü kuver ikon seti tamamen gizlenecektir.
+  - Yeni adisyon oluşturulurken veya sanitize edilirken otomatik olarak `distributeCover(default_count)` atanacaktır.
+
+---
+
+## Doğrulama Planı
+
+### Otomatik & Manuel Testler
+- **Ana Kasa Yapılandırması:** Cihaz yönetimi ekranından Master olan cihaz düzenlenerek "İşletmede kuver takibi yapılacak mı" seçeneği değiştirilecek ve kaydedilecektir.
+- **Takip Açıkken:** POS ve Garson uygulamaları yenilenerek sol/sağ menüde kuver ikon setinin geldiği ve elle kuver artırılabildiği gözlemlenecektir.
+- **Takip Kapalıyken (Default = 1):** POS ve Garson uygulamalarında ikon setinin gizlendiği doğrulanacaktır. Yeni bir masa siparişi verilip tamamlandığında veritabanında `cover_count: 1`, `female_guest_count: 1`, `male_guest_count: 0`, `child_guest_count: 0` olarak kaydedildiği kontrol edilecektir.
+- **Takip Kapalıyken (Default = 5):** Master cihazdan kuver 5 girildiğinde, yeni sipariş kaydında `cover_count: 5`, `female_guest_count: 2`, `male_guest_count: 2`, `child_guest_count: 1` olarak (%40, %40, %20 dağılımla) kaydedildiği doğrulanacaktır.

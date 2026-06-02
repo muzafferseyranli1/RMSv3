@@ -539,17 +539,35 @@ app.all('/api/query', rateLimiter, async (req, res) => {
   const isReadOnly = rpc || operation === 'select'
   const key = cacheKey(body)
 
+  const startTime = Date.now()
+  const logQuery = (responseObj, errorMsg = null) => {
+    try {
+      const durationMs = Date.now() - startTime
+      const responseBytes = Buffer.byteLength(JSON.stringify(responseObj || {}))
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown'
+      const userAgent = req.headers['user-agent'] || 'unknown'
+      console.log(`[API_QUERY_LOG] ip=${ip} table=${table || 'rpc'} operation=${operation || 'rpc'} duration=${durationMs}ms size=${responseBytes}bytes err=${errorMsg || 'none'} select=${select || '*'} filters=${JSON.stringify(filters)} ua="${userAgent}"`)
+    } catch (e) {
+      // ignore logging errors
+    }
+  }
 
   if (isReadOnly && process.env.NODE_ENV !== 'test') {
     const cached = cacheGet(key)
-    if (cached) return res.json(cached)
+    if (cached) {
+      logQuery(cached)
+      return res.json(cached)
+    }
 
     if (pendingRequests.has(key)) {
       try {
         const result = await pendingRequests.get(key)
+        logQuery(result)
         return res.json(result)
       } catch (err) {
-        return res.json({ data: null, error: { message: err.message } })
+        const errorObj = { data: null, error: { message: err.message } }
+        logQuery(errorObj, err.message)
+        return res.json(errorObj)
       }
     }
   }
@@ -576,6 +594,12 @@ app.all('/api/query', rateLimiter, async (req, res) => {
     if (!isReadOnly) cacheClearTable(table)
 
     if (operation === 'select') {
+      if (table === 'settings') {
+        const hasKeyFilter = filters && filters.some(f => f.col === 'key' && (f.type === 'eq' || f.type === 'in'));
+        if (!hasKeyFilter) {
+          throw new Error('Filtresiz settings tablosu okuması engellendi (Egress koruması). Lütfen key kolonu ile filtreleyin.');
+        }
+      }
       const cols = select && select !== '*'
         ? select.split(',').map(c => {
             const trimmed = c.trim()
@@ -702,18 +726,24 @@ app.all('/api/query', rateLimiter, async (req, res) => {
       if (process.env.NODE_ENV !== 'test') {
         cacheSet(key, cleanedResult)
       }
+      logQuery(cleanedResult)
       return res.json(cleanedResult)
     } catch (err) {
       console.error('[api/query]', err.message)
-      return res.json({ data: null, error: { message: err.message } })
+      const errorObj = { data: null, error: { message: err.message } }
+      logQuery(errorObj, err.message)
+      return res.json(errorObj)
     }
   } else {
     try {
       const result = await executeQuery()
+      logQuery(result)
       return res.json(result)
     } catch (err) {
       console.error('[api/query]', err.message)
-      return res.json({ data: null, error: { message: err.message } })
+      const errorObj = { data: null, error: { message: err.message } }
+      logQuery(errorObj, err.message)
+      return res.json(errorObj)
     }
   }
 })

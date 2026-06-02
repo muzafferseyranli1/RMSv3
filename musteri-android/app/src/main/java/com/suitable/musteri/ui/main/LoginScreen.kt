@@ -172,9 +172,35 @@ fun LoginScreen(
                                     )
                                     val createRes = ApiClient.apiService.executeQuery(createReq)
                                     if (createRes.error == null) {
-                                        val dataList = createRes.data as? List<Map<String, Any>>
-                                        if (dataList != null && dataList.isNotEmpty()) {
-                                            val newCustomerId = dataList[0]["id"].toString()
+                                        val responseData = createRes.data
+                                        var newCustomerId: String? = null
+                                        if (responseData is List<*>) {
+                                            val list = responseData as? List<Map<String, Any>>
+                                            if (list != null && list.isNotEmpty()) {
+                                                newCustomerId = list[0]["id"]?.toString()
+                                            }
+                                        } else if (responseData is Map<*, *>) {
+                                            val map = responseData as? Map<String, Any>
+                                            newCustomerId = map?.get("id")?.toString()
+                                        }
+                                        
+                                        // Fallback: insert cevabından id alınamadıysa DB'den tekrar sorgula
+                                        if (newCustomerId == null) {
+                                            val findReq = QueryRequest(
+                                                table = "musteriler",
+                                                operation = "select",
+                                                filters = listOf(mapOf("type" to "eq", "col" to "telefon", "val" to phone))
+                                            )
+                                            val findRes = ApiClient.apiService.executeQuery(findReq)
+                                            if (findRes.error == null) {
+                                                val dataList = findRes.data as? List<Map<String, Any>>
+                                                if (dataList != null && dataList.isNotEmpty()) {
+                                                    newCustomerId = dataList[0]["id"]?.toString()
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (newCustomerId != null) {
                                             val sharedPref = context.getSharedPreferences("MusteriPrefs", Context.MODE_PRIVATE)
                                             sharedPref.edit().putString("customerId", newCustomerId).apply()
                                             

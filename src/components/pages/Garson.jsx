@@ -72,7 +72,7 @@ import {
 } from '@/lib/checkoutLoyalty'
 import { resolvePreparedLoyaltyAdvantage } from '@/lib/loyaltyPreparedAdvantage'
 import { postSaleLoyaltyValueLedger } from '@/lib/loyaltyValueLedger'
-import { db } from '@/lib/db'
+import { db, resolveImageUrl } from '@/lib/db'
 import {
   acknowledgeTableServiceRequest,
   loadActiveTableServiceRequests,
@@ -296,16 +296,16 @@ function pickButtonColors(item) {
 }
 
 function getProductCategoryId(item) {
-  return item.sale_cat_l5
-    || item.sale_cat_l4
-    || item.sale_cat_l3
-    || item.sale_cat_l2
-    || item.sale_cat_l1
-    || item.cat_l5
-    || item.cat_l4
-    || item.cat_l3
-    || item.cat_l2
-    || item.cat_l1
+  return item?.sale_cat_l5
+    || item?.sale_cat_l4
+    || item?.sale_cat_l3
+    || item?.sale_cat_l2
+    || item?.sale_cat_l1
+    || item?.cat_l5
+    || item?.cat_l4
+    || item?.cat_l3
+    || item?.cat_l2
+    || item?.cat_l1
     || null
 }
 
@@ -4873,7 +4873,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
           }}
           style={{flex:1,overflowY:'auto',padding:'10px',display:'flex',flexDirection:'column',gap:7,cursor:isMasaChannel ? 'pointer' : 'default'}}
         >
-          {(currentTableRequestSummary.pendingCount > 0 || currentTableRequestSummary.acknowledgedCount > 0) && (
+          {currentTableRequestSummary.pendingCount > 0 && (
             <div style={{
               borderRadius:12,
               padding:'10px 12px',
@@ -4957,7 +4957,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                       display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,overflow:'hidden'
                     }}>
                       {cartImage
-                        ? <img src={cartImage} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                        ? <img src={resolveImageUrl(cartImage)} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                         : <i className="fa-solid fa-utensils" style={{fontSize:'1rem',color:cartColors.text}}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
@@ -5541,7 +5541,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                 }}>
                   {productImage ? (
                     <>
-                      <img src={productImage} alt="" style={{
+                      <img src={resolveImageUrl(productImage)} alt="" style={{
                         width:'100%',height:'100%',objectFit:'cover',display:'block'
                       }}/>
                       <div style={{

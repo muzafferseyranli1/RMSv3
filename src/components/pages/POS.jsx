@@ -90,7 +90,7 @@ import {
   normalizeOrderHubOpenTicket,
   normalizeOrderHubSale,
 } from '@/lib/orderHub'
-import { db } from '@/lib/db'
+import { db, resolveImageUrl } from '@/lib/db'
 
 
 
@@ -309,16 +309,16 @@ function pickButtonColors(item) {
 }
 
 function getProductCategoryId(item) {
-  return item.sale_cat_l5
-    || item.sale_cat_l4
-    || item.sale_cat_l3
-    || item.sale_cat_l2
-    || item.sale_cat_l1
-    || item.cat_l5
-    || item.cat_l4
-    || item.cat_l3
-    || item.cat_l2
-    || item.cat_l1
+  return item?.sale_cat_l5
+    || item?.sale_cat_l4
+    || item?.sale_cat_l3
+    || item?.sale_cat_l2
+    || item?.sale_cat_l1
+    || item?.cat_l5
+    || item?.cat_l4
+    || item?.cat_l3
+    || item?.cat_l2
+    || item?.cat_l1
     || null
 }
 
@@ -3233,6 +3233,15 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
   const activeOrderNote = isMasaMode ? currentTableTicket.orderNote : orderNote
   const activeGuestCounts = isMasaMode ? currentTableTicket.guestCounts : guestCounts
 
+  // Masa adisyonundaki müşteriyi otomatik olarak bağla (Android QR sadakat entegrasyonu)
+  useEffect(() => {
+    if (currentTableTicket?.customer) {
+      setPreOrderLinkedCustomer(currentTableTicket.customer)
+    } else {
+      setPreOrderLinkedCustomer(null)
+    }
+  }, [currentTableKey, currentTableTicket?.customer])
+
   const normalizedProducts = useMemo(() => {
     const productMap = new Map(products.map(prod => [String(prod.id), prod]))
     const comboProducts = (comboDefinitions || [])
@@ -5049,7 +5058,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                       display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,overflow:'hidden'
                     }}>
                       {cartImage
-                        ? <img src={cartImage} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                        ? <img src={resolveImageUrl(cartImage)} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                         : <i className="fa-solid fa-utensils" style={{fontSize:'1rem',color:cartColors.text}}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
@@ -5796,7 +5805,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                 }}>
                   {productImage ? (
                     <>
-                      <img src={productImage} alt="" style={{
+                      <img src={resolveImageUrl(productImage)} alt="" style={{
                         width:'100%',height:'100%',objectFit:'cover',display:'block'
                       }}/>
                       <div style={{

@@ -7967,3 +7967,70 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - KioskBig ve KioskTablet sol kategori div container'larýna bu sýnýf verilerek çirkin varsayýlan scrollbar görünümü tamamen gizlendi, ancak kaydýrma iþlevi korunmuþ oldu.
 - Verification:
   - Build PASS: npm run build (20.55s)
+
+## Entry - Merkezi Kuver Yönetimi ve Ondalýklý Daðýtým Entegrasyonu
+
+- Timestamp: 2026-06-02T08:50:00+03:00
+- Agent: Antigravity
+- Task: Ana Kasa (Master) üzerinden merkezi kuver takibi seçimi, ondalýklý kuver giriþi ve veritabaný NUMERIC(12,2) dönüþümü ile %40-%40-%20 split entegrasyonu.
+- Files Changed:
+  - src/components/pages/DeviceSettings.jsx
+  - src/components/pages/POS.jsx
+  - src/components/pages/Garson.jsx
+  - migrations/025_alter_guest_counts_to_numeric.sql
+- Decisions:
+  - Canlý veritabanýndaki sales ve pos_sales tablolarýnda cover_count ve misafir kolonlarý NUMERIC(12,2) veri tipine yükseltildi.
+  - POS ve Garson uygulamalarýnda distributeCover fonksiyonu, float yuvarlamasýný iptal edip ondalýklý splits (%40, %40, %20) yapacak ve float precision kayýplarýný çocuða ekleyecek þekilde yeniden yazýldý.
+- Verification:
+  - Build PASS: npm run build
+
+## Entry - Egress Azaltma ve Sunucu Güvenlik/Loglama Optimizasyonu
+
+- Timestamp: 2026-06-02T09:35:00+03:00
+- Agent: Antigravity
+- Task: Railway egress artýþýný engellemek için settings tablosu sorgularýnýn kýsýtlanmasý, response loglama ve base64 görsellerin ayýklanmasý.
+- Files Changed:
+  - server/index.js
+  - scratch/extract_base64_images.cjs
+- Decisions:
+  - Sunucu API'sinde settings tablosuna filtresiz select sorgularý atýlmasý engellendi (key filtresi zorunlu kýlýndý).
+  - API sorgularýna esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi.
+  - extract_base64_images.cjs betiði ile settings tablosundaki tüm inline base64 resimler ayýklanýp API volume sunucusuna yüklendi ve referans URL'leri ile deðiþtirildi. Kiosk_settings_v2 boyutu 3.5 MB'tan 4.6 KB'a düþürüldü.
+- Verification:
+  - Build PASS: npm run build
+
+## Entry - Android Giriþ/Kayýt Arayüzü Kullanýcý ID Parse Hatasý Giderilmesi
+
+- Timestamp: 2026-06-02T09:46:00+03:00
+- Agent: Antigravity
+- Task: Yeni kullanýcý kaydolurken 'Kayýt tamamlandý ancak kullanýcý ID'si alýnamadý' hatasýnýn giderilmesi.
+- Files Changed:
+  - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/LoginScreen.kt
+- Decisions:
+  - API query insert iþlemi tekli nesneler için direkt Map döndüðü için, Kotlin tarafýnda Liste (List) zorlamasý esnetilerek hem List hem de Map yanýtlarýndan kullanýcý ID'sinin güvenli okunmasý saðlandý.
+- Verification:
+  - Build PASS: npm run build
+
+
+## Entry - Android Masa Siparisleri Yeniden Tasarim, QR Doluluk Kontrolu ve Entegrasyon Iyilestirmeleri
+
+- Timestamp: 2026-06-02T09:50:00+03:00
+- Agent: Antigravity
+- Task: Masa Siparislerim ekraninin yenilenmesi, QR doluluk kontrolu, Web POS/Garson gorsel ve loyalty entegrasyon iyilestirmeleri, Kayit ID hatasi cozumu.
+- Files Changed:
+  - musteri-android/app/src/main/java/com/suitable/musteri/data/TableRepository.kt
+  - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/TableScreen.kt
+  - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/TableOrdersScreen.kt
+  - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/LoginScreen.kt
+  - src/components/pages/POS.jsx
+  - src/components/pages/Garson.jsx
+- Decisions:
+  - TableOrdersScreen.kt tamamen yeniden yazilarak urun bazli listeleme, saat gruplamasi, yan yana buton yerlesimi ve siparis kontrolune bagli masa birakma mantigi eklendi.
+  - TableScreen.kt QR okutma ve masa degistirme kisimlarinda garson_open_table_tickets_v2 sorgusuyla hedef masanin bos olma zorunlulugu (isTableOccupied) uygulandi ve eylem paneline Masayi Birak butonu eklendi.
+  - TableRepository.kt icinde appendToOpenTableTicket'ta resimler ApiClient.resolveImageUrl ile mutlak URL'e cevrildi; Web POS (POS.jsx) ve Garson.jsx ekranlarinda sepet ve urun gorselleri resolveImageUrl sarmaliyla cozulerek kirik resim ikonlari giderildi.
+  - POS.jsx icinde adisyon yuklendiginde musterinin otomatik sadakat state'ine baglanmasi saglandi.
+  - Garson.jsx icinde alarm paneli, garson talebi ustlendikten sonra (pendingCount == 0 iken) tamamen gizlendi.
+  - LoginScreen.kt uzerinde kayit esnasinda ID alinamazsa DB'den telefonla tekrar sorgulayacak select fallback'i eklendi.
+- Verification:
+  - Web Build: npm run build (Vite built in 49.10s)
+  - Android Build: assembleDebug (BUILD SUCCESSFUL in 55s)
