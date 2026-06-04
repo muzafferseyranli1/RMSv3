@@ -4,12 +4,12 @@ import { db } from '@/lib/db'
  * Creates a new notification in the database.
  * @param {string} recipientId - The ID of the employee to receive the notification
  * @param {string} type - The notification type:
- *   Geribildirim: 'ticket_assigned' | 'ticket_comment' | 'sla_warning' | 'sla_breach' | 'status_changed' | 'quality_report' | 'ticket_escalated'
+ *   Geribildirim: 'ticket_assigned' | 'ticket_comment' | 'sla_warning' | 'sla_breach' | 'status_changed' | 'ticket_escalated'
  *   Görev:        'task_assigned' | 'task_comment' | 'task_status_changed'
  *   Duyuru:       'announcement'
  * @param {string} title - The notification title
  * @param {string} body - The detailed notification text
- * @param {string} referenceType - 'ticket' | 'task' | 'announcement' | 'quality_report' (optional)
+ * @param {string} referenceType - 'ticket' | 'task' | 'announcement' (optional)
  * @param {string} referenceId - UUID of the referenced object (optional)
  */
 export async function createNotification(recipientId, type, title, body, referenceType = null, referenceId = null) {

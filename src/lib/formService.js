@@ -1,4 +1,5 @@
 import { db, uploadApiFile } from '@/lib/db'
+import { readSettingArray, PERSONNEL_SETTINGS_KEYS, normalizeEmployeeRecord } from '@/lib/personnelConfig'
 
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -331,6 +332,12 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
     } catch (err) {
       console.error('Failed to auto-create inspection task:', err)
     }
+  } else if (template.form_type === 'notification_form') {
+    try {
+      createdTaskId = await createTaskFromNotification(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
+    } catch (err) {
+      console.error('Failed to auto-create notification task:', err)
+    }
   }
 
   return {
@@ -530,6 +537,142 @@ async function createTaskFromInspection(template, submission, answersJson, meta)
       sender_id: null,
       body: `Denetim formundan otomatik oluşturuldu. Puan: %${scorePercent}`,
       metadata: { title: task.title, score: scorePercent },
+    })
+  }
+
+  return task.id
+}
+
+async function createTaskFromNotification(template, submission, answersJson, meta) {
+  const taskConfig = template.schema_json?.task_config
+  if (!taskConfig || !Array.isArray(taskConfig.targets) || taskConfig.targets.length === 0) {
+    console.log('[Notification→Task] No targets defined in template.')
+    return null
+  }
+
+  const formDate = meta.form_date
+    ? new Date(meta.form_date).toLocaleDateString('tr-TR')
+    : new Date().toLocaleDateString('tr-TR')
+    
+  const branchName = meta.branch_name || 'İlgili'
+  const description = `${formDate} tarihinde ${branchName} şubesinden yapılan bildirimdir.`
+
+  const now = new Date()
+  const dueDate = new Date(now.getTime() + 72 * 60 * 60 * 1000) // +72 saat
+  const branchNodeId = meta.branch_id || submission.branch_id || ''
+
+  const rules = taskConfig.rules || {}
+
+  // 1) Task kaydı oluştur
+  const taskInsert = await db.from('tasks').insert({
+    branch_node_id: branchNodeId || null,
+    organization_node_id: null,
+    created_by_personnel_id: submission.submitted_by,
+    created_by_position_id: null,
+    title: template.title,
+    description,
+    status: 'open',
+    priority: 'high',
+    due_at: dueDate.toISOString(),
+    start_at: now.toISOString(),
+    has_specific_time: false,
+    timezone: 'Europe/Istanbul',
+    is_recurring: false,
+    recurrence_rule_id: null,
+    delegation_allowed: !!rules.delegation_allowed,
+    approval_required: !!rules.approval_required,
+    closure_summary_required: !!rules.closure_summary_required,
+    closure_file_required: !!rules.closure_file_required,
+    closure_image_required: !!rules.closure_image_required,
+    edit_due_date_allowed: !!rules.edit_due_date_allowed,
+    edit_schedule_allowed: !!rules.edit_schedule_allowed,
+    incomplete_if_late: !!rules.incomplete_if_late,
+    updated_at: nowIso(),
+  }).select().maybeSingle()
+
+  if (taskInsert.error) {
+    console.error('[Notification→Task] Task insert error:', taskInsert.error)
+    return null
+  }
+  const task = taskInsert.data
+  console.log('[Notification→Task] Task created:', task.id)
+
+  // 2) Katılımcıları (Assignees) Belirle
+  const participantRows = []
+  
+  let allEmployees = []
+  try {
+    allEmployees = await readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord)
+  } catch (err) {
+    console.error('[Notification→Task] Error reading employees:', err)
+  }
+
+  const assigneeIds = new Set()
+
+  for (const target of taskConfig.targets) {
+    if (target.type === 'personnel') {
+      assigneeIds.add(target.id)
+    } else if (target.type === 'position') {
+      const empsInPosition = allEmployees.filter(e => e.positionId === target.id && !e.deletedAt && !e.terminationDate)
+      empsInPosition.forEach(e => assigneeIds.add(e.id))
+    }
+  }
+
+  for (const assigneeId of assigneeIds) {
+    participantRows.push({
+      task_id: task.id,
+      participant_type: 'assignee',
+      personnel_id: assigneeId,
+      position_id: null,
+      node_id: branchNodeId || null,
+    })
+  }
+
+  if (participantRows.length > 0) {
+    const partResult = await db.from('task_participants').insert(participantRows).select()
+    if (partResult.error) {
+      console.error('[Notification→Task] Participants insert error:', partResult.error)
+    } else {
+      console.log('[Notification→Task] Participants created:', partResult.data?.length)
+    }
+  }
+
+  // 3) Soru/Cevapları Checklist olarak ekleyelim (Opsiyonel ama bildirimin içeriği görülmeli)
+  const answersMap = new Map(toArray(answersJson).map(a => [a.field_id, a]))
+  let answerSummary = ''
+  for (const section of toArray(template.schema_json?.sections)) {
+    for (const field of toArray(section.fields)) {
+      const answer = answersMap.get(field.id)
+      if (answer && answer.value) {
+        answerSummary += `**${field.label}**: ${answer.value}\n`
+      }
+    }
+  }
+
+  // 4) Chat thread
+  const threadResult = await db.from('task_chat_threads').insert({ task_id: task.id }).select().maybeSingle()
+  
+  // 5) System note
+  if (threadResult.data?.id) {
+    await db.from('task_history').insert({
+      task_id: task.id,
+      action: 'created',
+      performed_by: submission.submitted_by,
+      metadata: { title: task.title },
+    })
+    
+    let sysBody = `Bildirim formundan otomatik oluşturuldu.`
+    if (answerSummary) {
+      sysBody += `\n\n**Form Yanıtları:**\n${answerSummary}`
+    }
+
+    await db.from('task_chat_messages').insert({
+      thread_id: threadResult.data.id,
+      task_id: task.id,
+      message_type: 'system',
+      sender_id: null,
+      body: sysBody,
+      metadata: { title: task.title },
     })
   }
 

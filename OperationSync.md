@@ -7699,17 +7699,17 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 ## Entry - Desktop Pairing & Routing Architecture Fix
 - Timestamp: 2026-05-31T11:30:14+03:00
 - Agent: Antigravity
-- Task: Fix desktop terminal pairing flow — wrong screen routing, missing variables, pair_key removal
+- Task: Fix desktop terminal pairing flow ï¿½ wrong screen routing, missing variables, pair_key removal
 - Files Changed:
-  - migrations/022_fix_terminal_screen_mode.sql (YENÝ)
+  - migrations/022_fix_terminal_screen_mode.sql (YENï¿½)
   - schema-railway-master.sql
   - src/components/pages/DeviceSettings.jsx
   - src/components/pos/PairingScreen.jsx
   - src/components/pages/KioskBig.jsx
   - src/components/pages/KioskTablet.jsx
   - src/components/pages/KioskManagementDesktop.jsx
-- Decisions: pair_key tamamen kaldýrýldý, activation_code tek anahtar oldu, screen_mode constraint geniþletildi
-- Next Step: Kullanýcý desktop build yaparak test etmeli
+- Decisions: pair_key tamamen kaldï¿½rï¿½ldï¿½, activation_code tek anahtar oldu, screen_mode constraint geniï¿½letildi
+- Next Step: Kullanï¿½cï¿½ desktop build yaparak test etmeli
 
 ## Entry - Musteri Android: Stamp/Coupon Bug Fix & UI Overlap Fix
 - Timestamp: 2026-05-31T19:13:00+03:00
@@ -7830,7 +7830,7 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Files Changed:
   - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/HomeScreen.kt
 - Decisions:
-  - Updated \"AppScaffold\" in \"HomeScreen.kt\" to support a callback and added a \"?? Masa Seçimi\" DropdownMenuItem under the \"Hesabým\" item.
+  - Updated \"AppScaffold\" in \"HomeScreen.kt\" to support a callback and added a \"?? Masa Seï¿½imi\" DropdownMenuItem under the \"Hesabï¿½m\" item.
   - Implemented \"tableNumber\" state (saved in SharedPreferences) and \"showTableDialog\" modal trigger inside \"HomeScreen\" composable.
   - Added a beautiful \"Active Table Banner\" below the Welcome Banner to display the active table (e.g. \"Masa 5\") and allow the user to change or clear it.
   - Created the custom \"TableSelectionDialog\" component to enter the table number manually or leave the table (\"Masadan Kalk\").
@@ -7898,58 +7898,58 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Kiosk Management category config renders a beautiful read-only preview of the category image loaded from sale_categories instead of providing a duplicate upload field.
 - Next Step: Ready for user verification in dev/prod environments.
 
-## Entry - Kiosk Yönetimi Kategori Bölümü Sýkýlaþtýrma
+## Entry - Kiosk Yï¿½netimi Kategori Bï¿½lï¿½mï¿½ Sï¿½kï¿½laï¿½tï¿½rma
 
 - Timestamp: 2026-06-01T16:25:00+03:00
 - Agent: Antigravity
-- Task: Kiosk Yönetimi kategori listesini kompakt hale getirmek ve tüm kategorileri (alt kategoriler dahil) göstermek
+- Task: Kiosk Yï¿½netimi kategori listesini kompakt hale getirmek ve tï¿½m kategorileri (alt kategoriler dahil) gï¿½stermek
 - Files Changed:
   - src/components/pages/KioskManagementDesktop.jsx
 - Decisions:
-  - rootCategories (sadece parent_id=null olanlar) yerine sortedAllCategories eklendi; tüm kategoriler hiyerarþik sýrayla (kök › alt) Türkçe alfabetik olarak listeleniyor
-  - Satýr düzeni kompaktlaþtýrýldý: görsel 180px×280px yerine 90×90px kare oldu (%50 küçülme)
-  - Tüm alanlar (kategori adý, buton etiketi, sýra, görünürlük, saat kuralý butonu) görsel yüksekliðiyle (90px) ayný yatay satýra sýkýþtýrýldý
-  - Alt kategoriler _depth ile saða kaydýrýlýyor (20px/seviye), 'alt kategori' etiketi ve ok ikonuyla ayýrt ediliyor
-  - Saat kurallarý yoksa boþ not gösterilmiyor; varsa görsel altýna geniþliyor
+  - rootCategories (sadece parent_id=null olanlar) yerine sortedAllCategories eklendi; tï¿½m kategoriler hiyerarï¿½ik sï¿½rayla (kï¿½k ï¿½ alt) Tï¿½rkï¿½e alfabetik olarak listeleniyor
+  - Satï¿½r dï¿½zeni kompaktlaï¿½tï¿½rï¿½ldï¿½: gï¿½rsel 180pxï¿½280px yerine 90ï¿½90px kare oldu (%50 kï¿½ï¿½ï¿½lme)
+  - Tï¿½m alanlar (kategori adï¿½, buton etiketi, sï¿½ra, gï¿½rï¿½nï¿½rlï¿½k, saat kuralï¿½ butonu) gï¿½rsel yï¿½ksekliï¿½iyle (90px) aynï¿½ yatay satï¿½ra sï¿½kï¿½ï¿½tï¿½rï¿½ldï¿½
+  - Alt kategoriler _depth ile saï¿½a kaydï¿½rï¿½lï¿½yor (20px/seviye), 'alt kategori' etiketi ve ok ikonuyla ayï¿½rt ediliyor
+  - Saat kurallarï¿½ yoksa boï¿½ not gï¿½sterilmiyor; varsa gï¿½rsel altï¿½na geniï¿½liyor
 - Verification:
   - Build PASS: npm run build (17.41s)
-- Next Step: Kullanýcý doðrulamasý için hazýr.
+- Next Step: Kullanï¿½cï¿½ doï¿½rulamasï¿½ iï¿½in hazï¿½r.
 
-## Entry - Kiosk Görsel Yükleme Entegrasyonu Ýyileþtirmesi
+## Entry - Kiosk Gï¿½rsel Yï¿½kleme Entegrasyonu ï¿½yileï¿½tirmesi
 
 - Timestamp: 2026-06-01T19:38:00+03:00
 - Agent: Antigravity
-- Task: KioskBig ve KioskTablet ekranlarýnda sale_categories tablosundan image_url alýnarak yeni resimlerin yüklenmesini saðlamak
+- Task: KioskBig ve KioskTablet ekranlarï¿½nda sale_categories tablosundan image_url alï¿½narak yeni resimlerin yï¿½klenmesini saï¿½lamak
 - Files Changed:
   - src/components/pages/KioskBig.jsx
   - src/components/pages/KioskTablet.jsx
 - Decisions:
-  - db.from('sale_categories').select('id,name,parent_id') sorgusuna 'image_url,bg,text_color' alanlarý eklendi. Bu sayede kioskSettings.js içindeki resolveKioskCategories fonksiyonu image_url'i otomatik olarak kioskImageUrl olarak çözebiliyor.
+  - db.from('sale_categories').select('id,name,parent_id') sorgusuna 'image_url,bg,text_color' alanlarï¿½ eklendi. Bu sayede kioskSettings.js iï¿½indeki resolveKioskCategories fonksiyonu image_url'i otomatik olarak kioskImageUrl olarak ï¿½ï¿½zebiliyor.
 - Verification:
   - Build PASS: npm run build (18.08s)
 
-## Entry - Kiosk Tüm Kategoriler Filtresi
+## Entry - Kiosk Tï¿½m Kategoriler Filtresi
 
 - Timestamp: 2026-06-01T19:40:00+03:00
 - Agent: Antigravity
-- Task: KioskBig ve KioskTablet ekranlarýnda alt kategoriler dahil tüm kategorilerin listelenmesini saðlamak
+- Task: KioskBig ve KioskTablet ekranlarï¿½nda alt kategoriler dahil tï¿½m kategorilerin listelenmesini saï¿½lamak
 - Files Changed:
   - src/components/pages/KioskBig.jsx
   - src/components/pages/KioskTablet.jsx
 - Decisions:
-  - topCategories hesaplamasýnda categories.filter(c => !c.parent_id) þeklinde uygulanan kök kategori filtresi kaldýrýldý. Artýk resolveKioskCategories fonksiyonuna doðrudan tüm categories dizisi aktarýlýyor. Kiosk Yönetimi ekranýnda belirlenen sýra ve saat/görünürlük ayarlarýna göre alt kategoriler de ana menüde listelenmektedir.
+  - topCategories hesaplamasï¿½nda categories.filter(c => !c.parent_id) ï¿½eklinde uygulanan kï¿½k kategori filtresi kaldï¿½rï¿½ldï¿½. Artï¿½k resolveKioskCategories fonksiyonuna doï¿½rudan tï¿½m categories dizisi aktarï¿½lï¿½yor. Kiosk Yï¿½netimi ekranï¿½nda belirlenen sï¿½ra ve saat/gï¿½rï¿½nï¿½rlï¿½k ayarlarï¿½na gï¿½re alt kategoriler de ana menï¿½de listelenmektedir.
 - Verification:
   - Build PASS: npm run build (17.24s)
 
-## Entry - Kiosk Sol Kategori Paneli Scroll Desteði
+## Entry - Kiosk Sol Kategori Paneli Scroll Desteï¿½i
 
 - Timestamp: 2026-06-01T19:44:00+03:00
 - Agent: Antigravity
-- Task: KioskBig sol kategori menüsünün taþma durumunda kaydýrýlabilir olmasýný saðlamak
+- Task: KioskBig sol kategori menï¿½sï¿½nï¿½n taï¿½ma durumunda kaydï¿½rï¿½labilir olmasï¿½nï¿½ saï¿½lamak
 - Files Changed:
   - src/components/pages/KioskBig.jsx
 - Decisions:
-  - KioskBig sol kategori paneli container'ýna overflowY: 'auto', overflowX: 'hidden' ve alignContent/stretch kurallarý eklenerek KioskTablet ile uyumlu þekilde kaydýrýlabilir olmasý saðlandý.
+  - KioskBig sol kategori paneli container'ï¿½na overflowY: 'auto', overflowX: 'hidden' ve alignContent/stretch kurallarï¿½ eklenerek KioskTablet ile uyumlu ï¿½ekilde kaydï¿½rï¿½labilir olmasï¿½ saï¿½landï¿½.
 - Verification:
   - Build PASS: npm run build (18.38s)
 
@@ -7957,57 +7957,57 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 
 - Timestamp: 2026-06-01T19:46:00+03:00
 - Agent: Antigravity
-- Task: KioskBig ve KioskTablet sol kategori menüsünde varsayýlan tarayýcý scrollbar'ýný gizlemek
+- Task: KioskBig ve KioskTablet sol kategori menï¿½sï¿½nde varsayï¿½lan tarayï¿½cï¿½ scrollbar'ï¿½nï¿½ gizlemek
 - Files Changed:
   - src/index.css
   - src/components/pages/KioskBig.jsx
   - src/components/pages/KioskTablet.jsx
 - Decisions:
-  - index.css içerisine global bir .hide-scrollbar yardýmcý sýnýfý eklendi (-ms-overflow-style, scrollbar-width, ::-webkit-scrollbar display: none kurallarý ile).
-  - KioskBig ve KioskTablet sol kategori div container'larýna bu sýnýf verilerek çirkin varsayýlan scrollbar görünümü tamamen gizlendi, ancak kaydýrma iþlevi korunmuþ oldu.
+  - index.css iï¿½erisine global bir .hide-scrollbar yardï¿½mcï¿½ sï¿½nï¿½fï¿½ eklendi (-ms-overflow-style, scrollbar-width, ::-webkit-scrollbar display: none kurallarï¿½ ile).
+  - KioskBig ve KioskTablet sol kategori div container'larï¿½na bu sï¿½nï¿½f verilerek ï¿½irkin varsayï¿½lan scrollbar gï¿½rï¿½nï¿½mï¿½ tamamen gizlendi, ancak kaydï¿½rma iï¿½levi korunmuï¿½ oldu.
 - Verification:
   - Build PASS: npm run build (20.55s)
 
-## Entry - Merkezi Kuver Yönetimi ve Ondalýklý Daðýtým Entegrasyonu
+## Entry - Merkezi Kuver Yï¿½netimi ve Ondalï¿½klï¿½ Daï¿½ï¿½tï¿½m Entegrasyonu
 
 - Timestamp: 2026-06-02T08:50:00+03:00
 - Agent: Antigravity
-- Task: Ana Kasa (Master) üzerinden merkezi kuver takibi seçimi, ondalýklý kuver giriþi ve veritabaný NUMERIC(12,2) dönüþümü ile %40-%40-%20 split entegrasyonu.
+- Task: Ana Kasa (Master) ï¿½zerinden merkezi kuver takibi seï¿½imi, ondalï¿½klï¿½ kuver giriï¿½i ve veritabanï¿½ NUMERIC(12,2) dï¿½nï¿½ï¿½ï¿½mï¿½ ile %40-%40-%20 split entegrasyonu.
 - Files Changed:
   - src/components/pages/DeviceSettings.jsx
   - src/components/pages/POS.jsx
   - src/components/pages/Garson.jsx
   - migrations/025_alter_guest_counts_to_numeric.sql
 - Decisions:
-  - Canlý veritabanýndaki sales ve pos_sales tablolarýnda cover_count ve misafir kolonlarý NUMERIC(12,2) veri tipine yükseltildi.
-  - POS ve Garson uygulamalarýnda distributeCover fonksiyonu, float yuvarlamasýný iptal edip ondalýklý splits (%40, %40, %20) yapacak ve float precision kayýplarýný çocuða ekleyecek þekilde yeniden yazýldý.
+  - Canlï¿½ veritabanï¿½ndaki sales ve pos_sales tablolarï¿½nda cover_count ve misafir kolonlarï¿½ NUMERIC(12,2) veri tipine yï¿½kseltildi.
+  - POS ve Garson uygulamalarï¿½nda distributeCover fonksiyonu, float yuvarlamasï¿½nï¿½ iptal edip ondalï¿½klï¿½ splits (%40, %40, %20) yapacak ve float precision kayï¿½plarï¿½nï¿½ ï¿½ocuï¿½a ekleyecek ï¿½ekilde yeniden yazï¿½ldï¿½.
 - Verification:
   - Build PASS: npm run build
 
-## Entry - Egress Azaltma ve Sunucu Güvenlik/Loglama Optimizasyonu
+## Entry - Egress Azaltma ve Sunucu Gï¿½venlik/Loglama Optimizasyonu
 
 - Timestamp: 2026-06-02T09:35:00+03:00
 - Agent: Antigravity
-- Task: Railway egress artýþýný engellemek için settings tablosu sorgularýnýn kýsýtlanmasý, response loglama ve base64 görsellerin ayýklanmasý.
+- Task: Railway egress artï¿½ï¿½ï¿½nï¿½ engellemek iï¿½in settings tablosu sorgularï¿½nï¿½n kï¿½sï¿½tlanmasï¿½, response loglama ve base64 gï¿½rsellerin ayï¿½klanmasï¿½.
 - Files Changed:
   - server/index.js
   - scratch/extract_base64_images.cjs
 - Decisions:
-  - Sunucu API'sinde settings tablosuna filtresiz select sorgularý atýlmasý engellendi (key filtresi zorunlu kýlýndý).
-  - API sorgularýna esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi.
-  - extract_base64_images.cjs betiði ile settings tablosundaki tüm inline base64 resimler ayýklanýp API volume sunucusuna yüklendi ve referans URL'leri ile deðiþtirildi. Kiosk_settings_v2 boyutu 3.5 MB'tan 4.6 KB'a düþürüldü.
+  - Sunucu API'sinde settings tablosuna filtresiz select sorgularï¿½ atï¿½lmasï¿½ engellendi (key filtresi zorunlu kï¿½lï¿½ndï¿½).
+  - API sorgularï¿½na esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi.
+  - extract_base64_images.cjs betiï¿½i ile settings tablosundaki tï¿½m inline base64 resimler ayï¿½klanï¿½p API volume sunucusuna yï¿½klendi ve referans URL'leri ile deï¿½iï¿½tirildi. Kiosk_settings_v2 boyutu 3.5 MB'tan 4.6 KB'a dï¿½ï¿½ï¿½rï¿½ldï¿½.
 - Verification:
   - Build PASS: npm run build
 
-## Entry - Android Giriþ/Kayýt Arayüzü Kullanýcý ID Parse Hatasý Giderilmesi
+## Entry - Android Giriï¿½/Kayï¿½t Arayï¿½zï¿½ Kullanï¿½cï¿½ ID Parse Hatasï¿½ Giderilmesi
 
 - Timestamp: 2026-06-02T09:46:00+03:00
 - Agent: Antigravity
-- Task: Yeni kullanýcý kaydolurken 'Kayýt tamamlandý ancak kullanýcý ID'si alýnamadý' hatasýnýn giderilmesi.
+- Task: Yeni kullanï¿½cï¿½ kaydolurken 'Kayï¿½t tamamlandï¿½ ancak kullanï¿½cï¿½ ID'si alï¿½namadï¿½' hatasï¿½nï¿½n giderilmesi.
 - Files Changed:
   - musteri-android/app/src/main/java/com/suitable/musteri/ui/main/LoginScreen.kt
 - Decisions:
-  - API query insert iþlemi tekli nesneler için direkt Map döndüðü için, Kotlin tarafýnda Liste (List) zorlamasý esnetilerek hem List hem de Map yanýtlarýndan kullanýcý ID'sinin güvenli okunmasý saðlandý.
+  - API query insert iï¿½lemi tekli nesneler iï¿½in direkt Map dï¿½ndï¿½ï¿½ï¿½ iï¿½in, Kotlin tarafï¿½nda Liste (List) zorlamasï¿½ esnetilerek hem List hem de Map yanï¿½tlarï¿½ndan kullanï¿½cï¿½ ID'sinin gï¿½venli okunmasï¿½ saï¿½landï¿½.
 - Verification:
   - Build PASS: npm run build
 
@@ -8136,9 +8136,30 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Files Changed:
   - personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt
 - Decisions:
-  - Android uygulamasindaki bugun kartindan giris/cikis islemleri baslatilirken, planlanan giris/cikis saatine gore +-5 dakikayi asan sapmalarda "Vardiya planinizda {dakika} dk [erken/gec] [giris/cikis] yapiyorsunuz" seklinde Turkce uyarý dialoglari entegre edildi.
+  - Android uygulamasindaki bugun kartindan giris/cikis islemleri baslatilirken, planlanan giris/cikis saatine gore +-5 dakikayi asan sapmalarda "Vardiya planinizda {dakika} dk [erken/gec] [giris/cikis] yapiyorsunuz" seklinde Turkce uyarï¿½ dialoglari entegre edildi.
   - Web panel ve Android uygulamasindaki gorev formuna veritabanindaki `task_recurrence_rules` tablosuna uygun detay alanlari eklendi.
   - Modallere renkli serit ayraclari ve Turkce karakter duzeltmeleri uygulandi.
 - Verification:
   - Web Build: npm run build (Vite built in 17.26s successfully)
   - Android Build: .\gradlew.bat compileDebugKotlin (BUILD SUCCESSFUL in 1m 3s)
+## 2026-06-04 Notification Form Task Integration
+- Objective: Form Templates sayfasï¿½nda "Bildirim Formu" (notification_form) seï¿½ildiï¿½inde puanlamayï¿½ gizleyip doï¿½rudan hedef kitleye gï¿½rev atama mantï¿½ï¿½ï¿½nï¿½ eklemek.
+- Changes:
+  - FormTemplates.jsx gï¿½ncellendi: Form tipi "Bildirim Formu" olduï¿½unda puan, aï¿½ï¿½rlï¿½k, geï¿½iï¿½ eï¿½iï¿½i gibi alanlar gizlendi.
+  - FormTemplates.jsx gï¿½ncellendi: Personel ve pozisyon listeleri personnelConfig.js ï¿½zerinden sisteme ï¿½ekildi, form kaydedilirken "Hedef Pozisyonlar/Kiï¿½iler" ve "Gï¿½rev Kurallarï¿½" seï¿½ilme arayï¿½zï¿½ eklendi.
+  - formService.js gï¿½ncellendi: submitFormResponse fonksiyonuna notification_form iï¿½in ï¿½zel bir createTaskFromNotification dalï¿½ eklendi.
+  - formService.js gï¿½ncellendi: Gï¿½rev hedefleri eï¿½er "pozisyon" ise personnel_records taranarak ilgili pozisyondaki personellere atanmasï¿½ saï¿½landï¿½. Form yanï¿½tlarï¿½ chat thread'e loglandï¿½.
+- Verification:
+  - GPS gibi form metadatalarï¿½ korundu, aï¿½ï¿½k hedef bulunamazsa gï¿½revlerin sahipsiz olarak oluï¿½turulmasï¿½ onaylandï¿½.
+
+## 2026-06-04 Quality Reports Cleanup
+- Objective: Removed legacy Quality Reports UI and codebase references.
+- Changes:
+  - Deleted src/components/pages/QualityReports.jsx
+  - Deleted src/lib/qualityReportService.js
+  - Removed routes in App.jsx
+  - Removed sidebar links in Sidebar.jsx
+  - Cleaned up ticketService.js and notificationService.js from quality_report dependencies.
+  - Created drop_quality_reports.sql to facilitate DB cleanup.
+
+94710a0 (Form ÅŸablonlarÄ± gÃ¼ncellendi, bildirim formu hedef seÃ§imi eklendi ve kalite raporlarÄ± modÃ¼lÃ¼ temizlendi)

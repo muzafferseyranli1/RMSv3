@@ -102,8 +102,6 @@ export default function NotificationBell() {
         return { class: 'fa-solid fa-triangle-exclamation', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' }
       case 'ticket_escalated':
         return { class: 'fa-solid fa-circle-exclamation', color: '#dc2626', bg: 'rgba(220,38,38,0.1)' }
-      case 'quality_report':
-        return { class: 'fa-solid fa-clipboard-check', color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)' }
       // Yeni: Görev bildirimleri
       case 'task_assigned':
         return { class: 'fa-solid fa-list-check', color: '#0ea5e9', bg: 'rgba(14,165,233,0.1)' }
@@ -128,8 +126,6 @@ export default function NotificationBell() {
       case 'ticket':
         const ticketBase = isBranch ? '/sube-geribildirimler' : (isWarehouse ? '/merkez-geribildirimler' : '/geribildirimler')
         return notif.reference_id ? `${ticketBase}/${notif.reference_id}` : ticketBase
-      case 'quality_report':
-        return isBranch ? '/sube-kalite-raporlari' : (isWarehouse ? '/merkez-kalite-raporlari' : '/kalite-raporlari')
       case 'task':
       case 'announcement':
         return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')

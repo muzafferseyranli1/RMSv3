@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchFormTemplates, createFormTemplate, updateFormTemplate, softDeleteFormTemplate } from '@/lib/formService'
+import { readSettingArray, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
 
@@ -59,9 +60,39 @@ export default function FormTemplates() {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null) // null = list view, object = editor
-  const [schemaJson, setSchemaJson] = useState({ sections: [] })
+  const [schemaJson, setSchemaJson] = useState({ sections: [], task_config: { targets: [], rules: {} } })
+  const [personnelList, setPersonnelList] = useState([])
+  const [positions, setPositions] = useState([])
+  const [targetSearch, setTargetSearch] = useState('')
+  const [targetDropdownOpen, setTargetDropdownOpen] = useState(false)
+  const targetDropdownRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target)) {
+        setTargetDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
   const { user } = useAuth()
   const toast = useToast()
+
+  const loadPersonnelData = useCallback(async () => {
+    try {
+      const [empData, posData] = await Promise.all([
+        readSettingArray(PERSONNEL_SETTINGS_KEYS.employees),
+        readSettingArray(PERSONNEL_SETTINGS_KEYS.positions)
+      ])
+      setPersonnelList(empData || [])
+      setPositions(posData || [])
+    } catch (err) {
+      console.error('Personnel load error', err)
+    }
+  }, [])
+
+  useEffect(() => { loadPersonnelData() }, [loadPersonnelData])
 
   const loadTemplates = useCallback(async () => {
     setLoading(true)
@@ -83,7 +114,7 @@ export default function FormTemplates() {
       scoring: { pass_threshold: 70 },
       allowed_contexts: ['center', 'branch', 'warehouse'],
     })
-    setSchemaJson({ sections: [EMPTY_SECTION()] })
+    setSchemaJson({ sections: [EMPTY_SECTION()], task_config: { targets: [], rules: {} } })
   }
 
   const startEdit = (template) => {
@@ -100,6 +131,8 @@ export default function FormTemplates() {
     
     // Normalize max_points for select fields to be the sum of option points
     const schema = template.schema_json ? JSON.parse(JSON.stringify(template.schema_json)) : { sections: [EMPTY_SECTION()] }
+    if (!schema.task_config) schema.task_config = { targets: [], rules: {} }
+    
     if (schema.sections) {
       schema.sections = schema.sections.map(sec => ({
         ...sec,
@@ -374,7 +407,7 @@ export default function FormTemplates() {
               style={{ resize: 'vertical' }}
             />
           </div>
-          {editing.form_type !== 'checklist' && editing.form_type !== 'customer_survey' && (
+          {editing.form_type !== 'checklist' && editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && editing.form_type !== 'notification_form' && (
           <div>
             <label className="f-label">Geçiş Eşiği (%)</label>
             <input
@@ -386,7 +419,7 @@ export default function FormTemplates() {
             />
           </div>
           )}
-          {editing.form_type !== 'customer_survey' && (
+          {editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && editing.form_type !== 'notification_form' && (
           <div>
             <label className="f-label">Min. Süre (saniye)</label>
             <input
@@ -398,7 +431,7 @@ export default function FormTemplates() {
             />
           </div>
           )}
-          {editing.form_type !== 'customer_survey' && (
+          {editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
             <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
@@ -437,6 +470,174 @@ export default function FormTemplates() {
               })}
             </div>
           </div>
+
+          {editing.form_type === 'notification_form' && (
+            <div style={{ gridColumn: '1 / -1', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 12, color: 'var(--text-strong)' }}>
+                <i className="fa-solid fa-bullseye" style={{ marginRight: 8, color: '#3b82f6' }} />
+                Bildirim Hedefleri ve Görev Kuralları
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                {/* Hedefler */}
+                <div>
+                  <label className="f-label">Hedef Pozisyonlar / Kişiler</label>
+                  <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                    Form gönderildiğinde oluşturulacak görev bu hedeflere atanacaktır.
+                  </p>
+                  
+                  <div ref={targetDropdownRef} style={{ position: 'relative' }}>
+                    <div 
+                      onClick={() => setTargetDropdownOpen(true)}
+                      style={{ 
+                        minHeight: 42, border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px',
+                        display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: 'var(--surface)',
+                        cursor: 'text'
+                      }}
+                    >
+                      {(schemaJson.task_config?.targets || []).map((tgt, idx) => {
+                        let label = ''
+                        if (tgt.type === 'position') label = positions.find(p => p.id === tgt.id)?.name || 'Pozisyon'
+                        if (tgt.type === 'personnel') {
+                          const emp = personnelList.find(e => e.id === tgt.id)
+                          label = emp ? `${emp.firstName} ${emp.lastName}` : 'Personel'
+                        }
+                        return (
+                          <span key={idx} style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 12, fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {tgt.type === 'position' ? <i className="fa-solid fa-briefcase" style={{fontSize: '.65rem'}}/> : <i className="fa-solid fa-user" style={{fontSize: '.65rem'}}/>}
+                            {label}
+                            <i 
+                              className="fa-solid fa-xmark" 
+                              style={{ cursor: 'pointer', opacity: 0.6 }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const tgts = schemaJson.task_config?.targets || []
+                                const newTgts = tgts.filter(t => !(t.type === tgt.type && t.id === tgt.id))
+                                setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
+                              }}
+                            />
+                          </span>
+                        )
+                      })}
+                      <input
+                        value={targetSearch}
+                        onChange={e => {
+                          setTargetSearch(e.target.value)
+                          if (!targetDropdownOpen) setTargetDropdownOpen(true)
+                        }}
+                        onFocus={() => setTargetDropdownOpen(true)}
+                        placeholder={(schemaJson.task_config?.targets || []).length === 0 ? "Pozisyon veya kişi ara..." : ""}
+                        style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1, minWidth: 120, fontSize: '.82rem' }}
+                      />
+                    </div>
+
+                    {targetDropdownOpen && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 280, overflowY: 'auto', zIndex: 1000 }}>
+                        {(() => {
+                          const query = targetSearch.toLowerCase()
+                          const filteredPos = positions.filter(p => p.name?.toLowerCase().includes(query))
+                          const filteredEmp = personnelList.filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(query))
+                          
+                          return (
+                            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {filteredPos.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '6px 8px 4px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Pozisyonlar</div>}
+                              {filteredPos.map(pos => {
+                                const isSelected = (schemaJson.task_config?.targets || []).some(t => t.type === 'position' && t.id === pos.id)
+                                return (
+                                  <div 
+                                    key={pos.id} 
+                                    onClick={() => {
+                                      const tgts = schemaJson.task_config?.targets || []
+                                      let newTgts = isSelected 
+                                        ? tgts.filter(t => !(t.type === 'position' && t.id === pos.id))
+                                        : [...tgts, { type: 'position', id: pos.id }]
+                                      setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
+                                    }}
+                                    style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? '#f1f5f9' : 'transparent', transition: 'background 0.15s' }}
+                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc' }}
+                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                                  >
+                                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
+                                    <span style={{ fontSize: '.8rem', color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{pos.name}</span>
+                                  </div>
+                                )
+                              })}
+                              
+                              {filteredEmp.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '6px 8px 4px', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em', borderTop: '1px solid var(--border)' }}>Personeller</div>}
+                              {filteredEmp.map(emp => {
+                                const isSelected = (schemaJson.task_config?.targets || []).some(t => t.type === 'personnel' && t.id === emp.id)
+                                return (
+                                  <div 
+                                    key={emp.id} 
+                                    onClick={() => {
+                                      const tgts = schemaJson.task_config?.targets || []
+                                      let newTgts = isSelected 
+                                        ? tgts.filter(t => !(t.type === 'personnel' && t.id === emp.id))
+                                        : [...tgts, { type: 'personnel', id: emp.id }]
+                                      setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
+                                    }}
+                                    style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? '#f1f5f9' : 'transparent', transition: 'background 0.15s' }}
+                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc' }}
+                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                                  >
+                                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
+                                    <span style={{ fontSize: '.8rem', color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{emp.firstName} {emp.lastName}</span>
+                                  </div>
+                                )
+                              })}
+
+                              {filteredPos.length === 0 && filteredEmp.length === 0 && (
+                                <div style={{ padding: 16, textAlign: 'center', fontSize: '.8rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Kurallar */}
+                <div>
+                  <label className="f-label">Görev Kuralları</label>
+                  <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                    Oluşturulacak görev için geçerli olacak kuralları seçin.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                    {[
+                      { key: 'delegation_allowed', label: 'Delege Etmeye İzin Ver' },
+                      { key: 'approval_required', label: 'Kapanış Onayı Gerekli' },
+                      { key: 'closure_summary_required', label: 'Kapanış Özeti Zorunlu' },
+                      { key: 'closure_file_required', label: 'Kapanış Dosyası Zorunlu' },
+                      { key: 'closure_image_required', label: 'Kapanış Fotoğrafı Zorunlu' },
+                      { key: 'edit_due_date_allowed', label: 'Atanan Vade Değiştirebilir' },
+                      { key: 'edit_schedule_allowed', label: 'Atanan Takvim Değiştirebilir' },
+                      { key: 'incomplete_if_late', label: 'Süresinde Bitmezse Tamamlanmadı Say' }
+                    ].map(rule => {
+                      const isChecked = !!schemaJson.task_config?.rules?.[rule.key]
+                      return (
+                        <label key={rule.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.8rem', cursor: 'pointer' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={e => {
+                              const rls = schemaJson.task_config?.rules || {}
+                              setSchemaJson(p => ({ 
+                                ...p, 
+                                task_config: { ...p.task_config, rules: { ...rls, [rule.key]: e.target.checked } }
+                              }))
+                            }}
+                          />
+                          <span>{rule.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
@@ -510,7 +711,7 @@ export default function FormTemplates() {
                     </select>
                   </div>
                 </div>
-                {editing.form_type !== 'checklist' && (
+                {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
                 <div style={{ width: 80 }}>
                   <input
                     type="number"
@@ -523,7 +724,7 @@ export default function FormTemplates() {
                   />
                 </div>
                 )}
-                {editing.form_type !== 'checklist' && (
+                {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 70, alignSelf: 'center', justifyContent: 'center' }}>
                   <input
                     type="checkbox"
@@ -570,7 +771,7 @@ export default function FormTemplates() {
               {field.type === 'select' && (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Seçenekler Listesi{editing.form_type !== 'checklist' ? ' ve Puan Ağırlıkları' : ''}
+                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Seçenekler Listesi{editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' ? ' ve Puan Ağırlıkları' : ''}
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
@@ -590,7 +791,7 @@ export default function FormTemplates() {
                             placeholder={`Seçenek ${oIdx + 1}`}
                             style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 90, color: 'var(--text-strong)' }}
                           />
-                          {editing.form_type !== 'checklist' && (
+                          {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
                             <>
                               <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>|</span>
                               <input

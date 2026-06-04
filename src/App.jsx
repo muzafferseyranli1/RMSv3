@@ -95,7 +95,6 @@ const TicketCategories = lazy(() => import('@/components/pages/TicketCategories'
 const FeedbackManagement = lazy(() => import('@/components/pages/FeedbackManagement'))
 const TicketBoard = lazy(() => import('@/components/pages/TicketBoard'))
 const TicketDetail = lazy(() => import('@/components/pages/TicketDetail'))
-const QualityReports = lazy(() => import('@/components/pages/QualityReports'))
 const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 
@@ -447,18 +446,15 @@ function AppShell() {
               <Route path="/musteri-yorumlari" element={<FeedbackManagement />} />
               <Route path="/geribildirimler" element={<TicketBoard mode="center" />} />
               <Route path="/geribildirimler/:ticketId" element={<TicketDetail mode="center" />} />
-              <Route path="/kalite-raporlari" element={<QualityReports mode="center" />} />
 
               {/* Şube Geri Bildirim ve Kalite */}
               <Route path="/sube-geribildirimler" element={<WorkspaceBranchScope><TicketBoard mode="branch" /></WorkspaceBranchScope>} />
               <Route path="/sube-geribildirimler/:ticketId" element={<WorkspaceBranchScope><TicketDetail mode="branch" /></WorkspaceBranchScope>} />
-              <Route path="/sube-kalite-raporlari" element={<WorkspaceBranchScope><QualityReports mode="branch" /></WorkspaceBranchScope>} />
               <Route path="/sube-formlar" element={<WorkspaceBranchScope><FormSubmissions /></WorkspaceBranchScope>} />
 
               {/* Merkez Depo / Üretim Geri Bildirim ve Kalite */}
               <Route path="/merkez-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><TicketBoard mode="warehouse" /></WarehouseBranchRoute>} />
               <Route path="/merkez-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><TicketDetail mode="warehouse" /></WarehouseBranchRoute>} />
-              <Route path="/merkez-kalite-raporlari" element={<WarehouseBranchRoute title="Kalite Raporları"><QualityReports mode="warehouse" /></WarehouseBranchRoute>} />
               <Route path="/merkez-depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions /></WarehouseBranchRoute>} />
               <Route path="/form-sablonlari" element={<FormTemplates />} />
               <Route path="/formlar" element={<FormSubmissions />} />

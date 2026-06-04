@@ -72,13 +72,6 @@ export async function fetchTicketDetail(ticketId) {
     formSubmission = formResult.data || null
   }
 
-  // Load related quality report if exists
-  let qualityReport = null
-  if (ticketResult.data?.quality_report_id) {
-    const qResult = await db.from('quality_reports').select('*').eq('id', ticketResult.data.quality_report_id).maybeSingle()
-    qualityReport = qResult.data || null
-  }
-
   // Load related tasks (multiple)
   const linkedTasksResult = await db
     .from('ticket_linked_tasks')
@@ -101,7 +94,6 @@ export async function fetchTicketDetail(ticketId) {
       auditLog: toArray(auditResult.data),
       feedback,
       formSubmission,
-      qualityReport,
       linkedTasks: legacyTask ? [legacyTask] : linkedTasks,
     },
     error: null,
