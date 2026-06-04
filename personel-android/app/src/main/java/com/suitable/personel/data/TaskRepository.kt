@@ -26,6 +26,8 @@ data class TaskItem(
     val closureSummaryRequired: Boolean,
     val closureFileRequired: Boolean,
     val closureImageRequired: Boolean,
+    val editDueDateAllowed: Boolean,
+    val editScheduleAllowed: Boolean,
     val formTemplateId: String?,
     var participants: List<TaskParticipant> = emptyList(),
     var checklistCount: Int = 0,
@@ -40,7 +42,8 @@ data class TaskParticipant(
     val positionId: String?,
     val nodeId: String?,
     val isDelegate: Boolean = false,
-    val delegatedFrom: String? = null
+    val delegatedFrom: String? = null,
+    val isCompleted: Boolean = false
 )
 
 data class TaskChecklistItem(
@@ -350,7 +353,8 @@ class TaskRepository {
                             positionId = pRow["position_id"]?.toString(),
                             nodeId = pRow["node_id"]?.toString(),
                             isDelegate = parseBool(pRow["is_delegate"]),
-                            delegatedFrom = pRow["delegated_from"]?.toString()
+                            delegatedFrom = pRow["delegated_from"]?.toString(),
+                            isCompleted = parseBool(pRow["is_completed"])
                         )
                     }
 
@@ -378,6 +382,8 @@ class TaskRepository {
                         closureSummaryRequired = parseBool(row["closure_summary_required"]),
                         closureFileRequired = parseBool(row["closure_file_required"]),
                         closureImageRequired = parseBool(row["closure_image_required"]),
+                        editDueDateAllowed = parseBool(row["edit_due_date_allowed"]),
+                        editScheduleAllowed = parseBool(row["edit_schedule_allowed"]),
                         formTemplateId = row["form_template_id"]?.toString(),
                         participants = taskParticipants,
                         checklistCount = checklistCount,
@@ -492,22 +498,156 @@ class TaskRepository {
 
     // ─── Eylem Güncellemeleri ────────────────────────────────────────────────
 
-    suspend fun updateTaskStatus(taskId: String, newStatus: String): Boolean {
+    suspend fun updateTaskStatus(taskId: String, newStatus: String, personnelId: String, closureSummary: String? = null): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                if (newStatus == "completed" || newStatus == "pending_completion_approval") {
+                    // 1) Update this personnel's record in task_participants to is_completed = true
+                    val partUpdateReq = QueryRequest(
+                        table = "task_participants",
+                        operation = "update",
+                        filters = listOf(
+                            mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                            mapOf("type" to "eq", "col" to "personnel_id", "val" to personnelId),
+                            mapOf("type" to "eq", "col" to "participant_type", "val" to "assignee")
+                        ),
+                        data = mapOf("is_completed" to true)
+                    )
+                    ApiClient.apiService.executeQuery(partUpdateReq)
+
+                    // 2) Fetch all assignees of this task to check completion status
+                    val partFetchReq = QueryRequest(
+                        table = "task_participants",
+                        filters = listOf(
+                            mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                            mapOf("type" to "eq", "col" to "participant_type", "val" to "assignee")
+                        )
+                    )
+                    val partRes = ApiClient.apiService.executeQuery(partFetchReq)
+                    val participantsList = (partRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+
+                    val parseBool = { v: Any? ->
+                        when (v) {
+                            is Boolean -> v
+                            is String -> v.toBoolean()
+                            is Number -> v.toInt() == 1
+                            else -> false
+                        }
+                    }
+
+                    // Check if other assignees are completed
+                    val remainingIncomplete = participantsList.filter { p ->
+                        val isSelf = p["personnel_id"]?.toString() == personnelId
+                        if (isSelf) false else !parseBool(p["is_completed"])
+                    }
+
+                    // Fetch employee name
+                    val empReq = QueryRequest(
+                        table = "settings",
+                        select = "value",
+                        filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
+                    )
+                    val empRes = ApiClient.apiService.executeQuery(empReq)
+                    val empList = parseJsonList((empRes.data as? List<*>)?.firstOrNull() as? Map<*, *>) ?: emptyList()
+                    val employeeRow = empList.find { it["id"]?.toString() == personnelId }
+                    val firstName = employeeRow?.get("firstName")?.toString() ?: ""
+                    val lastName = employeeRow?.get("lastName")?.toString() ?: ""
+                    val employeeName = "$firstName $lastName".trim().ifEmpty { "Bir personel" }
+
+                    if (remainingIncomplete.isNotEmpty()) {
+                        // Not all completed! Just add a system message and update task's updated_at
+                        val text = "${employeeName} görevini tamamladı. Özet: ${closureSummary ?: "Özet girilmedi"}"
+                        addSystemChatMessage(taskId, text)
+
+                        // Update tasks table's updated_at to notify changes
+                        val req = QueryRequest(
+                            table = "tasks",
+                            operation = "update",
+                            filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                            data = mapOf(
+                                "updated_at" to java.time.Instant.now().toString()
+                            )
+                        )
+                        ApiClient.apiService.executeQuery(req)
+                        true
+                    } else {
+                        // All assignees are completed! Mark the entire task completed/pending approval
+                        val dataMap = mutableMapOf<String, Any?>(
+                            "status" to newStatus,
+                            "updated_at" to java.time.Instant.now().toString()
+                        )
+                        if (closureSummary != null) {
+                            dataMap["closure_summary"] = closureSummary
+                        }
+                        val req = QueryRequest(
+                            table = "tasks",
+                            operation = "update",
+                            filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                            data = dataMap
+                        )
+                        val res = ApiClient.apiService.executeQuery(req)
+                        if (res.error == null) {
+                            val text = "${employeeName} görevini tamamladı. Tüm atananlar görevlerini tamamladığı için görev ${if (newStatus == "pending_completion_approval") "kapanış onayına gönderildi" else "tamamlandı"}."
+                            addSystemChatMessage(taskId, text)
+                            true
+                        } else false
+                    }
+                } else {
+                    // Regular status change (like "started" / "in_progress")
+                    val dataMap = mutableMapOf<String, Any?>(
+                        "status" to newStatus,
+                        "updated_at" to java.time.Instant.now().toString()
+                    )
+                    val req = QueryRequest(
+                        table = "tasks",
+                        operation = "update",
+                        filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                        data = dataMap
+                    )
+                    val res = ApiClient.apiService.executeQuery(req)
+                    if (res.error == null) {
+                        if (newStatus == "in_progress") {
+                            addSystemChatMessage(taskId, "Göreve başlandı.")
+                        }
+                        true
+                    } else false
+                }
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "updateTaskStatus error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun updateTaskDates(
+        taskId: String,
+        startAt: String?,
+        dueAt: String?,
+        oldStartAt: String?,
+        oldDueAt: String?,
+        personnelId: String
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val dataMap = mutableMapOf<String, Any?>(
+                    "updated_at" to java.time.Instant.now().toString()
+                )
+                if (startAt != null) dataMap["start_at"] = startAt
+                if (dueAt != null) dataMap["due_at"] = dueAt
+
                 val req = QueryRequest(
                     table = "tasks",
                     operation = "update",
                     filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
-                    data = mapOf(
-                        "status" to newStatus,
-                        "updated_at" to java.time.Instant.now().toString()
-                    )
+                    data = dataMap
                 )
                 val res = ApiClient.apiService.executeQuery(req)
-                res.error == null
+                if (res.error == null) {
+                    addSystemChatMessage(taskId, "Görev tarihleri güncellendi.")
+                    true
+                } else false
             } catch (e: Exception) {
-                Log.e("TaskRepository", "updateTaskStatus error", e)
+                Log.e("TaskRepository", "updateTaskDates error", e)
                 false
             }
         }
@@ -1249,30 +1389,92 @@ class TaskRepository {
         toPersonnelId: String,
         fromPositionId: String?,
         toPositionId: String?,
-        positions: List<PositionInfo>
+        positions: List<PositionInfo>,
+        isFormTask: Boolean = false
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val req = QueryRequest(
-                    table = "task_approval_requests",
-                    operation = "insert",
-                    data = mapOf(
-                        "id" to java.util.UUID.randomUUID().toString(),
-                        "task_id" to taskId,
-                        "request_type" to "delegation",
-                        "from_personnel" to fromPersonnelId,
-                        "to_personnel" to toPersonnelId,
-                        "status" to "pending",
-                        "created_at" to java.time.Instant.now().toString()
-                    )
-                )
-                val res = ApiClient.apiService.executeQuery(req)
-                if (res.error != null) return@withContext false
+                val requiresApproval = !isFormTask && canReject(fromPositionId ?: "", toPositionId ?: "", positions)
+                val now = java.time.Instant.now().toString()
 
-                val reqApproval = canReject(fromPositionId ?: "", toPositionId ?: "", positions)
-                val bodyText = if (reqApproval) "Delege talebi onay bekliyor." else "Delege talebi oluşturuldu."
-                addSystemChatMessage(taskId, bodyText)
-                true
+                if (requiresApproval) {
+                    val req = QueryRequest(
+                        table = "task_approval_requests",
+                        operation = "insert",
+                        data = mapOf(
+                            "id" to java.util.UUID.randomUUID().toString(),
+                            "task_id" to taskId,
+                            "request_type" to "delegation",
+                            "from_personnel" to fromPersonnelId,
+                            "to_personnel" to toPersonnelId,
+                            "status" to "pending",
+                            "created_at" to now
+                        )
+                    )
+                    val res = ApiClient.apiService.executeQuery(req)
+                    if (res.error != null) return@withContext false
+
+                    addSystemChatMessage(taskId, "Delege talebi onay bekliyor.")
+                    true
+                } else {
+                    // Immediate delegation!
+                    val reqApproval = QueryRequest(
+                        table = "task_approval_requests",
+                        operation = "insert",
+                        data = mapOf(
+                            "id" to java.util.UUID.randomUUID().toString(),
+                            "task_id" to taskId,
+                            "request_type" to "delegation",
+                            "from_personnel" to fromPersonnelId,
+                            "to_personnel" to toPersonnelId,
+                            "status" to "accepted",
+                            "resolved_at" to now,
+                            "created_at" to now
+                        )
+                    )
+                    val resApproval = ApiClient.apiService.executeQuery(reqApproval)
+                    if (resApproval.error != null) return@withContext false
+
+                    // Update delegator participant record to watcher
+                    val updatePart = QueryRequest(
+                        table = "task_participants",
+                        operation = "update",
+                        filters = listOf(
+                            mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                            mapOf("type" to "eq", "col" to "personnel_id", "val" to fromPersonnelId)
+                        ),
+                        data = mapOf(
+                            "participant_type" to "watcher",
+                            "is_delegate" to true
+                        )
+                    )
+                    val resUpdatePart = ApiClient.apiService.executeQuery(updatePart)
+                    if (resUpdatePart.error != null) return@withContext false
+
+                    // Insert new assignee participant record
+                    val toEmployee = fetchEmployeesAndPositionsAndBranches().first.find { it.id == toPersonnelId }
+                    val insertNewPart = QueryRequest(
+                        table = "task_participants",
+                        operation = "insert",
+                        data = mapOf(
+                            "id" to java.util.UUID.randomUUID().toString(),
+                            "task_id" to taskId,
+                            "participant_type" to "assignee",
+                            "personnel_id" to toPersonnelId,
+                            "position_id" to toEmployee?.positionId,
+                            "node_id" to toEmployee?.defaultBranchId,
+                            "is_delegate" to true,
+                            "delegated_from" to fromPersonnelId,
+                            "created_at" to now
+                        )
+                    )
+                    val resInsertNew = ApiClient.apiService.executeQuery(insertNewPart)
+                    if (resInsertNew.error != null) return@withContext false
+
+                    val nameText = if (toEmployee != null) "${toEmployee.firstName} ${toEmployee.lastName}" else "yeni personele"
+                    addSystemChatMessage(taskId, "Görev $nameText personeline delege edildi.")
+                    true
+                }
             } catch (e: Exception) {
                 Log.e("TaskRepository", "delegateTask error", e)
                 false

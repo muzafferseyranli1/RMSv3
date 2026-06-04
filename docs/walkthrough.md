@@ -155,8 +155,11 @@ Bu güncelleme ile mobil uygulamadaki görevler ekranında, formlardan otomatik 
 - Temizlenen açıklamaların altında, sadece otomatik formlardan türeyen görevlerde görünen şık bir mor renkli **"İlişkili Form Yanıtını Göster"** butonu yerleştirildi.
 - Görevin veritabanında kayıtlı ekleri (`task_attachments`) algılanıp "Ekler" başlığı altında listelendi. Görsel ekler Coil `AsyncImage` ile, diğer dosyalar dosya simgeli tıklanabilir linkler halinde gösterildi.
 
-#### 3. Form Gösterim Ekranı (`FormDetailDialog`)
-- Mobil tasarıma uygun mor degradeli başlık çubuğu, zil simgesi, şube bilgisi (`PillBadge`), denetçi adı, tarih ve varsa kanıt fotoğrafları ile soru-yanıt listesini şık bir biçimde gösteren `FormDetailDialog` Compose bileşeni geliştirildi.
+#### 3. Form Gösterim Ekranı (`FormDetailDialog`) Mobil-First Yeniden Tasarımı
+- **Dikey Hizalanmış Stacked Kart Düzeni:** Web sürümünden kalan yan yana (Row) yerleşim modeli, dar mobil ekranlarda soruların dikey olarak tek tek harflerle sarılmasına (`s o r u n l` gibi) ve kaymalara sebep oluyordu. Bunun yerine tüm soru ve cevap blokları dikey olarak üst üste yığılacak (`Stacked Column`) şekilde native mobil tasarıma göre sıfırdan baştan yazıldı. Soru kartları ekran genişliğine göre esneyebilir hale getirildi.
+- **Kompakt Mobil Başlık (Header) Alanı:** Ekranın büyük bir kısmını kaplayan hantal mor başlık kutusu kaldırıldı. Yerine form adını, şube adını ve sağ üst köşede temiz bir kapatma simgesi (`Close`) barındıran, dikeyde yer kaplamayan şık ve kompakt bir üst bilgi çubuğu yerleştirildi.
+- **Dinamik Kart Çerçeveleri:** Yanıtların durumuna göre (kritik hata veya uygunsuzluk) kartların arka plan ve kenarlıkları (`BorderStroke`) kullanıcıyı görsel olarak uyaracak şekilde yumuşak kırmızı tonlarla, başarılı cevaplar ise standart koyu mavi tonlarla tasarlandı.
+- **Dialog Pencere Çerçeveleri:** AlertDialog varsayılan dolguları yerine doğrudan Compose `Dialog` bileşeni kullanılarak ekran alanının maksimum verimle kullanılması ve dialogun dar cihazlarda kenarlara kusursuz oturması sağlandı.
 
 #### 4. Görev Durum Aksiyon Butonları & Popuplar
 - Detay modalının alt kısmına dinamik olarak durum eylem butonları eklendi:
@@ -172,3 +175,32 @@ Bu güncelleme ile mobil uygulamadaki görevler ekranında, formlardan otomatik 
 [TasksScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
 [TaskRepository.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
 
+---
+
+## 6. Görev Tamamlama Arayüzü, Atanan Kişi Kontrolü, Tarih Seçici ve APK Derlemesi
+
+Bu güncelleme ile görevler ekranında detaylı görev tamamlama, tarih güncelleme, çoklu atanan personelin kendi durumunu işaretlemesi (`isCompleted`), izleyicilerin (watchers) onay kutusu şeklinde yönetimi ve son durumun APK paketi haline getirilmesi süreçleri tamamlanmıştır.
+
+### Neler Yapıldı?
+
+#### 1. Çoklu Atanan Kişiler (Assignees) & Tamamlama Checkmark Desteği
+- Görev detaylarında her bir atanan personel için durumunu (`isCompleted` değeri ile) işaretleyebileceği bir onay kutusu (Checkbox) yerleşimi eklendi.
+- Personeller kendi görev kısımlarını bağımsız olarak tamamlandı/tamamlanmadı şeklinde işaretleyebilmektedir.
+
+#### 2. Görev Başlangıç ve Bitiş Tarihlerinin Güncellenmesi (Tarih Seçici)
+- Görevin başlangıç (`startDate`) ve bitiş/teslim (`dueDate`) tarihlerinin güncellenebilmesi amacıyla Compose DatePicker entegrasyonu sağlandı.
+- Kullanıcılar görev detayındaki takvim ikonlarına tıklayarak başlangıç ve teslim tarihlerini dinamik olarak değiştirebilmektedir.
+
+#### 3. İzleyiciler (Watchers) Yönetimi
+- Göreve dahil olan veya izleyen personellerin yönetimi için checkbox listeleri eklendi.
+
+#### 4. Kapatma Özeti (Closure Summary) Popupları
+- Görev kapatılırken/tamamlanırken kapatma özeti ve açıklaması girilmesine olanak tanıyan özel popuplar eklendi.
+
+#### 5. APK Derleme (Build APK)
+- Projenin son durumunu içeren debug sürümü Gradle paketi başarıyla derlendi.
+- Derleme işlemi `.\gradlew.bat assembleDebug` komutu kullanılarak başarıyla tamamlandı.
+
+### Derleme Sonuçları
+- **Android APK Derleme:** `.\gradlew.bat assembleDebug` komutuyla debug APK paketleme işlemi sorunsuz tamamlandı (**BUILD SUCCESSFUL**).
+- **Üretilen APK Konumu:** [app-debug.apk](file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) (~20.67 MB).

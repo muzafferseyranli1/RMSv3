@@ -50,9 +50,18 @@ Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla
 - **Görev Ekleri, Form Gösterimi ve Durum Aksiyonları (Tamamlandı):** Görev detayları ekranında eklerin listelenmesi, otomatik formlardan oluşan görevlerin form yanıtını mobil uyumlu biçimde gösteren `FormDetailDialog` entegrasyonu ve durum eylemlerinin ("Geri Gönder", "Delege Et", "Pasife Al") entegrasyonu tamamlandı.
   - Görev açıklamalarındaki `[Form ID: <submission_id>]` metinleri Regex ile temizlendi ve altına mor renkli "İlişkili Form Yanıtını Göster" butonu yerleştirildi.
   - Tıklandığında soru-yanıt listesini, kanıt fotoğraflarını ve şube/tarih pillerini şık bir biçimde gösteren `FormDetailDialog` Compose overlay modali açılmaktadır.
+  - **Dikey Hizalanmış Stacked Kart Tasarımı:** Dar mobil ekranlarda soruların dikey olarak tek tek harflerle sarılmasını (`s o r u n l` gibi) önlemek amacıyla form soru-cevap blokları dikey olarak üst üste yığılacak (`Stacked Column`) şekilde native mobil tasarıma göre sıfırdan kodlandı.
+  - **Kompakt Mobil Başlık (Header):** Wasted space (boşa harcanan alan) oluşturan büyük mor başlık kutusu yerine form adını, şube adını ve kapatma simgesini barındıran, Dialog penceresine tam oturan kompakt bir üst bilgi çubuğu yerleştirildi.
   - Görev ekleri (`task_attachments`) algılanarak dosya türlerine göre resimler Coil `AsyncImage` ile, dosyalar simgeli tıklanabilir linkler halinde listelendi.
   - Detay ekranına "Geri Gönder" (gerekçe promptu ile), "Delege Et" (personel seçici listesiyle) ve "Pasife Al" (onay diyaloguyla) durum eylemleri entegre edildi.
+- **Görev Detay Geliştirmeleri & APK Derleme (Tamamlandı):** 
+  - Çoklu atanan personelin her birinin kendi görev durumunu (`isCompleted`) bağımsız olarak işaretleyebileceği onay kutuları yerleştirildi.
+  - Görev başlangıç (`startDate`) ve bitiş/teslim (`dueDate`) tarihlerinin güncellenmesini sağlayan modern Compose `DatePicker` takvim seçicileri entegre edildi.
+  - Görevi izleyen personellerin (watchers) onay kutularıyla yönetimi sağlandı.
+  - Görev kapatma/tamamlama sırasında kapatma özeti ve açıklama girilmesini sağlayan diyalog pencereleri eklendi.
+  - Projenin son durumunu içeren debug sürümü Gradle paketi (`.\gradlew.bat assembleDebug`) başarıyla derlenerek [app-debug.apk](file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) konumunda hazırlandı.
 - Sonraki çalışmalarda yeni eklenebilecek mal kabul ve depo modülleri için Compose ekranları geliştirilebilir.
+
 
 
 ## 6. Önemli Dosyaların Konumları

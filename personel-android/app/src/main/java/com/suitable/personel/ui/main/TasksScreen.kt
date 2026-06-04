@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.suitable.personel.data.*
@@ -121,9 +122,12 @@ fun TasksScreen(
     // 2) Filtrelenmiş Görev Listesi
     val filteredTasks = remember(tasks, selectedTab, statusFilter) {
         tasks.filter { task ->
+            val myParticipant = task.participants.find { it.participantType == "assignee" && it.personnelId == actorId }
+            val isMyPartCompleted = myParticipant?.isCompleted ?: false
+
             // Tab filtresi
             val passTab = when (selectedTab) {
-                "mine" -> task.participants.any { it.participantType == "assignee" && it.personnelId == actorId }
+                "mine" -> myParticipant != null
                 "assigned_by_me" -> task.createdByPersonnelId == actorId
                 "watching" -> task.participants.any { it.participantType == "watcher" && it.personnelId == actorId }
                 else -> true
@@ -131,8 +135,22 @@ fun TasksScreen(
 
             // Durum filtresi
             val passStatus = when (statusFilter) {
-                "active" -> task.status == "open" || task.status == "in_progress" || task.status == "pending_approval" || task.status == "pending_completion_approval"
-                "completed" -> task.status == "completed"
+                "active" -> {
+                    val baseActive = (task.status == "open" || task.status == "in_progress" || task.status == "pending_approval" || task.status == "pending_completion_approval") && task.status != "rejected"
+                    if (selectedTab == "mine" && isMyPartCompleted) {
+                        false
+                    } else {
+                        baseActive
+                    }
+                }
+                "completed" -> {
+                    val baseCompleted = task.status == "completed" || task.status == "rejected"
+                    if (selectedTab == "mine" && isMyPartCompleted) {
+                        true
+                    } else {
+                        baseCompleted
+                    }
+                }
                 "overdue" -> {
                     // dueAt geçmişte kalmış ve completed değilse
                     val isLate = task.dueAt?.let {
@@ -141,7 +159,8 @@ fun TasksScreen(
                             due.isBefore(java.time.Instant.now())
                         } catch (_: Exception) { false }
                     } ?: false
-                    isLate && task.status != "completed"
+                    val notDone = if (selectedTab == "mine") !isMyPartCompleted else (task.status != "completed" && task.status != "rejected")
+                    isLate && notDone && task.status != "completed" && task.status != "rejected"
                 }
                 else -> true // "all"
             }
@@ -303,7 +322,8 @@ fun TasksScreen(
                                     val assignees = task.participants.filter { it.participantType == "assignee" }
                                     if (assignees.isNotEmpty()) {
                                         assignees.map { a ->
-                                            employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
+                                            val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
+                                            if (a.isCompleted) "$name (✓)" else name
                                         }.joinToString(", ")
                                     } else {
                                         "Belirtilmedi"
@@ -533,6 +553,36 @@ private fun TaskDetailDialog(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    val showDatePicker = { initialDateTimeString: String?, onDateSelected: (String) -> Unit ->
+        val calendar = java.util.Calendar.getInstance()
+        initialDateTimeString?.let {
+            try {
+                val instant = java.time.Instant.parse(it)
+                calendar.time = java.util.Date.from(instant)
+            } catch (_: Exception) {}
+        }
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                android.app.TimePickerDialog(
+                    context,
+                    { _, hourOfDay, minute ->
+                        val selectedCal = java.util.Calendar.getInstance()
+                        selectedCal.set(year, month, dayOfMonth, hourOfDay, minute)
+                        val formatted = selectedCal.toInstant().toString()
+                        onDateSelected(formatted)
+                    },
+                    calendar.get(java.util.Calendar.HOUR_OF_DAY),
+                    calendar.get(java.util.Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH),
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     // Local states
     var taskStatus by remember { mutableStateOf(task.status) }
     var checklist by remember { mutableStateOf<List<TaskChecklistItem>>(emptyList()) }
@@ -555,6 +605,16 @@ private fun TaskDetailDialog(
     // Chat states
     var chatInput by remember { mutableStateOf("") }
     var isSendingMsg by remember { mutableStateOf(false) }
+
+    val isAssignee = remember(task, currentUserId) {
+        task.participants.any { it.personnelId == currentUserId && it.participantType == "assignee" }
+    }
+    val isWatcher = remember(task, currentUserId) {
+        task.participants.any { it.personnelId == currentUserId && it.participantType == "watcher" }
+    }
+    var taskStartAt by remember { mutableStateOf(task.startAt) }
+    var taskDueAt by remember { mutableStateOf(task.dueAt) }
+    var showClosureSummaryDialog by remember { mutableStateOf(false) }
 
     // Verileri yükle
     LaunchedEffect(task.id) {
@@ -758,6 +818,53 @@ private fun TaskDetailDialog(
                         }
                     }
 
+                    // 1.4) Katılımcılar (Sorumlu & İzleyenler)
+                    item {
+                        Column {
+                            Text("Katılımcılar", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                border = BorderStroke(1.dp, CardBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val assignees = task.participants.filter { it.participantType == "assignee" }
+                                    val watchers = task.participants.filter { it.participantType == "watcher" }
+                                    
+                                    if (assignees.isNotEmpty()) {
+                                        Text("Atananlar:", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        assignees.forEach { a ->
+                                            val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "• $name",
+                                                    color = Color.White,
+                                                    fontSize = 12.sp
+                                                )
+                                                if (a.isCompleted) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("✓", color = AccentGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (watchers.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text("Gözlemciler:", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        watchers.forEach { w ->
+                                            val name = employees.find { it.id == w.personnelId }?.getDisplayName() ?: "Personel"
+                                            Text(
+                                                text = "• $name",
+                                                color = Color.White,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // 1.5) Görev Meta Bilgileri (Tekrarlama, Kurallar)
                     item {
                         Card(
@@ -767,9 +874,67 @@ private fun TaskDetailDialog(
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Görev Bilgileri", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(2.dp))
+                                // Başlangıç Tarihi
+                                val startClickable = task.editScheduleAllowed && !isWatcher
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = startClickable) {
+                                            showDatePicker(taskStartAt) { selectedIso ->
+                                                scope.launch {
+                                                    val success = repo.updateTaskDates(task.id, selectedIso, taskDueAt, taskStartAt, taskDueAt, currentUserId)
+                                                    if (success) {
+                                                        taskStartAt = selectedIso
+                                                        Toast.makeText(context, "Başlangıç tarihi güncellendi", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Başlangıç", color = TextSecondary, fontSize = 11.sp)
+                                        if (startClickable) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
+                                        }
+                                    }
+                                    Text(taskStartAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+
+                                // Bitiş Tarihi
+                                val dueClickable = task.editDueDateAllowed && !isWatcher
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = dueClickable) {
+                                            showDatePicker(taskDueAt) { selectedIso ->
+                                                scope.launch {
+                                                    val success = repo.updateTaskDates(task.id, taskStartAt, selectedIso, taskStartAt, taskDueAt, currentUserId)
+                                                    if (success) {
+                                                        taskDueAt = selectedIso
+                                                        Toast.makeText(context, "Vade tarihi güncellendi", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Bitiş", color = TextSecondary, fontSize = 11.sp)
+                                        if (dueClickable) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
+                                        }
+                                    }
+                                    Text(taskDueAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+
                                 val rows = buildList {
-                                    if (task.startAt != null) add("Başlangıç" to task.startAt.take(10))
-                                    if (task.dueAt != null) add("Bitiş" to task.dueAt.take(10))
                                     add("Öncelik" to when (task.priority) {
                                         "urgent" -> "🔴 Kritik"
                                         "high" -> "🟠 Yüksek"
@@ -871,7 +1036,7 @@ private fun TaskDetailDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
+                                    .clickable(enabled = !isWatcher) {
                                         scope.launch {
                                             val success = repo.updateChecklistItem(item.id, !item.isDone)
                                             if (success) {
@@ -885,6 +1050,7 @@ private fun TaskDetailDialog(
                             ) {
                                 Checkbox(
                                     checked = item.isDone,
+                                    enabled = !isWatcher,
                                     onCheckedChange = { checked ->
                                         scope.launch {
                                             val success = repo.updateChecklistItem(item.id, checked)
@@ -916,7 +1082,7 @@ private fun TaskDetailDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Görev Durum Eylemleri", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
 
-                            val hasPrimaryAction = taskStatus == "open" || taskStatus == "rejected" || taskStatus == "in_progress" || (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId)
+                            val hasPrimaryAction = !isWatcher && (taskStatus == "open" || taskStatus == "rejected" || taskStatus == "in_progress" || (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId))
                             if (hasPrimaryAction) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     // Görevi Başlat
@@ -925,7 +1091,7 @@ private fun TaskDetailDialog(
                                             onClick = {
                                                 isSubmittingAction = true
                                                 scope.launch {
-                                                    val success = repo.updateTaskStatus(task.id, "in_progress")
+                                                    val success = repo.updateTaskStatus(task.id, "in_progress", currentUserId)
                                                     if (success) {
                                                         taskStatus = "in_progress"
                                                         Toast.makeText(context, "Göreve başlandı", Toast.LENGTH_SHORT).show()
@@ -946,19 +1112,27 @@ private fun TaskDetailDialog(
                                     if (taskStatus == "in_progress") {
                                         Button(
                                             onClick = {
-                                                isSubmittingAction = true
-                                                scope.launch {
-                                                    val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
-                                                    val success = repo.updateTaskStatus(task.id, nextState)
-                                                    if (success) {
-                                                        taskStatus = nextState
-                                                        Toast.makeText(
-                                                            context, 
-                                                            if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
+                                                if (task.closureFileRequired || task.closureImageRequired) {
+                                                    Toast.makeText(context, "Dosya veya görsel yükleme zorunlu olduğundan bu görevi lütfen Web arayüzünden tamamlayın.", Toast.LENGTH_LONG).show()
+                                                    return@Button
+                                                }
+                                                if (task.closureSummaryRequired) {
+                                                    showClosureSummaryDialog = true
+                                                } else {
+                                                    isSubmittingAction = true
+                                                    scope.launch {
+                                                        val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
+                                                        val success = repo.updateTaskStatus(task.id, nextState, currentUserId)
+                                                        if (success) {
+                                                            taskStatus = nextState
+                                                            Toast.makeText(
+                                                                context, 
+                                                                if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                        isSubmittingAction = false
                                                     }
-                                                    isSubmittingAction = false
                                                 }
                                             },
                                             modifier = Modifier.fillMaxWidth(),
@@ -996,10 +1170,14 @@ private fun TaskDetailDialog(
                             }
 
                             // Secondary Actions Row: Geri Gönder, Delege Et, Pasife Al
-                            val showSecondaryActions = taskStatus != "completed" && taskStatus != "cancelled" && taskStatus != "soft_deleted"
+                            val showSecondaryActions = !isWatcher && taskStatus != "completed" && taskStatus != "cancelled" && taskStatus != "soft_deleted"
                             if (showSecondaryActions) {
-                                val showSendBack = true
-                                val showDelegate = task.delegationAllowed
+                                val showSendBack = isAssignee && task.formTemplateId.isNullOrBlank() && repo.canReject(
+                                    task.createdByPositionId ?: "",
+                                    employees.find { it.id == currentUserId }?.positionId ?: "",
+                                    positions
+                                )
+                                val showDelegate = task.delegationAllowed && isAssignee
                                 val showPasifeAl = task.createdByPersonnelId == currentUserId
 
                                 Row(
@@ -1286,11 +1464,12 @@ private fun TaskDetailDialog(
                                                 toPersonnelId = emp.id,
                                                 fromPositionId = fromEmployee?.positionId,
                                                 toPositionId = emp.positionId,
-                                                positions = positions
+                                                positions = positions,
+                                                isFormTask = !task.formTemplateId.isNullOrBlank()
                                             )
                                             if (success) {
                                                 showDelegateDialog = false
-                                                Toast.makeText(context, "Delege talebi gönderildi", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Delege işlemi yapıldı", Toast.LENGTH_SHORT).show()
                                                 chatMessages = repo.fetchTaskChatMessages(task.id)
                                             }
                                             isSubmittingAction = false
@@ -1318,6 +1497,66 @@ private fun TaskDetailDialog(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showDelegateDialog = false }) {
+                    Text("İptal", color = TextSecondary)
+                }
+            },
+            containerColor = DetailDialogBg
+        )
+    }
+
+    if (showClosureSummaryDialog) {
+        var summaryText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showClosureSummaryDialog = false },
+            title = { Text("Görev Kapanış Özeti", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                OutlinedTextField(
+                    value = summaryText,
+                    onValueChange = { summaryText = it },
+                    placeholder = { Text("Kapanış özetini buraya yazın...", fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = AccentGreen,
+                        unfocusedBorderColor = CardBorder
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    maxLines = 4
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (summaryText.trim().isBlank()) {
+                            Toast.makeText(context, "Özet alanı boş olamaz", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isSubmittingAction = true
+                        scope.launch {
+                            val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
+                            val success = repo.updateTaskStatus(task.id, nextState, currentUserId, summaryText)
+                            if (success) {
+                                taskStatus = nextState
+                                showClosureSummaryDialog = false
+                                Toast.makeText(
+                                    context, 
+                                    if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            isSubmittingAction = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isSubmittingAction
+                ) {
+                    Text("Gönder ve Tamamla", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClosureSummaryDialog = false }) {
                     Text("İptal", color = TextSecondary)
                 }
             },
@@ -1380,104 +1619,114 @@ private fun FormDetailDialog(
         list?.map { it["id"]?.toString() ?: "" }?.toSet() ?: emptySet()
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            // Hero Header
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF2E1A47), Color(0xFF130A24))))
-                    .padding(vertical = 16.dp, horizontal = 12.dp)
-            ) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp, horizontal = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = DetailDialogBg),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header (Sadeleştirilmiş ve optimize edilmiş mobil başlık)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1E1E38), Color(0xFF0F0F1E))))
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF8B5CF6).copy(alpha = 0.15f))
-                            .border(2.dp, Color(0xFF8B5CF6), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.NotificationsActive,
-                            contentDescription = null,
-                            tint = Color(0xFF8B5CF6),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        tint = AccentPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = detail.templateTitle?.uppercase() ?: "BİLDİRİM FORMU",
-                            color = Color(0xFF8B5CF6),
-                            fontSize = 10.sp,
+                            text = detail.templateTitle ?: "Form Detayı",
+                            color = Color.White,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = branchName,
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val dateStr = formDate ?: detail.createdAt.take(10)
-                            PillBadge(icon = Icons.Default.CalendarToday, text = dateStr)
-                            if (!startTime.isNullOrBlank()) {
-                                val timeText = if (!endTime.isNullOrBlank()) "$startTime – $endTime" else startTime
-                                PillBadge(icon = Icons.Default.Schedule, text = timeText)
-                            }
-                            if (detail.completionTimeSeconds != null) {
-                                PillBadge(icon = Icons.Default.HourglassEmpty, text = "${detail.completionTimeSeconds / 60} dk")
-                            }
-                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Kapat",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
-            }
-        },
-        text = {
-            Surface(
-                color = Color.Transparent,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+
+                HorizontalDivider(color = CardBorder)
+
+                // Content
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(max = 440.dp)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
-                    // Kanıt Fotoğrafları
-                    if (detail.photos.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Date & Time Tags
                         item {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = "📷 FOTOĞRAFLAR (${detail.photos.size})",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                )
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                    border = BorderStroke(1.dp, CardBorder),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val dateStr = formDate ?: detail.createdAt.take(10)
+                                PillBadge(icon = Icons.Default.CalendarToday, text = dateStr)
+                                if (!startTime.isNullOrBlank()) {
+                                    val timeText = if (!endTime.isNullOrBlank()) "$startTime – $endTime" else startTime
+                                    PillBadge(icon = Icons.Default.Schedule, text = timeText)
+                                }
+                                if (detail.completionTimeSeconds != null) {
+                                    PillBadge(icon = Icons.Default.HourglassEmpty, text = "${detail.completionTimeSeconds / 60} dk")
+                                }
+                            }
+                        }
+
+                        // Kanıt Fotoğrafları
+                        if (detail.photos.isNotEmpty()) {
+                            item {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "📷 FOTOĞRAFLAR (${detail.photos.size})",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 6.dp)
+                                    )
                                     androidx.compose.foundation.lazy.LazyRow(
-                                        contentPadding = PaddingValues(8.dp),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         items(detail.photos) { photo ->
-                                            val imageUrl = ApiClient.resolveImageUrl(photo.fileUrl) ?: ""
+                                            val imageUrl = ApiClient.resolveImageUrl(photo.fileUrl)
                                             AsyncImage(
                                                 model = imageUrl,
                                                 contentDescription = "Kanıt Görseli",
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier
-                                                    .size(90.dp)
+                                                    .size(80.dp)
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
                                                     .clickable {
@@ -1494,31 +1743,27 @@ private fun FormDetailDialog(
                                 }
                             }
                         }
-                    }
 
-                    // Soru & Yanıt Listesi
-                    if (sections.isNotEmpty()) {
-                        sections.forEachIndexed { sIdx, section ->
-                            val sectionId = section["id"]?.toString() ?: ""
-                            val sectionTitle = section["title"]?.toString() ?: "Bölüm"
-                            val fields = section["fields"] as? List<Map<String, Any?>> ?: emptyList()
-                            if (fields.isNotEmpty()) {
-                                item {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            text = "${sIdx + 1}. $sectionTitle",
-                                            color = AccentPurple,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(bottom = 6.dp)
-                                        )
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                            border = BorderStroke(1.dp, CardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(modifier = Modifier.fillMaxWidth()) {
-                                                fields.forEachIndexed { fIdx, field ->
+                        // Soru & Yanıt Listesi (Mobile Özel Dikey Düzen)
+                        if (sections.isNotEmpty()) {
+                            sections.forEachIndexed { sIdx, section ->
+                                val sectionTitle = section["title"]?.toString() ?: "Bölüm"
+                                val fields = section["fields"] as? List<Map<String, Any?>> ?: emptyList()
+                                if (fields.isNotEmpty()) {
+                                    item {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = "${sIdx + 1}. $sectionTitle",
+                                                color = AccentPurple,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(bottom = 8.dp)
+                                            )
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                fields.forEach { field ->
                                                     val fieldId = field["id"]?.toString() ?: ""
                                                     val fieldLabel = field["label"]?.toString() ?: ""
                                                     val fieldType = field["type"]?.toString() ?: ""
@@ -1527,7 +1772,6 @@ private fun FormDetailDialog(
                                                     val ans = answers.find { it["field_id"]?.toString() == fieldId }
                                                     val ansVal = ans?.get("value")
                                                     val ansNote = ans?.get("note")?.toString()
-
                                                     val isAnsNegative = failedCriticalFields.contains(fieldId)
 
                                                     val displayValue = when (ansVal) {
@@ -1554,53 +1798,58 @@ private fun FormDetailDialog(
                                                         }
                                                     }
 
-                                                    if (fIdx > 0) {
-                                                        HorizontalDivider(color = CardBorder)
-                                                    }
-
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .background(if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.05f) else Color.Transparent)
-                                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                    // Soru & Cevap Kartı (Dikey Hizalanmış ve Taşmaları Önleyici Tasarım)
+                                                    Card(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.05f) else Color(0xFF0F172A)
+                                                        ),
+                                                        border = BorderStroke(1.dp, if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.3f) else CardBorder),
+                                                        shape = RoundedCornerShape(10.dp)
                                                     ) {
-                                                        Column(modifier = Modifier.weight(1f)) {
-                                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Column(modifier = Modifier.padding(12.dp)) {
+                                                            // Üst satır: Soru etiketi + Kritik rozeti
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                verticalAlignment = Alignment.Top,
+                                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                            ) {
+                                                                Text(
+                                                                    text = fieldLabel,
+                                                                    color = TextSecondary,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    modifier = Modifier.weight(1f)
+                                                                )
                                                                 if (isCritical) {
+                                                                    Spacer(modifier = Modifier.width(6.dp))
                                                                     Box(
                                                                         modifier = Modifier
                                                                             .clip(RoundedCornerShape(4.dp))
                                                                             .background(Color(0xFFEF4444).copy(alpha = 0.15f))
                                                                             .padding(horizontal = 4.dp, vertical = 1.dp)
                                                                     ) {
-                                                                        Text("KRİTİK", color = Color(0xFFEF4444), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                                        Text("KRİTİK", color = Color(0xFFEF4444), fontSize = 7.sp, fontWeight = FontWeight.Bold)
                                                                     }
-                                                                    Spacer(modifier = Modifier.width(6.dp))
                                                                 }
-                                                                Text(
-                                                                    text = fieldLabel,
-                                                                    color = Color.White,
-                                                                    fontSize = 12.sp,
-                                                                    fontWeight = FontWeight.Medium
-                                                                )
                                                             }
+                                                            Spacer(modifier = Modifier.height(6.dp))
+                                                            // Alt satır: Yanıt değeri
+                                                            Text(
+                                                                text = displayValue,
+                                                                color = if (isAnsNegative) Color(0xFFEF4444) else Color.White,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
                                                             if (!ansNote.isNullOrBlank()) {
+                                                                Spacer(modifier = Modifier.height(4.dp))
                                                                 Text(
                                                                     text = "Not: $ansNote",
                                                                     color = TextSecondary,
-                                                                    fontSize = 11.sp,
-                                                                    modifier = Modifier.padding(top = 2.dp)
+                                                                    fontSize = 11.sp
                                                                 )
                                                             }
                                                         }
-                                                        Spacer(modifier = Modifier.width(10.dp))
-                                                        Text(
-                                                            text = displayValue,
-                                                            color = if (isAnsNegative) Color(0xFFEF4444) else AccentPurple,
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
                                                     }
                                                 }
                                             }
@@ -1611,19 +1860,27 @@ private fun FormDetailDialog(
                         }
                     }
                 }
+
+                HorizontalDivider(color = CardBorder)
+
+                // Kapat Butonu
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Kapat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Kapat", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        },
-        containerColor = DetailDialogBg
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

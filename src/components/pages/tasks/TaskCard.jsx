@@ -5,7 +5,7 @@ function statusMeta(status) {
     pending_approval: { label: 'Onay Bekliyor', bg: '#ede9fe', color: '#6d28d9' },
     pending_completion_approval: { label: 'Kapanis Onayi', bg: '#ede9fe', color: '#6d28d9' },
     completed: { label: 'Tamamlandi', bg: '#dcfce7', color: '#15803d' },
-    rejected: { label: 'Geri Gonderildi', bg: '#fee2e2', color: '#b91c1c' },
+    rejected: { label: 'Reddedildi', bg: '#fee2e2', color: '#b91c1c' },
     overdue: { label: 'Gecikti', bg: '#fee2e2', color: '#b91c1c' },
     not_completed: { label: 'Tamamlanmadi', bg: '#fecaca', color: '#991b1b' },
     soft_deleted: { label: 'Pasif', bg: '#e2e8f0', color: '#475569' },
@@ -82,7 +82,8 @@ export default function TaskCard({ task, peopleById, onOpen }) {
           <i className="fa-solid fa-users" style={{ marginRight: 6 }} />
           {assignees.length ? assignees.map(item => {
             const person = peopleById.get(String(item.personnel_id))
-            return [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
+            const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
+            return item.is_completed ? `${fullName} (✓)` : fullName
           }).join(', ') : 'Atanan yok'}
         </span>
       </div>

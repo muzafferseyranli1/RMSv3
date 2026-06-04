@@ -26,6 +26,10 @@ export default function TaskDrawer({
   onApproveCompletion,
   onRejectCompletion,
   onSendMessage,
+  isAssignee,
+  isWatcher,
+  canRejectCreator,
+  onChangeDates,
 }) {
   const navigate = useNavigate()
   const { scope } = useWorkspace()
@@ -69,30 +73,42 @@ export default function TaskDrawer({
         flex
         footer={(
           <>
-            {task.status === 'pending_approval' && latestAssignmentApproval && (
+            {task.status === 'pending_approval' && latestAssignmentApproval && !isWatcher && (
               <>
-                <button type="button" className="btn-o" onClick={() => onReject(latestAssignmentApproval.id)}>Reddet</button>
+                {canRejectCreator && (
+                  <button type="button" className="btn-o" onClick={() => onReject(latestAssignmentApproval.id)}>Reddet</button>
+                )}
                 <button type="button" className="btn-p" onClick={() => onAccept(latestAssignmentApproval.id)}>Kabul Et</button>
               </>
             )}
-            {task.status === 'open' && <button type="button" className="btn-p" onClick={onStart}>Goreve Basla</button>}
-            {task.status === 'in_progress' && (
+            {task.status === 'open' && isAssignee && !isWatcher && (
+              <button type="button" className="btn-p" onClick={onStart}>Goreve Basla</button>
+            )}
+            {task.status === 'in_progress' && !isWatcher && (
               <>
-                <button type="button" className="btn-o" onClick={onOpenSendBack}>Geri Gonder</button>
-                {task.delegation_allowed && <button type="button" className="btn-o" onClick={onOpenDelegate}>Delege Et</button>}
-                <button type="button" className="btn-p" onClick={onOpenClosure}>Tamamla</button>
+                {isAssignee && canRejectCreator && (
+                  <button type="button" className="btn-o" onClick={onOpenSendBack}>Geri Gonder</button>
+                )}
+                {task.delegation_allowed && isAssignee && (
+                  <button type="button" className="btn-o" onClick={onOpenDelegate}>Delege Et</button>
+                )}
+                {isAssignee && (
+                  <button type="button" className="btn-p" onClick={onOpenClosure}>Tamamla</button>
+                )}
               </>
             )}
-            {task.status === 'pending_completion_approval' && latestClosureApproval && (
+            {task.status === 'pending_completion_approval' && latestClosureApproval && !isWatcher && (
               <>
                 <button type="button" className="btn-o" onClick={() => onRejectCompletion(latestClosureApproval.id)}>Iade Et</button>
                 <button type="button" className="btn-p" onClick={() => onApproveCompletion(latestClosureApproval.id)}>Onayla</button>
               </>
             )}
-            {task.status === 'soft_deleted' ? (
-              <button type="button" className="btn-p" onClick={onRestore}>Geri Al</button>
-            ) : (
-              <button type="button" className="btn-o" onClick={onSoftDelete}>Pasife Al</button>
+            {!isWatcher && (
+              task.status === 'soft_deleted' ? (
+                <button type="button" className="btn-p" onClick={onRestore}>Geri Al</button>
+              ) : (
+                <button type="button" className="btn-o" onClick={onSoftDelete}>Pasife Al</button>
+              )
             )}
           </>
         )}
@@ -178,10 +194,17 @@ export default function TaskDrawer({
                 <div>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, color: '#0f172a' }}>Atananlar</div>
                   <div style={{ marginTop: 4, fontSize: '.8rem', color: '#475569' }}>
-                    {assignees.length ? assignees.map(item => {
+                    {assignees.length ? assignees.map((item, idx) => {
                       const person = peopleById.get(String(item.personnel_id))
-                      return [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
-                    }).join(', ') : 'Atanan yok'}
+                      const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
+                      return (
+                        <span key={item.id || idx}>
+                          {fullName}
+                          {item.is_completed && <span style={{ color: '#16a34a', marginLeft: 4, fontWeight: 'bold' }} title="Tamamladı">✓</span>}
+                          {idx < assignees.length - 1 ? ', ' : ''}
+                        </span>
+                      )
+                    }) : 'Atanan yok'}
                   </div>
                 </div>
                 <div>
@@ -221,9 +244,35 @@ export default function TaskDrawer({
           <div style={{ display: 'grid', gap: 18 }}>
             <section className="card" style={{ padding: 16 }}>
               <div style={{ fontSize: '.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Tarih ve Kurallar</div>
-              <div style={{ marginTop: 12, display: 'grid', gap: 8, fontSize: '.82rem', color: '#475569' }}>
-                <div>Baslangic: {task.start_at ? new Date(task.start_at).toLocaleString('tr-TR') : '-'}</div>
-                <div>Vade: {task.due_at ? new Date(task.due_at).toLocaleString('tr-TR') : '-'}</div>
+              <div style={{ marginTop: 12, display: 'grid', gap: 12, fontSize: '.82rem', color: '#475569' }}>
+                <div>
+                  <label className="f-label" style={{ marginBottom: 4, display: 'block' }}>Başlangıç Tarihi</label>
+                  <input
+                    type="datetime-local"
+                    className="f-input"
+                    value={task.start_at ? new Date(new Date(task.start_at).getTime() - new Date(task.start_at).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                    disabled={!task.edit_schedule_allowed || isWatcher}
+                    onChange={e => {
+                      const val = e.target.value ? new Date(e.target.value).toISOString() : null
+                      onChangeDates({ startAt: val, dueAt: task.due_at })
+                    }}
+                    style={{ height: 36, padding: '4px 8px', marginTop: 4 }}
+                  />
+                </div>
+                <div>
+                  <label className="f-label" style={{ marginBottom: 4, display: 'block' }}>Vade Tarihi</label>
+                  <input
+                    type="datetime-local"
+                    className="f-input"
+                    value={task.due_at ? new Date(new Date(task.due_at).getTime() - new Date(task.due_at).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                    disabled={!task.edit_due_date_allowed || isWatcher}
+                    onChange={e => {
+                      const val = e.target.value ? new Date(e.target.value).toISOString() : null
+                      onChangeDates({ startAt: task.start_at, dueAt: val })
+                    }}
+                    style={{ height: 36, padding: '4px 8px', marginTop: 4 }}
+                  />
+                </div>
                 <div>Oncelik: {task.priority || 'normal'}</div>
                 <div>Delege: {task.delegation_allowed ? 'Acik' : 'Kapali'}</div>
                 <div>Kapanis onayi: {task.approval_required ? 'Gerekli' : 'Yok'}</div>

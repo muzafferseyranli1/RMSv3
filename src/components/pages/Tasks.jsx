@@ -27,7 +27,9 @@ import {
   fetchAnnouncements,
   createAnnouncement,
   markAnnouncementAsRead,
+  changeDueDate,
 } from '@/lib/taskService'
+import { canReject } from '@/lib/taskHierarchy'
 import { notifyAnnouncement, notifyTaskAssigned } from '@/lib/notificationService'
 import TaskCard from '@/components/pages/tasks/TaskCard'
 import TaskDrawer from '@/components/pages/tasks/TaskDrawer'
@@ -617,6 +619,21 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
     }
     return true
   }
+
+  const isAssignee = useMemo(() => {
+    if (!selectedTask || !actor) return false
+    return (selectedTask.participants || []).some(p => String(p.personnel_id) === String(actor.id) && p.participant_type === 'assignee')
+  }, [selectedTask, actor])
+
+  const isWatcher = useMemo(() => {
+    if (!selectedTask || !actor) return false
+    return (selectedTask.participants || []).some(p => String(p.personnel_id) === String(actor.id) && p.participant_type === 'watcher')
+  }, [selectedTask, actor])
+
+  const canRejectCreator = useMemo(() => {
+    if (!selectedTask || !actor || selectedTask.form_template_id) return false
+    return canReject(selectedTask.created_by_position_id, actor.positionId, positionRecords)
+  }, [selectedTask, actor, positionRecords])
 
   const assignablePeople = useMemo(() => peopleOptions, [peopleOptions])
 
@@ -1528,6 +1545,10 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
         formTemplates={formTemplates}
         onFillForm={handleFillForm}
         onClose={() => setSelectedTask(null)}
+        isAssignee={isAssignee}
+        isWatcher={isWatcher}
+        canRejectCreator={canRejectCreator}
+        onChangeDates={({ dueAt, startAt }) => runTaskAction(() => changeDueDate(selectedTask.id, actor.id, { dueAt, startAt }))}
         onStart={() => runTaskAction(() => acceptTask(selectedTask.id, actor.id))}
         onAccept={approvalId => runTaskAction(() => acceptAssignment(selectedTask.id, approvalId, actor.id))}
         onReject={approvalId => {

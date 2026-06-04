@@ -3,7 +3,7 @@ import { fetchFormSubmissions, fetchFormSubmissionDetail, fetchFormTemplates, su
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
-import { readSettingArray, normalizeEmployeeRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
+import { readSettingArray, normalizeEmployeeRecord, normalizePositionRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useSearchParams } from 'react-router-dom'
@@ -216,6 +216,17 @@ export default function FormSubmissions() {
 
   // Personnel and metadata states
   const [employees, setEmployees] = useState([])
+  const [positions, setPositions] = useState([])
+
+  const isVardiyaMuduru = (emp) => {
+    if (!positions || !emp.positionId) return false
+    const pos = positions.find(p => String(p.id) === String(emp.positionId))
+    if (!pos) return false
+    const name = String(pos.name || '').toLowerCase()
+    const code = String(pos.shortCode || '').toUpperCase()
+    return name.includes('vardiya müdürü') || code === 'VRD'
+  }
+
   const [metaBranchId, setMetaBranchId] = useState('')
   const [metaAuthorizedId, setMetaAuthorizedId] = useState('')
   const [metaSendToAuthorized, setMetaSendToAuthorized] = useState(true)
@@ -227,15 +238,19 @@ export default function FormSubmissions() {
   const [metaEndTime, setMetaEndTime] = useState('')
 
   useEffect(() => {
-    async function loadEmployees() {
+    async function loadEmployeesAndPositions() {
       try {
-        const records = await readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord)
-        setEmployees(records || [])
+        const [empRecords, posRecords] = await Promise.all([
+          readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord),
+          readSettingArray(PERSONNEL_SETTINGS_KEYS.positions, normalizePositionRecord)
+        ])
+        setEmployees(empRecords || [])
+        setPositions(posRecords || [])
       } catch (err) {
-        console.error('Failed to load employees:', err)
+        console.error('Failed to load employees or positions:', err)
       }
     }
-    loadEmployees()
+    loadEmployeesAndPositions()
   }, [])
 
   const loadSubmissions = useCallback(async () => {
@@ -695,7 +710,7 @@ export default function FormSubmissions() {
     const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
 
     // Get inspector name from pin session
-    const activeUserRaw = sessionStorage.getItem('rms_active_user')
+    const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
     const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
     const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
 
@@ -1375,7 +1390,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   className="f-input"
                   value={
                     (() => {
-                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
                       const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
                       return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
                     })()
@@ -1436,38 +1451,10 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               </div>
             </div>
 
-            <div className="form-info-grid" style={{ marginBottom: 0 }}>
+            <div className="form-info-grid" style={{ marginBottom: 0, gridTemplateColumns: '1fr' }}>
               {/* Şube Yetkilisi */}
               <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
-                <label className="f-label" style={{ fontWeight: 700 }}>İlgili Şubenin Yetkilisi</label>
-                <div className="sel-wrap" style={{ marginBottom: 8 }}>
-                  <select
-                    value={metaAuthorizedId}
-                    onChange={e => {
-                      const newId = e.target.value
-                      setMetaAuthorizedId(newId)
-                      if (newId) setMetaResponsibles(prev => prev.filter(r => r.id !== newId))
-                    }}
-                    className="f-input"
-                  >
-                    <option value="">Seçiniz...</option>
-                    {employees
-                      .filter(emp => !emp.deletedAt && (emp.defaultBranchId === metaBranchId || emp.workingBranchIds?.includes(metaBranchId) || emp.managedBranchIds?.includes(metaBranchId)))
-                      .map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                      ))
-                    }
-                  </select>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <i className="fa-solid fa-check-circle" style={{ color: '#10b981', fontSize: '.8rem' }} />
-                  <span style={{ fontSize: '.76rem', color: '#10b981', fontWeight: 700 }}>Sonuç Daima Gönderilir</span>
-                </div>
-              </div>
-
-              {/* Vardiya Görevlisi */}
-              <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
-                <label className="f-label" style={{ fontWeight: 700 }}>Vardiya Görevlisi</label>
+                <label className="f-label" style={{ fontWeight: 700 }}>Şube Yetkilisi</label>
                 <div className="sel-wrap" style={{ marginBottom: 8 }}>
                   <select
                     value={metaShiftOfficerId}
@@ -1476,7 +1463,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   >
                     <option value="">Seçiniz...</option>
                     {employees
-                      .filter(emp => !emp.deletedAt && (emp.defaultBranchId === metaBranchId || emp.workingBranchIds?.includes(metaBranchId)))
+                      .filter(emp => !emp.deletedAt && (emp.defaultBranchId === metaBranchId || emp.workingBranchIds?.includes(metaBranchId) || emp.managedBranchIds?.includes(metaBranchId)))
                       .map(emp => (
                         <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
                       ))
@@ -1493,59 +1480,6 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   <label htmlFor="send-to-shift" style={{ fontSize: '.76rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Sonucu Gönder</label>
                 </div>
               </div>
-            </div>
-
-            {/* Şubenin Sorumluları */}
-            <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)', marginTop: 14 }}>
-              <label className="f-label" style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>Şubenin Sorumluları (Birden fazla seçilebilir)</label>
-              {employees.filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId).length === 0 ? (
-                <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Bu şube için tanımlanmış sorumlu yönetici bulunamadı.</div>
-              ) : (
-                <div className="form-responsibles-grid">
-                  {employees
-                    .filter(emp => !emp.deletedAt && emp.managedBranchIds?.includes(metaBranchId) && emp.id !== metaAuthorizedId)
-                    .map(emp => {
-                      const respObj = metaResponsibles.find(r => r.id === emp.id)
-                      const isSelected = !!respObj
-                      const sendChecked = respObj?.sendResult ?? true
-                      return (
-                        <div key={emp.id} style={{ display: 'flex', flexDirection: 'column', padding: 8, borderRadius: 8, border: '1px solid var(--border)', background: isSelected ? 'var(--surface)' : 'transparent' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <input
-                              type="checkbox"
-                              id={`resp-select-${emp.id}`}
-                              checked={isSelected}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setMetaResponsibles(prev => [...prev, { id: emp.id, name: `${emp.firstName} ${emp.lastName}`.trim(), sendResult: true }])
-                                } else {
-                                  setMetaResponsibles(prev => prev.filter(r => r.id !== emp.id))
-                                }
-                              }}
-                            />
-                            <label htmlFor={`resp-select-${emp.id}`} style={{ fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', color: 'var(--text-strong)' }}>
-                              {emp.firstName} {emp.lastName}
-                            </label>
-                          </div>
-                          {isSelected && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 20 }}>
-                              <input
-                                type="checkbox"
-                                id={`resp-send-${emp.id}`}
-                                checked={sendChecked}
-                                onChange={e => {
-                                  setMetaResponsibles(prev => prev.map(r => r.id === emp.id ? { ...r, sendResult: e.target.checked } : r))
-                                }}
-                              />
-                              <label htmlFor={`resp-send-${emp.id}`} style={{ fontSize: '.7rem', color: 'var(--text-muted)', cursor: 'pointer' }}>Sonucu Gönder</label>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  }
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -2413,8 +2347,22 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                         {[
                           { icon: 'fa-user-shield', label: 'Denetleyen', value: selectedSub.metadata.inspector_name, color: '#8b5cf6' },
                           { icon: 'fa-building', label: 'Şube', value: selectedSub.metadata.branch_name || '—', color: '#22d3ee' },
-                          { icon: 'fa-user-tie', label: 'Şube Yetkilisi', value: selectedSub.metadata.branch_authorized_name || '—', color: '#10b981', extra: selectedSub.metadata.branch_authorized_name ? (selectedSub.metadata.send_to_authorized ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: selectedSub.metadata.send_to_authorized ? '#10b981' : '#ef4444' },
-                          { icon: 'fa-id-badge', label: 'Vardiya Görevlisi', value: selectedSub.metadata.shift_officer_name || '—', color: '#f59e0b', extra: selectedSub.metadata.shift_officer_name ? (selectedSub.metadata.send_to_shift_officer ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: selectedSub.metadata.send_to_shift_officer ? '#10b981' : '#ef4444' },
+                          { 
+                            icon: 'fa-user-tie', 
+                            label: 'Şube Yetkilisi', 
+                            value: selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name || '—', 
+                            color: '#10b981', 
+                            extra: (selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name) 
+                              ? (
+                                (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized)
+                                  ? '✓ Gönderildi' 
+                                  : '✗ Gönderilmedi'
+                              ) 
+                              : null, 
+                            extraColor: (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized) 
+                              ? '#10b981' 
+                              : '#ef4444' 
+                          },
                           { icon: 'fa-user', label: 'Gönderen (ID)', value: selectedSub.submitted_by, color: '#94a3b8' },
                         ].map((item, idx) => (
                           <div key={idx} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2430,30 +2378,6 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                             </div>
                           </div>
                         ))}
-                      </div>
-                    )}
-
-                    {/* Responsibles */}
-                    {selectedSub.metadata?.branch_responsibles?.length > 0 && (
-                      <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
-                          <i className="fa-solid fa-users" style={{ marginRight: 6 }} /> Şube Sorumluları
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {selectedSub.metadata.branch_responsibles.map((r, ri) => (
-                            <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <i className="fa-solid fa-user" style={{ color: '#8b5cf6', fontSize: '.7rem' }} />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '.76rem', fontWeight: 700, color: 'var(--text-strong)' }}>{r.name}</div>
-                                <div style={{ fontSize: '.64rem', fontWeight: 700, color: r.send_result ? '#10b981' : '#ef4444' }}>
-                                  {r.send_result ? '✓ Sonuç Gönderildi' : '✗ Gönderilmedi'}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
 
@@ -3146,7 +3070,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
             
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>ŞUBE YETKİLİSİ</div>
-              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.branch_authorized_name || 'Şube Yetkilisi'}</div>
+              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.shift_officer_name || submission.metadata?.branch_authorized_name || 'Şube Yetkilisi'}</div>
               <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
               <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
             </div>

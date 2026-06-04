@@ -170,7 +170,7 @@ function WorkspacePickerModal({
   function handleSave() {
     if (pinEmployee) {
       try {
-        sessionStorage.setItem('rms_active_user', JSON.stringify({
+        const userObj = {
           id: pinEmployee.id,
           firstName: pinEmployee.firstName,
           lastName: pinEmployee.lastName,
@@ -178,7 +178,9 @@ function WorkspacePickerModal({
           defaultBranchId: pinEmployee.defaultBranchId,
           role: pinEmployee.role,
           positionId: pinEmployee.positionId || '',
-        }))
+        }
+        sessionStorage.setItem('rms_active_user', JSON.stringify(userObj))
+        localStorage.setItem('rms_active_user', JSON.stringify(userObj))
       } catch { /* ignore */ }
     }
     onSave({ scope: draftScope, branchId: draftBranchId })

@@ -10,6 +10,7 @@ import {
 } from '@/lib/personnelConfig'
 import { canReject, getDescendantIds } from '@/lib/taskHierarchy'
 import { calculateNextOccurrence } from '@/lib/taskRecurrence'
+import { notifyTaskStatusChanged, notifyTaskCommentAdded, notifyTaskAssigned } from '@/lib/notificationService'
 
 const TASK_STATUS = {
   draft: 'draft',
@@ -370,10 +371,23 @@ export async function fetchTasks({ actor, scope = 'center', scopeBranchId = '', 
     if (tab === 'watching') return taskParticipants.some(item => item.participant_type === 'watcher' && String(item.personnel_id) === String(actor.id))
     return taskParticipants.some(item => item.participant_type === 'assignee' && String(item.personnel_id) === String(actor.id))
   }).filter(task => {
+    const taskId = String(task.id)
+    const taskParticipants = participantMap.get(taskId) || []
+    const myPart = taskParticipants.find(item => item.participant_type === 'assignee' && String(item.personnel_id) === String(actor.id))
+    const isMyPartCompleted = myPart ? !!myPart.is_completed : false
+    const isAssigneeView = tab !== 'assigned_by_me' && tab !== 'watching'
     const effectiveStatus = task.display_status || task.status
-    if (statusFilter === 'completed') return effectiveStatus === TASK_STATUS.completed
+
+    if (statusFilter === 'completed') {
+      if ([TASK_STATUS.completed, TASK_STATUS.rejected].includes(effectiveStatus)) return true
+      if (isAssigneeView && isMyPartCompleted) return true
+      return false
+    }
     if (statusFilter === 'deleted') return !!task.deleted_at || effectiveStatus === TASK_STATUS.softDeleted
-    return [TASK_STATUS.open, TASK_STATUS.inProgress, TASK_STATUS.pendingApproval, TASK_STATUS.pendingCompletionApproval, TASK_STATUS.notCompleted, 'overdue', TASK_STATUS.rejected].includes(effectiveStatus)
+    
+    if (isAssigneeView && isMyPartCompleted) return false
+
+    return [TASK_STATUS.open, TASK_STATUS.inProgress, TASK_STATUS.pendingApproval, TASK_STATUS.pendingCompletionApproval, TASK_STATUS.notCompleted, 'overdue'].includes(effectiveStatus)
       && !task.deleted_at
   })
 
@@ -476,7 +490,28 @@ export async function appendChatMessage(taskId, senderId, body, file = null) {
     if (attachmentResult.error) return attachmentResult
   }
 
+  // Trigger notification to other participants
+  const context = await loadTaskContext()
+  const sender = context.employeesById.get(String(senderId))
+  const commenterName = sender ? `${sender.firstName} ${sender.lastName}` : ''
+  notifyTaskCommentAdded(taskId, detail.data.title, senderId, commenterName).catch(() => {})
+
   return insertResult
+}
+
+async function triggerStatusChangeNotification(taskId, newStatus, actorId) {
+  try {
+    const [taskRes, context] = await Promise.all([
+      db.from('tasks').select('title').eq('id', taskId).maybeSingle(),
+      loadTaskContext()
+    ])
+    if (taskRes.error || !taskRes.data) return
+    const employee = context.employeesById.get(String(actorId))
+    const actorName = employee ? `${employee.firstName} ${employee.lastName}` : ''
+    await notifyTaskStatusChanged(taskId, taskRes.data.title, newStatus, actorId, actorName)
+  } catch (err) {
+    console.error('Failed to trigger status change notification:', err)
+  }
 }
 
 export async function acceptAssignment(taskId, approvalId, personnelId) {
@@ -487,6 +522,7 @@ export async function acceptAssignment(taskId, approvalId, personnelId) {
   if (approvalUpdate.error) return approvalUpdate
   if (taskUpdate.error) return taskUpdate
   await appendSystemNote(taskId, 'accepted', personnelId, { body: 'Gorev kabul edildi.' })
+  triggerStatusChangeNotification(taskId, TASK_STATUS.open, personnelId).catch(() => {})
   return taskUpdate
 }
 
@@ -498,12 +534,16 @@ export async function rejectAssignment(taskId, approvalId, personnelId, reason) 
   if (approvalUpdate.error) return approvalUpdate
   if (taskUpdate.error) return taskUpdate
   await appendSystemNote(taskId, 'rejected', personnelId, { body: `Gorev geri gonderildi: ${reason}`, reason })
+  triggerStatusChangeNotification(taskId, TASK_STATUS.rejected, personnelId).catch(() => {})
   return taskUpdate
 }
 
 export async function acceptTask(taskId, personnelId) {
   const result = await db.from('tasks').update({ status: TASK_STATUS.inProgress, updated_at: nowIso() }).eq('id', taskId).select().maybeSingle()
-  if (!result.error) await appendSystemNote(taskId, 'started', personnelId, { body: 'Goreve baslandi.' })
+  if (!result.error) {
+    await appendSystemNote(taskId, 'started', personnelId, { body: 'Goreve baslandi.' })
+    triggerStatusChangeNotification(taskId, TASK_STATUS.inProgress, personnelId).catch(() => {})
+  }
   return result
 }
 
@@ -520,25 +560,79 @@ export async function sendBack(taskId, personnelId, reason) {
   }).select().maybeSingle()
   if (approvalInsert.error) return approvalInsert
   const taskUpdate = await db.from('tasks').update({ status: TASK_STATUS.rejected, updated_at: nowIso() }).eq('id', taskId).select().maybeSingle()
-  if (!taskUpdate.error) await appendSystemNote(taskId, 'sent_back', personnelId, { body: `Gorev geri gonderildi: ${reason}`, reason })
+  if (!taskUpdate.error) {
+    await appendSystemNote(taskId, 'sent_back', personnelId, { body: `Gorev geri gonderildi: ${reason}`, reason })
+    triggerStatusChangeNotification(taskId, TASK_STATUS.rejected, personnelId).catch(() => {})
+  }
   return taskUpdate
 }
 
 export async function delegateTask(taskId, fromPersonnelId, toEmployee, positions) {
-  const approvalInsert = await db.from('task_approval_requests').insert({
-    task_id: taskId,
-    request_type: 'delegation',
-    from_personnel: fromPersonnelId,
-    to_personnel: toEmployee.id,
-  }).select().maybeSingle()
-  if (approvalInsert.error) return approvalInsert
-  await appendSystemNote(taskId, 'delegated', fromPersonnelId, {
-    body: canReject(positions.actorPositionId, toEmployee.positionId, positions.all)
-      ? 'Delege talebi onay bekliyor.'
-      : 'Delege talebi olusturuldu.',
-    to_personnel: toEmployee.id,
-  })
-  return approvalInsert
+  const taskResult = await db.from('tasks').select('*').eq('id', taskId).maybeSingle()
+  if (taskResult.error) return taskResult
+  const task = taskResult.data
+
+  const isFormTask = !!task.form_template_id
+  const requiresApproval = !isFormTask && canReject(positions.actorPositionId, toEmployee.positionId, positions.all)
+
+  if (requiresApproval) {
+    const approvalInsert = await db.from('task_approval_requests').insert({
+      task_id: taskId,
+      request_type: 'delegation',
+      from_personnel: fromPersonnelId,
+      to_personnel: toEmployee.id,
+    }).select().maybeSingle()
+    if (approvalInsert.error) return approvalInsert
+    await appendSystemNote(taskId, 'delegated', fromPersonnelId, {
+      body: 'Delege talebi onay bekliyor.',
+      to_personnel: toEmployee.id,
+    })
+    return approvalInsert
+  } else {
+    // Immediate delegation!
+    const approvalInsert = await db.from('task_approval_requests').insert({
+      task_id: taskId,
+      request_type: 'delegation',
+      from_personnel: fromPersonnelId,
+      to_personnel: toEmployee.id,
+      status: 'accepted',
+      resolved_at: nowIso(),
+    }).select().maybeSingle()
+    if (approvalInsert.error) return approvalInsert
+
+    // Update delegator participant record to watcher
+    const participantUpdate = await db.from('task_participants')
+      .update({ participant_type: 'watcher', is_delegate: true })
+      .eq('task_id', taskId)
+      .eq('personnel_id', fromPersonnelId)
+      .select()
+    if (participantUpdate.error) return participantUpdate
+
+    // Insert new assignee participant record
+    const newAssignee = await db.from('task_participants').insert({
+      task_id: taskId,
+      participant_type: 'assignee',
+      personnel_id: toEmployee.id,
+      position_id: toEmployee.positionId || null,
+      node_id: toEmployee.defaultBranchId || null,
+      is_delegate: true,
+      delegated_from: fromPersonnelId,
+    }).select().maybeSingle()
+    if (newAssignee.error) return newAssignee
+
+    await appendSystemNote(taskId, 'delegate_accepted', fromPersonnelId, {
+      body: `Görev ${toEmployee.firstName} ${toEmployee.lastName} personeline delege edildi.`,
+      to_personnel: toEmployee.id,
+    })
+
+    // Notify the new assignee
+    const context = await loadTaskContext()
+    const delegator = context.employeesById.get(String(fromPersonnelId))
+    const delegatorName = delegator ? `${delegator.firstName} ${delegator.lastName}` : 'Görev sorumlusu'
+    notifyTaskAssigned(toEmployee.id, task.title, taskId, delegatorName).catch(() => {})
+
+    return approvalInsert
+  }
 }
 
 export async function acceptDelegate(approvalId, personnelId) {
@@ -562,6 +656,7 @@ export async function acceptDelegate(approvalId, personnelId) {
 
   await db.from('task_approval_requests').update({ status: 'accepted', resolved_at: nowIso() }).eq('id', approvalId)
   await appendSystemNote(approval.data.task_id, 'delegate_accepted', personnelId, { body: 'Delege talebi kabul edildi.' })
+  triggerStatusChangeNotification(approval.data.task_id, 'delegate_accepted', personnelId).catch(() => {})
   return newAssignee
 }
 
@@ -569,7 +664,10 @@ export async function rejectDelegate(approvalId, personnelId, reason) {
   const approval = await db.from('task_approval_requests').select('*').eq('id', approvalId).maybeSingle()
   if (approval.error) return approval
   const update = await db.from('task_approval_requests').update({ status: 'rejected', reason, resolved_at: nowIso() }).eq('id', approvalId).select().maybeSingle()
-  if (!update.error) await appendSystemNote(approval.data.task_id, 'delegate_rejected', personnelId, { body: `Delege talebi reddedildi: ${reason}`, reason })
+  if (!update.error) {
+    await appendSystemNote(approval.data.task_id, 'delegate_rejected', personnelId, { body: `Delege talebi reddedildi: ${reason}`, reason })
+    triggerStatusChangeNotification(approval.data.task_id, 'delegate_rejected', personnelId).catch(() => {})
+  }
   return update
 }
 
@@ -603,27 +701,61 @@ export async function completeTask(taskId, personnelId, closure) {
     if (attachmentInsert.error) return attachmentInsert
   }
 
-  if (task.approval_required) {
-    await db.from('task_approval_requests').insert({
-      task_id: taskId,
-      request_type: 'closure_approval',
-      from_personnel: personnelId,
-      to_personnel: task.created_by_personnel_id,
-    })
-  }
+  // Update individual assignee participant status
+  const participantUpdate = await db.from('task_participants')
+    .update({ is_completed: true })
+    .eq('task_id', taskId)
+    .eq('personnel_id', personnelId)
+    .eq('participant_type', 'assignee')
+    .select()
+  if (participantUpdate.error) return participantUpdate
 
-  const status = task.approval_required ? TASK_STATUS.pendingCompletionApproval : TASK_STATUS.completed
-  const update = await db.from('tasks').update({
-    status,
-    closure_summary: closureSummary || null,
-    updated_at: nowIso(),
-  }).eq('id', taskId).select().maybeSingle()
-  if (!update.error) {
-    await appendSystemNote(taskId, task.approval_required ? 'pending_completion_approval' : 'completed', personnelId, {
-      body: task.approval_required ? 'Gorev kapanis onayina gonderildi.' : 'Gorev tamamlandi.',
+  const allAssignees = (task.participants || []).filter(item => item.participant_type === 'assignee')
+  const remainingIncomplete = allAssignees.filter(item => {
+    const isSelf = String(item.personnel_id) === String(personnelId)
+    return isSelf ? false : !item.is_completed
+  })
+
+  const context = await loadTaskContext()
+  const employee = context.employeesById.get(String(personnelId))
+  const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : 'Bir personel'
+
+  if (remainingIncomplete.length > 0) {
+    // There are still other incomplete assignees. Do not mark task completed overall.
+    await appendSystemNote(taskId, 'completed_part', personnelId, {
+      body: `${employeeName} görevini tamamladı. Özet: ${closureSummary || 'Özet girilmedi'}`,
+      closure_summary: closureSummary || null,
     })
+    const update = await db.from('tasks').update({
+      updated_at: nowIso(),
+    }).eq('id', taskId).select().maybeSingle()
+    return update
+  } else {
+    // Last assignee completed! Mark task completed / pending completion approval.
+    if (task.approval_required) {
+      await db.from('task_approval_requests').insert({
+        task_id: taskId,
+        request_type: 'closure_approval',
+        from_personnel: personnelId,
+        to_personnel: task.created_by_personnel_id,
+      })
+    }
+
+    const status = task.approval_required ? TASK_STATUS.pendingCompletionApproval : TASK_STATUS.completed
+    const update = await db.from('tasks').update({
+      status,
+      closure_summary: closureSummary || null,
+      updated_at: nowIso(),
+    }).eq('id', taskId).select().maybeSingle()
+    if (!update.error) {
+      await appendSystemNote(taskId, task.approval_required ? 'pending_completion_approval' : 'completed', personnelId, {
+        body: `${employeeName} görevini tamamladı. Tüm atananlar görevlerini tamamladığı için görev ${task.approval_required ? 'kapanış onayına gönderildi' : 'tamamlandı'}.`,
+        closure_summary: closureSummary || null,
+      })
+      triggerStatusChangeNotification(taskId, status, personnelId).catch(() => {})
+    }
+    return update
   }
-  return update
 }
 
 export async function approveCompletion(approvalId, personnelId) {
@@ -631,7 +763,10 @@ export async function approveCompletion(approvalId, personnelId) {
   if (approval.error) return approval
   await db.from('task_approval_requests').update({ status: 'accepted', resolved_at: nowIso() }).eq('id', approvalId)
   const taskUpdate = await db.from('tasks').update({ status: TASK_STATUS.completed, updated_at: nowIso() }).eq('id', approval.data.task_id).select().maybeSingle()
-  if (!taskUpdate.error) await appendSystemNote(approval.data.task_id, 'approved', personnelId, { body: 'Kapanis onaylandi.' })
+  if (!taskUpdate.error) {
+    await appendSystemNote(approval.data.task_id, 'approved', personnelId, { body: 'Kapanis onaylandi.' })
+    triggerStatusChangeNotification(approval.data.task_id, TASK_STATUS.completed, personnelId).catch(() => {})
+  }
   return taskUpdate
 }
 
@@ -640,7 +775,10 @@ export async function rejectCompletion(approvalId, personnelId, reason) {
   if (approval.error) return approval
   await db.from('task_approval_requests').update({ status: 'rejected', reason, resolved_at: nowIso() }).eq('id', approvalId)
   const taskUpdate = await db.from('tasks').update({ status: TASK_STATUS.inProgress, updated_at: nowIso() }).eq('id', approval.data.task_id).select().maybeSingle()
-  if (!taskUpdate.error) await appendSystemNote(approval.data.task_id, 'approval_rejected', personnelId, { body: `Kapanis iade edildi: ${reason}`, reason })
+  if (!taskUpdate.error) {
+    await appendSystemNote(approval.data.task_id, 'approval_rejected', personnelId, { body: `Kapanis iade edildi: ${reason}`, reason })
+    triggerStatusChangeNotification(approval.data.task_id, TASK_STATUS.inProgress, personnelId).catch(() => {})
+  }
   return taskUpdate
 }
 
@@ -655,7 +793,10 @@ export async function softDeleteTask(taskId, personnelId) {
     status: TASK_STATUS.softDeleted,
     updated_at: nowIso(),
   }).eq('id', taskId).select().maybeSingle()
-  if (!update.error) await appendSystemNote(taskId, 'soft_deleted', personnelId, { body: 'Gorev pasife alindi.' })
+  if (!update.error) {
+    await appendSystemNote(taskId, 'soft_deleted', personnelId, { body: 'Gorev pasife alindi.' })
+    triggerStatusChangeNotification(taskId, TASK_STATUS.softDeleted, personnelId).catch(() => {})
+  }
   return update
 }
 
@@ -665,7 +806,10 @@ export async function restoreTask(taskId, personnelId) {
     status: TASK_STATUS.open,
     updated_at: nowIso(),
   }).eq('id', taskId).select().maybeSingle()
-  if (!update.error) await appendSystemNote(taskId, 'restored', personnelId, { body: 'Gorev geri alindi.' })
+  if (!update.error) {
+    await appendSystemNote(taskId, 'restored', personnelId, { body: 'Gorev geri alindi.' })
+    triggerStatusChangeNotification(taskId, TASK_STATUS.open, personnelId).catch(() => {})
+  }
   return update
 }
 
@@ -693,6 +837,7 @@ export async function changeDueDate(taskId, personnelId, { dueAt, startAt }) {
       old_start_at: task.start_at,
       new_start_at: updatePayload.start_at || task.start_at,
     })
+    triggerStatusChangeNotification(taskId, 'date_changed', personnelId).catch(() => {})
   }
   return update
 }

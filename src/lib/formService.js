@@ -424,7 +424,7 @@ function calcFieldScore(field, value) {
 }
 
 async function createTaskFromInspection(template, submission, answersJson, meta) {
-  if (!meta?.branch_authorized_id) return null // Atanacak kişi yok — görev oluşturma
+  if (!meta?.branch_authorized_id && !meta?.shift_officer_id) return null // Atanacak kişi yok — görev oluşturma
 
   const formDate = meta.form_date
     ? new Date(meta.form_date).toLocaleDateString('tr-TR')
@@ -505,36 +505,46 @@ async function createTaskFromInspection(template, submission, answersJson, meta)
 
   // ── 2) Katılımcılar (doğrudan DB insert — employee lookup yok) ──
   const participantRows = []
+  const addedIds = new Set()
 
   // Assignee: Şube yetkilisi
-  participantRows.push({
-    task_id: task.id,
-    participant_type: 'assignee',
-    personnel_id: meta.branch_authorized_id,
-    position_id: null,
-    node_id: branchNodeId || null,
-  })
-
-  // Collaborators: Vardiya sorumlusu
-  for (const collabId of collaboratorIds) {
+  if (meta.branch_authorized_id) {
     participantRows.push({
       task_id: task.id,
       participant_type: 'assignee',
-      personnel_id: collabId,
+      personnel_id: meta.branch_authorized_id,
       position_id: null,
       node_id: branchNodeId || null,
     })
+    addedIds.add(String(meta.branch_authorized_id))
+  }
+
+  // Collaborators: Vardiya sorumlusu
+  for (const collabId of collaboratorIds) {
+    if (!addedIds.has(String(collabId))) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'assignee',
+        personnel_id: collabId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+      addedIds.add(String(collabId))
+    }
   }
 
   // Watchers: Gözlemciler
   for (const watcherId of observerIds) {
-    participantRows.push({
-      task_id: task.id,
-      participant_type: 'watcher',
-      personnel_id: watcherId,
-      position_id: null,
-      node_id: branchNodeId || null,
-    })
+    if (!addedIds.has(String(watcherId))) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'watcher',
+        personnel_id: watcherId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+      addedIds.add(String(watcherId))
+    }
   }
 
   if (participantRows.length) {
@@ -662,15 +672,34 @@ async function createTaskFromNotification(template, submission, answersJson, met
     console.error('[Notification→Task] Error reading employees:', err)
   }
 
+  const worksAtBranch = (emp, branchId) => {
+    if (!branchId) return true
+    const bid = String(branchId)
+    const defaultBranch = String(emp.defaultBranchId || '')
+    const workingBranches = Array.isArray(emp.workingBranchIds) ? emp.workingBranchIds.map(String) : []
+    const managedBranches = Array.isArray(emp.managedBranchIds) ? emp.managedBranchIds.map(String) : []
+    return defaultBranch === bid || workingBranches.includes(bid) || managedBranches.includes(bid)
+  }
+
   const assigneeIds = new Set()
   const collaboratorIds = new Set()
   const watcherIds = new Set()
+
+  // Auto collaborator: Vardiya Sorumlusu (Şube Yetkilisi)
+  if (meta && meta.shift_officer_id) {
+    collaboratorIds.add(String(meta.shift_officer_id))
+  }
 
   // Assignee: Birincil Sorumlu
   if (taskConfig.assignee) {
     const posIds = taskConfig.assignee.positions || []
     posIds.forEach(posId => {
-      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      const empsInPosition = allEmployees.filter(e => 
+        String(e.positionId) === String(posId) && 
+        !e.deletedAt && 
+        !e.terminationDate &&
+        worksAtBranch(e, branchNodeId)
+      )
       empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
     })
     const persIds = taskConfig.assignee.personnel || []
@@ -684,7 +713,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
         ids.forEach(id => assigneeIds.add(String(id)))
       } else if (type === 'position') {
         ids.forEach(posId => {
-          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          const empsInPosition = allEmployees.filter(e => 
+            String(e.positionId) === String(posId) && 
+            !e.deletedAt && 
+            !e.terminationDate &&
+            worksAtBranch(e, branchNodeId)
+          )
           empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
         })
       }
@@ -695,7 +729,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
   if (taskConfig.collaborators) {
     const posIds = taskConfig.collaborators.positions || []
     posIds.forEach(posId => {
-      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      const empsInPosition = allEmployees.filter(e => 
+        String(e.positionId) === String(posId) && 
+        !e.deletedAt && 
+        !e.terminationDate &&
+        worksAtBranch(e, branchNodeId)
+      )
       empsInPosition.forEach(e => collaboratorIds.add(String(e.id)))
     })
     const persIds = taskConfig.collaborators.personnel || []
@@ -709,7 +748,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
         ids.forEach(id => collaboratorIds.add(String(id)))
       } else if (type === 'position') {
         ids.forEach(posId => {
-          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          const empsInPosition = allEmployees.filter(e => 
+            String(e.positionId) === String(posId) && 
+            !e.deletedAt && 
+            !e.terminationDate &&
+            worksAtBranch(e, branchNodeId)
+          )
           empsInPosition.forEach(e => collaboratorIds.add(String(e.id)))
         })
       }
@@ -720,7 +764,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
   if (taskConfig.watchers) {
     const posIds = taskConfig.watchers.positions || []
     posIds.forEach(posId => {
-      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      const empsInPosition = allEmployees.filter(e => 
+        String(e.positionId) === String(posId) && 
+        !e.deletedAt && 
+        !e.terminationDate &&
+        worksAtBranch(e, branchNodeId)
+      )
       empsInPosition.forEach(e => watcherIds.add(String(e.id)))
     })
     const persIds = taskConfig.watchers.personnel || []
@@ -743,7 +792,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
         ids.forEach(id => watcherIds.add(String(id)))
       } else if (type === 'position') {
         ids.forEach(posId => {
-          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          const empsInPosition = allEmployees.filter(e => 
+            String(e.positionId) === String(posId) && 
+            !e.deletedAt && 
+            !e.terminationDate &&
+            worksAtBranch(e, branchNodeId)
+          )
           empsInPosition.forEach(e => watcherIds.add(String(e.id)))
         })
       } else if (type === 'responsibles') {
@@ -764,7 +818,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
       if (target.type === 'personnel') {
         assigneeIds.add(String(target.id))
       } else if (target.type === 'position') {
-        const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(target.id) && !e.deletedAt && !e.terminationDate)
+        const empsInPosition = allEmployees.filter(e => 
+          String(e.positionId) === String(target.id) && 
+          !e.deletedAt && 
+          !e.terminationDate &&
+          worksAtBranch(e, branchNodeId)
+        )
         empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
       }
     }

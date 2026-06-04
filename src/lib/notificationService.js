@@ -162,3 +162,92 @@ export async function getUnreadCount(personnelId) {
 
   return { count: data ? data.length : 0, error }
 }
+
+/**
+ * Görev durumu değişim bildirimi gönderir.
+ */
+export async function notifyTaskStatusChanged(taskId, taskTitle, newStatus, actorId, actorName = '') {
+  const [participantsResult, taskResult] = await Promise.all([
+    db.from('task_participants').select('personnel_id').eq('task_id', taskId),
+    db.from('tasks').select('created_by_personnel_id').eq('id', taskId).maybeSingle(),
+  ])
+
+  const recipientIds = new Set()
+  if (taskResult.data?.created_by_personnel_id) {
+    recipientIds.add(String(taskResult.data.created_by_personnel_id))
+  }
+  if (participantsResult.data) {
+    participantsResult.data.forEach(p => recipientIds.add(String(p.personnel_id)))
+  }
+
+  recipientIds.delete(String(actorId))
+
+  if (recipientIds.size === 0) return { data: null, error: null }
+
+  const statusLabels = {
+    open: 'Yeni / Açık',
+    in_progress: 'Devam Ediyor',
+    pending_approval: 'Atama Onayı Bekliyor',
+    pending_completion_approval: 'Kapanış Onayı Bekliyor',
+    completed: 'Tamamlandı',
+    rejected: 'Reddedildi',
+    cancelled: 'İptal Edildi',
+    soft_deleted: 'Pasife Alındı',
+    not_completed: 'Tamamlanmadı',
+  }
+
+  const statusLabel = statusLabels[newStatus] || newStatus
+
+  const rows = [...recipientIds].map(id => ({
+    recipient_id: id,
+    type: 'task_status_changed',
+    title: 'Görev Durumu Güncellendi',
+    body: actorName
+      ? `"${taskTitle}" görevinin durumu ${actorName} tarafından "${statusLabel}" olarak güncellendi.`
+      : `"${taskTitle}" görevinin durumu "${statusLabel}" olarak güncellendi.`,
+    reference_type: 'task',
+    reference_id: taskId,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  }))
+
+  return db.from('notifications').insert(rows)
+}
+
+/**
+ * Görev chat'ine veya notlarına yeni bir girdi eklendiğinde bildirim gönderir.
+ */
+export async function notifyTaskCommentAdded(taskId, taskTitle, senderId, commenterName = '') {
+  const [participantsResult, taskResult] = await Promise.all([
+    db.from('task_participants').select('personnel_id').eq('task_id', taskId),
+    db.from('tasks').select('created_by_personnel_id').eq('id', taskId).maybeSingle(),
+  ])
+
+  const recipientIds = new Set()
+  if (taskResult.data?.created_by_personnel_id) {
+    recipientIds.add(String(taskResult.data.created_by_personnel_id))
+  }
+  if (participantsResult.data) {
+    participantsResult.data.forEach(p => recipientIds.add(String(p.personnel_id)))
+  }
+
+  recipientIds.delete(String(senderId))
+
+  if (recipientIds.size === 0) return { data: null, error: null }
+
+  const rows = [...recipientIds].map(id => ({
+    recipient_id: id,
+    type: 'task_comment',
+    title: 'Görev Mesajı / Notu',
+    body: commenterName
+      ? `${commenterName}, "${taskTitle}" görevine yeni bir not ekledi.`
+      : `"${taskTitle}" görevine yeni bir not eklendi.`,
+    reference_type: 'task',
+    reference_id: taskId,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  }))
+
+  return db.from('notifications').insert(rows)
+}
+
