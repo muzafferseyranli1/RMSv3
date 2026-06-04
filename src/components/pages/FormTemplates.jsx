@@ -17,6 +17,11 @@ const FIELD_TYPES = [
   { value: 'text', label: 'Metin', icon: 'fa-font' },
   { value: 'select', label: 'Seçenekler', icon: 'fa-list' },
   { value: 'photo', label: 'Fotoğraf', icon: 'fa-camera' },
+  { value: 'stock_item_select', label: 'Stok Malı Seçimi', icon: 'fa-box' },
+  { value: 'sale_item_select', label: 'Satış Malı Seçimi', icon: 'fa-cart-shopping' },
+  { value: 'semi_product_select', label: 'Yarı Mamul Seçimi', icon: 'fa-cubes' },
+  { value: 'branch_select', label: 'Şube Seçimi', icon: 'fa-store' },
+  { value: 'date', label: 'Tarih Seçimi', icon: 'fa-calendar' },
 ]
 
 const FORM_TYPES = [
@@ -55,6 +60,135 @@ const EMPTY_SECTION = () => ({
   title: 'Yeni Bölüm',
   fields: [EMPTY_FIELD()],
 })
+
+const TargetSelector = ({ title, description, value, onChange, positions, personnelList }) => {
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const safePositions = value?.positions || []
+  const safePersonnel = value?.personnel || []
+
+  const handleTogglePosition = (id) => {
+    const list = [...safePositions]
+    const idx = list.indexOf(id)
+    if (idx > -1) list.splice(idx, 1)
+    else list.push(id)
+    onChange({ ...value, positions: list })
+  }
+
+  const handleTogglePersonnel = (id) => {
+    const list = [...safePersonnel]
+    const idx = list.indexOf(id)
+    if (idx > -1) list.splice(idx, 1)
+    else list.push(id)
+    onChange({ ...value, personnel: list })
+  }
+
+  const filteredPos = positions.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
+  const filteredEmp = personnelList.filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <label className="f-label">{title}</label>
+      {description && <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '0 0 4px 0', lineHeight: 1.3 }}>{description}</p>}
+      
+      <div ref={dropdownRef} style={{ position: 'relative' }}>
+        <div 
+          onClick={() => setDropdownOpen(true)}
+          style={{ 
+            minHeight: 40, border: '1px solid var(--border)', borderRadius: 8, padding: '5px 8px',
+            display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: 'var(--surface)',
+            cursor: 'text'
+          }}
+        >
+          {safePositions.length === 0 && safePersonnel.length === 0 && (
+            <span style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Pozisyon veya kişi seçin...</span>
+          )}
+          {safePositions.map(posId => {
+            const pos = positions.find(p => p.id === posId)
+            if (!pos) return null
+            return (
+              <span key={`pos-${posId}`} style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 12, fontSize: '.74rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <i className="fa-solid fa-briefcase" style={{ fontSize: '.65rem' }} />
+                {pos.name}
+                <i className="fa-solid fa-xmark" style={{ cursor: 'pointer', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); handleTogglePosition(posId) }} />
+              </span>
+            )
+          })}
+          {safePersonnel.map(empId => {
+            const emp = personnelList.find(e => e.id === empId)
+            if (!emp) return null
+            return (
+              <span key={`emp-${empId}`} style={{ background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: 12, fontSize: '.74rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <i className="fa-solid fa-user" style={{ fontSize: '.65rem' }} />
+                {emp.firstName} {emp.lastName}
+                <i className="fa-solid fa-xmark" style={{ cursor: 'pointer', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); handleTogglePersonnel(empId) }} />
+              </span>
+            )
+          })}
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); if (!dropdownOpen) setDropdownOpen(true) }}
+            onFocus={() => setDropdownOpen(true)}
+            placeholder=""
+            style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1, minWidth: 60, fontSize: '.8rem', color: 'var(--text-strong)' }}
+          />
+        </div>
+
+        {dropdownOpen && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto', zIndex: 1000 }}>
+            <div style={{ padding: 6 }}>
+              {filteredPos.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Pozisyonlar</div>}
+              {filteredPos.map(pos => {
+                const isSelected = safePositions.includes(pos.id)
+                return (
+                  <div 
+                    key={pos.id} 
+                    onClick={() => handleTogglePosition(pos.id)}
+                    style={{ padding: '6px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? 'rgba(99,102,241,0.05)' : 'transparent', transition: 'background 0.15s', fontSize: '.78rem' }}
+                  >
+                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
+                    <span style={{ color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{pos.name}</span>
+                  </div>
+                )
+              })}
+              
+              {filteredEmp.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', marginTop: 4, textTransform: 'uppercase', letterSpacing: '.05em', borderTop: '1px solid var(--border)' }}>Personeller</div>}
+              {filteredEmp.map(emp => {
+                const isSelected = safePersonnel.includes(emp.id)
+                return (
+                  <div 
+                    key={emp.id} 
+                    onClick={() => handleTogglePersonnel(emp.id)}
+                    style={{ padding: '6px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? 'rgba(16,185,129,0.05)' : 'transparent', transition: 'background 0.15s', fontSize: '.78rem' }}
+                  >
+                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
+                    <span style={{ color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{emp.firstName} {emp.lastName}</span>
+                  </div>
+                )
+              })}
+
+              {filteredPos.length === 0 && filteredEmp.length === 0 && (
+                <div style={{ padding: 12, textAlign: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function FormTemplates() {
   const [templates, setTemplates] = useState([])
@@ -114,7 +248,18 @@ export default function FormTemplates() {
       scoring: { pass_threshold: 70 },
       allowed_contexts: ['center', 'branch', 'warehouse'],
     })
-    setSchemaJson({ sections: [EMPTY_SECTION()], task_config: { targets: [], rules: {} } })
+    setSchemaJson({ 
+      sections: [EMPTY_SECTION()], 
+      task_config: { 
+        enabled: false,
+        assignee: { positions: [], personnel: [] },
+        collaborators: { positions: [], personnel: [] },
+        watchers: { positions: [], personnel: [], responsibles: false },
+        completion_hours: 72,
+        priority: 'normal',
+        rules: {} 
+      } 
+    })
   }
 
   const startEdit = (template) => {
@@ -131,7 +276,50 @@ export default function FormTemplates() {
     
     // Normalize max_points for select fields to be the sum of option points
     const schema = template.schema_json ? JSON.parse(JSON.stringify(template.schema_json)) : { sections: [EMPTY_SECTION()] }
-    if (!schema.task_config) schema.task_config = { targets: [], rules: {} }
+    if (!schema.task_config) {
+      schema.task_config = { 
+        enabled: false,
+        assignee: { positions: [], personnel: [] },
+        collaborators: { positions: [], personnel: [] },
+        watchers: { positions: [], personnel: [], responsibles: false },
+        completion_hours: 72,
+        priority: 'normal',
+        rules: {} 
+      }
+    } else {
+      // Normalize legacy target and properties structures to structured structures
+      if (schema.task_config.enabled === undefined) {
+        schema.task_config.enabled = false
+      }
+      if (!schema.task_config.assignee) {
+        schema.task_config.assignee = { positions: [], personnel: [] }
+      } else {
+        if (!schema.task_config.assignee.positions) schema.task_config.assignee.positions = []
+        if (!schema.task_config.assignee.personnel) schema.task_config.assignee.personnel = []
+      }
+      if (!schema.task_config.collaborators) {
+        schema.task_config.collaborators = { positions: [], personnel: [] }
+      } else {
+        if (!schema.task_config.collaborators.positions) schema.task_config.collaborators.positions = []
+        if (!schema.task_config.collaborators.personnel) schema.task_config.collaborators.personnel = []
+      }
+      if (!schema.task_config.watchers) {
+        schema.task_config.watchers = { positions: [], personnel: [], responsibles: false }
+      } else {
+        if (!schema.task_config.watchers.positions) schema.task_config.watchers.positions = []
+        if (!schema.task_config.watchers.personnel) schema.task_config.watchers.personnel = []
+        if (schema.task_config.watchers.responsibles === undefined) schema.task_config.watchers.responsibles = false
+      }
+      if (schema.task_config.completion_hours === undefined) {
+        schema.task_config.completion_hours = 72
+      }
+      if (schema.task_config.priority === undefined) {
+        schema.task_config.priority = 'normal'
+      }
+      if (!schema.task_config.rules) {
+        schema.task_config.rules = {}
+      }
+    }
     
     if (schema.sections) {
       schema.sections = schema.sections.map(sec => ({
@@ -407,7 +595,7 @@ export default function FormTemplates() {
               style={{ resize: 'vertical' }}
             />
           </div>
-          {editing.form_type !== 'checklist' && editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && editing.form_type !== 'notification_form' && (
+          {editing.form_type === 'inspection' && (
           <div>
             <label className="f-label">Geçiş Eşiği (%)</label>
             <input
@@ -471,133 +659,145 @@ export default function FormTemplates() {
             </div>
           </div>
 
-          {editing.form_type === 'notification_form' && (
+          <div style={{ gridColumn: '1 / -1', marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.9rem', fontWeight: 700, color: 'var(--text-strong)', cursor: 'pointer' }}>
+              <input 
+                type="checkbox"
+                checked={!!schemaJson.task_config?.enabled}
+                onChange={e => {
+                  const val = e.target.checked
+                  setSchemaJson(prev => {
+                    const task_config = prev.task_config || {}
+                    return {
+                      ...prev,
+                      task_config: {
+                        ...task_config,
+                        enabled: val,
+                        assignee: task_config.assignee || { positions: [], personnel: [] },
+                        collaborators: task_config.collaborators || { positions: [], personnel: [] },
+                        watchers: task_config.watchers || { positions: [], personnel: [], responsibles: false },
+                        completion_hours: task_config.completion_hours || 72,
+                        priority: task_config.priority || 'normal',
+                        rules: task_config.rules || {}
+                      }
+                    }
+                  })
+                }}
+                style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#8b5cf6' }}
+              />
+              <span>Form Gönderildiğinde Otomatik Görev Oluştur</span>
+            </label>
+          </div>
+
+          {schemaJson.task_config?.enabled && (
             <div style={{ gridColumn: '1 / -1', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 12, color: 'var(--text-strong)' }}>
                 <i className="fa-solid fa-bullseye" style={{ marginRight: 8, color: '#3b82f6' }} />
-                Bildirim Hedefleri ve Görev Kuralları
+                Görev Kuralları ve Katılımcılar
               </h3>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                {/* Hedefler */}
-                <div>
-                  <label className="f-label">Hedef Pozisyonlar / Kişiler</label>
-                  <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
-                    Form gönderildiğinde oluşturulacak görev bu hedeflere atanacaktır.
-                  </p>
-                  
-                  <div ref={targetDropdownRef} style={{ position: 'relative' }}>
-                    <div 
-                      onClick={() => setTargetDropdownOpen(true)}
-                      style={{ 
-                        minHeight: 42, border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px',
-                        display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: 'var(--surface)',
-                        cursor: 'text'
-                      }}
-                    >
-                      {(schemaJson.task_config?.targets || []).map((tgt, idx) => {
-                        let label = ''
-                        if (tgt.type === 'position') label = positions.find(p => p.id === tgt.id)?.name || 'Pozisyon'
-                        if (tgt.type === 'personnel') {
-                          const emp = personnelList.find(e => e.id === tgt.id)
-                          label = emp ? `${emp.firstName} ${emp.lastName}` : 'Personel'
-                        }
-                        return (
-                          <span key={idx} style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 12, fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {tgt.type === 'position' ? <i className="fa-solid fa-briefcase" style={{fontSize: '.65rem'}}/> : <i className="fa-solid fa-user" style={{fontSize: '.65rem'}}/>}
-                            {label}
-                            <i 
-                              className="fa-solid fa-xmark" 
-                              style={{ cursor: 'pointer', opacity: 0.6 }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const tgts = schemaJson.task_config?.targets || []
-                                const newTgts = tgts.filter(t => !(t.type === tgt.type && t.id === tgt.id))
-                                setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
-                              }}
-                            />
-                          </span>
-                        )
-                      })}
+                {/* Sol Taraf: Sorumlular ve Süre */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <TargetSelector
+                    title="Birincil Sorumlu (Atanan)"
+                    description="Form tamamlandığında oluşturulacak görev bu hedeflere atanacaktır."
+                    value={schemaJson.task_config?.assignee}
+                    onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
+                    positions={positions}
+                    personnelList={personnelList}
+                  />
+
+                  <TargetSelector
+                    title="Ek Sorumlular (İşbirlikçiler)"
+                    description="Görevi birlikte yürütecek ve tamamlayabilecek ek personel veya pozisyonlar."
+                    value={schemaJson.task_config?.collaborators}
+                    onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
+                    positions={positions}
+                    personnelList={personnelList}
+                  />
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <TargetSelector
+                      title="Gözlemciler (Takip Edenler)"
+                      description="Görevin durumunu izleyebilecek, ancak üzerinde işlem yapmayacak personel."
+                      value={schemaJson.task_config?.watchers}
+                      onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
+                      positions={positions}
+                      personnelList={personnelList}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
                       <input
-                        value={targetSearch}
+                        type="checkbox"
+                        checked={!!schemaJson.task_config?.watchers?.responsibles}
                         onChange={e => {
-                          setTargetSearch(e.target.value)
-                          if (!targetDropdownOpen) setTargetDropdownOpen(true)
+                          const val = e.target.checked
+                          setSchemaJson(p => {
+                            const task_config = p.task_config || {}
+                            const watchers = task_config.watchers || { positions: [], personnel: [], responsibles: false }
+                            return {
+                              ...p,
+                              task_config: {
+                                ...task_config,
+                                watchers: { ...watchers, responsibles: val }
+                              }
+                            }
+                          })
                         }}
-                        onFocus={() => setTargetDropdownOpen(true)}
-                        placeholder={(schemaJson.task_config?.targets || []).length === 0 ? "Pozisyon veya kişi ara..." : ""}
-                        style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1, minWidth: 120, fontSize: '.82rem' }}
+                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#8b5cf6' }}
                       />
-                    </div>
+                      <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Şube Sorumlularını Otomatik Gözlemci Ekle</span>
+                    </label>
+                  </div>
 
-                    {targetDropdownOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 280, overflowY: 'auto', zIndex: 1000 }}>
-                        {(() => {
-                          const query = targetSearch.toLowerCase()
-                          const filteredPos = positions.filter(p => p.name?.toLowerCase().includes(query))
-                          const filteredEmp = personnelList.filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(query))
-                          
-                          return (
-                            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {filteredPos.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '6px 8px 4px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Pozisyonlar</div>}
-                              {filteredPos.map(pos => {
-                                const isSelected = (schemaJson.task_config?.targets || []).some(t => t.type === 'position' && t.id === pos.id)
-                                return (
-                                  <div 
-                                    key={pos.id} 
-                                    onClick={() => {
-                                      const tgts = schemaJson.task_config?.targets || []
-                                      let newTgts = isSelected 
-                                        ? tgts.filter(t => !(t.type === 'position' && t.id === pos.id))
-                                        : [...tgts, { type: 'position', id: pos.id }]
-                                      setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
-                                    }}
-                                    style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? '#f1f5f9' : 'transparent', transition: 'background 0.15s' }}
-                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc' }}
-                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-                                  >
-                                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
-                                    <span style={{ fontSize: '.8rem', color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{pos.name}</span>
-                                  </div>
-                                )
-                              })}
-                              
-                              {filteredEmp.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '6px 8px 4px', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em', borderTop: '1px solid var(--border)' }}>Personeller</div>}
-                              {filteredEmp.map(emp => {
-                                const isSelected = (schemaJson.task_config?.targets || []).some(t => t.type === 'personnel' && t.id === emp.id)
-                                return (
-                                  <div 
-                                    key={emp.id} 
-                                    onClick={() => {
-                                      const tgts = schemaJson.task_config?.targets || []
-                                      let newTgts = isSelected 
-                                        ? tgts.filter(t => !(t.type === 'personnel' && t.id === emp.id))
-                                        : [...tgts, { type: 'personnel', id: emp.id }]
-                                      setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, targets: newTgts } }))
-                                    }}
-                                    style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: isSelected ? '#f1f5f9' : 'transparent', transition: 'background 0.15s' }}
-                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc' }}
-                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-                                  >
-                                    <input type="checkbox" checked={isSelected} readOnly style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} />
-                                    <span style={{ fontSize: '.8rem', color: isSelected ? 'var(--text-strong)' : 'var(--text-main)', fontWeight: isSelected ? 600 : 400 }}>{emp.firstName} {emp.lastName}</span>
-                                  </div>
-                                )
-                              })}
+                  <div>
+                    <label className="f-label">Görevin Tamamlanma Süresi (Saat)</label>
+                    <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                      Görevin açılışından itibaren kaç saat içinde tamamlanması gerektiğini belirtin.
+                    </p>
+                    <input
+                      type="number"
+                      className="f-input"
+                      value={schemaJson.task_config?.completion_hours || 72}
+                      onChange={e => {
+                        const val = Number(e.target.value) || 72
+                        setSchemaJson(p => ({
+                          ...p,
+                          task_config: { ...p.task_config, completion_hours: val }
+                        }))
+                      }}
+                      placeholder="72"
+                      min="1"
+                      style={{ width: '100%', padding: '8px 12px' }}
+                    />
+                  </div>
 
-                              {filteredPos.length === 0 && filteredEmp.length === 0 && (
-                                <div style={{ padding: 16, textAlign: 'center', fontSize: '.8rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
-                              )}
-                            </div>
-                          )
-                        })()}
-                      </div>
-                    )}
+                  <div>
+                    <label className="f-label">Görevin Önceliği</label>
+                    <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                      Oluşturulacak görevin öncelik derecesini seçin.
+                    </p>
+                    <select
+                      className="f-input"
+                      value={schemaJson.task_config?.priority || 'normal'}
+                      onChange={e => {
+                        const val = e.target.value
+                        setSchemaJson(p => ({
+                          ...p,
+                          task_config: { ...p.task_config, priority: val }
+                        }))
+                      }}
+                      style={{ width: '100%', padding: '8px 12px', height: 38 }}
+                    >
+                      <option value="low">Düşük</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">Yüksek</option>
+                      <option value="urgent">Kritik</option>
+                    </select>
                   </div>
                 </div>
 
-                {/* Kurallar */}
+                {/* Sağ Taraf: Kurallar */}
                 <div>
                   <label className="f-label">Görev Kuralları</label>
                   <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
@@ -711,7 +911,7 @@ export default function FormTemplates() {
                     </select>
                   </div>
                 </div>
-                {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
+                {editing.form_type === 'inspection' && (
                 <div style={{ width: 80 }}>
                   <input
                     type="number"
@@ -724,7 +924,7 @@ export default function FormTemplates() {
                   />
                 </div>
                 )}
-                {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
+                {editing.form_type === 'inspection' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 70, alignSelf: 'center', justifyContent: 'center' }}>
                   <input
                     type="checkbox"
@@ -771,14 +971,14 @@ export default function FormTemplates() {
               {field.type === 'select' && (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Seçenekler Listesi{editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' ? ' ve Puan Ağırlıkları' : ''}
+                    <i className="fa-solid fa-list" style={{ marginRight: 6 }} /> Seçenekler Listesi{editing.form_type === 'inspection' ? ' ve Puan Ağırlıkları' : ''}
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     {(field.options || []).map((opt, oIdx) => {
-                      const label = typeof opt === 'object' ? opt.label : opt
-                      const points = typeof opt === 'object' ? (opt.points ?? 0) : 0
-                      return (
+                       const label = typeof opt === 'object' ? opt.label : opt
+                       const points = typeof opt === 'object' ? (opt.points ?? 0) : 0
+                       return (
                         <div key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
                           <input
                             type="text"
@@ -791,7 +991,7 @@ export default function FormTemplates() {
                             placeholder={`Seçenek ${oIdx + 1}`}
                             style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.75rem', width: 90, color: 'var(--text-strong)' }}
                           />
-                          {editing.form_type !== 'checklist' && editing.form_type !== 'notification_form' && (
+                          {editing.form_type === 'inspection' && (
                             <>
                               <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>|</span>
                               <input

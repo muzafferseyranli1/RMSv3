@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchFormSubmissions, fetchFormSubmissionDetail, fetchFormTemplates, submitFormResponse, fetchTemplatesForBranch, attachFileToTask } from '@/lib/formService'
+import { fetchFormSubmissions, fetchFormSubmissionDetail, fetchFormTemplates, submitFormResponse, fetchTemplatesForBranch } from '@/lib/formService'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
@@ -15,6 +15,172 @@ const STATUS_MAP = {
   anomaly: { label: 'Anomali', color: '#ef4444', bg: 'rgba(239,68,68,.15)' },
 }
 
+const FORM_TYPE_MAP = {
+  inspection: { label: 'Denetim Formu', icon: 'fa-file-shield' },
+  checklist: { label: 'Checklist', icon: 'fa-list-check' },
+  customer_survey: { label: 'Müşteri Anketi', icon: 'fa-comments' },
+  personnel_survey: { label: 'Personel Anketi', icon: 'fa-users' },
+  notification_form: { label: 'Bildirim Formu', icon: 'fa-bell' },
+}
+
+const parseDynamicValue = (val) => {
+  if (Array.isArray(val)) return val.filter(Boolean)
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val)
+      if (Array.isArray(parsed)) return parsed.filter(Boolean)
+      return [parsed].filter(Boolean)
+    } catch (e) {
+      if (val.trim()) {
+        return val.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ id: s, name: s }))
+      }
+      return []
+    }
+  }
+  if (val && typeof val === 'object') return [val]
+  return []
+}
+
+const getDynamicFieldItems = (val) => {
+  const arr = parseDynamicValue(val)
+  return arr.map(item => {
+    if (typeof item === 'object' && item !== null) {
+      return { id: item.id || item.name || '', name: item.name || item.id || '' }
+    }
+    return { id: String(item), name: String(item) }
+  }).filter(item => item.id || item.name)
+}
+
+const SearchableMultiSelect = ({ items, selectedList, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const safeSelectedList = getDynamicFieldItems(selectedList)
+  const selectedIds = safeSelectedList.map(item => String(item.id))
+
+  const filtered = (items || []).filter(item => {
+    if (!item) return false
+    const nameMatch = String(item.name || '').toLowerCase().includes(search.toLowerCase())
+    const skuMatch = item.sku ? String(item.sku).toLowerCase().includes(search.toLowerCase()) : false
+    return nameMatch || skuMatch
+  })
+
+  const handleToggle = (item) => {
+    if (!item) return
+    const list = [...safeSelectedList]
+    const idx = list.findIndex(x => x && String(x.id) === String(item.id))
+    if (idx > -1) {
+      list.splice(idx, 1)
+    } else {
+      list.push({ id: item.id, name: item.name })
+    }
+    onChange(list)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', minWidth: 220, maxWidth: 300 }}>
+      <div 
+        onClick={() => setOpen(prev => !prev)}
+        style={{ 
+          minHeight: 36, border: '1px solid var(--border)', borderRadius: 8, padding: '5px 8px',
+          display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: 'var(--surface)',
+          cursor: 'pointer', fontSize: '.8rem', justifyContent: 'space-between'
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+          {safeSelectedList.length === 0 && <span style={{ color: 'var(--text-muted)' }}>{placeholder}</span>}
+          {safeSelectedList.map((item) => (
+            <span 
+              key={item.id || item} 
+              style={{ 
+                background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 6px', 
+                borderRadius: 6, fontSize: '.72rem', display: 'inline-flex', alignItems: 'center', gap: 4,
+                border: '1px solid rgba(139,92,246,0.2)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.name || item}
+              <i 
+                className="fa-solid fa-xmark" 
+                style={{ cursor: 'pointer', opacity: 0.6 }}
+                onClick={() => handleToggle(item)}
+              />
+            </span>
+          ))}
+        </div>
+        <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ color: 'var(--text-muted)', fontSize: '.75rem', marginLeft: 6 }} />
+      </div>
+
+      {open && (
+        <div style={{ 
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, 
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, 
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', zIndex: 1000 
+        }}>
+          <div style={{ padding: 6, position: 'sticky', top: 0, background: 'var(--surface)', borderBottom: '1px solid var(--border)', zIndex: 10 }}>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Ara..."
+              className="f-input"
+              style={{ padding: '4px 8px', fontSize: '.75rem', width: '100%', background: 'var(--surface-2)' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ padding: 4 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '8px 10px', fontSize: '.78rem', color: 'var(--text-muted)', textAlign: 'center' }}>Sonuç bulunamadı</div>
+            ) : (
+              filtered.map(item => {
+                const isSelected = selectedIds.includes(String(item.id))
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleToggle(item)}
+                    style={{ 
+                      padding: '6px 10px', cursor: 'pointer', borderRadius: 4, fontSize: '.78rem', 
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      background: isSelected ? 'rgba(139,92,246,0.05)' : 'transparent',
+                      color: isSelected ? '#8b5cf6' : 'var(--text)'
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'var(--surface-2)'
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={isSelected} 
+                      readOnly 
+                      style={{ pointerEvents: 'none', accentColor: '#8b5cf6' }} 
+                    />
+                    <span style={{ fontWeight: isSelected ? 700 : 500 }}>{item.name}</span>
+                    {item.sku && <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>({item.sku})</span>}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FormSubmissions() {
   const [submissions, setSubmissions] = useState([])
   const [templates, setTemplates] = useState([])
@@ -25,6 +191,10 @@ export default function FormSubmissions() {
   const [showFillForm, setShowFillForm] = useState(false)
   const [fillTemplateId, setFillTemplateId] = useState('')
   const [answers, setAnswers] = useState([])
+  const [stockItems, setStockItems] = useState([])
+  const [saleItems, setSaleItems] = useState([])
+  const [semiItems, setSemiItems] = useState([])
+  const [loadingDbItems, setLoadingDbItems] = useState(false)
   const [activeNotes, setActiveNotes] = useState({})
   const [formStartTime, setFormStartTime] = useState(null)
   const [showPrintReport, setShowPrintReport] = useState(null)
@@ -333,14 +503,80 @@ export default function FormSubmissions() {
     setSelectedSub(data)
   }
 
+  const querySubmissionId = searchParams.get('submissionId')
+  useEffect(() => {
+    if (querySubmissionId && !loading) {
+      openDetail(querySubmissionId)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('submissionId')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [querySubmissionId, loading, searchParams, setSearchParams])
+
   const getTemplateName = (tplId) => templates.find(t => t.id === tplId)?.title || '—'
   const getTemplate = (tplId) => templates.find(t => t.id === tplId)
+
+  const fetchDbItemsForForm = async (template) => {
+    let hasStock = false
+    let hasSale = false
+    let hasSemi = false
+
+    for (const section of (template.schema_json?.sections || [])) {
+      for (const field of (section.fields || [])) {
+        if (field.type === 'stock_item_select') hasStock = true
+        if (field.type === 'sale_item_select') hasSale = true
+        if (field.type === 'semi_product_select') hasSemi = true
+      }
+    }
+
+    if (!hasStock && !hasSale && !hasSemi) return
+
+    setLoadingDbItems(true)
+    try {
+      const promises = []
+      if (hasStock) {
+        promises.push(
+          db.from('stock_items')
+            .select('id,name,sku')
+            .is('deleted_at', null)
+            .order('name')
+            .then(res => setStockItems(res.data || []))
+        )
+      }
+      if (hasSale) {
+        promises.push(
+          db.from('sale_items')
+            .select('id,name,sku')
+            .is('deleted_at', null)
+            .order('name')
+            .then(res => setSaleItems(res.data || []))
+        )
+      }
+      if (hasSemi) {
+        promises.push(
+          db.from('semi_items')
+            .select('id,name,sku')
+            .is('deleted_at', null)
+            .order('name')
+            .then(res => setSemiItems(res.data || []))
+        )
+      }
+      await Promise.all(promises)
+    } catch (err) {
+      console.error('Failed to fetch DB items for form:', err)
+      toast('Öğeler yüklenirken hata oluştu', 'error')
+    } finally {
+      setLoadingDbItems(false)
+    }
+  }
 
   // ─── Fill Form Logic ───
   const startFillForm = (templateId) => {
     setFillTemplateId(templateId)
     const template = getTemplate(templateId)
     if (!template) return toast('Şablon bulunamadı', 'error')
+
+    fetchDbItemsForForm(template)
 
     const initialAnswers = []
     for (const section of (template.schema_json?.sections || [])) {
@@ -463,34 +699,37 @@ export default function FormSubmissions() {
     const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
     const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
 
+    const submitBranchId = template.form_type === 'inspection' && metaBranchId ? metaBranchId : branchId
+
     // Form-specific metadata
-    const metadata = template.form_type === 'inspection' ? {
-      inspector_name: inspectorName,
-      branch_id: metaBranchId,
-      branch_name: branches.find(b => b.id === metaBranchId)?.name || '',
-      branch_authorized_id: metaAuthorizedId,
-      branch_authorized_name: (() => {
-        const emp = employees.find(e => e.id === metaAuthorizedId)
-        return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
-      })(),
-      send_to_authorized: !!metaAuthorizedId,  // Şube yetkilisi seçildiyse sonuç daima gönderilir
-      shift_officer_id: metaShiftOfficerId,
-      shift_officer_name: (() => {
-        const emp = employees.find(e => e.id === metaShiftOfficerId)
-        return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
-      })(),
-      send_to_shift_officer: metaSendToShiftOfficer,
-      branch_responsibles: metaResponsibles.map(r => ({
-        id: r.id,
-        name: r.name,
-        send_result: r.sendResult
-      })),
+    const metadata = {
+      creator_name: inspectorName,
+      branch_name: branches.find(b => b.id === submitBranchId)?.name || '',
       form_date: metaFormDate,
       start_time: metaStartTime,
-      end_time: metaEndTime
-    } : {}
-
-    const submitBranchId = template.form_type === 'inspection' && metaBranchId ? metaBranchId : branchId
+      end_time: metaEndTime,
+      ...(template.form_type === 'inspection' ? {
+        inspector_name: inspectorName,
+        branch_id: metaBranchId,
+        branch_authorized_id: metaAuthorizedId,
+        branch_authorized_name: (() => {
+          const emp = employees.find(e => e.id === metaAuthorizedId)
+          return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+        })(),
+        send_to_authorized: !!metaAuthorizedId,  // Şube yetkilisi seçildiyse sonuç daima gönderilir
+        shift_officer_id: metaShiftOfficerId,
+        shift_officer_name: (() => {
+          const emp = employees.find(e => e.id === metaShiftOfficerId)
+          return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+        })(),
+        send_to_shift_officer: metaSendToShiftOfficer,
+        branch_responsibles: metaResponsibles.map(r => ({
+          id: r.id,
+          name: r.name,
+          send_result: r.sendResult
+        })),
+      } : {})
+    }
 
     // Extract photos from answers
     const submissionPhotos = []
@@ -528,37 +767,11 @@ export default function FormSubmissions() {
     if (data?.anomalies?.length > 0) {
       toast(`Form gönderildi ama ${data.anomalies.length} anomali tespit edildi!`, 'warning')
     } else {
-      toast(`Form gönderildi — Puan: ${data?.scoreResult?.scorePercentage || 0}%`, 'success')
-    }
-
-    // Capture form screenshot and attach to created task
-    if (data?.createdTaskId && formContainerRef.current) {
-      try {
-        const { default: html2canvas } = await import('html2canvas')
-        const canvas = await html2canvas(formContainerRef.current, {
-          scale: 1.5,
-          useCORS: true,
-          backgroundColor: '#1e293b',
-          logging: false,
-        })
-        canvas.toBlob(async (blob) => {
-          if (!blob) return
-          const formData = new FormData()
-          formData.append('file', blob, `denetim-raporu-${Date.now()}.png`)
-          const uploadResult = await uploadApiFile(formData)
-          if (uploadResult?.file_url) {
-            await attachFileToTask(data.createdTaskId, {
-              fileName: `Denetim Raporu - ${template.title}.png`,
-              fileUrl: uploadResult.file_url,
-              fileSize: blob.size,
-              mimeType: 'image/png',
-              uploadedBy: activeUser?.id,
-              attachmentType: 'image',
-            })
-          }
-        }, 'image/png', 0.9)
-      } catch (err) {
-        console.error('Report screenshot failed:', err)
+      const isInspection = template.form_type === 'inspection'
+      if (isInspection) {
+        toast(`Form gönderildi — Puan: ${data?.scoreResult?.scorePercentage || 0}%`, 'success')
+      } else {
+        toast('Form başarıyla gönderildi.', 'success')
       }
     }
 
@@ -859,7 +1072,7 @@ export default function FormSubmissions() {
                             <tr style={{ background: '#f1f5f9', fontWeight: 800, fontSize: '.9rem', borderTop: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1' }}>
                               <td style={{ padding: '8px 4px' }}>{section.title}</td>
                               <td style={{ padding: '8px 4px', textAlign: 'right' }}>
-                                {secAvg?.avg !== null ? `%${Math.round(secAvg.avg)}` : '—'}
+                                {reportResults.template.form_type === 'inspection' && secAvg?.avg !== null ? `%${Math.round(secAvg.avg)}` : '—'}
                               </td>
                             </tr>
                             {Array.isArray(section.fields) && section.fields.map((field) => {
@@ -902,7 +1115,7 @@ export default function FormSubmissions() {
                       <div key={section.id} className="card" style={{ padding: 18, border: '1px solid var(--border)' }}>
                         <h5 style={{ margin: '0 0 16px 0', fontSize: '.9rem', fontWeight: 800, color: '#8b5cf6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>{section.title}</span>
-                          {secAvg?.avg !== null && (
+                          {reportResults.template.form_type === 'inspection' && secAvg?.avg !== null && (
                             <span style={{ background: 'rgba(139,92,246,0.1)', padding: '3px 8px', borderRadius: 6, fontSize: '.75rem', fontWeight: 800 }}>
                               Ortalama Başarı: %{Math.round(secAvg.avg)}
                             </span>
@@ -1140,7 +1353,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           </div>
 
 {/* Overall Score Summary */}
-{template.form_type !== 'checklist' && (
+{template.form_type === 'inspection' && (
   <div className="card" style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)' }}>
     <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6' }}>
       Toplam Puan: {totalScoredPoints}/{totalMaxPoints} <span style={{ color: '#8b5cf6', fontWeight: 800 }}> %{overallPercentage}</span>
@@ -1367,7 +1580,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                 gap: 8
               }}>
                 <span>{sIdx + 1}. {section.title}</span>
-                {template.form_type !== 'checklist' && sectionMaxPoints > 0 && (
+                {template.form_type === 'inspection' && sectionMaxPoints > 0 && (
                   <span style={{ 
                     fontSize: '.75rem', 
                     color: '#fff', 
@@ -1407,7 +1620,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                             {field.label}
                           </span>
                           {field.required && <span style={{ color: 'var(--danger)' }}>*</span>}
-                          {template.form_type !== 'checklist' && field.max_points > 0 && (
+                          {template.form_type === 'inspection' && field.max_points > 0 && (
                             <span style={{ 
                               fontSize: '.72rem', 
                               fontWeight: 700, 
@@ -1678,6 +1891,52 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           </div>
                         )}
 
+                        {field.type === 'date' && (
+                          <input
+                            type="date"
+                            value={answer?.value || ''}
+                            onChange={e => updateAnswer(field.id, e.target.value)}
+                            className="f-input"
+                            style={{ width: 150, padding: '6px 10px', fontSize: '.8rem' }}
+                          />
+                        )}
+
+                        {field.type === 'stock_item_select' && (
+                          <SearchableMultiSelect 
+                            items={stockItems}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Stok Malı Seçin..."
+                          />
+                        )}
+
+                        {field.type === 'sale_item_select' && (
+                          <SearchableMultiSelect 
+                            items={saleItems}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Satış Malı Seçin..."
+                          />
+                        )}
+
+                        {field.type === 'semi_product_select' && (
+                          <SearchableMultiSelect 
+                            items={semiItems}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Yarı Mamul Seçin..."
+                          />
+                        )}
+
+                        {field.type === 'branch_select' && (
+                          <SearchableMultiSelect 
+                            items={branches}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Şube Seçin..."
+                          />
+                        )}
+
                         {field.type === 'photo' && (() => {
                           const isUploading = !!uploadingFields[field.id]
                           const photoUrl = answer?.value
@@ -1794,12 +2053,15 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           return allowed.includes(scope)
         })
         if (activeTemplates.length === 0) return null
-        const templateOptions = activeTemplates.map(t => ({
-          value: t.id,
-          label: t.title,
-          meta: t.form_type === 'checklist' ? 'Checklist' : (t.form_type === 'inspection' ? 'Denetim' : 'Müşteri Anketi'),
-          icon: t.form_type === 'checklist' ? 'fa-list-check' : (t.form_type === 'inspection' ? 'fa-file-shield' : 'fa-comments'),
-        }))
+        const templateOptions = activeTemplates.map(t => {
+          const typeInfo = FORM_TYPE_MAP[t.form_type] || { label: 'Form', icon: 'fa-file' }
+          return {
+            value: t.id,
+            label: t.title,
+            meta: typeInfo.label,
+            icon: typeInfo.icon,
+          }
+        })
         return (
           <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -1901,11 +2163,11 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {filteredSubmissions.map(sub => {
                 const tpl = templates.find(t => t.id === sub.template_id)
-                const isChecklist = tpl?.form_type === 'checklist'
-                const isCriticalFailed = !isChecklist && !!sub.metadata?.failed_critical
+                const isInspection = tpl?.form_type === 'inspection'
+                const isCriticalFailed = isInspection && !!sub.metadata?.failed_critical
                 const status = STATUS_MAP[sub.status] || STATUS_MAP.draft
                 const isSelected = selectedSub?.id === sub.id
-                const isAnomaly = !isChecklist && sub.status === 'anomaly'
+                const isAnomaly = isInspection && sub.status === 'anomaly'
                 
                 const badgeLabel = isCriticalFailed ? 'Kabul Edilemez' : status.label
                 const badgeColor = isCriticalFailed ? '#ef4444' : status.color
@@ -1925,23 +2187,29 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {/* Score Circle / Checklist Icon */}
-                      <div style={{
-                        width: 44, height: 44, borderRadius: 12, border: '2px solid',
-                        borderColor: isChecklist ? '#8b5cf6' : scoreColor,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column',
-                        background: isChecklist ? 'rgba(139,92,246,0.06)' : undefined
-                      }}>
-                        {isChecklist ? (
-                          <i className="fa-solid fa-list-check" style={{ color: '#8b5cf6', fontSize: '1.1rem' }} />
-                        ) : (
-                          <>
-                            <div style={{ fontSize: '.85rem', fontWeight: 900, color: scoreColor }}>
-                              {sub.score_percentage != null ? Math.round(sub.score_percentage) : '—'}
-                            </div>
-                            <div style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>%</div>
-                          </>
-                        )}
-                      </div>
+                      {(() => {
+                        const hasScoring = tpl?.form_type === 'inspection'
+                        const typeInfo = FORM_TYPE_MAP[tpl?.form_type] || { label: 'Form', icon: 'fa-file' }
+                        return (
+                          <div style={{
+                            width: 44, height: 44, borderRadius: 12, border: '2px solid',
+                            borderColor: !hasScoring ? '#8b5cf6' : scoreColor,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, flexDirection: 'column',
+                            background: !hasScoring ? 'rgba(139,92,246,0.06)' : undefined
+                          }}>
+                            {!hasScoring ? (
+                              <i className={`fa-solid ${typeInfo.icon}`} style={{ color: '#8b5cf6', fontSize: '1.1rem' }} />
+                            ) : (
+                              <>
+                                <div style={{ fontSize: '.85rem', fontWeight: 900, color: scoreColor }}>
+                                  {sub.score_percentage != null ? Math.round(sub.score_percentage) : '—'}
+                                </div>
+                                <div style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>%</div>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                           <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-strong)' }}>{getTemplateName(sub.template_id)}</span>
@@ -1989,13 +2257,13 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               </div>
             ) : (() => {
               const template = templates.find(t => t.id === selectedSub.template_id)
-              const isChecklist = template?.form_type === 'checklist'
-              const isCritical = !isChecklist && !!selectedSub.metadata?.failed_critical
+              const hasScoring = template?.form_type === 'inspection'
+              const isCritical = hasScoring && !!selectedSub.metadata?.failed_critical
               const scoreNum = Number(selectedSub.score_percentage) || 0
-              const isGood = !isChecklist && !isCritical && scoreNum >= 70
-              const hasAnomaly = !isChecklist && (selectedSub.metadata?.anomalies?.length || 0) > 0
-              const accentColor = isChecklist ? '#8b5cf6' : (isCritical ? '#ef4444' : (isGood ? '#10b981' : '#f59e0b'))
-              const gradientBg = isChecklist
+              const isGood = hasScoring && !isCritical && scoreNum >= 70
+              const hasAnomaly = hasScoring && (selectedSub.metadata?.anomalies?.length || 0) > 0
+              const accentColor = !hasScoring ? '#8b5cf6' : (isCritical ? '#ef4444' : (isGood ? '#10b981' : '#f59e0b'))
+              const gradientBg = !hasScoring
                 ? 'linear-gradient(135deg, #120c1f 0%, #1e1336 50%, #120c1f 100%)'
                 : isCritical
                   ? 'linear-gradient(135deg, #1a0808 0%, #2d0f0f 50%, #1e0a0a 100%)'
@@ -2020,40 +2288,44 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
 
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
                       {/* Score Ring / Checklist Icon */}
-                      {isChecklist ? (
-                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
-                          <div style={{
-                            width: 88, height: 88, borderRadius: '50%',
-                            border: `4px solid #8b5cf6`,
-                            boxShadow: `0 0 24px rgba(139,92,246,0.35), inset 0 0 24px rgba(139,92,246,0.11)`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: `rgba(139,92,246,0.11)`
-                          }}>
-                            <i className="fa-solid fa-list-check" style={{ color: '#8b5cf6', fontSize: '2rem' }} />
-                          </div>
-                          <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
-                            Kontrol Listesi
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ flexShrink: 0, textAlign: 'center' }}>
-                          <div style={{
-                            width: 88, height: 88, borderRadius: '50%',
-                            border: `4px solid ${accentColor}`,
-                            boxShadow: `0 0 24px ${accentColor}55, inset 0 0 24px ${accentColor}11`,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                            background: `${accentColor}11`
-                          }}>
-                            <div style={{ fontSize: '1.7rem', fontWeight: 900, color: accentColor, lineHeight: 1 }}>
-                              {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) : '—'}
+                      {(() => {
+                        const hasScoring = template?.form_type === 'inspection'
+                        const typeInfo = FORM_TYPE_MAP[template?.form_type] || { label: 'Form', icon: 'fa-file' }
+                        return !hasScoring ? (
+                          <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                            <div style={{
+                              width: 88, height: 88, borderRadius: '50%',
+                              border: `4px solid #8b5cf6`,
+                              boxShadow: `0 0 24px rgba(139,92,246,0.35), inset 0 0 24px rgba(139,92,246,0.11)`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: `rgba(139,92,246,0.11)`
+                            }}>
+                              <i className={`fa-solid ${typeInfo.icon}`} style={{ color: '#8b5cf6', fontSize: '2rem' }} />
                             </div>
-                            <div style={{ fontSize: '.65rem', color: accentColor, fontWeight: 700, opacity: 0.8 }}>PUAN%</div>
+                            <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
+                              {typeInfo.label}
+                            </div>
                           </div>
-                          <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
-                            {selectedSub.total_score ?? '—'}/{selectedSub.max_possible_score ?? '—'} p
+                        ) : (
+                          <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                            <div style={{
+                              width: 88, height: 88, borderRadius: '50%',
+                              border: `4px solid ${accentColor}`,
+                              boxShadow: `0 0 24px ${accentColor}55, inset 0 0 24px ${accentColor}11`,
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                              background: `${accentColor}11`
+                            }}>
+                              <div style={{ fontSize: '1.7rem', fontWeight: 900, color: accentColor, lineHeight: 1 }}>
+                                {selectedSub.score_percentage != null ? Math.round(selectedSub.score_percentage) : '—'}
+                              </div>
+                              <div style={{ fontSize: '.65rem', color: accentColor, fontWeight: 700, opacity: 0.8 }}>PUAN%</div>
+                            </div>
+                            <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 6, fontWeight: 600 }}>
+                              {selectedSub.total_score ?? '—'}/{selectedSub.max_possible_score ?? '—'} p
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )
+                      })()}
 
                       {/* Title area */}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -2065,7 +2337,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {/* Status badge */}
-                          {!isChecklist && (
+                          {hasScoring && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 700, background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
                               <i className={`fa-solid ${isCritical ? 'fa-circle-xmark' : isGood ? 'fa-circle-check' : 'fa-triangle-exclamation'}`} />
                               {isCritical ? 'KABUL EDİLEMEZ' : isGood ? 'BAŞARILI' : 'ANOMALİ'}
@@ -2106,7 +2378,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
                     {/* Critical Failure Alert */}
-                    {!isChecklist && isCritical && (
+                    {hasScoring && isCritical && (
                       <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
                         <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#ef4444', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <i className="fa-solid fa-circle-xmark" style={{ fontSize: '1rem' }} /> KABUL EDİLEMEZ – KRİTİK SORU BAŞARISIZ
@@ -2124,7 +2396,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     )}
 
                     {/* Anomaly Alert */}
-                    {!isChecklist && !isCritical && hasAnomaly && (
+                    {hasScoring && !isCritical && hasAnomaly && (
                       <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
                         <div style={{ fontSize: '.82rem', fontWeight: 800, color: '#f59e0b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '1rem' }} /> ANOMALİ TESPİT EDİLDİ
@@ -2243,7 +2515,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                       <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#8b5cf6' }}>
                                         <i className="fa-solid fa-layer-group" style={{ marginRight: 6, opacity: 0.7 }} />{sIdx + 1}. {section.title}
                                       </span>
-                                      {!isChecklist && sectionMaxPoints > 0 && (
+                                      {template?.form_type === 'inspection' && sectionMaxPoints > 0 && (
                                         <span style={{ fontSize: '.72rem', fontWeight: 800, color: sectionPercentage >= 70 ? '#10b981' : '#ef4444', background: sectionPercentage >= 70 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)', padding: '3px 10px', borderRadius: 99 }}>
                                           {sectionScoredPoints}/{sectionMaxPoints} — %{sectionPercentage}
                                         </span>
@@ -2258,6 +2530,16 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                         let displayValue = String(ans.value ?? '—')
                                         if (ans.value === true) displayValue = 'Evet'
                                         if (ans.value === false) displayValue = 'Hayır'
+                                        if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
+                                          const items = getDynamicFieldItems(ans.value)
+                                          displayValue = items.map(item => item.name).join(', ') || '—'
+                                        }
+                                        if (field.type === 'date' && ans.value) {
+                                          const parts = String(ans.value).split('-')
+                                          if (parts.length === 3) {
+                                            displayValue = `${parts[2]}.${parts[1]}.${parts[0]}`
+                                          }
+                                        }
 
                                         const isAnsNegative = selectedSub.metadata?.failed_critical_fields?.some(f => f.id === field.id)
                                         const score = calculateFieldScore(field, ans.value)
@@ -2324,13 +2606,36 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                                       </span>
                                                     )
                                                   })()
+                                                ) : (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') ? (
+                                                  (() => {
+                                                    const items = getDynamicFieldItems(ans.value)
+                                                    if (items.length === 0) return <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>—</span>
+                                                    return (
+                                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: 300 }}>
+                                                        {items.map(item => (
+                                                          <span key={item.id} style={{
+                                                            background: 'rgba(139,92,246,0.08)',
+                                                            color: '#8b5cf6',
+                                                            border: '1px solid rgba(139,92,246,0.15)',
+                                                            borderRadius: 6,
+                                                            padding: '2px 6px',
+                                                            fontSize: '.72rem',
+                                                            fontWeight: 600,
+                                                            whiteSpace: 'nowrap'
+                                                          }}>
+                                                            {item.name}
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    )
+                                                  })()
                                                 ) : (
                                                   <span style={{
                                                     fontSize: '.8rem', fontWeight: 800,
                                                     color: isAnsNegative ? '#ef4444' : (ans.value === true ? '#10b981' : ans.value === false ? '#ef4444' : 'var(--text-strong)')
                                                   }}>{displayValue}</span>
                                                 )}
-                                                {!isChecklist && scoreText && (
+                                                {template?.form_type === 'inspection' && scoreText && (
                                                   <span style={{ fontSize: '.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: score === 0 ? 'rgba(239,68,68,0.1)' : score < field.max_points ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', color: score === 0 ? '#ef4444' : score < field.max_points ? '#f59e0b' : '#10b981' }}>
                                                     {scoreText}
                                                   </span>
@@ -2354,9 +2659,20 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               {(Array.isArray(selectedSub.answers_json) ? selectedSub.answers_json : []).map((ans, i) => {
+                                const field = template?.schema_json?.sections?.flatMap(s => s.fields || [])?.find(f => f.id === ans.field_id)
                                 let displayValue = String(ans.value ?? '—')
                                 if (ans.value === true) displayValue = 'Evet'
                                 if (ans.value === false) displayValue = 'Hayır'
+                                if (field && (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select')) {
+                                  const items = getDynamicFieldItems(ans.value)
+                                  displayValue = items.map(item => item.name).join(', ') || '—'
+                                }
+                                if (field && field.type === 'date' && ans.value) {
+                                  const parts = String(ans.value).split('-')
+                                  if (parts.length === 3) {
+                                    displayValue = `${parts[2]}.${parts[1]}.${parts[0]}`
+                                  }
+                                }
                                 const isAnsNegative = selectedSub.metadata?.failed_critical_fields?.some(f => f.id === ans.field_id)
                                 return (
                                   <div key={i} style={{ padding: '10px 14px', borderRadius: 10, background: isAnsNegative ? 'rgba(239,68,68,0.06)' : 'var(--surface-2)', border: '1px solid', borderColor: isAnsNegative ? 'rgba(239,68,68,0.2)' : 'var(--border)', fontSize: '.78rem', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -2473,7 +2789,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
       <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="fa-solid fa-file-invoice" style={{ color: '#8b5cf6' }} />
-          {template?.form_type === 'checklist' ? 'Kontrol Listesi Önizleme' : 'Denetim Raporu Önizleme'}
+          {template?.form_type === 'checklist' ? 'Kontrol Listesi Önizleme' : (template?.form_type === 'notification_form' ? 'Bildirim Formu Önizleme' : (template?.form_type === 'customer_survey' || template?.form_type === 'personnel_survey' ? 'Anket Raporu Önizleme' : 'Denetim Raporu Önizleme'))}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn-p" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2496,7 +2812,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isCriticalFailed ? '#ef4444' : '#1e293b' }}>
-              {isCriticalFailed ? 'KRİTİK HATA RAPORU' : (template?.form_type === 'checklist' ? 'KONTROL LİSTESİ' : 'DENETİM RAPORU')}
+              {isCriticalFailed ? 'KRİTİK HATA RAPORU' : (template?.form_type === 'checklist' ? 'KONTROL LİSTESİ' : (template?.form_type === 'notification_form' ? 'BİLDİRİM FORMU RAPORU' : (template?.form_type === 'customer_survey' || template?.form_type === 'personnel_survey' ? 'ANKET RAPORU' : 'DENETİM RAPORU')))}
             </div>
             <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '4px' }}>Tarih: {createdDateStr}</div>
           </div>
@@ -2511,7 +2827,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
         </div>
 
         {/* Score & Verdict Card */}
-        {template?.form_type !== 'checklist' && (
+        {template?.form_type === 'inspection' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', marginBottom: '32px' }}>
             <div style={{ border: '2px solid #e2e8f0', borderRadius: '8px', padding: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Denetim Skoru</div>
@@ -2644,7 +2960,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
         {/* Questionnaire Results Table */}
         <div style={{ marginBottom: '32px' }}>
           <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '16px' }}>
-            {template?.form_type === 'checklist' ? 'KONTROL LİSTESİ SORULARI VE YANITLAR' : 'DENETİM SORULARI VE YANITLAR'}
+            {template?.form_type === 'checklist' ? 'KONTROL LİSTESİ SORULARI VE YANITLAR' : (template?.form_type === 'notification_form' ? 'BİLDİRİM FORMU SORULARI VE YANITLAR' : (template?.form_type === 'customer_survey' || template?.form_type === 'personnel_survey' ? 'ANKET SORULARI VE YANITLAR' : 'DENETİM SORULARI VE YANITLAR'))}
           </h3>
 
           {(template?.schema_json?.sections || []).map((section, sIdx) => {
@@ -2683,7 +2999,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                   alignItems: 'center'
                 }}>
                   <span>{sIdx + 1}. {section.title}</span>
-                  {template?.form_type !== 'checklist' && sectionMaxPoints > 0 && (
+                  {template?.form_type === 'inspection' && sectionMaxPoints > 0 && (
                     <span style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700 }}>
                       {sectionScoredPoints}/{sectionMaxPoints} <span style={{ color: '#4f46e5' }}>%{sectionPercentage}</span>
                     </span>
@@ -2694,8 +3010,8 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
                       <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569' }}>Soru</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: template?.form_type === 'checklist' ? '30%' : '20%' }}>Yanıt</th>
-                      {template?.form_type !== 'checklist' && (
+                      <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: template?.form_type !== 'inspection' ? '30%' : '20%' }}>Yanıt</th>
+                      {template?.form_type === 'inspection' && (
                         <th style={{ padding: '8px 12px', fontWeight: 700, color: '#475569', width: '15%', textAlign: 'center' }}>Puan</th>
                       )}
                     </tr>
@@ -2708,6 +3024,16 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                       let displayValue = String(ans.value ?? '—')
                       if (ans.value === true) displayValue = field.type === 'checkbox' ? '☑' : 'Evet'
                       if (ans.value === false) displayValue = field.type === 'checkbox' ? '☐' : 'Hayır'
+                      if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
+                        const items = getDynamicFieldItems(ans.value)
+                        displayValue = items.map(item => item.name).join(', ') || '—'
+                      }
+                      if (field.type === 'date' && ans.value) {
+                        const parts = String(ans.value).split('-')
+                        if (parts.length === 3) {
+                          displayValue = `${parts[2]}.${parts[1]}.${parts[0]}`
+                        }
+                      }
 
                       const isNeg = submission.metadata?.failed_critical_fields?.some(f => f.id === field.id)
                       
@@ -2776,7 +3102,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                               displayValue
                             )}
                           </td>
-                          {template?.form_type !== 'checklist' && (
+                          {template?.form_type === 'inspection' && (
                             <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: isNeg ? '#ef4444' : '#475569' }}>
                               {ptsAwarded} / {field.max_points}
                             </td>
@@ -2841,6 +3167,9 @@ function calculateFieldScore(field, value) {
     const val = Number(value) || 0
     const divisor = field.type === 'rating' ? 5 : 10
     return Math.min((val / divisor) * maxPoints, maxPoints)
+  }
+  if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
+    return getDynamicFieldItems(value).length > 0 ? maxPoints : 0
   }
   if (field.type === 'emoji_rating') {
     if (value === 'happy') return maxPoints

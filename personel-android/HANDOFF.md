@@ -37,14 +37,31 @@ Uygulama, restoran personelinin şube içi operasyonları (masaları izleme, gar
 
 ## 5. Nerede Kaldık & Sonraki Adımlar
 Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla üretilmektedir.
-- Tüm planlanan Garson Terminali, Müşteri Talepleri, Görev Recurrence detayları ve PDKS Vardiya Tolerans uyarıları başarıyla tamamlanmıştır.
+- **Konum Doğrulamalı QR Mesai Girişi (Tamamlandı):** Personelin mobil uygulamada vardiya başlatırken (OUT -> IN) şubeye özel bir QR kodu taratması ve cihazının GPS konumu ile şubenin kayıtlı enlem/boylam koordinatları arasındaki mesafenin doğrulanması özelliği başarıyla eklendi.
+  - Sapma limiti 100 metredir.
+  - Kadıköy şubesi test koordinatları veritabanında `41.028595, 29.177221` olarak tanımlanmıştır.
+  - Mesafe kontrolü Android'in native `Location.distanceBetween` metodu kullanılarak hassas bir şekilde hesaplanır.
+  - Konum izinleri (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) çalışma zamanında dinamik olarak istenir.
+  - Koordinat bilgileri `StaffSession` nesnesi içerisinde oturum boyunca saklanır.
+- **Çalışma Planı Ekranı (Tamamlandı):** Personelin bugünden itibaren tanımlanmış olan vardiya planlarını listeyen salt okunur "Çalışma Planı" ekranı eklendi.
+  - Bu sayfada vardiyaların giriş-çıkış saatleri, mola süreleri ve mola hariç net çalışma süreleri hesaplanıp gösterilmektedir.
+  - Sayfa açıldığında sadece bugünden itibaren gelecek günler yüklenerek veri trafiği optimize edilir. Sayfa sağ üstündeki yenileme butonuna basıldığında cari ayın geçmiş günleri de dahil edilerek veriler güncellenir.
+  - Bu sayfaya hem yan menüden (Sidebar) hem de ana sayfadaki "Yarın" ve "Sonraki" kartlarına tıklanarak ulaşılabilir.
+- **Görev Ekleri, Form Gösterimi ve Durum Aksiyonları (Tamamlandı):** Görev detayları ekranında eklerin listelenmesi, otomatik formlardan oluşan görevlerin form yanıtını mobil uyumlu biçimde gösteren `FormDetailDialog` entegrasyonu ve durum eylemlerinin ("Geri Gönder", "Delege Et", "Pasife Al") entegrasyonu tamamlandı.
+  - Görev açıklamalarındaki `[Form ID: <submission_id>]` metinleri Regex ile temizlendi ve altına mor renkli "İlişkili Form Yanıtını Göster" butonu yerleştirildi.
+  - Tıklandığında soru-yanıt listesini, kanıt fotoğraflarını ve şube/tarih pillerini şık bir biçimde gösteren `FormDetailDialog` Compose overlay modali açılmaktadır.
+  - Görev ekleri (`task_attachments`) algılanarak dosya türlerine göre resimler Coil `AsyncImage` ile, dosyalar simgeli tıklanabilir linkler halinde listelendi.
+  - Detay ekranına "Geri Gönder" (gerekçe promptu ile), "Delege Et" (personel seçici listesiyle) ve "Pasife Al" (onay diyaloguyla) durum eylemleri entegre edildi.
 - Sonraki çalışmalarda yeni eklenebilecek mal kabul ve depo modülleri için Compose ekranları geliştirilebilir.
 
+
 ## 6. Önemli Dosyaların Konumları
-- Navigasyon ve Kontrolör: `app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt`
-- PIN Girişi ve Oturum Modeli: `app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt`
-- Personel Dashboard (PDKS & Vardiya Toleransı): `app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt`
-- Masalar ve Çağrı Yönetimi: `app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt`
-- Görevler ve Tekrarlayan Kurallar: `app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt`
-- Sipariş Alma: `app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt`
-- Masa Hesap & Adisyonlar: `app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt`
+- Navigasyon ve Kontrolör: [MainScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt)
+- PIN Girişi ve Oturum Modeli: [PinLoginScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt)
+- Personel Dashboard (PDKS & Vardiya Toleransı & Konumlu QR): [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
+- Çalışma Planı Ekranı (Vardiyalar & Net Çalışma): [ShiftPlanScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/ShiftPlanScreen.kt)
+- Masalar ve Çağrı Yönetimi: [TableScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt)
+- Görevler ve Tekrarlayan Kurallar: [TasksScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
+- Sipariş Alma: [TableOrderScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt)
+- Masa Hesap & Adisyonlar: [TableOrdersScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt)
+- İzin Tanımları: [AndroidManifest.xml](file:///C:/RMSv3/personel-android/app/src/main/AndroidManifest.xml)

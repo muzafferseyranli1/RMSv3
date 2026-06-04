@@ -1,20 +1,19 @@
-# Görev Listesi - Tekrarlayan Görevler ve PDKS Vardiya Tolerans Kontrolü
+# Görev Listesi - Görev Ekleri, Form Gösterimi ve Durum Aksiyonları
 
-- `[x]` 1. Web Paneli Görev Ekranı (`Tasks.jsx` ve Modaller)
-  - `[x]` `Tasks.jsx` formuna dinamik tekrar detay alanlarını (Günlük, Haftalık, Aylık, Yıllık) ekle.
-  - `[x]` Modallerin (`Yeni Görev`, `Duyuru Yayınla`) başlığına renkli şeritler/görsel ayrım ekle.
-  - `[x]` `TaskClosureModal.jsx` (Yeşil şerit) ve Türkçe karakter düzeltmesi.
-  - `[x]` `TaskSendBackModal.jsx` (Kırmızı şerit) ve Türkçe karakter düzeltmesi.
-  - `[x]` `TaskDelegateModal.jsx` (Mor şerit) ve Türkçe karakter düzeltmesi.
-- `[x]` 2. Personel Android: `TaskRepository.kt` Güncellemesi
-  - `[x]` `createTask` metoduna `intervalValue`, `weekdays`, `monthDay`, `monthNth`, `monthWeekday`, `specificDates` parametrelerini ekle.
-  - `[x]` Insert sorgusunda `task_recurrence_rules` tablosuna bu parametreleri kaydet.
-- `[x]` 3. Personel Android: `TasksScreen.kt` Güncellemesi
-  - `[x]` `CreateTaskDialog` içerisine dinamik tekrar detay alanlarını (Günlük, Haftalık, Aylık, Yıllık) ekle.
-  - `[x]` Bu alanların değerlerini `repo.createTask` metoduna doğru tiplerde geçir.
-- `[x]` 4. Personel Android: `HomeScreen.kt` PDKS Vardiya Tolerans Kontrolü
-  - `[x]` Bugün kartına tıklandığında (Giriş veya Çıkış diyaloglarında) planlanan vardiya ile kıyaslayıp 5 dakikadan fazla sapma varsa uyarı metnini göster.
+- `[x]` 1. Android Veri Katmanı Değişiklikleri (`TaskRepository.kt`)
+  - `[x]` `TaskAttachment`, `FormSubmissionDetail` ve `FormSubmissionPhoto` veri sınıflarını (data class) tanımlamak.
+  - `[x]` `fetchTaskAttachments(taskId: String)` veritabanı sorgu fonksiyonunu eklemek.
+  - `[x]` `fetchFormSubmissionDetail(submissionId: String)` veritabanı sorgu fonksiyonunu eklemek.
+  - `[x]` `sendBackTask`, `delegateTask`, `softDeleteTask` ve `addSystemChatMessage` durum güncelleme ve chat fonksiyonlarını eklemek.
+- `[x]` 2. Arayüz Temizliği ve Ekler Listesi (`TasksScreen.kt`)
+  - `[x]` Regex helper fonksiyonu tanımlamak ve `TaskCard` ile `TaskDetailDialog` açıklamalarını temizleyip göstermek.
+  - `[x]` `TaskDetailDialog` bileşeninde `attachments` listesini yükleyip Coil `AsyncImage` ve dosya linkleri ile listelemek.
+- `[x]` 3. Form Detay Ekranı (`TasksScreen.kt`)
+  - `[x]` `FormDetailDialog` Compose diyalog bileşenini tasarlamak (Mor header, bildirim zili, şube pilleri, kanıt fotoğrafları ve soru-yanıt kartları).
+  - `[x]` `TaskDetailDialog` açıklamasının altına "İlişkili Form Yanıtını Göster" mor butonunu eklemek ve `FormDetailDialog`'u bağlamak.
+- `[x]` 4. Görev Durum Aksiyonları (`TasksScreen.kt`)
+  - `[x]` `SendBackPromptDialog` (gerekçe girişi) ve `DelegatePersonnelDialog` (personel seçimi) Compose diyaloglarını tasarlamak.
+  - `[x]` `TaskDetailDialog` altına "Geri Gönder", "Delege Et", "Pasife Al" butonlarını entegre etmek ve ilgili fonksiyonlara bağlamak.
 - `[x]` 5. Derleme ve Doğrulama
-  - `[x]` Web projesini derle (`npm run build`).
-  - `[x]` Android projesini derle (`.\gradlew.bat compileDebugKotlin`).
-  - `[x]` `OperationSync.md` dosyasına yapılan değişiklikleri logla.
+  - `[x]` Android derleme testleri (`.\gradlew.bat compileDebugKotlin` ve `.\gradlew.bat assembleDebug`).
+  - `[x]` Değişiklikleri `walkthrough.md` ve `OperationSync.md` dosyalarına kaydetmek.

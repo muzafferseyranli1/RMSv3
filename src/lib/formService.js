@@ -12,6 +12,34 @@ function toArray(value) {
   return Array.isArray(value) ? value : []
 }
 
+const parseDynamicValue = (val) => {
+  if (Array.isArray(val)) return val.filter(Boolean)
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val)
+      if (Array.isArray(parsed)) return parsed.filter(Boolean)
+      return [parsed].filter(Boolean)
+    } catch (e) {
+      if (val.trim()) {
+        return val.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ id: s, name: s }))
+      }
+      return []
+    }
+  }
+  if (val && typeof val === 'object') return [val]
+  return []
+}
+
+const getDynamicFieldItems = (val) => {
+  const arr = parseDynamicValue(val)
+  return arr.map(item => {
+    if (typeof item === 'object' && item !== null) {
+      return { id: item.id || item.name || '', name: item.name || item.id || '' }
+    }
+    return { id: String(item), name: String(item) }
+  }).filter(item => item.id || item.name)
+}
+
 // ─── Form Templates (Merkez-Only CRUD) ──────────────────────
 
 export async function fetchFormTemplates({ formType, activeOnly = true } = {}) {
@@ -200,6 +228,12 @@ export function scoreSubmission(schemaJson, answersJson) {
             isNegative = true
           }
         }
+      } else if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
+        const hasSelection = getDynamicFieldItems(answer.value).length > 0
+        pointsAwarded = hasSelection ? maxPoints : 0
+        if (field.is_critical && !hasSelection) {
+          isNegative = true
+        }
       } else {
         pointsAwarded = answer.value ? maxPoints : 0
         if (field.is_critical && !answer.value) {
@@ -261,8 +295,11 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
   }
   const template = templateResult.data
 
-  // Score the submission
-  const { totalScore, maxPossibleScore, scorePercentage, failedCritical, failedCriticalFields } = scoreSubmission(template.schema_json, answersJson)
+  // Score the submission if it's an inspection form type
+  const isInspection = template.form_type === 'inspection'
+  const { totalScore, maxPossibleScore, scorePercentage, failedCritical, failedCriticalFields } = isInspection
+    ? scoreSubmission(template.schema_json, answersJson)
+    : { totalScore: null, maxPossibleScore: null, scorePercentage: null, failedCritical: false, failedCriticalFields: [] }
 
   // Determine status
   let status = 'completed'
@@ -271,8 +308,8 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
   // Merge failed critical flags into metadata
   const mergedMetadata = {
     ...(metadata || {}),
-    failed_critical: failedCritical || false,
-    failed_critical_fields: failedCriticalFields || []
+    failed_critical: isInspection ? (failedCritical || false) : false,
+    failed_critical_fields: isInspection ? (failedCriticalFields || []) : []
   }
 
   // Insert submission
@@ -324,19 +361,22 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
   }
   submission.metadata = finalMetadata
 
-  // Auto-create task from inspection form
+  // Auto-create task
   let createdTaskId = null
-  if (template.form_type === 'inspection') {
-    try {
-      createdTaskId = await createTaskFromInspection(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
-    } catch (err) {
-      console.error('Failed to auto-create inspection task:', err)
-    }
-  } else if (template.form_type === 'notification_form') {
+  const taskConfig = template.schema_json?.task_config || {}
+  
+  if (taskConfig.enabled) {
     try {
       createdTaskId = await createTaskFromNotification(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
     } catch (err) {
-      console.error('Failed to auto-create notification task:', err)
+      console.error('Failed to auto-create task:', err)
+    }
+  } else if (template.form_type === 'inspection' && taskConfig.enabled === undefined) {
+    // Legacy fallback for inspection forms that don't have task_config.enabled configured yet
+    try {
+      createdTaskId = await createTaskFromInspection(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
+    } catch (err) {
+      console.error('Failed to auto-create legacy inspection task:', err)
     }
   }
 
@@ -377,6 +417,9 @@ function calcFieldScore(field, value) {
     if (opt && typeof opt === 'object' && 'points' in opt) return Number(opt.points) || 0
     return maxPoints
   }
+  if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
+    return getDynamicFieldItems(value).length > 0 ? maxPoints : 0
+  }
   return value ? maxPoints : 0
 }
 
@@ -394,7 +437,7 @@ async function createTaskFromInspection(template, submission, answersJson, meta)
     ? `${shiftOfficerName} ile birlikte`
     : ''
 
-  const description = `${formDate} tarihinde ${participantText} yapılan "${template.title}" denetiminde alınan %${scorePercent}'lik sonucun takibi için açılmıştır.`
+  const description = `${formDate} tarihinde ${participantText} yapılan "${template.title}" denetiminde alınan %${scorePercent}'lik sonucun takibi için açılmıştır.\n\n[Form ID: ${submission.id}]`
 
   // Checklist: max puandan düşük alan sorular
   const checklistItems = []
@@ -544,21 +587,33 @@ async function createTaskFromInspection(template, submission, answersJson, meta)
 }
 
 async function createTaskFromNotification(template, submission, answersJson, meta) {
-  const taskConfig = template.schema_json?.task_config
-  if (!taskConfig || !Array.isArray(taskConfig.targets) || taskConfig.targets.length === 0) {
-    console.log('[Notification→Task] No targets defined in template.')
-    return null
+  const taskConfig = template.schema_json?.task_config || {}
+  
+  const subIdShort = submission.id ? submission.id.slice(0, 8) : '--------'
+  const title = `${subIdShort} numaralı ${template.title || 'bildirim'} bildirim formu takip görevidir.`
+
+  let formDateFormatted = ''
+  if (meta && meta.form_date) {
+    const parts = meta.form_date.split('-')
+    if (parts.length === 3) {
+      formDateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`
+    } else {
+      formDateFormatted = meta.form_date
+    }
+  } else {
+    const d = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    formDateFormatted = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
   }
 
-  const formDate = meta.form_date
-    ? new Date(meta.form_date).toLocaleDateString('tr-TR')
-    : new Date().toLocaleDateString('tr-TR')
-    
-  const branchName = meta.branch_name || 'İlgili'
-  const description = `${formDate} tarihinde ${branchName} şubesinden yapılan bildirimdir.`
+  const startTime = (meta && meta.start_time) || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const branchName = (meta && meta.branch_name) || 'İlgili'
+  const creatorName = (meta && meta.creator_name) || 'Bilinmeyen Kullanıcı'
+  const description = `${formDateFormatted} tarihi ${startTime} saatinde ${branchName} şubesinden ${creatorName} tarafından yaratılmıştır.\n\n[Form ID: ${submission.id}]`
 
   const now = new Date()
-  const dueDate = new Date(now.getTime() + 72 * 60 * 60 * 1000) // +72 saat
+  const completionHours = Number(taskConfig.completion_hours) || 72
+  const dueDate = new Date(now.getTime() + completionHours * 60 * 60 * 1000)
   const branchNodeId = meta.branch_id || submission.branch_id || ''
 
   const rules = taskConfig.rules || {}
@@ -569,10 +624,10 @@ async function createTaskFromNotification(template, submission, answersJson, met
     organization_node_id: null,
     created_by_personnel_id: submission.submitted_by,
     created_by_position_id: null,
-    title: template.title,
+    title,
     description,
     status: 'open',
-    priority: 'high',
+    priority: taskConfig.priority || 'normal',
     due_at: dueDate.toISOString(),
     start_at: now.toISOString(),
     has_specific_time: false,
@@ -597,7 +652,7 @@ async function createTaskFromNotification(template, submission, answersJson, met
   const task = taskInsert.data
   console.log('[Notification→Task] Task created:', task.id)
 
-  // 2) Katılımcıları (Assignees) Belirle
+  // 2) Katılımcıları (Assignees/Collaborators/Watchers) Belirle
   const participantRows = []
   
   let allEmployees = []
@@ -608,16 +663,114 @@ async function createTaskFromNotification(template, submission, answersJson, met
   }
 
   const assigneeIds = new Set()
+  const collaboratorIds = new Set()
+  const watcherIds = new Set()
 
-  for (const target of taskConfig.targets) {
-    if (target.type === 'personnel') {
-      assigneeIds.add(target.id)
-    } else if (target.type === 'position') {
-      const empsInPosition = allEmployees.filter(e => e.positionId === target.id && !e.deletedAt && !e.terminationDate)
-      empsInPosition.forEach(e => assigneeIds.add(e.id))
+  // Assignee: Birincil Sorumlu
+  if (taskConfig.assignee) {
+    const posIds = taskConfig.assignee.positions || []
+    posIds.forEach(posId => {
+      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
+    })
+    const persIds = taskConfig.assignee.personnel || []
+    persIds.forEach(id => assigneeIds.add(String(id)))
+
+    // Old format fallback
+    if (taskConfig.assignee.type && Array.isArray(taskConfig.assignee.ids)) {
+      const type = taskConfig.assignee.type
+      const ids = taskConfig.assignee.ids
+      if (type === 'personnel') {
+        ids.forEach(id => assigneeIds.add(String(id)))
+      } else if (type === 'position') {
+        ids.forEach(posId => {
+          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
+        })
+      }
     }
   }
 
+  // Collaborator: Ek Sorumlu
+  if (taskConfig.collaborators) {
+    const posIds = taskConfig.collaborators.positions || []
+    posIds.forEach(posId => {
+      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      empsInPosition.forEach(e => collaboratorIds.add(String(e.id)))
+    })
+    const persIds = taskConfig.collaborators.personnel || []
+    persIds.forEach(id => collaboratorIds.add(String(id)))
+
+    // Old format fallback
+    if (taskConfig.collaborators.type && Array.isArray(taskConfig.collaborators.ids)) {
+      const type = taskConfig.collaborators.type
+      const ids = taskConfig.collaborators.ids
+      if (type === 'personnel') {
+        ids.forEach(id => collaboratorIds.add(String(id)))
+      } else if (type === 'position') {
+        ids.forEach(posId => {
+          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          empsInPosition.forEach(e => collaboratorIds.add(String(e.id)))
+        })
+      }
+    }
+  }
+
+  // Watcher: Gözlemci
+  if (taskConfig.watchers) {
+    const posIds = taskConfig.watchers.positions || []
+    posIds.forEach(posId => {
+      const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+      empsInPosition.forEach(e => watcherIds.add(String(e.id)))
+    })
+    const persIds = taskConfig.watchers.personnel || []
+    persIds.forEach(id => watcherIds.add(String(id)))
+    if (taskConfig.watchers.responsibles) {
+      const branchManagers = allEmployees.filter(e => 
+        !e.deletedAt && 
+        !e.terminationDate && 
+        Array.isArray(e.managedBranchIds) && 
+        e.managedBranchIds.map(String).includes(String(branchNodeId))
+      )
+      branchManagers.forEach(e => watcherIds.add(String(e.id)))
+    }
+
+    // Old format fallback
+    if (taskConfig.watchers.type && Array.isArray(taskConfig.watchers.ids)) {
+      const type = taskConfig.watchers.type
+      const ids = taskConfig.watchers.ids
+      if (type === 'personnel') {
+        ids.forEach(id => watcherIds.add(String(id)))
+      } else if (type === 'position') {
+        ids.forEach(posId => {
+          const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(posId) && !e.deletedAt && !e.terminationDate)
+          empsInPosition.forEach(e => watcherIds.add(String(e.id)))
+        })
+      } else if (type === 'responsibles') {
+        const branchManagers = allEmployees.filter(e => 
+          !e.deletedAt && 
+          !e.terminationDate && 
+          Array.isArray(e.managedBranchIds) && 
+          e.managedBranchIds.map(String).includes(String(branchNodeId))
+        )
+        branchManagers.forEach(e => watcherIds.add(String(e.id)))
+      }
+    }
+  }
+
+  // Fallback to old targets structure
+  if (Array.isArray(taskConfig.targets)) {
+    for (const target of taskConfig.targets) {
+      if (target.type === 'personnel') {
+        assigneeIds.add(String(target.id))
+      } else if (target.type === 'position') {
+        const empsInPosition = allEmployees.filter(e => String(e.positionId) === String(target.id) && !e.deletedAt && !e.terminationDate)
+        empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
+      }
+    }
+  }
+
+  // Assignees
   for (const assigneeId of assigneeIds) {
     participantRows.push({
       task_id: task.id,
@@ -626,6 +779,32 @@ async function createTaskFromNotification(template, submission, answersJson, met
       position_id: null,
       node_id: branchNodeId || null,
     })
+  }
+
+  // Collaborators (added to assignee list, checking duplicates)
+  for (const collabId of collaboratorIds) {
+    if (!assigneeIds.has(collabId)) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'assignee',
+        personnel_id: collabId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+    }
+  }
+
+  // Watchers
+  for (const watcherId of watcherIds) {
+    if (!assigneeIds.has(watcherId) && !collaboratorIds.has(watcherId)) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'watcher',
+        personnel_id: watcherId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+    }
   }
 
   if (participantRows.length > 0) {
@@ -637,7 +816,7 @@ async function createTaskFromNotification(template, submission, answersJson, met
     }
   }
 
-  // 3) Soru/Cevapları Checklist olarak ekleyelim (Opsiyonel ama bildirimin içeriği görülmeli)
+  // 3) Soru/Cevapları Checklist olarak ekleyelim
   const answersMap = new Map(toArray(answersJson).map(a => [a.field_id, a]))
   let answerSummary = ''
   for (const section of toArray(template.schema_json?.sections)) {
@@ -670,7 +849,6 @@ async function createTaskFromNotification(template, submission, answersJson, met
       thread_id: threadResult.data.id,
       task_id: task.id,
       message_type: 'system',
-      sender_id: null,
       body: sysBody,
       metadata: { title: task.title },
     })

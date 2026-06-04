@@ -36,7 +36,9 @@ data class StaffSession(
     val activeBranchId: String,
     val activeBranchName: String,
     val authenticatedAt: String,
-    val pin: String? = null
+    val pin: String? = null,
+    val activeBranchLatitude: Double? = null,
+    val activeBranchLongitude: Double? = null
 ) {
     fun getDisplayName(): String {
         return listOfNotNull(firstName, middleName, lastName)
@@ -266,7 +268,13 @@ fun PinLoginScreen(
                                 .padding(vertical = 6.dp)
                                 .clickable {
                                     showBranchSelectDialog = false
-                                    val session = createStaffSession(employee, branch["id"]!!, branch["name"]!!)
+                                    val session = createStaffSession(
+                                        employee,
+                                        branch["id"]!!,
+                                        branch["name"]!!,
+                                        branch["latitude"],
+                                        branch["longitude"]
+                                    )
                                     onLoginSuccess(session)
                                 },
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
@@ -373,7 +381,13 @@ private fun verifyAndLoginEmployee(
     } else if (filteredBranches.size == 1) {
         // Tek bir şubesi varsa direkt giriş yap
         val target = filteredBranches[0]
-        onLoginSuccess(createStaffSession(employee, target["id"]!!, target["name"]!!))
+        onLoginSuccess(createStaffSession(
+            employee,
+            target["id"]!!,
+            target["name"]!!,
+            target["latitude"],
+            target["longitude"]
+        ))
     } else {
         // Birden fazla şubesi varsa seçim yaptır
         onBranchSelectRequired(filteredBranches)
@@ -383,7 +397,9 @@ private fun verifyAndLoginEmployee(
 private fun createStaffSession(
     employee: Map<String, Any>,
     branchId: String,
-    branchName: String
+    branchName: String,
+    latitude: String? = null,
+    longitude: String? = null
 ): StaffSession {
     return StaffSession(
         id = employee["id"]?.toString() ?: "",
@@ -395,7 +411,9 @@ private fun createStaffSession(
         activeBranchName = branchName,
         authenticatedAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
             .format(java.util.Date()),
-        pin = employee["pin"]?.toString()
+        pin = employee["pin"]?.toString(),
+        activeBranchLatitude = latitude?.toDoubleOrNull(),
+        activeBranchLongitude = longitude?.toDoubleOrNull()
     )
 }
 
@@ -411,7 +429,9 @@ private fun parseBranchesFromTree(nodes: List<*>?): List<Map<String, String>> {
             val type = node["type"]?.toString() ?: ""
 
             if (type == "sube" && id.isNotBlank()) {
-                list.add(mapOf("id" to id, "name" to name))
+                val lat = node["latitude"]?.toString() ?: ""
+                val lon = node["longitude"]?.toString() ?: ""
+                list.add(mapOf("id" to id, "name" to name, "latitude" to lat, "longitude" to lon))
             }
             val children = node["children"] as? List<*>
             if (children != null) {

@@ -92,6 +92,7 @@ function createEmptyForm(type = 'sirket') {
     showDecimal:true, decimalPlaces:2, invDecimal:4,
     salesTax:'', purchaseTax:'',
     laborSettings: { ...DEFAULT_LABOR_SETTINGS },
+    latitude: '', longitude: '',
   }
 }
 
@@ -198,6 +199,8 @@ export default function Company() {
       salesTax: node.salesTax || '',
       purchaseTax: node.purchaseTax || '',
       laborSettings: normalizeLaborSettings(node.laborSettings),
+      latitude: node.latitude !== undefined && node.latitude !== null ? String(node.latitude) : '',
+      longitude: node.longitude !== undefined && node.longitude !== null ? String(node.longitude) : '',
     })
     setEditId(node.id); setParentNode(null)
     setAllowedTypes([node.type])
@@ -244,6 +247,11 @@ export default function Company() {
     } else if (form.type === 'tuzel') {
       extra = {
         laborSettings: normalizeLaborSettings(form.laborSettings),
+      }
+    } else if (form.type === 'sube') {
+      extra = {
+        latitude: form.latitude ? parseFloat(form.latitude) : null,
+        longitude: form.longitude ? parseFloat(form.longitude) : null,
       }
     }
 
@@ -398,6 +406,10 @@ export default function Company() {
                 ['Para Birimi', selectedNode.currency || '-'],
                 ['Vergi Özeti', selectedSalesTax ? `${selectedSalesTax.name} (%${selectedSalesTax.rate})` : selectedNode.salesTax ? 'Tanımlı' : '-'],
                 ['Alış Vergisi', selectedPurchaseTax ? `${selectedPurchaseTax.name} (%${selectedPurchaseTax.rate})` : selectedNode.purchaseTax ? 'Tanımlı' : '-'],
+                ...(selectedNode.type === 'sube' ? [
+                  ['Enlem (Latitude)', selectedNode.latitude !== undefined && selectedNode.latitude !== null ? selectedNode.latitude : '-'],
+                  ['Boylam (Longitude)', selectedNode.longitude !== undefined && selectedNode.longitude !== null ? selectedNode.longitude : '-'],
+                ] : []),
               ].map(([label, value]) => (
                 <div key={label}>
                   <label className="f-label">{label}</label>
@@ -566,6 +578,34 @@ export default function Company() {
             <input className="f-input" value={form.name} onChange={e => set('name', e.target.value)}
               placeholder="ör. Ana Şirket, İstanbul Şubesi…"/>
           </div>
+
+          {/* Şube Koordinatları */}
+          {form.type === 'sube' && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div>
+                <label className="f-label">Enlem (Latitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  className="f-input"
+                  value={form.latitude}
+                  onChange={e => set('latitude', e.target.value)}
+                  placeholder="örn. 41.028595"
+                />
+              </div>
+              <div>
+                <label className="f-label">Boylam (Longitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  className="f-input"
+                  value={form.longitude}
+                  onChange={e => set('longitude', e.target.value)}
+                  placeholder="örn. 29.177221"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Şirket-only fields */}
           {form.type === 'tuzel' && (

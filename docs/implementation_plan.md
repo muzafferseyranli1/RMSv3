@@ -1,48 +1,55 @@
-# Tekrarlayan Görevler, Görsel Modal Ayrımı ve PDKS Vardiya Kontrolü
+# Görev Ekleri, Form Gösterimi ve Durum Aksiyonları Entegrasyonu
 
-Bu plan, web panelinde ve personel mobil uygulamasında eksik olan tekrarlayan görev detay alanlarının eklenmesini, modallerin görsel şeritlerle ayrıştırılmasını ve mobil ana sayfada mesai giriş/çıkış işlemlerinde planlanan vardiyaya göre ±5 dakika kontrolünün yapılarak uyarı verilmesini içerir.
+Bu plan, mobil uygulamada görev detaylarına eklerin (attachments) eklenmesini, formdan gelen görevlerde form yanıtlarının şık bir arayüzde gösterilmesini ve web sürümünde yer alan "Geri Gönder", "Delege Et", "Pasife Al" aksiyonlarının mobile entegrasyonunu kapsar.
 
 ## User Review Required
 
-> [!WARNING]
-> Görev tekrar kuralları veritabanındaki `task_recurrence_rules` tablosuna tam uyumlu olarak kaydedilecektir. Mobil uygulamadaki `TaskRepository.createTask` metodunun imzası bu parametreleri destekleyecek şekilde genişletilecektir.
+> [!NOTE]
+> - Görev açıklamasındaki `[Form ID: <submission_id>]` ifadesi regex ile gizlenecek, altına mor renkli "İlişkili Formu Göster" butonu yerleştirilecektir.
+> - Butona tıklanınca açılacak olan diyalog, mor header, bildirim zili, şube adı, tarih/süre pilleri, kanıt görselleri ve soru & yanıt detaylarını içerecektir.
+> - Görev detayının en altına web sürümündeki gibi 4 ana aksiyon butonu eklenecektir:
+>   - **Geri Gönder (Send Back)**: Görev durumunu `rejected` yapar. Bir diyalog ile kullanıcıdan geri gönderme gerekçesi alınır.
+>   - **Delege Et (Delegate)**: `delegation_allowed` aktifse görünür. Diğer personellerin listelendiği bir diyalog açar, seçim sonrası delege talebi (`task_approval_requests`) oluşturur.
+>   - **Pasife Al (Soft Delete)**: Görevi oluşturan kişi ise görünür. Onay sonrası görevi `soft_deleted` durumuna çeker.
+>   - **Tamamla (Complete) / Başlat (Start)**: Mevcut tamamlama ve başlatma mantığı mor/yeşil butonlarla sunulur.
 
 ## Proposed Changes
 
-### 1. Web Paneli Görev Ekranı (`Tasks.jsx` ve Modaller)
-- **[MODIFY] [Tasks.jsx](file:///C:/RMSv3/src/components/pages/Tasks.jsx)**
-  - "Tekrar" seçimi "Tek seferlik" dışında bir değere (Günlük, Haftalık, Aylık, Yıllık) ayarlandığında, o türe özgü detay giriş alanları (Sıklık, Günler, Aylık model, Ayın günü, N. gün, Yıllık tarihler) dinamik olarak formda gösterilecektir.
-  - Form verileri `createTask` servisine aktarılırken `buildRecurrencePayload` fonksiyonunun beklentileriyle tam uyumlu olarak gönderilecektir.
-  - Açılan tüm modallerin (Yeni Görev, Duyuru Yayınla) sol tarafına mor, sarı gibi renkli şeritler ve başlığa uygun ikonlar eklenerek görsel olarak ayrışmaları sağlanacaktır.
-- **[MODIFY] [TaskClosureModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskClosureModal.jsx)**
-  - Başlığa yeşil renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
-- **[MODIFY] [TaskSendBackModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskSendBackModal.jsx)**
-  - Başlığa kırmızı renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
-- **[MODIFY] [TaskDelegateModal.jsx](file:///C:/RMSv3/src/components/pages/tasks/TaskDelegateModal.jsx)**
-  - Başlığa mor renkli şerit eklenerek diğer modallerden ayrıştırılacak. Türkçe karakterler düzeltilecektir.
+### 1. Android Veri Katmanı Entegrasyonu
 
-### 2. Personel Android Uygulaması
-- **[MODIFY] [TaskRepository.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)**
-  - `createTask` metodunun imzası `intervalValue`, `weekdays`, `monthDay`, `monthNth`, `monthWeekday`, `specificDates` parametrelerini alacak şekilde genişletilecek.
-  - `task_recurrence_rules` tablosuna ekleme yapılırken bu alanlar doğru veri tipleriyle (örneğin diziler için String listeleri) SQL Insert sorgusuna eklenecektir.
-- **[MODIFY] [TasksScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)**
-  - Görev oluşturma diyalogunda (`CreateTaskDialog`), seçilen tekrar tekrar türüne göre dinamik form alanları eklenecek:
-    - Günlük için: Tekrarlama sıklığı (gün sayısı) inputu.
-    - Haftalık için: Haftanın günleri seçicisi (Pazartesi - Pazar).
-    - Aylık için: "Belirli bir gün", "Ayın son günü", "N. hafta günü" seçenekleri ve buna bağlı dinamik alanlar.
-    - Yıllık için: Tarih listesi (virgülle ayrılmış).
-  - Bu form alanları `repo.createTask` metoduna iletilecektir.
-- **[MODIFY] [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)**
-  - Personel Bugün kartı üzerinden mesaiye başlarken veya sonlandırırken, o günkü `todayShift` planı kontrol edilecektir.
-  - Giriş yaparken: Planlanan başlangıç saatinden 5 dakikadan fazla erken veya geç ise `"Vardiya planınızda X dk erken/geç giriş yapıyorsunuz."` uyarısı gösterilecektir.
-  - Çıkış yaparken: Planlanan bitiş saatinden 5 dakikadan fazla erken veya geç ise `"Vardiya planınızda X dk erken/geç çıkış yapıyorsunuz."` uyarısı gösterilecektir.
+#### [MODIFY] [TaskRepository.kt](file:///c:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
+- `TaskAttachment`, `FormSubmissionDetail` ve `FormSubmissionPhoto` veri sınıflarını eklemek.
+- `fetchTaskAttachments(taskId: String): List<TaskAttachment>` fonksiyonunu tanımlamak.
+- `fetchFormSubmissionDetail(submissionId: String): FormSubmissionDetail?` fonksiyonunu ekleyerek form şablonu, yanıtları ve kanıt fotoğraflarını çekip birleştirmek.
+- `sendBackTask(taskId: String, personnelId: String, reason: String, creatorId: String): Boolean` fonksiyonunu eklemek.
+- `delegateTask(taskId: String, fromPersonnelId: String, toPersonnelId: String, fromPositionId: String?, toPositionId: String?, positions: List<PositionInfo>): Boolean` fonksiyonunu eklemek.
+- `softDeleteTask(taskId: String, personnelId: String): Boolean` fonksiyonunu eklemek.
+- Sistem mesajlarını chat akışına eklemek üzere `addSystemChatMessage(taskId: String, body: String): Boolean` fonksiyonunu yazmak.
+
+### 2. Arayüz ve Diyalog Entegrasyonları
+
+#### [MODIFY] [TasksScreen.kt](file:///c:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
+- `TaskCard` ve `TaskDetailDialog` üzerinde `task.description` alanını regex (`\\[Form ID:\\s*([^\\]]+)\\]`) ile temizleyip göstermek.
+- `TaskDetailDialog` bileşeninde:
+  - `formId` tespit edilirse açıklamanın altına mor renkli "İlişkili Form Yanıtını Göster" butonu yerleştirmek.
+  - Göreve bağlı ekleri (`task_attachments`) database'den çekerek "Ekler" başlığı altında listelemek (Görseller Coil `AsyncImage` ile, dosyalar ise dosya adı ve tıklanabilir link ile gösterilir).
+  - Alt kısımdaki aksiyon butonlarını 2x2 grid yapısı veya şık buton grubu şeklinde sunmak:
+    - **Geri Gönder**: Tıklanınca gerekçe girmek için `SendBackPromptDialog` açılır.
+    - **Delege Et**: Tıklanınca personel listesinden seçim yapmak için `DelegatePersonnelDialog` açılır.
+    - **Pasife Al**: Tıklanınca onay penceresi açılır.
+    - **Görevi Başlat / Tamamla**: Mevcut başlatma ve tamamlama mekanizmaları bu buton grubuna entegre edilir.
+- `FormDetailDialog` Compose bileşenini tasarlamak:
+  - Mockup görselindeki mor header, zil simgesi, şube pilleri, kanıt fotoğrafları ve soru-yanıt listesini mobil ekran boyutuna uygun şekilde sunmak.
+- `SendBackPromptDialog` ve `DelegatePersonnelDialog` yardımcı diyaloglarını oluşturmak.
 
 ## Verification Plan
 
-### Automated/Compilation Tests
-- `npm run build` ile web projesinin derlenebilirliği doğrulanacaktır.
-- `.\gradlew.bat compileDebugKotlin` ile Android projesinin sıfır hata ile derlendiği teyit edilecektir.
+### Automated Tests
+- Projeyi `.\gradlew.bat compileDebugKotlin` ve `.\gradlew.bat assembleDebug` ile derleyerek herhangi bir Kotlin derleme veya dependency hatası olmadığını doğrulamak.
 
 ### Manual Verification
-- Web ve Android uygulamalarında görev tanımlama formlarında tekrar kurallarının tam girilip girilemediği kontrol edilecektir.
-- Mobil uygulamada Bugün kartına tıklanarak açılan diyaloglarda doğru Türkçe uyarı metninin çıktığı teyit edilecektir.
+- Görev detaylarında "Geri Gönder", "Delege Et", "Pasife Al" butonlarının durumlarına göre göründüğü test edilecek.
+- Geri gönderme yapıldığında gerekçenin chat ekranına düştüğü ve durumun `rejected` olduğu doğrulanacak.
+- Delege etme işleminde seçilen personel için onay kaydı oluşturulduğu ve chat sistemine not düştüğü gözlemlenecek.
+- Pasife alma tıklandığında görevin listeden kaldırıldığı doğrulanacak.
+- Otomatik formdan oluşan görevlerde mor butona basılınca form verilerinin ve yüklenen görsellerin eksiksiz geldiği test edilecek.

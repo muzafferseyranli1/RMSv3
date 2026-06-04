@@ -53,7 +53,7 @@ export default function TaskCard({ task, peopleById, onOpen }) {
         <div>
           <div style={{ fontSize: '.96rem', fontWeight: 800, color: '#0f172a' }}>{task.title || 'Adsiz gorev'}</div>
           <div style={{ marginTop: 4, fontSize: '.79rem', color: '#64748b', lineHeight: 1.5 }}>
-            {task.description || 'Aciklama girilmedi.'}
+            {(task.description || 'Aciklama girilmedi.').replace(/\[Form ID:\s*[a-fA-F0-9-]{36}\]/g, '').trim()}
           </div>
         </div>
         <span style={{

@@ -241,5 +241,8 @@ Tüm fişler ve hareketler bellekte oluşturulduktan sonra aşağıdaki kurallar
 * İşlemi yapan agent, işlemi tamamladıktan sonra mutlaka bu başlığın altına en son hangi tarihi tamamladığına dair bir log (entry) girmelidir.
 
 ### Tamamlama Logları:
-*(Henüz kayıt girilmedi)*
+- **Tarih:** 2026-06-04T17:25:00+03:00
+- **Agent:** Antigravity
+- **Tamamlanan En Son Tarih:** 2026-06-03
+- **Not:** Orijinal betikteki WEEKDAY_WEIGHTS tanımlarının ondalık (%8 için 0.08 gibi) olmasından ötürü formülde tekrar 100'e bölünerek weekdayFactor'ün her zaman 0.7 alt sınırına kilitlenip tüm günleri tam 160 fişe eşitlemesi hatası düzeltildi (değerler tam sayı yapıldı). Kadıköy Şubesi için 29 Mayıs - 3 Haziran 2026 aralığı silinip düzeltilmiş rastgele ağırlıklarla yeniden üretildi: 29.05 (Cuma) -> 177, 30.05 (Cmt) -> 230, 31.05 (Paz) -> 300, 01.06 (Pzt) -> 160, 02.06 (Sal) -> 160, 03.06 (Çrş) -> 165 fiş.
 

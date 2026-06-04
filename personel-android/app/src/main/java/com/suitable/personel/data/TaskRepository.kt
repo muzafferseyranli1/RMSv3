@@ -22,6 +22,7 @@ data class TaskItem(
     val updatedAt: String,
     val deletedAt: String?,
     val approvalRequired: Boolean,
+    val delegationAllowed: Boolean,
     val closureSummaryRequired: Boolean,
     val closureFileRequired: Boolean,
     val closureImageRequired: Boolean,
@@ -110,13 +111,60 @@ data class ShiftScheduleEntry(
     val shiftShortCode: String?,
     val shiftStartTime: String?,
     val shiftEndTime: String?,
-    val shiftKind: String
+    val shiftKind: String,
+    val breakMinutes: Int = 0
 )
 
 data class FormTemplateInfo(
     val id: String,
     val name: String
 )
+
+data class TaskAttachment(
+    val id: String,
+    val taskId: String,
+    val attachmentType: String,
+    val fileName: String?,
+    val fileUrl: String,
+    val fileSize: Int,
+    val mimeType: String?,
+    val uploadedBy: String?,
+    val createdAt: String
+)
+
+data class FormSubmissionDetail(
+    val id: String,
+    val templateId: String,
+    val branchId: String,
+    val submittedBy: String,
+    val status: String,
+    val answersJson: String,
+    val totalScore: Double?,
+    val maxPossibleScore: Double?,
+    val scorePercentage: Double?,
+    val geoLatitude: Double?,
+    val geoLongitude: Double?,
+    val deviceTimestamp: String?,
+    val completionTimeSeconds: Int?,
+    val isOfflineSubmission: Boolean,
+    val syncedAt: String?,
+    val metadata: String?,
+    val createdAt: String,
+    val templateTitle: String?,
+    val templateFormType: String?,
+    val templateSchemaJson: String?,
+    val photos: List<FormSubmissionPhoto> = emptyList()
+)
+
+data class FormSubmissionPhoto(
+    val id: String,
+    val submissionId: String,
+    val fieldId: String,
+    val fileUrl: String,
+    val fileName: String?,
+    val capturedAt: String?
+)
+
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
@@ -326,6 +374,7 @@ class TaskRepository {
                         updatedAt = row["updated_at"]?.toString() ?: "",
                         deletedAt = row["deleted_at"]?.toString(),
                         approvalRequired = parseBool(row["approval_required"]),
+                        delegationAllowed = parseBool(row["delegation_allowed"]),
                         closureSummaryRequired = parseBool(row["closure_summary_required"]),
                         closureFileRequired = parseBool(row["closure_file_required"]),
                         closureImageRequired = parseBool(row["closure_image_required"]),
@@ -797,16 +846,49 @@ class TaskRepository {
                 rows.map { row ->
                     ShiftScheduleEntry(
                         id = row["id"]?.toString() ?: "",
-                        scheduleDate = row["schedule_date"]?.toString() ?: "",
+                        scheduleDate = row["schedule_date"]?.toString()?.take(10) ?: "",
                         shiftName = row["shift_name"]?.toString(),
                         shiftShortCode = row["shift_short_code"]?.toString(),
                         shiftStartTime = row["shift_start_time"]?.toString(),
                         shiftEndTime = row["shift_end_time"]?.toString(),
-                        shiftKind = row["shift_kind"]?.toString() ?: "working"
+                        shiftKind = row["shift_kind"]?.toString() ?: "working",
+                        breakMinutes = (row["break_minutes"] as? Number)?.toInt() ?: 0
                     )
                 }
             } catch (e: Exception) {
                 Log.e("TaskRepository", "fetchShiftsForPersonnel error", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun fetchShiftsForPersonnelRange(personnelId: String, startDate: String, endDate: String): List<ShiftScheduleEntry> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "branch_shift_schedule_entries",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "personnel_id", "val" to personnelId),
+                        mapOf("type" to "gte", "col" to "schedule_date", "val" to startDate),
+                        mapOf("type" to "lte", "col" to "schedule_date", "val" to endDate)
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                rows.map { row ->
+                    ShiftScheduleEntry(
+                        id = row["id"]?.toString() ?: "",
+                        scheduleDate = row["schedule_date"]?.toString()?.take(10) ?: "",
+                        shiftName = row["shift_name"]?.toString(),
+                        shiftShortCode = row["shift_short_code"]?.toString(),
+                        shiftStartTime = row["shift_start_time"]?.toString(),
+                        shiftEndTime = row["shift_end_time"]?.toString(),
+                        shiftKind = row["shift_kind"]?.toString() ?: "working",
+                        breakMinutes = (row["break_minutes"] as? Number)?.toInt() ?: 0
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchShiftsForPersonnelRange error", e)
                 emptyList()
             }
         }
@@ -919,5 +1001,332 @@ class TaskRepository {
         }
         traverse(nodes)
         return list
+    }
+
+    suspend fun fetchTaskAttachments(taskId: String): List<TaskAttachment> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "task_attachments",
+                    filters = listOf(mapOf("type" to "eq", "col" to "task_id", "val" to taskId))
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                rows.map { row ->
+                    TaskAttachment(
+                        id = row["id"]?.toString() ?: "",
+                        taskId = row["task_id"]?.toString() ?: "",
+                        attachmentType = row["attachment_type"]?.toString() ?: "file",
+                        fileName = row["file_name"]?.toString(),
+                        fileUrl = row["file_url"]?.toString() ?: "",
+                        fileSize = (row["file_size"] as? Number)?.toInt() ?: 0,
+                        mimeType = row["mime_type"]?.toString(),
+                        uploadedBy = row["uploaded_by"]?.toString(),
+                        createdAt = row["created_at"]?.toString() ?: ""
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchTaskAttachments error", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun fetchFormSubmissionDetail(submissionId: String): FormSubmissionDetail? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // 1) Fetch submission
+                val subReq = QueryRequest(
+                    table = "form_submissions",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to submissionId))
+                )
+                val subRes = ApiClient.apiService.executeQuery(subReq)
+                val subRows = (subRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                if (subRows.isEmpty()) return@withContext null
+                val subRow = subRows.first()
+                val templateId = subRow["template_id"]?.toString() ?: ""
+
+                // 2) Fetch template
+                var templateTitle: String? = null
+                var templateFormType: String? = null
+                var templateSchemaJson: String? = null
+                if (templateId.isNotBlank()) {
+                    val tplReq = QueryRequest(
+                        table = "form_templates",
+                        filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to templateId))
+                    )
+                    val tplRes = ApiClient.apiService.executeQuery(tplReq)
+                    val tplRows = (tplRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                    if (tplRows.isNotEmpty()) {
+                        val tplRow = tplRows.first()
+                        templateTitle = tplRow["title"]?.toString()
+                        templateFormType = tplRow["form_type"]?.toString()
+                        val schemaVal = tplRow["schema_json"]
+                        templateSchemaJson = when (schemaVal) {
+                            is Map<*, *> -> ApiClient.gson.toJson(schemaVal)
+                            else -> schemaVal?.toString()
+                        }
+                    }
+                }
+
+                // 3) Fetch photos
+                val photoReq = QueryRequest(
+                    table = "form_submission_photos",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "submission_id", "val" to submissionId),
+                        mapOf("type" to "order", "col" to "created_at", "ascending" to true)
+                    )
+                )
+                val photoRes = ApiClient.apiService.executeQuery(photoReq)
+                val photoRows = (photoRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                val photos = photoRows.map { row ->
+                    FormSubmissionPhoto(
+                        id = row["id"]?.toString() ?: "",
+                        submissionId = row["submission_id"]?.toString() ?: "",
+                        fieldId = row["field_id"]?.toString() ?: "",
+                        fileUrl = row["file_url"]?.toString() ?: "",
+                        fileName = row["file_name"]?.toString(),
+                        capturedAt = row["captured_at"]?.toString()
+                    )
+                }
+
+                val parseDouble = { v: Any? ->
+                    when (v) {
+                        is Number -> v.toDouble()
+                        is String -> v.toDoubleOrNull()
+                        else -> null
+                    }
+                }
+                val parseBool = { v: Any? ->
+                    when (v) {
+                        is Boolean -> v
+                        is String -> v.toBoolean()
+                        is Number -> v.toInt() == 1
+                        else -> false
+                    }
+                }
+
+                val answersVal = subRow["answers_json"]
+                val answersJsonStr = when (answersVal) {
+                    is List<*> -> ApiClient.gson.toJson(answersVal)
+                    is Map<*, *> -> ApiClient.gson.toJson(answersVal)
+                    else -> answersVal?.toString() ?: "[]"
+                }
+
+                val metadataVal = subRow["metadata"]
+                val metadataJsonStr = when (metadataVal) {
+                    is Map<*, *> -> ApiClient.gson.toJson(metadataVal)
+                    else -> metadataVal?.toString() ?: "{}"
+                }
+
+                FormSubmissionDetail(
+                    id = submissionId,
+                    templateId = templateId,
+                    branchId = subRow["branch_id"]?.toString() ?: "",
+                    submittedBy = subRow["submitted_by"]?.toString() ?: "",
+                    status = subRow["status"]?.toString() ?: "",
+                    answersJson = answersJsonStr,
+                    totalScore = parseDouble(subRow["total_score"]),
+                    maxPossibleScore = parseDouble(subRow["max_possible_score"]),
+                    scorePercentage = parseDouble(subRow["score_percentage"]),
+                    geoLatitude = parseDouble(subRow["geo_latitude"]),
+                    geoLongitude = parseDouble(subRow["geo_longitude"]),
+                    deviceTimestamp = subRow["device_timestamp"]?.toString(),
+                    completionTimeSeconds = (subRow["completion_time_seconds"] as? Number)?.toInt(),
+                    isOfflineSubmission = parseBool(subRow["is_offline_submission"]),
+                    syncedAt = subRow["synced_at"]?.toString(),
+                    metadata = metadataJsonStr,
+                    createdAt = subRow["created_at"]?.toString() ?: "",
+                    templateTitle = templateTitle,
+                    templateFormType = templateFormType,
+                    templateSchemaJson = templateSchemaJson,
+                    photos = photos
+                )
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchFormSubmissionDetail error", e)
+                null
+            }
+        }
+    }
+
+    suspend fun addSystemChatMessage(taskId: String, body: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                var threadId: String? = null
+                val threadQuery = QueryRequest(
+                    table = "task_chat_threads",
+                    filters = listOf(mapOf("type" to "eq", "col" to "task_id", "val" to taskId))
+                )
+                val threadRes = ApiClient.apiService.executeQuery(threadQuery)
+                val threadRows = (threadRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                if (threadRows.isNotEmpty()) {
+                    threadId = threadRows.first()["id"]?.toString()
+                } else {
+                    val newThreadId = java.util.UUID.randomUUID().toString()
+                    val createThread = QueryRequest(
+                        table = "task_chat_threads",
+                        operation = "insert",
+                        data = mapOf(
+                            "id" to newThreadId,
+                            "task_id" to taskId,
+                            "created_at" to java.time.Instant.now().toString()
+                        )
+                    )
+                    val createRes = ApiClient.apiService.executeQuery(createThread)
+                    if (createRes.error == null) {
+                        threadId = newThreadId
+                    }
+                }
+
+                if (threadId == null) return@withContext false
+
+                val msgReq = QueryRequest(
+                    table = "task_chat_messages",
+                    operation = "insert",
+                    data = mapOf(
+                        "id" to java.util.UUID.randomUUID().toString(),
+                        "thread_id" to threadId,
+                        "task_id" to taskId,
+                        "message_type" to "system",
+                        "sender_id" to null,
+                        "body" to body,
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val msgRes = ApiClient.apiService.executeQuery(msgReq)
+                msgRes.error == null
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    suspend fun sendBackTask(taskId: String, personnelId: String, reason: String, creatorId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (reason.trim().isBlank()) return@withContext false
+                val reqApproval = QueryRequest(
+                    table = "task_approval_requests",
+                    operation = "insert",
+                    data = mapOf(
+                        "id" to java.util.UUID.randomUUID().toString(),
+                        "task_id" to taskId,
+                        "request_type" to "rejection",
+                        "from_personnel" to personnelId,
+                        "to_personnel" to creatorId,
+                        "reason" to reason,
+                        "status" to "pending",
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val resApproval = ApiClient.apiService.executeQuery(reqApproval)
+                if (resApproval.error != null) return@withContext false
+
+                val reqTask = QueryRequest(
+                    table = "tasks",
+                    operation = "update",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                    data = mapOf(
+                        "status" to "rejected",
+                        "updated_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val resTask = ApiClient.apiService.executeQuery(reqTask)
+                if (resTask.error == null) {
+                    addSystemChatMessage(taskId, "Görev geri gönderildi: $reason")
+                    true
+                } else false
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "sendBackTask error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun delegateTask(
+        taskId: String,
+        fromPersonnelId: String,
+        toPersonnelId: String,
+        fromPositionId: String?,
+        toPositionId: String?,
+        positions: List<PositionInfo>
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "task_approval_requests",
+                    operation = "insert",
+                    data = mapOf(
+                        "id" to java.util.UUID.randomUUID().toString(),
+                        "task_id" to taskId,
+                        "request_type" to "delegation",
+                        "from_personnel" to fromPersonnelId,
+                        "to_personnel" to toPersonnelId,
+                        "status" to "pending",
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                if (res.error != null) return@withContext false
+
+                val reqApproval = canReject(fromPositionId ?: "", toPositionId ?: "", positions)
+                val bodyText = if (reqApproval) "Delege talebi onay bekliyor." else "Delege talebi oluşturuldu."
+                addSystemChatMessage(taskId, bodyText)
+                true
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "delegateTask error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun softDeleteTask(taskId: String, personnelId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "tasks",
+                    operation = "update",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                    data = mapOf(
+                        "deleted_at" to java.time.Instant.now().toString(),
+                        "status" to "soft_deleted",
+                        "updated_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                if (res.error == null) {
+                    addSystemChatMessage(taskId, "Görev pasife alındı.")
+                    true
+                } else false
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "softDeleteTask error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun restoreTask(taskId: String, personnelId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "tasks",
+                    operation = "update",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                    data = mapOf(
+                        "deleted_at" to null,
+                        "status" to "open",
+                        "updated_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                if (res.error == null) {
+                    addSystemChatMessage(taskId, "Görev geri alındı.")
+                    true
+                } else false
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "restoreTask error", e)
+                false
+            }
+        }
     }
 }

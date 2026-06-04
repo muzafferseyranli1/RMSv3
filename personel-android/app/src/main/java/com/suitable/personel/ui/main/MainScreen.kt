@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavKey
 import com.google.gson.Gson
 import com.suitable.personel.data.AppConfig
+import com.suitable.personel.data.ShiftScheduleEntry
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +39,14 @@ fun MainScreen(
 
     var currentRoute by remember { mutableStateOf(if (staffSession != null) "home" else "login") }
 
+    // Hoisted shift states to avoid losing data and flickering when navigating between screens
+    var homeShifts by remember { mutableStateOf<List<ShiftScheduleEntry>>(emptyList()) }
+    var isHomeShiftsLoading by remember { mutableStateOf(true) }
+
+    var shiftPlanShifts by remember { mutableStateOf<List<ShiftScheduleEntry>>(emptyList()) }
+    var isShiftPlanLoading by remember { mutableStateOf(true) }
+    var shiftPlanIncludesPast by remember { mutableStateOf(false) }
+
     if (config?.maintenanceMode == true) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Sistem Bakımda", style = MaterialTheme.typography.headlineMedium)
@@ -61,6 +70,12 @@ fun MainScreen(
                 HomeScreen(
                     config = config,
                     staffSession = staffSession,
+                    shifts = homeShifts,
+                    isLoadingShifts = isHomeShiftsLoading,
+                    onShiftsFetched = { fetchedShifts ->
+                        homeShifts = fetchedShifts
+                        isHomeShiftsLoading = false
+                    },
                     onNavigate = { dest ->
                         if (dest == "login") {
                             val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
@@ -137,6 +152,33 @@ fun MainScreen(
                 TasksScreen(
                     config = config,
                     staffSession = staffSession,
+                    onNavigate = { dest ->
+                        if (dest == "login") {
+                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
+                            if (terminalId != null) {
+                                scope.launch {
+                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
+                                }
+                            }
+                            sharedPref.edit().remove("staffSession").apply()
+                            staffSession = null
+                        }
+                        currentRoute = dest
+                    }
+                )
+            }
+            "shift_plan" -> {
+                ShiftPlanScreen(
+                    config = config,
+                    staffSession = staffSession,
+                    shifts = shiftPlanShifts,
+                    isLoading = isShiftPlanLoading,
+                    includesPastDays = shiftPlanIncludesPast,
+                    onShiftsFetched = { fetchedShifts, includesPast, loading ->
+                        shiftPlanShifts = fetchedShifts
+                        shiftPlanIncludesPast = includesPast
+                        isShiftPlanLoading = loading
+                    },
                     onNavigate = { dest ->
                         if (dest == "login") {
                             val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)

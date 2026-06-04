@@ -63,3 +63,112 @@ Masa kartına tıklandığında açılan alt menü (Dialog) üzerinden:
 [HomeScreen Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
 [TableScreen Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt)
 [Device Repository Kodu (Oturum Yönetimi)](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/DeviceRepository.kt)
+
+---
+
+## 3. Konum Doğrulamalı QR Mesai Giriş Entegrasyonu
+
+Bu güncelleme ile mobil uygulamada vardiya başlatırken, şubeye özel bir QR kodu taratılması ve cihazın GPS konumu ile şubenin kayıtlı enlem/boylam koordinatları arasındaki mesafenin kontrol edilmesi özelliği başarıyla tamamlanmıştır.
+
+### Neler Yapıldı?
+
+#### Web Paneli (Şube Tanımları Koordinat Girişi)
+- [Company (1).jsx](file:///C:/RMSv3/src/components/pages/Company%20(1).jsx) dosyasında şube düğümleri için enlem (`latitude`) ve boylam (`longitude`) alanları eklendi.
+- Yöneticilerin şube tanımları formunda koordinatları girmesi ve şube detaylarında bu koordinatların görüntülenebilmesi sağlandı.
+- Test amacıyla Kadıköy Şubesi koordinatı veritabanında `41.028595, 29.177221` olarak güncellendi.
+
+#### Android Uygulaması (Oturum Modeli & Konumlu QR Giriş Kontrolü)
+- [PinLoginScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt) içerisinde `StaffSession` modeli güncellenerek aktif şubenin enlem ve boylam bilgileri oturum verisi haline getirildi.
+- [AndroidManifest.xml](file:///C:/RMSv3/personel-android/app/src/main/AndroidManifest.xml) dosyasına `ACCESS_FINE_LOCATION` ve `ACCESS_COARSE_LOCATION` konum izinleri eklendi.
+- [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt) üzerinde "Vardiya Başlat" (Bugün kartına tıklanması) işlemi sırasında çalışan akış:
+  1. **Konum İzinlerinin Kontrolü:** İzin verilmemişse Compose `RequestMultiplePermissions` launcher'ı ile konum izni istenir.
+  2. **QR Barkod Okuyucu:** İzin verildikten sonra zxing barcode okuyucu başlatılır.
+  3. **QR Doğrulama:** Okunan QR'ın branchId değeri JSON veya düz dize olarak doğrulanarak personelin aktif şube ID'si ile eşleştiği kontrol edilir.
+  4. **GPS Konumu ve Geofencing:** Cihazın GPS konumu native `LocationManager` ile sorgulanır. Şube koordinatları ile cihaz konumu arasındaki mesafe `Location.distanceBetween` kullanılarak hesaplanır.
+  5. **Tolerans Kontrolü:** Mesafe 100 metreden fazla ise mesai başlatılması engellenerek `"Şubede görünmüyorsunuz. Giriş yapmak için lütfen şube sınırları içerisinde bulunun."` uyarısı gösterilir. Mesafe 100m veya daha az ise PDKS mesai başlatma diyaloguna geçilerek vardiya başlatılır.
+  6. **GPS Zaman Aşımı:** GPS sinyali zayıf olduğunda kullanıcının ekranın kilitlenmesini önlemek için 8 saniyelik bir zaman aşımı eklenmiştir.
+  7. **Vardiyayı Bitirme Kontrolü:** Mesai bitirme (Bitir butonu) işlemi tetiklendiğinde cihazın anlık GPS konumu sorgulanır. Şube merkezinden 100 metreden fazla uzaklaşılmışsa mesainin kapatılması engellenerek Türkçe uyarı diyalogu gösterilir.
+
+### Doğrulama ve Derleme Sonuçları
+- **Web Build:** `npm run build` ile web projesinin sorunsuz derlendiği doğrulandı.
+- **Kotlin Derleme:** `.\gradlew.bat compileDebugKotlin` ile Kotlin kodlarının hatasız derlendiği test edildi.
+- **APK Derleme:** `.\gradlew.bat assembleDebug` komutuyla debug APK paketleme işlemi başarıyla tamamlandı.
+
+[PinLoginScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt)
+[HomeScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
+[AndroidManifest.xml](file:///C:/RMSv3/personel-android/app/src/main/AndroidManifest.xml)
+
+---
+
+## 4. Çalışma Planı (Shift Plan) Ekranı Entegrasyonu
+
+Bu güncelleme ile mobil uygulamada personelin kendisi için planlanmış vardiyaları listeleyebileceği modern bir "Çalışma Planı" ekranı entegre edilmiştir.
+
+### Neler Yapıldı?
+
+#### Android Veri Katmanı Değişiklikleri
+- [TaskRepository.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt) dosyasındaki `ShiftScheduleEntry` modeli güncellenerek `breakMinutes` (mola süresi) alanı eklendi ve veritabanındaki `break_minutes` alanı modellendi.
+- Tarih aralığı bazlı sorgu için `fetchShiftsForPersonnelRange` fonksiyonu entegre edildi. Bu sayede API'nin gte/lte filtreleri kullanılarak sadece istenilen aralıktaki vardiya verileri çekilmektedir.
+
+#### Navigasyon ve Ekran Yönlendirmeleri
+- [NavigationKeys.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/NavigationKeys.kt) dosyasına yeni ekranın rotası olan `@Serializable data object ShiftPlan : NavKey` eklendi.
+- [MainScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt) içerisinde `shift_plan` yönlendirmesi tanımlandı ve `ShiftPlanScreen` composable'ına yönlendirildi.
+- [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt) yan menüsüne (Sidebar) "🗓️ Çalışma Planı" seçeneği eklendi. Ayrıca anasayfada yer alan "Yarın" (Tomorrow) ve "Sonraki" (Next) vardiya kartlarının tıklama olaylarına (onClick) `shift_plan` rotasına yönlendirme tanımlandı.
+
+#### Arayüz ve Tasarım (ShiftPlanScreen.kt)
+- [ShiftPlanScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/ShiftPlanScreen.kt) dosyasında Jetpack Compose tabanlı yeni bir arayüz geliştirildi:
+  - Sayfanın en üstünde personelin "Bugünkü" vardiya planı en ince ayrıntısına (Giriş/Çıkış saatleri, Mola süresi, Net çalışma süresi) kadar kart tasarımıyla vurgulandı.
+  - Alt kısımda cari aya ait diğer tüm vardiya planları kronolojik sıra ile listelenmektedir.
+  - Her mesai günü için mola süresi düşülerek net çalışma saati hesaplanır ve gösterilir (örn. "7.5 Saat").
+  - Veri trafiğini minimumda tutmak adına, ekran ilk açıldığında sadece **bugün ve gelecek günlerin** vardiya verilerini çeker. Kullanıcı sağ üst köşedeki yenileme butonuna tıkladığında ise **geçmiş günleri de içeren tüm ayın** vardiyaları sorgulanır ve arayüz güncellenir.
+
+### Titreme (Flickering) ve Sürekli Yüklenme Düzeltmesi
+- Ekranlar arası her yönlendirmede (`currentRoute` değiştiğinde) `HomeScreen` ve `ShiftPlanScreen` composable bileşenleri yok olduğu için, `shifts` ve `isLoading` gibi yerel durum değişkenleri sıfırlanıyor ve her sayfa açılışında veriler gelene kadar 1-2 saniye boyunca "Vardiya Yok" uyarısı gösteriliyordu.
+- Bu sorunu çözmek için vardiya listesi ve yükleme durumları (loading states) üst katman olan [MainScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt) dosyasına taşındı (State Hoisting).
+- Veriler üst katmanda saklandığı için, sayfalar arası geçişlerde vardiya bilgileri anında yüklenir ve herhangi bir titreme (flicker) yaşanmaz. Arka planda `LaunchedEffect` ile veri güncelliği sorgulanmaya devam eder.
+- Ayrıca yükleme esnasında boş veri gösterilmesini engellemek için, ilk yükleme durumlarında arayüzde "Vardiya Yok" yerine "Yükleniyor..." bilgisi gösterilmesi sağlandı.
+
+### Doğrulama ve Derleme Sonuçları
+- **Android Kotlin Derleme:** `.\gradlew.bat compileDebugKotlin` ile Kotlin kodlarının hatasız derlendiği test edildi.
+- **Android APK Derleme:** `.\gradlew.bat assembleDebug` komutuyla debug APK paketleme işlemi başarıyla tamamlandı.
+
+[ShiftPlanScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/ShiftPlanScreen.kt)
+[TaskRepository.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
+[HomeScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
+
+---
+
+## 5. Görev Ekleri, Form Gösterimi ve Durum Aksiyonları Entegrasyonu
+
+Bu güncelleme ile mobil uygulamadaki görevler ekranında, formlardan otomatik oluşturulmuş görevlerin ve ilişkili eklerin gösterilmesi ile görev durumunu değiştiren aksiyonların entegrasyonu başarıyla tamamlanmıştır.
+
+### Neler Yapıldı?
+
+#### 1. Android Veri Katmanı Değişiklikleri (`TaskRepository.kt`)
+- `TaskItem` veri sınıfına `delegationAllowed` özelliği eklendi ve Postgres tablosundaki `delegation_allowed` alanı ile eşleştirildi.
+- Eklerin listelenmesi için `TaskAttachment` modeli, form şablonu ve yanıt detayları için `FormSubmissionDetail` ve `FormSubmissionPhoto` modelleri tanımlandı.
+- Görev eklerini çeken `fetchTaskAttachments` ve form gönderim yanıtlarını getiren `fetchFormSubmissionDetail` veri sorgu fonksiyonları eklendi.
+- "Geri Gönder", "Delege Et", "Pasife Al", "Sistem Mesajı Ekle" işlemleri için `sendBackTask`, `delegateTask`, `softDeleteTask`, ve `addSystemChatMessage` veritabanı eylemleri eklendi.
+
+#### 2. Görev Detayları & Arayüz Temizliği (`TasksScreen.kt`)
+- Görev açıklamasındaki `[Form ID: <submission_id>]` gibi teknik form kimlikleri Regex (`\\[Form ID:\\s*([^\\]]+)\\]`) yardımıyla temizlenerek kullanıcılara sade bir açıklama metni sunuldu.
+- Temizlenen açıklamaların altında, sadece otomatik formlardan türeyen görevlerde görünen şık bir mor renkli **"İlişkili Form Yanıtını Göster"** butonu yerleştirildi.
+- Görevin veritabanında kayıtlı ekleri (`task_attachments`) algılanıp "Ekler" başlığı altında listelendi. Görsel ekler Coil `AsyncImage` ile, diğer dosyalar dosya simgeli tıklanabilir linkler halinde gösterildi.
+
+#### 3. Form Gösterim Ekranı (`FormDetailDialog`)
+- Mobil tasarıma uygun mor degradeli başlık çubuğu, zil simgesi, şube bilgisi (`PillBadge`), denetçi adı, tarih ve varsa kanıt fotoğrafları ile soru-yanıt listesini şık bir biçimde gösteren `FormDetailDialog` Compose bileşeni geliştirildi.
+
+#### 4. Görev Durum Aksiyon Butonları & Popuplar
+- Detay modalının alt kısmına dinamik olarak durum eylem butonları eklendi:
+  - **Başlat / Tamamla / Aktifleştir**: Görevin durumuna göre (open, in_progress, soft_deleted) uygun aksiyonu başlatan butonlar entegre edildi.
+  - **Geri Gönder (Send Back)**: Kullanıcıdan iade gerekçesi alan prompt popup'ı (`AlertDialog`) entegre edildi ve onaylandığında durumu `rejected` yapıp chat akışına sistem mesajı düştü.
+  - **Delege Et (Delegate)**: Personelleri listeleyen ve seçim sonrasında onay talebi oluşturan `LazyColumn` içerikli bir delege seçici diyalog eklendi.
+  - **Pasife Al (Soft Delete)**: Görev oluşturucuya özel pasife alma onay diyalogu bağlandı.
+
+### Doğrulama ve Derleme Sonuçları
+- **Hata Düzeltmeleri:** Compose `AlertDialog` ve Modifier `.border` import eksiklikleri ile `TaskItem` veri sınıfı imza eksiklikleri düzeltildi.
+- **Android Kotlin Derleme:** `.\gradlew.bat compileDebugKotlin` komutuyla projenin Kotlin kodlarının sıfır hata ile derlendiği doğrulandı (**BUILD SUCCESSFUL**).
+
+[TasksScreen.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
+[TaskRepository.kt Kodu](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
+

@@ -1,0 +1,100 @@
+=== STEP 495 ===
+"const SearchableMultiSelect = ({ items, selectedList, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedIds = (selectedList || []).map(item => String(item.id))
+
+  const filtered = (items || []).filter(item => 
+    item.name?.toLowerCase().includes(search.toLowerCase()) ||
+    (item.sku && item.sku?.toLowerCase().includes(search.toLowerCase()))
+  )
+
+  const handleToggle = (item) => {
+    const list = selectedList ? [...selectedList] : []
+    const idx = list.findIndex(x => String(x.id) === String(item.id))
+    if (idx > -1) {
+      list.splice(idx, 1)
+    } else {
+      list.push({ id: item.id, name: item.name })
+    }
+    onChange(list)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', minWidth: 220, maxWidth: 300 }}>
+      <div 
+        onClick={() => setOpen(true)}
+        style={{ 
+          minHeight: 36, border: '1px solid var(--border)', borderRadius: 8, padding: '5px 8px',
+          display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: 'var(--surface)',
+          cursor: 'text', fontSize: '.8rem'
+        }}
+      >
+        {(selectedList || []).map((item) => (
+          <span 
+            key={item.id} 
+            style={{ 
+              background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 6px', 
+              borderRadius: 6, fontSize: '.72rem', display: 'inline-flex', alignItems: 'center', gap: 4,
+              border: '1px solid rgba(139,92,246,0.2)'
+            }}
+          >
+            {item.name}
+            <i 
+              classNam
+<truncated 2831 bytes>
+
+=== STEP 515 ===
+"                        {field.type === 'select' && (
+                          <div className="sel-wrap" style={{ width: 150 }}>
+                            <select
+                              value={answer?.value || ''}
+                              onChange={e => updateAnswer(field.id, e.target.value)}
+                              className="f-input"
+                              style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                            >
+                              <option value="">Seçiniz</option>
+                              {(field.options || []).map((opt, i) => {
+                                const val = typeof opt === 'object' ? opt.label : opt
+                                return <option key={i} value={val}>{val}</option>
+                              })}
+                            </select>
+                          </div>
+                        )}
+
+                        {field.type === 'stock_item_select' && (
+                          <SearchableMultiSelect 
+                            items={stockItems}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Stok Malı Seçin..."
+                          />
+                        )}
+
+                        {field.type === 'sale_item_select' && (
+                          <SearchableMultiSelect 
+                            items={saleItems}
+                            selectedList={answer?.value || []}
+                            onChange={val => updateAnswer(field.id, val)}
+                            placeholder="Satış Malı Seçin..."
+                          />
+                        )}
+
+                        {field.type === 'semi_product_select' && (
+                          <SearchableMultiSelect 
+                            items={semiItems}
+                            selectedList={answer?.value || []}
+                          
+<truncated 592 bytes>

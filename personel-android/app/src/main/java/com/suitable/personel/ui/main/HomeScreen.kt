@@ -20,6 +20,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.google.gson.Gson
 import com.suitable.personel.data.AppConfig
 import com.suitable.personel.data.CustomerInfo
 import com.suitable.personel.data.TaskRepository
@@ -95,6 +108,13 @@ fun AppScaffold(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text("🗓️  Çalışma Planı") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("shift_plan")
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Çıkış Yap", color = Color.Red) },
                         onClick = {
                             showSidebarMenu = false
@@ -108,13 +128,113 @@ fun AppScaffold(
     }
 }
 
+private fun getCurrentLocation(
+    context: Context,
+    onLocationReceived: (Location) -> Unit,
+    onError: (String) -> Unit
+) {
+    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+    if (locationManager == null) {
+        onError("Konum servisi bulunamadı.")
+        return
+    }
+
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        onError("Konum izni verilmedi.")
+        return
+    }
+
+    val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+    val isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+    if (!isGpsEnabled && !isNetworkEnabled) {
+        onError("Konum servisleri (GPS/Mobil Veri) kapalı. Lütfen ayarlardan açın.")
+        return
+    }
+
+    var bestLocation: Location? = null
+
+    if (isNetworkEnabled) {
+        try {
+            val loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            if (loc != null) {
+                bestLocation = loc
+            }
+        } catch (_: SecurityException) {}
+    }
+
+    if (isGpsEnabled) {
+        try {
+            val loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (loc != null) {
+                if (bestLocation == null || loc.time > bestLocation.time) {
+                    bestLocation = loc
+                }
+            }
+        } catch (_: SecurityException) {}
+    }
+
+    val now = System.currentTimeMillis()
+    if (bestLocation != null && (now - bestLocation.time) < 30000) {
+        onLocationReceived(bestLocation)
+        return
+    }
+
+    val provider = if (isGpsEnabled) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+
+    val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            try {
+                locationManager.removeUpdates(this)
+            } catch (_: Exception) {}
+            onLocationReceived(location)
+        }
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    try {
+        locationManager.requestLocationUpdates(
+            provider,
+            0L,
+            0f,
+            listener,
+            Looper.getMainLooper()
+        )
+        val handler = android.os.Handler(Looper.getMainLooper())
+        handler.postDelayed({
+            try {
+                locationManager.removeUpdates(listener)
+            } catch (_: Exception) {}
+            if (bestLocation != null) {
+                onLocationReceived(bestLocation)
+            } else {
+                onError("Konumunuz alınamadı. Lütfen açık bir alana geçip tekrar deneyin.")
+            }
+        }, 8000)
+    } catch (e: SecurityException) {
+        onError("Konum erişim izni hatası: ${e.message}")
+    } catch (e: Exception) {
+        if (bestLocation != null) {
+            onLocationReceived(bestLocation)
+        } else {
+            onError("Konum alınırken hata oluştu: ${e.message}")
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     config: AppConfig?,
-    customerInfo: CustomerInfo? = null,
+    onNavigate: (String) -> Unit,
     staffSession: StaffSession? = null,
-    onNavigate: (String) -> Unit
+    shifts: List<ShiftScheduleEntry> = emptyList(),
+    isLoadingShifts: Boolean = true,
+    onShiftsFetched: (List<ShiftScheduleEntry>) -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val pref = remember { context.getSharedPreferences("PersonelPrefs", Context.MODE_PRIVATE) }
@@ -189,19 +309,15 @@ fun HomeScreen(
         Triple(today, tomorrow, afterTomorrow)
     }
 
-    var shifts by remember { mutableStateOf<List<ShiftScheduleEntry>>(emptyList()) }
-    var isLoadingShifts by remember { mutableStateOf(true) }
     val actorId = staffSession?.id ?: ""
 
     LaunchedEffect(actorId) {
         if (actorId.isNotBlank()) {
-            isLoadingShifts = true
             try {
-                shifts = repo.fetchShiftsForPersonnel(actorId, listOf(dates.first, dates.second, dates.third))
+                val result = repo.fetchShiftsForPersonnel(actorId, listOf(dates.first, dates.second, dates.third))
+                onShiftsFetched(result)
             } catch (e: Exception) {
                 // handle error
-            } finally {
-                isLoadingShifts = false
             }
         }
     }
@@ -213,6 +329,75 @@ fun HomeScreen(
     var showStartShiftDialog by remember { mutableStateOf(false) }
     var showEndOrBreakDialog by remember { mutableStateOf(false) }
     var showResumeFromBreakDialog by remember { mutableStateOf(false) }
+
+    var locationErrorDialogMessage by remember { mutableStateOf<String?>(null) }
+    var isCheckingLocation by remember { mutableStateOf(false) }
+
+    val qrScanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            val code = result.contents.trim()
+            var scannedBranchId = code
+            try {
+                val map = Gson().fromJson(code, Map::class.java)
+                if (map != null) {
+                    scannedBranchId = (map["branchId"] ?: map["id"] ?: code).toString()
+                }
+            } catch (_: Exception) {}
+
+            val activeBranchId = staffSession?.activeBranchId ?: ""
+            if (scannedBranchId != activeBranchId) {
+                locationErrorDialogMessage = "Hatalı şube QR kodu okuttunuz! Bu QR kod sizin aktif şubenize ait değil."
+                return@rememberLauncherForActivityResult
+            }
+
+            val branchLat = staffSession?.activeBranchLatitude
+            val branchLon = staffSession?.activeBranchLongitude
+            if (branchLat == null || branchLon == null) {
+                locationErrorDialogMessage = "Şubenizin koordinat bilgileri girilmemiş. Lütfen yönetici ile iletişime geçin."
+                return@rememberLauncherForActivityResult
+            }
+
+            isCheckingLocation = true
+            getCurrentLocation(context,
+                onLocationReceived = { location ->
+                    isCheckingLocation = false
+                    val results = FloatArray(1)
+                    Location.distanceBetween(branchLat, branchLon, location.latitude, location.longitude, results)
+                    val distance = results[0]
+                    if (distance > 100f) {
+                        locationErrorDialogMessage = String.format(
+                            java.util.Locale.US,
+                            "Şubede görünmüyorsunuz. Giriş yapmak için lütfen şube sınırları içerisinde bulunun.\nMesafe: %.1f m (Sınır: 100m)",
+                            distance
+                        )
+                    } else {
+                        showStartShiftDialog = true
+                    }
+                },
+                onError = { error ->
+                    isCheckingLocation = false
+                    locationErrorDialogMessage = error
+                }
+            )
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            val opts = ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Vardiya başlatmak için şube QR'ını taratın")
+                .setBeepEnabled(true)
+                .setOrientationLocked(true)
+            qrScanLauncher.launch(opts)
+        } else {
+            locationErrorDialogMessage = "Vardiyayı başlatmak için konum izinlerini vermeniz gerekmektedir."
+        }
+    }
 
     // Vardiya zaman kontrolü: dk cinsinden fark (+ = geç, - = erken)
     val shiftTimingDiffMinutes: (String?) -> Long? = { timeStr ->
@@ -232,7 +417,25 @@ fun HomeScreen(
 
     val onBugunCardClick = {
         when (pdksState) {
-            "OUT" -> showStartShiftDialog = true
+            "OUT" -> {
+                val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (hasFine || hasCoarse) {
+                    val opts = ScanOptions()
+                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        .setPrompt("Vardiya başlatmak için şube QR'ını taratın")
+                        .setBeepEnabled(true)
+                        .setOrientationLocked(true)
+                    qrScanLauncher.launch(opts)
+                } else {
+                    locationPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }
+            }
             "IN" -> showEndOrBreakDialog = true
             "BREAK" -> showResumeFromBreakDialog = true
         }
@@ -240,7 +443,7 @@ fun HomeScreen(
 
     AppScaffold(
         config = config,
-        customerInfo = customerInfo,
+        customerInfo = null,
         staffSession = staffSession,
         onNavigate = onNavigate,
         showMenu = true
@@ -389,6 +592,7 @@ fun HomeScreen(
 
                             // Vardiya saatleri (büyük)
                             val shiftTimeLabel = when {
+                                isLoadingShifts -> "Yükleniyor..."
                                 todayShift == null -> "Vardiya Yok"
                                 todayShift.shiftKind == "off" -> "🏖️ İzin Günü"
                                 todayShift.shiftKind == "leave" -> "🏥 İzinli"
@@ -406,7 +610,7 @@ fun HomeScreen(
                             // Short code
                             if (todayShift?.shiftShortCode != null) {
                                 Box(
-                                    modifier = androidx.compose.ui.Modifier
+                                    modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(shiftColor.copy(alpha = 0.2f))
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -445,7 +649,7 @@ fun HomeScreen(
                         else -> Color(0xFF334155)
                     }
                     Card(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).clickable { onNavigate("shift_plan") },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = tomorrowShiftColor.copy(alpha = 0.06f)),
                         border = BorderStroke(1.dp, tomorrowShiftColor.copy(alpha = 0.4f))
@@ -475,6 +679,7 @@ fun HomeScreen(
                             Text(tomorrowDateFormatted, color = tomorrowShiftColor.copy(alpha = 0.8f), fontSize = 10.sp)
                             HorizontalDivider(color = tomorrowShiftColor.copy(alpha = 0.2f), thickness = 0.5.dp)
                             val tmrwLabel = when {
+                                isLoadingShifts -> "Yükleniyor..."
                                 tomorrowShift == null -> "Plan Yok"
                                 tomorrowShift.shiftKind == "off" -> "🏖️ İzin"
                                 tomorrowShift.shiftKind == "leave" -> "🏥 İzin"
@@ -495,7 +700,7 @@ fun HomeScreen(
                         else -> Color(0xFF334155)
                     }
                     Card(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).clickable { onNavigate("shift_plan") },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = nextShiftColor.copy(alpha = 0.06f)),
                         border = BorderStroke(1.dp, nextShiftColor.copy(alpha = 0.4f))
@@ -525,6 +730,7 @@ fun HomeScreen(
                             Text(afterTomorrowDateFormatted, color = nextShiftColor.copy(alpha = 0.8f), fontSize = 10.sp)
                             HorizontalDivider(color = nextShiftColor.copy(alpha = 0.2f), thickness = 0.5.dp)
                             val nextLabel = when {
+                                isLoadingShifts -> "Yükleniyor..."
                                 afterTomorrowShift == null -> "Plan Yok"
                                 afterTomorrowShift.shiftKind == "off" -> "🏖️ İzin"
                                 afterTomorrowShift.shiftKind == "leave" -> "🏥 İzin"
@@ -540,6 +746,42 @@ fun HomeScreen(
                 }
 
                 // Dialogs
+                if (locationErrorDialogMessage != null) {
+                    AlertDialog(
+                        onDismissRequest = { locationErrorDialogMessage = null },
+                        title = { Text("Giriş Başarısız", color = Color.White, fontWeight = FontWeight.Bold) },
+                        text = { Text(locationErrorDialogMessage ?: "", color = Color.White) },
+                        confirmButton = {
+                            Button(
+                                onClick = { locationErrorDialogMessage = null },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                            ) {
+                                Text("Tamam", color = Color.White)
+                            }
+                        },
+                        containerColor = Color(0xFF0F2847)
+                    )
+                }
+
+                if (isCheckingLocation) {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Konum Doğrulanıyor", color = Color.White, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            ) {
+                                CircularProgressIndicator(color = Color(0xFF3B82F6))
+                                Text("GPS konumu alınıyor, lütfen bekleyin...", color = Color.White)
+                            }
+                        },
+                        confirmButton = {},
+                        containerColor = Color(0xFF0F2847)
+                    )
+                }
+
                 if (showStartShiftDialog) {
                     val startDiffMins = shiftTimingDiffMinutes(todayShift?.shiftStartTime)
                     val timingWarning = when {
@@ -680,8 +922,37 @@ fun HomeScreen(
                                 }
                                 Button(
                                     onClick = {
-                                        savePdksState("OUT", 0L, 0L, 0L)
-                                        showEndOrBreakDialog = false
+                                        val branchLat = staffSession?.activeBranchLatitude
+                                        val branchLon = staffSession?.activeBranchLongitude
+                                        if (branchLat == null || branchLon == null) {
+                                            locationErrorDialogMessage = "Şubenizin koordinat bilgileri girilmemiş. Lütfen yönetici ile iletişime geçin."
+                                            showEndOrBreakDialog = false
+                                            return@Button
+                                        }
+
+                                        isCheckingLocation = true
+                                        getCurrentLocation(context,
+                                            onLocationReceived = { location ->
+                                                isCheckingLocation = false
+                                                val results = FloatArray(1)
+                                                Location.distanceBetween(branchLat, branchLon, location.latitude, location.longitude, results)
+                                                val distance = results[0]
+                                                if (distance > 100f) {
+                                                    locationErrorDialogMessage = String.format(
+                                                        java.util.Locale.US,
+                                                        "Şubede görünmüyorsunuz. Vardiyayı sonlandırmak için lütfen şube sınırları içerisinde bulunun.\nMesafe: %.1f m (Sınır: 100m)",
+                                                        distance
+                                                    )
+                                                } else {
+                                                    savePdksState("OUT", 0L, 0L, 0L)
+                                                    showEndOrBreakDialog = false
+                                                }
+                                            },
+                                            onError = { error ->
+                                                isCheckingLocation = false
+                                                locationErrorDialogMessage = error
+                                            }
+                                        )
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                                 ) {
