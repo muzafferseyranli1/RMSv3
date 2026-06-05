@@ -204,3 +204,18 @@ Bu güncelleme ile görevler ekranında detaylı görev tamamlama, tarih güncel
 ### Derleme Sonuçları
 - **Android APK Derleme:** `.\gradlew.bat assembleDebug` komutuyla debug APK paketleme işlemi sorunsuz tamamlandı (**BUILD SUCCESSFUL**).
 - **Üretilen APK Konumu:** [app-debug.apk](file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) (~20.67 MB).
+
+
+---
+
+## 7. Müşteri Uygulaması Ayarlarında Resim Yükleme Hatasının Düzeltilmesi
+
+Bu güncelleme ile web paneli üzerindeki Müşteri Uygulaması Ayarları (`CustomerAppAdminSettings.jsx`) ekranında logo ve zemin resmi yüklerken (veya kaydederken) oluşan sessiz hata düzeltilmiştir.
+
+### Neler Yapıldı?
+- **Toast Kancası Entegrasyonu:** Dosya yükleme ve ayarları kaydetme sırasında çağrılan `toast.success`, `toast.error` ve `toast.loading` metotlarının, ilgili dosyada `toast` kütüphanesinin/hook'unun import edilmemiş olmasından dolayı `ReferenceError: toast is not defined` hatası fırlattığı tespit edildi.
+- **Özel Sarmalayıcı (Wrapper) Tanımlandı:** Projenin kendi özel bildirim altyapısı olan `useToast` kancası (`@/hooks/useToast`) dosyaya import edildi. Mevcut kod tabanındaki `toast.success` ve `toast.error` çağrılarını bozmamak ve en az kod değişikliğiyle en temiz çözümü üretmek amacıyla, `useToast`'u `toast.success`, `toast.error`, `toast.info` ve `toast.loading` metotlarına dönüştüren bir sarmalayıcı (wrapper) tanımlandı.
+- **Hata Çözümü:** Bu düzenlemeyle birlikte logo ve zemin resmi yükleme fonksiyonu, hata fırlatmadan ve dosyayı API'ye yükleyip URL'sini başarıyla branding state'ine kaydedecek şekilde düzeltildi.
+
+### Doğrulama ve Derleme Sonuçları
+- **Vite Dev Server:** Vite yerel geliştirme sunucusu (`npm run dev`) sıfır hata ile başlatıldı ve `http://localhost:5173/` adresi üzerinden sorunsuzca çalıştığı doğrulandı.

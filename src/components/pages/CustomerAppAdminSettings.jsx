@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, resolveImageUrl } from '@/lib/db';
+import { useToast } from '@/hooks/useToast';
 
 const PREDEFINED_BUTTON_TYPES = [
   { id: 'kampanyalar', label: 'Kampanyalar', desc: 'Kampanyalar sayfasına gider.' },
@@ -14,6 +15,17 @@ const PREDEFINED_BUTTON_TYPES = [
 ];
 
 export default function CustomerAppAdminSettings() {
+  const showToast = useToast();
+  const toast = {
+    success: (msg) => showToast(msg, 'success'),
+    error: (msg) => showToast(msg, 'error'),
+    info: (msg) => showToast(msg, 'info'),
+    loading: (msg) => {
+      showToast(msg, 'info');
+      return null;
+    }
+  };
+
   const [configId, setConfigId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

@@ -8534,3 +8534,19 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Projenin son halini içeren debug APK dosyası başarıyla derlendi.
 - Next Step: APK'nın test ortamında test edilmesi ve canlıya alınması.
 - Handoff Contract: Sonraki agent çalışmaya başlamadan önce bu Entry 026'yı okusun. Görev detaylarındaki yeni tamamlama, tarih güncelleme, izleyici yönetimi ve kapatma özeti süreçlerinin eklenip Kotlin derlemesinin hatasız (BUILD SUCCESSFUL) tamamlandığını varsayabilir.
+
+
+## Entry 027
+
+- Timestamp: 2026-06-05T21:58:00+03:00
+- Agent: Antigravity
+- Task: Müşteri Uygulaması Logo ve Zemin Resmi Yükleme Hatası Düzeltimi
+- Intent: Müşteri uygulaması ayarlarında logo ve zemin resmi yüklerken oluşan sessiz ReferenceError hatasını toast hook'unu import ederek ve metot sarmalayıcısı (success, error, loading) ekleyerek çözmek.
+- Files Changed:
+  - src/components/pages/CustomerAppAdminSettings.jsx
+- Findings:
+  - CustomerAppAdminSettings.jsx içerisinde toast.success, toast.error ve toast.loading çağrıları yapılmasına rağmen toast'un hiçbir şekilde import edilmediği veya tanımlanmadığı tespit edildi.
+  - Bu durum, dosya yükleme (onChange) sırasında ReferenceError oluşmasına ve catch bloğunda da toast.error çağrıldığı için hatanın sessizce kaybolup hiçbir işlem yapılmamasına sebep oluyordu.
+  - hooks/useToast.jsx içindeki özel useToast kancası import edildi ve toast.success, toast.error vb. metot çağrılarıyla geriye dönük uyumlu çalışacak bir sarmalayıcı (wrapper) tanımlandı.
+- Next Step: Arayüz üzerinden logo ve zemin resmi yükleme fonksiyonunun çalıştığını doğrulamak.
+- Handoff Contract: Sonraki agent çalışmaya başlamadan önce bu Entry 027'yi okusun. Müşteri uygulaması genel tasarım ayarlarındaki (branding) görsel yükleme ve ayarları kaydetme ekranındaki eksik toast kancası sorununun çözüldüğünü varsayabilir.
