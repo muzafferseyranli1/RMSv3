@@ -99,6 +99,7 @@ const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 const ManualManagement = lazy(() => import('@/components/pages/ManualManagement'))
 const ManualReader = lazy(() => import('@/components/pages/ManualReader'))
+const EquipmentManagement = lazy(() => import('@/components/pages/EquipmentManagement'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -462,6 +463,7 @@ function AppShell() {
               <Route path="/formlar" element={<FormSubmissions />} />
               <Route path="/manual-yonetimi" element={<ManualManagement />} />
               <Route path="/manual" element={<WorkspaceBranchScope><ManualReader /></WorkspaceBranchScope>} />
+              <Route path="/ekipman-yonetimi" element={<EquipmentManagement />} />
               <Route path="/geribildirim-kategorileri" element={<TicketCategories />} />
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
               <Route path="/merkez-orders" element={<Placeholder title="Siparişler" icon="fa-receipt" />} />

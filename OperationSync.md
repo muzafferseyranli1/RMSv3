@@ -8674,3 +8674,30 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - T�m de�i�iklikler node ile do�ruland�, git commit yap�ld� (1171e56).
 - Next Step: Faz 2 - Backend API endpoint'leri: equipment_instances CRUD, CSV import/export, equipment_transfers ak���, TCO agregasyon sorgusu.
 - Handoff Contract: Faz 1 tamamd�r. Railway Postgres'te equipment_instances, equipment_transfers tablolar� mevcuttur. maintenance_tickets g�ncellenmi�tir. Faz 2'ye ge�ilebilir.
+
+
+## Entry 034
+
+- Timestamp: 2026-06-06T23:28:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yönetimi - Faz 2: Backend API Endpoint'leri
+- Intent: Faz 2 prompt setinde tanımlanan tüm backend API endpoint'lerini server/index.js dosyasına eklemek.
+- Files Changed:
+  - server/index.js (GÜNCELLENDİ - ~770 satır ekleme)
+- Endpoints Implemented:
+  - GET/POST/PUT/DELETE /api/equipment/definitions (CRUD + soft delete)
+  - GET/POST/PUT/DELETE /api/equipment/instances (CRUD, JOIN ile definition bilgisi)
+  - GET /api/equipment/instances/csv-template (UTF-8 BOM destekli Excel uyumlu CSV)
+  - POST /api/equipment/instances/csv-import (Toplu içe aktarma, bilinmeyen şube toleransı)
+  - GET/POST /api/equipment/transfers (Transfer başlatma)
+  - PATCH /api/equipment/transfers/:id/complete (Onay + instance konum güncelleme)
+  - PATCH /api/equipment/transfers/:id/reject (Ret + instance active'e geri alma)
+  - GET /api/equipment/instances/:id/tco (TCO agregasyon + doğrusal amortisman hesabı)
+  - GET/POST /api/maintenance-tickets (Garanti uyarısı dahil)
+  - PATCH /api/maintenance-tickets/:id/resolve (requires_cost_input validasyonu)
+- Fixes Applied:
+  - warranty_end_date kolonunu yanlış tablodan (ed) doğru tablodan (ei) çekme
+  - csv-template route'unu /:id route'undan önce konumlandırma (Express yakalama sorunu)
+- Commits: c119751, 201ca35
+- Next Step: Faz 3 - Kullanıcı Arayüzü (HQ Ekipman Yönetimi, Amortisman ekranı, TCO widget, Şube modülü)
+- Handoff Contract: Faz 2 tamamdır. Tüm API endpoint'leri Railway'de canlıdır. /api/equipment/definitions 5 kayıtla test edildi. Faz 3 frontend'e geçilebilir.

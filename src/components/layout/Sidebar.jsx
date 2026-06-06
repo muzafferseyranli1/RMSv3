@@ -111,6 +111,7 @@ const NAV = [
           { label: 'Form Şablonları', path: '/form-sablonlari', icon: 'fa-clipboard-list', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
           { label: 'Formlar', path: '/formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
           { label: 'El Kitabı Yönetimi', path: '/manual-yonetimi', icon: 'fa-book-open-reader', color: '#a78bfa', bg: 'rgba(167,139,250,.18)' },
+          { label: 'Ekipman Yönetimi', path: '/ekipman-yonetimi', icon: 'fa-screwdriver-wrench', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
         ],
       },
       { label: 'DÃ¶nem KapanÄ±ÅŸÄ±', path: '/donem-kapanis', icon: 'fa-calendar-check', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
