@@ -239,24 +239,45 @@ export default function ManualReader() {
                         </tr>
                       </thead>
                       <tbody>
-                        {recipeContext.map((r, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
-                            <td style={{ padding: '5px 6px', color: '#333' }}>{r.name}</td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
-                            <td style={{ padding: '5px 6px', textAlign: 'center' }}>
-                              {r.linked_page_id ? (
-                                <button
-                                  onClick={() => { setSelectedPageId(r.linked_page_id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-                                  style={{ background: '#eef4ff', color: '#14496b', border: '1px solid #c8d9f5', borderRadius: 12, padding: '2px 8px', fontSize: '.65rem', fontWeight: 700, cursor: 'pointer' }}
-                                >
-                                  <i className="fa-solid fa-arrow-right" style={{ marginRight: 3 }} />Kılavuza Git
-                                </button>
-                              ) : (
-                                <span style={{ color: '#ddd', fontSize: '.65rem' }}>—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                        {recipeContext.map((r, i) => {
+                          const targetPageId = r.linked_page_id || pages.find(p => p.title?.toLowerCase().trim() === r.name?.toLowerCase().trim())?.id;
+                          return (
+                            <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                              <td style={{ padding: '5px 6px' }}>
+                                {targetPageId ? (
+                                  <span
+                                    onClick={() => { setSelectedPageId(targetPageId); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                                    style={{
+                                      color: '#14496b',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      textDecoration: 'underline',
+                                      textDecorationColor: 'rgba(20, 73, 107, 0.4)'
+                                    }}
+                                    title={`${r.name} kılavuzuna git`}
+                                  >
+                                    {r.name}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#333' }}>{r.name}</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '5px 6px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'center' }}>
+                                {targetPageId ? (
+                                  <button
+                                    onClick={() => { setSelectedPageId(targetPageId); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                                    style={{ background: '#eef4ff', color: '#14496b', border: '1px solid #c8d9f5', borderRadius: 12, padding: '2px 8px', fontSize: '.65rem', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    <i className="fa-solid fa-arrow-right" style={{ marginRight: 3 }} />Kılavuza Git
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#ddd', fontSize: '.65rem' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
 
