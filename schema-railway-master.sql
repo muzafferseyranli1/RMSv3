@@ -3944,6 +3944,16 @@ CREATE TABLE IF NOT EXISTS public.manual_page_equipments (
   CONSTRAINT manual_page_equipments_eq_def_fkey FOREIGN KEY (equipment_definition_id) REFERENCES public.equipment_definitions(id) ON DELETE CASCADE
 );
 
+-- Seed Data for manual_categories
+INSERT INTO public.manual_categories (name, display_order)
+SELECT name, display_order FROM (VALUES 
+  ('Ürünler', 1),
+  ('Hammaddeler', 2),
+  ('Ekipmanlar', 3),
+  ('Hizmet Standartları', 4)
+) AS v(name, display_order)
+WHERE NOT EXISTS (SELECT 1 FROM public.manual_categories LIMIT 1);
+
 -- ============================================================
 -- END OF SCHEMA
 -- ============================================================
