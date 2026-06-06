@@ -8701,3 +8701,28 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - Commits: c119751, 201ca35
 - Next Step: Faz 3 - Kullanıcı Arayüzü (HQ Ekipman Yönetimi, Amortisman ekranı, TCO widget, Şube modülü)
 - Handoff Contract: Faz 2 tamamdır. Tüm API endpoint'leri Railway'de canlıdır. /api/equipment/definitions 5 kayıtla test edildi. Faz 3 frontend'e geçilebilir.
+
+
+## Entry 035
+
+- Timestamp: 2026-06-06T23:35:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yonetimi - Faz 2 Bugfix + Faz 3: Frontend
+- Intent: Faz 2'deki iki bug'i duzeltmek ve Faz 3 frontend bilesenlerini olusturmak.
+- Fixes:
+  - warranty_end_date yanlis tablodan cekiliyor (ed->ei) duzeltildi
+  - csv-template route Express'in /:id route'u tarafindan yakalaniyordu; route sirasi duzeltildi
+- Files Changed:
+  - src/components/pages/EquipmentManagement.jsx (YENİ - ~750 satir)
+  - src/App.jsx (GUNCELLENDİ - lazy import + /ekipman-yonetimi route)
+  - src/components/layout/Sidebar.jsx (GUNCELLENDİ - Merkez/Islemler altina menü oğesi)
+  - server/index.js (GUNCELLENDİ - iki bug fix)
+- Frontend Özellikleri:
+  - 3 sekme: Envanter, Katalog, Transferler
+  - Envanter: arama + durum filtresi, tablo, garanti uyarisi, TCMB kur entegrasyonu
+  - Katalog: grid kart gorunumu, tanim CRUD modali
+  - Transferler: bekleyen onayla/reddet akisi
+  - TCO modal: ticket saydirma, kur bazli maliyet, dogusal amortisman hesabi
+  - CSV: sablon indirme + toplu ice aktarma
+- Commits: c119751 (Faz 2), 201ca35 (Faz 2 fix), 139abee (Faz 3)
+- Durum: Ekipman Yonetimi modulu (Faz 1 DB + Faz 2 API + Faz 3 Frontend) TAMAMLANDI.

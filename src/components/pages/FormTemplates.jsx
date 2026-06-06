@@ -629,6 +629,7 @@ export default function FormTemplates() {
             />
           </div>
           )}
+          {editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
@@ -636,6 +637,7 @@ export default function FormTemplates() {
             </div>
           </div>
           )}
+
 
           {editing.form_type === 'notification_form' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Modal from '@/components/ui/Modal'
 
 export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
@@ -7,15 +7,49 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
   const [images, setImages] = useState([])
   const [cost, setCost] = useState('')
   const [costCurrency, setCostCurrency] = useState('TRY')
+  const [exchangeRate, setExchangeRate] = useState(1.0)
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(false)
 
   // requires_cost_input kuralı: task.rules içinden veya doğrudan task alanından okunur
   const rules = task?.rules || {}
   const requiresCost = !!(rules.requires_cost_input || task?.requires_cost_input)
 
+  const fetchExchangeRate = useCallback(async (curr, dt) => {
+    if (curr === 'TRY' || curr === 'TL') {
+      setExchangeRate(1.0)
+      return
+    }
+    setExchangeRateLoading(true)
+    try {
+      const apiOrigin = import.meta.env.VITE_API_URL || window.location.origin
+      const response = await fetch(`${apiOrigin}/api/exchange-rate?currency=${curr}&date=${dt}`)
+      const result = await response.json()
+      if (result.data && result.data.rate) {
+        setExchangeRate(result.data.rate)
+      }
+    } catch (err) {
+      console.error('Exchange rate fetch failed:', err)
+    } finally {
+      setExchangeRateLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open && requiresCost) {
+      const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
+      fetchExchangeRate(costCurrency, todayStr)
+    }
+  }, [costCurrency, open, requiresCost, fetchExchangeRate])
+
   const isSummaryMissing = !!task?.closure_summary_required && !summary.trim()
   const isFileMissing = !!task?.closure_file_required && files.length === 0
   const isImageMissing = !!task?.closure_image_required && images.length === 0
-  const isCostMissing = requiresCost && (!cost || isNaN(parseFloat(cost)) || parseFloat(cost) < 0)
+  const isCostMissing = requiresCost && (
+    !cost || 
+    isNaN(parseFloat(cost)) || 
+    parseFloat(cost) < 0 || 
+    (costCurrency !== 'TRY' && (!exchangeRate || isNaN(parseFloat(exchangeRate)) || parseFloat(exchangeRate) <= 0))
+  )
   const isDisabled = isSummaryMissing || isFileMissing || isImageMissing || isCostMissing
 
   async function handleSubmit() {
@@ -26,12 +60,14 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
       images,
       cost: requiresCost ? parseFloat(cost) : null,
       cost_currency: requiresCost ? costCurrency : null,
+      cost_exchange_rate: requiresCost ? parseFloat(exchangeRate) : null,
     })
     setSummary('')
     setFiles([])
     setImages([])
     setCost('')
     setCostCurrency('TRY')
+    setExchangeRate(1.0)
   }
 
   return (
@@ -109,6 +145,23 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
                 <option value="EUR">€ EUR</option>
               </select>
             </div>
+            {costCurrency !== 'TRY' && (
+              <div style={{ marginTop: 10 }}>
+                <label className="f-label" style={{ fontSize: '.74rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Döviz Kuru
+                  {exchangeRateLoading && <i className="fa-solid fa-spinner fa-spin" style={{ color: '#f59e0b' }} />}
+                </label>
+                <input
+                  type="number"
+                  className="f-input"
+                  value={exchangeRate}
+                  onChange={e => setExchangeRate(e.target.value)}
+                  placeholder="1.0000"
+                  step="0.0001"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
             {isCostMissing && cost !== '' && (
               <div style={{ fontSize: '.73rem', color: '#ef4444', marginTop: 4 }}>Geçerli bir tutar giriniz</div>
             )}

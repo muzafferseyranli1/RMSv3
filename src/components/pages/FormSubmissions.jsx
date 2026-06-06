@@ -219,37 +219,9 @@ export default function FormSubmissions() {
   const [positions, setPositions] = useState([])
 
   const [equipments, setEquipments] = useState([])
-  const [repairCost, setRepairCost] = useState('')
-  const [repairCurrency, setRepairCurrency] = useState('TRY')
-  const [repairExchangeRate, setRepairExchangeRate] = useState(1.0)
-  const [exchangeRateLoading, setExchangeRateLoading] = useState(false)
   const [linkedEntityId, setLinkedEntityId] = useState('')
 
-  const fetchExchangeRate = useCallback(async (curr, dt) => {
-    if (curr === 'TRY' || curr === 'TL') {
-      setRepairExchangeRate(1.0)
-      return
-    }
-    setExchangeRateLoading(true)
-    try {
-      const apiOrigin = import.meta.env.VITE_API_URL || window.location.origin
-      const response = await fetch(`${apiOrigin}/api/exchange-rate?currency=${curr}&date=${dt}`)
-      const result = await response.json()
-      if (result.data && result.data.rate) {
-        setRepairExchangeRate(result.data.rate)
-      }
-    } catch (err) {
-      console.error('Exchange rate fetch failed:', err)
-    } finally {
-      setExchangeRateLoading(false)
-    }
-  }, [])
 
-  useEffect(() => {
-    if (showFillForm) {
-      fetchExchangeRate(repairCurrency, metaFormDate)
-    }
-  }, [repairCurrency, metaFormDate, showFillForm, fetchExchangeRate])
 
   const isVardiyaMuduru = (emp) => {
     if (!positions || !emp.positionId) return false
@@ -651,9 +623,6 @@ export default function FormSubmissions() {
     setShowFillForm(true)
 
     // Reset financial and link states
-    setRepairCost('')
-    setRepairCurrency('TRY')
-    setRepairExchangeRate(1.0)
     const queryLinkedEntityId = searchParams.get('linked_entity_id') || searchParams.get('linkedEntityId')
     setLinkedEntityId(queryLinkedEntityId || '')
 
@@ -760,14 +729,7 @@ export default function FormSubmissions() {
     const template = getTemplate(fillTemplateId)
     if (!template) return
 
-    if (template.requires_cost_input) {
-      if (repairCost === '' || isNaN(parseFloat(repairCost)) || parseFloat(repairCost) < 0) {
-        return toast('Lütfen geçerli bir maliyet tutarı giriniz.', 'warning')
-      }
-      if (repairExchangeRate === '' || isNaN(parseFloat(repairExchangeRate)) || parseFloat(repairExchangeRate) <= 0) {
-        return toast('Lütfen geçerli bir döviz kuru giriniz.', 'warning')
-      }
-    }
+
 
     const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
 
@@ -837,9 +799,9 @@ export default function FormSubmissions() {
       completionTimeSeconds,
       metadata: { ...(metadata || {}), creator_scope: scope },
       photos: submissionPhotos,
-      repairCost: template.requires_cost_input ? parseFloat(repairCost) : null,
-      repairCurrency: template.requires_cost_input ? repairCurrency : null,
-      repairExchangeRate: template.requires_cost_input ? parseFloat(repairExchangeRate) : null,
+      repairCost: null,
+      repairCurrency: null,
+      repairExchangeRate: null,
       linkedEntityId: linkedEntityId || null,
     })
 
@@ -2066,56 +2028,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           )
         })}
 
-        {template.requires_cost_input && (
-          <div className="card" style={{ padding: 18, marginTop: 16, border: '1px solid var(--border)', background: 'rgba(139, 92, 246, 0.03)' }}>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '.85rem', fontWeight: 800, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <i className="fa-solid fa-calculator" />
-              Kapatma Maliyet Bilgileri (Zorunlu)
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Maliyet Tutarı</label>
-                <input
-                  type="number"
-                  value={repairCost}
-                  onChange={e => setRepairCost(e.target.value)}
-                  placeholder="0.00"
-                  className="f-input"
-                  style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Para Birimi</label>
-                <div className="sel-wrap">
-                  <select
-                    value={repairCurrency}
-                    onChange={e => setRepairCurrency(e.target.value)}
-                    className="f-input"
-                    style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem' }}
-                  >
-                    <option value="TRY">TRY</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
-                  Döviz Kuru
-                  {exchangeRateLoading && <i className="fa-solid fa-spinner fa-spin" style={{ marginLeft: 6, color: '#8b5cf6' }} />}
-                </label>
-                <input
-                  type="number"
-                  value={repairExchangeRate}
-                  onChange={e => setRepairExchangeRate(e.target.value)}
-                  disabled={repairCurrency === 'TRY' || repairCurrency === 'TL'}
-                  className="f-input"
-                  style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem', background: (repairCurrency === 'TRY' || repairCurrency === 'TL') ? 'rgba(0,0,0,0.05)' : undefined }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn-o" onClick={() => setShowFillForm(false)}>İptal</button>

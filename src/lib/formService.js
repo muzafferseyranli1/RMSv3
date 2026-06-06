@@ -677,6 +677,9 @@ async function createTaskFromNotification(template, submission, answersJson, met
     edit_due_date_allowed: !!rules.edit_due_date_allowed,
     edit_schedule_allowed: !!rules.edit_schedule_allowed,
     incomplete_if_late: !!rules.incomplete_if_late,
+    requires_cost_input: !!rules.requires_cost_input,
+    linked_entity_table: template.linked_entity_table || null,
+    linked_entity_id: submission.linked_entity_id || null,
     updated_at: nowIso(),
   }).select().maybeSingle()
 

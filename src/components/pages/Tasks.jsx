@@ -110,6 +110,7 @@ function createInitialForm(actorBranchId = '') {
     edit_due_date_allowed: false,
     edit_schedule_allowed: false,
     incomplete_if_late: false,
+    requires_cost_input: false,
     checklistItems: [createChecklistItem()],
     files: [],
     images: [],
@@ -1328,6 +1329,7 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
                 ['closure_summary_required', 'Kapanış Özeti Zorunlu'],
                 ['closure_file_required', 'Kapanış Dosyası Zorunlu'],
                 ['closure_image_required', 'Kapanış Fotoğrafı Zorunlu'],
+                ['requires_cost_input', 'Kapatmada Maliyet Girişi Zorunlu 💰'],
                 ['edit_due_date_allowed', 'Atanan Vade Değiştirebilir'],
                 ['edit_schedule_allowed', 'Atanan Takvim Değiştirebilir'],
                 ['incomplete_if_late', 'Süresinde Bitmezse Tamamlanmadı'],
@@ -1603,7 +1605,8 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   repair_cost: payload.cost,
-                  currency: payload.cost_currency || 'TRY',
+                  repair_currency: payload.cost_currency || 'TRY',
+                  repair_exchange_rate: payload.cost_exchange_rate || 1.0,
                   resolution_notes: payload.summary || '',
                 }),
               })

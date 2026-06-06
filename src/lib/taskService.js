@@ -217,6 +217,14 @@ export async function createTask(form, actor, uploadedFiles = []) {
     .filter(Boolean)
 
   const requiresAssignmentApproval = assignees.some(assignee => canReject(positionId, assignee.positionId, context.positions))
+  let formTemplate = null
+  if (form.formTemplateId) {
+    const tplRes = await db.from('form_templates').select('*').eq('id', form.formTemplateId).maybeSingle()
+    if (!tplRes.error && tplRes.data) {
+      formTemplate = tplRes.data
+    }
+  }
+
   const taskInsert = await db.from('tasks').insert({
     organization_node_id: organizationNodeId || null,
     branch_node_id: branchNodeId || null,
@@ -240,6 +248,9 @@ export async function createTask(form, actor, uploadedFiles = []) {
     edit_due_date_allowed: !!form.edit_due_date_allowed,
     edit_schedule_allowed: !!form.edit_schedule_allowed,
     incomplete_if_late: !!form.incomplete_if_late,
+    requires_cost_input: !!form.requires_cost_input,
+    linked_entity_table: form.linkedEntityTable || (formTemplate ? formTemplate.linked_entity_table : null),
+    linked_entity_id: form.linkedEntityId || null,
     form_template_id: form.formTemplateId || null,
     updated_at: nowIso(),
   }).select().maybeSingle()
