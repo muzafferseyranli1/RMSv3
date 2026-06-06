@@ -61,7 +61,8 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 }
 app.use(cors(corsOptions))
-app.options('*', cors(corsOptions))
+app.options('*any', cors(corsOptions))
+
 
 app.use(express.json({ limit: '10mb' }))
 
@@ -524,6 +525,101 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   })
 })
 
+const https = require('https')
+
+function fetchTcmbXml(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Failed to fetch XML: status code ${res.statusCode}`))
+        return
+      }
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => { resolve(data) })
+    }).on('error', (err) => {
+      reject(err)
+    })
+  })
+}
+
+async function getRateForDate(dateObj, currency) {
+  let attempts = 0
+  let currentObj = new Date(dateObj)
+  
+  while (attempts < 6) {
+    const yyyy = currentObj.getFullYear()
+    const mm = String(currentObj.getMonth() + 1).padStart(2, '0')
+    const dd = String(currentObj.getDate()).padStart(2, '0')
+    
+    // Check if it is today (local date)
+    const todayStr = new Date().toLocaleDateString('en-CA')
+    const targetStr = `${yyyy}-${mm}-${dd}`
+    
+    let url
+    if (targetStr === todayStr) {
+      url = 'https://www.tcmb.gov.tr/kurlar/today.xml'
+    } else {
+      url = `https://www.tcmb.gov.tr/kurlar/${yyyy}${mm}/${dd}${mm}${yyyy}.xml`
+    }
+    
+    try {
+      console.log(`[ExchangeRate] Trying TCMB URL: ${url}`)
+      const xml = await fetchTcmbXml(url)
+      // parse rate from XML
+      const regex = new RegExp(`<Currency[^>]*Kod="${currency}"[^>]*>[\\s\\S]*?<ForexBuying>([\\d.]+)<\\/ForexBuying>`, 'i')
+      const match = xml.match(regex)
+      if (match) {
+        const rate = parseFloat(match[1])
+        return { rate, date: targetStr, url }
+      }
+      throw new Error(`Currency ${currency} not found in XML`)
+    } catch (err) {
+      console.log(`[ExchangeRate] Failed to fetch rate for ${targetStr}: ${err.message}. Trying previous day.`)
+      // Go back 1 day
+      currentObj.setDate(currentObj.getDate() - 1)
+      attempts++
+    }
+  }
+  throw new Error(`Could not find exchange rate for ${currency} starting from date ${dateObj.toLocaleDateString('en-CA')}`)
+}
+
+app.get('/api/exchange-rate', async (req, res) => {
+  const { date, currency } = req.query
+  if (!currency) {
+    return res.status(400).json({ data: null, error: { message: 'currency parameter is required' } })
+  }
+
+  const cleanCurrency = String(currency).trim().toUpperCase()
+  if (cleanCurrency === 'TRY' || cleanCurrency === 'TL') {
+    return res.json({ data: { rate: 1.0, date: date || new Date().toLocaleDateString('en-CA'), source: 'fixed' }, error: null })
+  }
+
+  let targetDate = new Date()
+  if (date) {
+    const parsed = new Date(date)
+    if (!isNaN(parsed.getTime())) {
+      targetDate = parsed
+    }
+  }
+
+  try {
+    const result = await getRateForDate(targetDate, cleanCurrency)
+    return res.json({
+      data: {
+        rate: result.rate,
+        date: result.date,
+        source: 'TCMB XML Feed',
+        resolvedUrl: result.url
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('Exchange rate error:', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
 app.get('/api/files/:filename', (req, res) => {
   const safeFilename = path.basename(req.params.filename || '')
   const absolutePath = path.join(UPLOAD_DIR, safeFilename)
@@ -748,5 +844,275 @@ app.all('/api/query', rateLimiter, async (req, res) => {
   }
 })
 
+// ============================================================
+// OPERASYON EL KİTABI (OPERATION MANUAL) API ENDPOINTS
+// ============================================================
+
+// --- KATEGORİLER (manual_categories) CRUD ---
+
+// 1. GET ALL CATEGORIES
+app.get('/api/manual/categories', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM public.manual_categories ORDER BY display_order ASC, created_at DESC;'
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/manual/categories]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 2. GET SINGLE CATEGORY
+app.get('/api/manual/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { rows } = await pool.query(
+      'SELECT * FROM public.manual_categories WHERE id = $1;',
+      [id]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Category not found' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[GET /api/manual/categories/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 3. CREATE CATEGORY
+app.post('/api/manual/categories', async (req, res) => {
+  try {
+    const { name, description, display_order } = req.body
+    if (!name) {
+      return res.status(400).json({ data: null, error: { message: 'Category name is required' } })
+    }
+    const order = display_order !== undefined ? Number(display_order) : 0
+    const { rows } = await pool.query(
+      'INSERT INTO public.manual_categories (name, description, display_order) VALUES ($1, $2, $3) RETURNING *;',
+      [name, description, order]
+    )
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[POST /api/manual/categories]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 4. UPDATE CATEGORY
+app.put('/api/manual/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, description, display_order } = req.body
+    if (!name) {
+      return res.status(400).json({ data: null, error: { message: 'Category name is required' } })
+    }
+    const order = display_order !== undefined ? Number(display_order) : 0
+    const { rows } = await pool.query(
+      'UPDATE public.manual_categories SET name = $1, description = $2, display_order = $3 WHERE id = $4 RETURNING *;',
+      [name, description, order, id]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Category not found' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[PUT /api/manual/categories/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 5. DELETE CATEGORY
+app.delete('/api/manual/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { rows } = await pool.query(
+      'DELETE FROM public.manual_categories WHERE id = $1 RETURNING *;',
+      [id]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Category not found' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[DELETE /api/manual/categories/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// --- EKİPMAN TANIMLARI LİSTELEME API ---
+app.get('/api/manual/equipments', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM public.equipment_definitions ORDER BY name ASC;'
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/manual/equipments]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// --- SAYFALAR (manual_pages) CRUD ---
+
+// 1. GET ALL PAGES (with optional category_id filtering)
+app.get('/api/manual/pages', async (req, res) => {
+  try {
+    const { category_id } = req.query
+    let query = 'SELECT * FROM public.manual_pages'
+    const params = []
+    if (category_id) {
+      query += ' WHERE category_id = $1'
+      params.push(category_id)
+    }
+    query += ' ORDER BY created_at DESC;'
+    const { rows } = await pool.query(query, params)
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/manual/pages]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 2. GET SINGLE PAGE WITH JOINED EQUIPMENTS (İlişkisel Sorgu)
+app.get('/api/manual/pages/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const query = `
+      SELECT 
+        p.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', ed.id,
+              'name', ed.name,
+              'image_url', ed.image_url,
+              'maintenance_period_days', ed.maintenance_period_days
+            )
+          ) FILTER (WHERE ed.id IS NOT NULL),
+          '[]'::json
+        ) as equipments
+      FROM public.manual_pages p
+      LEFT JOIN public.manual_page_equipments mpe ON p.id = mpe.page_id
+      LEFT JOIN public.equipment_definitions ed ON mpe.equipment_definition_id = ed.id
+      WHERE p.id = $1
+      GROUP BY p.id;
+    `
+    const { rows } = await pool.query(query, [id])
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Page not found' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[GET /api/manual/pages/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// 3. CREATE PAGE WITH TRANSACTION
+app.post('/api/manual/pages', async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { category_id, title, content, last_updated_by_pin, equipment_ids } = req.body
+    if (!category_id || !title) {
+      return res.status(400).json({ data: null, error: { message: 'category_id and title are required' } })
+    }
+
+    await client.query('BEGIN')
+
+    const pageRes = await client.query(
+      `INSERT INTO public.manual_pages (category_id, title, content, last_updated_by_pin, version) 
+       VALUES ($1, $2, $3, $4, 1) RETURNING *;`,
+      [category_id, title, content, last_updated_by_pin]
+    )
+    const page = pageRes.rows[0]
+
+    if (Array.isArray(equipment_ids) && equipment_ids.length > 0) {
+      const placeholders = equipment_ids.map((_, index) => `($1, $${index + 2})`).join(', ')
+      await client.query(
+        `INSERT INTO public.manual_page_equipments (page_id, equipment_definition_id) VALUES ${placeholders};`,
+        [page.id, ...equipment_ids]
+      )
+    }
+
+    await client.query('COMMIT')
+    return res.json({ data: page, error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[POST /api/manual/pages]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// 4. UPDATE PAGE WITH TRANSACTION AND AUTOMATIC VERSION INCREMENT
+app.put('/api/manual/pages/:id', async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { id } = req.params
+    const { category_id, title, content, last_updated_by_pin, equipment_ids } = req.body
+    if (!category_id || !title) {
+      return res.status(400).json({ data: null, error: { message: 'category_id and title are required' } })
+    }
+
+    await client.query('BEGIN')
+
+    const pageRes = await client.query(
+      `UPDATE public.manual_pages 
+       SET category_id = $1, title = $2, content = $3, last_updated_by_pin = $4, version = version + 1, updated_at = now() 
+       WHERE id = $5 RETURNING *;`,
+      [category_id, title, content, last_updated_by_pin, id]
+    )
+
+    if (!pageRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ data: null, error: { message: 'Page not found' } })
+    }
+    const page = pageRes.rows[0]
+
+    // Clear old associations
+    await client.query('DELETE FROM public.manual_page_equipments WHERE page_id = $1;', [id])
+
+    // Insert new associations
+    if (Array.isArray(equipment_ids) && equipment_ids.length > 0) {
+      const placeholders = equipment_ids.map((_, index) => `($1, $${index + 2})`).join(', ')
+      await client.query(
+        `INSERT INTO public.manual_page_equipments (page_id, equipment_definition_id) VALUES ${placeholders};`,
+        [id, ...equipment_ids]
+      )
+    }
+
+    await client.query('COMMIT')
+    return res.json({ data: page, error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[PUT /api/manual/pages/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// 5. DELETE PAGE
+app.delete('/api/manual/pages/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { rows } = await pool.query(
+      'DELETE FROM public.manual_pages WHERE id = $1 RETURNING *;',
+      [id]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Page not found' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[DELETE /api/manual/pages/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => console.log(`API server listening on port ${PORT}`))
+

@@ -218,6 +218,39 @@ export default function FormSubmissions() {
   const [employees, setEmployees] = useState([])
   const [positions, setPositions] = useState([])
 
+  const [equipments, setEquipments] = useState([])
+  const [repairCost, setRepairCost] = useState('')
+  const [repairCurrency, setRepairCurrency] = useState('TRY')
+  const [repairExchangeRate, setRepairExchangeRate] = useState(1.0)
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(false)
+  const [linkedEntityId, setLinkedEntityId] = useState('')
+
+  const fetchExchangeRate = useCallback(async (curr, dt) => {
+    if (curr === 'TRY' || curr === 'TL') {
+      setRepairExchangeRate(1.0)
+      return
+    }
+    setExchangeRateLoading(true)
+    try {
+      const apiOrigin = import.meta.env.VITE_API_URL || window.location.origin
+      const response = await fetch(`${apiOrigin}/api/exchange-rate?currency=${curr}&date=${dt}`)
+      const result = await response.json()
+      if (result.data && result.data.rate) {
+        setRepairExchangeRate(result.data.rate)
+      }
+    } catch (err) {
+      console.error('Exchange rate fetch failed:', err)
+    } finally {
+      setExchangeRateLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showFillForm) {
+      fetchExchangeRate(repairCurrency, metaFormDate)
+    }
+  }, [repairCurrency, metaFormDate, showFillForm, fetchExchangeRate])
+
   const isVardiyaMuduru = (emp) => {
     if (!positions || !emp.positionId) return false
     const pos = positions.find(p => String(p.id) === String(emp.positionId))
@@ -240,14 +273,16 @@ export default function FormSubmissions() {
   useEffect(() => {
     async function loadEmployeesAndPositions() {
       try {
-        const [empRecords, posRecords] = await Promise.all([
+        const [empRecords, posRecords, eqResult] = await Promise.all([
           readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord),
-          readSettingArray(PERSONNEL_SETTINGS_KEYS.positions, normalizePositionRecord)
+          readSettingArray(PERSONNEL_SETTINGS_KEYS.positions, normalizePositionRecord),
+          db.from('equipments').select('id,name,code,active').order('name')
         ])
         setEmployees(empRecords || [])
         setPositions(posRecords || [])
+        setEquipments(eqResult.data || [])
       } catch (err) {
-        console.error('Failed to load employees or positions:', err)
+        console.error('Failed to load employees, positions or equipments:', err)
       }
     }
     loadEmployeesAndPositions()
@@ -535,16 +570,18 @@ export default function FormSubmissions() {
     let hasStock = false
     let hasSale = false
     let hasSemi = false
+    let hasEquipment = false
 
     for (const section of (template.schema_json?.sections || [])) {
       for (const field of (section.fields || [])) {
         if (field.type === 'stock_item_select') hasStock = true
         if (field.type === 'sale_item_select') hasSale = true
         if (field.type === 'semi_product_select') hasSemi = true
+        if (field.type === 'equipment_select') hasEquipment = true
       }
     }
 
-    if (!hasStock && !hasSale && !hasSemi) return
+    if (!hasStock && !hasSale && !hasSemi && !hasEquipment) return
 
     setLoadingDbItems(true)
     try {
@@ -576,6 +613,15 @@ export default function FormSubmissions() {
             .then(res => setSemiItems(res.data || []))
         )
       }
+      if (hasEquipment) {
+        promises.push(
+          db.from('equipments')
+            .select('id,name,code')
+            .eq('active', true)
+            .order('name')
+            .then(res => setEquipments(res.data || []))
+        )
+      }
       await Promise.all(promises)
     } catch (err) {
       console.error('Failed to fetch DB items for form:', err)
@@ -603,6 +649,13 @@ export default function FormSubmissions() {
     setActiveNotes({})
     setFormStartTime(Date.now())
     setShowFillForm(true)
+
+    // Reset financial and link states
+    setRepairCost('')
+    setRepairCurrency('TRY')
+    setRepairExchangeRate(1.0)
+    const queryLinkedEntityId = searchParams.get('linked_entity_id') || searchParams.get('linkedEntityId')
+    setLinkedEntityId(queryLinkedEntityId || '')
 
     // Initialize metadata states
     const activeBranch = branchId || (branches && branches[0]?.id) || ''
@@ -707,6 +760,15 @@ export default function FormSubmissions() {
     const template = getTemplate(fillTemplateId)
     if (!template) return
 
+    if (template.requires_cost_input) {
+      if (repairCost === '' || isNaN(parseFloat(repairCost)) || parseFloat(repairCost) < 0) {
+        return toast('Lütfen geçerli bir maliyet tutarı giriniz.', 'warning')
+      }
+      if (repairExchangeRate === '' || isNaN(parseFloat(repairExchangeRate)) || parseFloat(repairExchangeRate) <= 0) {
+        return toast('Lütfen geçerli bir döviz kuru giriniz.', 'warning')
+      }
+    }
+
     const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
 
     // Get inspector name from pin session
@@ -775,6 +837,10 @@ export default function FormSubmissions() {
       completionTimeSeconds,
       metadata: { ...(metadata || {}), creator_scope: scope },
       photos: submissionPhotos,
+      repairCost: template.requires_cost_input ? parseFloat(repairCost) : null,
+      repairCurrency: template.requires_cost_input ? repairCurrency : null,
+      repairExchangeRate: template.requires_cost_input ? parseFloat(repairExchangeRate) : null,
+      linkedEntityId: linkedEntityId || null,
     })
 
     if (error) return toast('Gönderme başarısız: ' + (error.message || ''), 'error')
@@ -1871,6 +1937,55 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           />
                         )}
 
+                        {field.type === 'equipment_select' && (
+                          <div className="sel-wrap" style={{ width: 200 }}>
+                            <select
+                              value={answer?.value || ''}
+                              onChange={e => updateAnswer(field.id, e.target.value)}
+                              className="f-input"
+                              style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                            >
+                              <option value="">Ekipman Seçiniz...</option>
+                              {equipments.map(eq => (
+                                <option key={eq.id} value={eq.id}>{eq.name} ({eq.code})</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {field.type === 'financial_input' && (() => {
+                          const valObj = answer?.value ? (typeof answer.value === 'object' ? answer.value : JSON.parse(answer.value)) : { amount: '', currency: 'TRY' }
+                          return (
+                            <div style={{ display: 'flex', gap: 6, width: 220 }}>
+                              <input
+                                type="number"
+                                value={valObj.amount || ''}
+                                onChange={e => {
+                                  const amt = e.target.value === '' ? '' : Number(e.target.value)
+                                  updateAnswer(field.id, { ...valObj, amount: amt })
+                                }}
+                                placeholder="Tutar"
+                                className="f-input"
+                                style={{ flex: 2, padding: '6px 10px', fontSize: '.8rem' }}
+                              />
+                              <div className="sel-wrap" style={{ flex: 1.2 }}>
+                                <select
+                                  value={valObj.currency || 'TRY'}
+                                  onChange={e => {
+                                    updateAnswer(field.id, { ...valObj, currency: e.target.value })
+                                  }}
+                                  className="f-input"
+                                  style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                                >
+                                  <option value="TRY">TRY</option>
+                                  <option value="USD">USD</option>
+                                  <option value="EUR">EUR</option>
+                                </select>
+                              </div>
+                            </div>
+                          )
+                        })()}
+
                         {field.type === 'photo' && (() => {
                           const isUploading = !!uploadingFields[field.id]
                           const photoUrl = answer?.value
@@ -1950,6 +2065,57 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             </div>
           )
         })}
+
+        {template.requires_cost_input && (
+          <div className="card" style={{ padding: 18, marginTop: 16, border: '1px solid var(--border)', background: 'rgba(139, 92, 246, 0.03)' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '.85rem', fontWeight: 800, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-calculator" />
+              Kapatma Maliyet Bilgileri (Zorunlu)
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Maliyet Tutarı</label>
+                <input
+                  type="number"
+                  value={repairCost}
+                  onChange={e => setRepairCost(e.target.value)}
+                  placeholder="0.00"
+                  className="f-input"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Para Birimi</label>
+                <div className="sel-wrap">
+                  <select
+                    value={repairCurrency}
+                    onChange={e => setRepairCurrency(e.target.value)}
+                    className="f-input"
+                    style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem' }}
+                  >
+                    <option value="TRY">TRY</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
+                  Döviz Kuru
+                  {exchangeRateLoading && <i className="fa-solid fa-spinner fa-spin" style={{ marginLeft: 6, color: '#8b5cf6' }} />}
+                </label>
+                <input
+                  type="number"
+                  value={repairExchangeRate}
+                  onChange={e => setRepairExchangeRate(e.target.value)}
+                  disabled={repairCurrency === 'TRY' || repairCurrency === 'TL'}
+                  className="f-input"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: '.8rem', background: (repairCurrency === 'TRY' || repairCurrency === 'TL') ? 'rgba(0,0,0,0.05)' : undefined }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn-o" onClick={() => setShowFillForm(false)}>İptal</button>
@@ -2364,6 +2530,14 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                               : '#ef4444' 
                           },
                           { icon: 'fa-user', label: 'Gönderen (ID)', value: selectedSub.submitted_by, color: '#94a3b8' },
+                          ...(selectedSub.repair_cost !== null && selectedSub.repair_cost !== undefined ? [
+                            { 
+                              icon: 'fa-calculator', 
+                              label: 'Kapatma Maliyeti', 
+                              value: `${parseFloat(selectedSub.repair_cost).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${selectedSub.repair_currency || 'TRY'} (Kur: ${parseFloat(selectedSub.repair_exchange_rate || 1.0).toFixed(4)})`, 
+                              color: '#f59e0b' 
+                            }
+                          ] : []),
                         ].map((item, idx) => (
                           <div key={idx} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                             <div style={{ width: 32, height: 32, borderRadius: 8, background: `${item.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2457,6 +2631,22 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                         if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
                                           const items = getDynamicFieldItems(ans.value)
                                           displayValue = items.map(item => item.name).join(', ') || '—'
+                                        }
+                                        if (field.type === 'equipment_select') {
+                                          const eq = equipments.find(e => String(e.id) === String(ans.value))
+                                          displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                                        }
+                                        if (field.type === 'financial_input') {
+                                          try {
+                                            const valObj = ans.value ? (typeof ans.value === 'object' ? ans.value : JSON.parse(ans.value)) : null
+                                            if (valObj && valObj.amount !== undefined && valObj.amount !== '') {
+                                              displayValue = `${Number(valObj.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${valObj.currency || 'TRY'}`
+                                            } else {
+                                              displayValue = '—'
+                                            }
+                                          } catch (e) {
+                                            displayValue = String(ans.value || '—')
+                                          }
                                         }
                                         if (field.type === 'date' && ans.value) {
                                           const parts = String(ans.value).split('-')
@@ -2590,6 +2780,22 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                 if (field && (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select')) {
                                   const items = getDynamicFieldItems(ans.value)
                                   displayValue = items.map(item => item.name).join(', ') || '—'
+                                }
+                                if (field && field.type === 'equipment_select') {
+                                  const eq = equipments.find(e => String(e.id) === String(ans.value))
+                                  displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                                }
+                                if (field && field.type === 'financial_input') {
+                                  try {
+                                    const valObj = ans.value ? (typeof ans.value === 'object' ? ans.value : JSON.parse(ans.value)) : null
+                                    if (valObj && valObj.amount !== undefined && valObj.amount !== '') {
+                                      displayValue = `${Number(valObj.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${valObj.currency || 'TRY'}`
+                                    } else {
+                                      displayValue = '—'
+                                    }
+                                  } catch (e) {
+                                    displayValue = String(ans.value || '—')
+                                  }
                                 }
                                 if (field && field.type === 'date' && ans.value) {
                                   const parts = String(ans.value).split('-')
@@ -2843,6 +3049,17 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                   )}
                 </td>
               </tr>
+              {submission.repair_cost !== null && submission.repair_cost !== undefined && (
+                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Kapatma Maliyeti:</td>
+                  <td colSpan={3} style={{ padding: '8px 0', color: '#0f172a', fontWeight: 'bold' }}>
+                    {parseFloat(submission.repair_cost).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {submission.repair_currency || 'TRY'} 
+                    <span style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 'normal', marginLeft: '12px' }}>
+                      (Kur: {parseFloat(submission.repair_exchange_rate || 1.0).toFixed(4)})
+                    </span>
+                  </td>
+                </tr>
+              )}
               {submission.metadata?.branch_responsibles?.length > 0 && (
                 <tr>
                   <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', verticalAlign: 'top' }}>Şube Sorumluları:</td>
@@ -2951,6 +3168,22 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                       if (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select') {
                         const items = getDynamicFieldItems(ans.value)
                         displayValue = items.map(item => item.name).join(', ') || '—'
+                      }
+                      if (field.type === 'equipment_select') {
+                        const eq = (equipments || []).find(e => String(e.id) === String(ans.value))
+                        displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                      }
+                      if (field.type === 'financial_input') {
+                        try {
+                          const valObj = ans.value ? (typeof ans.value === 'object' ? ans.value : JSON.parse(ans.value)) : null
+                          if (valObj && valObj.amount !== undefined && valObj.amount !== '') {
+                            displayValue = `${Number(valObj.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${valObj.currency || 'TRY'}`
+                          } else {
+                            displayValue = '—'
+                          }
+                        } catch (e) {
+                          displayValue = String(ans.value || '—')
+                        }
                       }
                       if (field.type === 'date' && ans.value) {
                         const parts = String(ans.value).split('-')

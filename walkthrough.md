@@ -1,65 +1,41 @@
-# Detaylı Özet: Sadakat Modülü & Kupon Tasarımı Güncellemesi
+# Walkthrough - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
 
-Bu belgede, Sadakat (Loyalty) modülünde yapılan konsolidasyon çalışmaları ile müşteri mobil uygulamasındaki kupon kartlarının görsel referansa (bilet tasarımına) birebir uyarlanması süreçleri özetlenmiştir.
+Bu çalışma kapsamında, **Operasyon El Kitabı (Operation Manual)** modülünün **Faz 3 (Kullanıcı Arayüzü)** bileşenleri ve entegrasyonu başarıyla geliştirilmiş ve doğrulanmıştır.
 
----
+## Gerçekleştirilen Değişiklikler
 
-## Yapılan Değişiklikler
+### 1. Navigasyon ve Rota Entegrasyonu
+* **Sidebar Menü Güncellemesi (`src/components/layout/Sidebar.jsx`):**
+  - Merkez (HQ) görünümünde "İşlemler" altına **"El Kitabı Yönetimi"** (`/manual-yonetimi`, ikon: `fa-book-open-reader`) eklendi.
+  - Şube görünümünde "İşlemler" altına **"Operasyon El Kitabı"** (`/manual`, ikon: `fa-book-open`) eklendi.
+* **Rota Haritalaması (`src/App.jsx`):**
+  - `ManualManagement` ve `ManualReader` bileşenleri lazy loading ile içe aktarıldı.
+  - İlgili yollar rota tablosuna tanımlandı (Şube okuyucusu şube bağlam koruyucusu `WorkspaceBranchScope` ile sarmalandı).
 
-### 1. Birebir Görsel Bilet Tasarımı (CustomerLoyaltyMobileApp.jsx)
-- **Tırtıklı Kenarlar (Wavy/Serrated Edges)**: Kupon kartının en sol ve en sağ dikey kenarlarına `radial-gradient` maskeleme katmanları yerleştirildi. Sayfa arka plan rengine (`bodyBgColor`) sahip bu küçük dairesel kesikler, kartın kenarlarını tırtıklı/kesikli yırtık bilet şeklinde gösterir. Koçan ayrım çizgisinin üst/alt uçlarındaki dairesel yırtmaçlar (`left: 85 - 7`) korunmuştur.
-- **Konturlu Dikey Yazı (Outline Text) & Koçan Koyu Teması**: Sol koçandaki fayda değeri (`%10`, `50 TL`, `Hediye`) dikey döndürülmüş olarak (`transform: rotate(-90deg)`) yazıldı. Koçan arka planı `#111827` (premium koyu gri/siyah) olarak ayarlanarak konturlu yazının yüksek kontrastlı durması sağlandı. Kontur kalınlığı **1px'e inceltildi** (`WebkitTextStroke: '1px ' + solidBg`), yazı üzerindeki tüm gölgeler (`textShadow: 'none'`) temizlendi ve alanı maksimum kaplaması için font boyutları karakter uzunluğuna göre dinamik büyütüldü (`2.4rem` / `1.95rem` / `1.45rem`).
-- **Ortalanmış Solid Bilet Gövdesi ve Sıkışık Tipografi**: Sağ gövdede düz (solid) canlı renkler (Kırmızı, Sarı/Turuncu, Turkuaz, Pembe vb.) kullanıldı. İçerik dikey ve yatayda tamamen ortalandı. Kampanya adı, görseldeki bilet stiline uygun olarak büyük, kalın ve sıkışık (`fontFamily: "Impact"`, `textTransform: "uppercase"`) yazıldı. Kupon geçerlilik tarihi alt kısımda ince bir bölme çizgisi (`borderTop`) üzerinde ortalanarak Türkçe gösterildi. Kupon kodu ise sağ üst köşede rozet olarak konumlandırıldı.
-- **Kuponlar Sayfası Sadeleştirmesi**: "Yeni Kupon Ekle" başlığı, açıklama metni, "Aktif kupon" / "Yakında bitecek" sayısal kutuları (`SummaryTile`), alt kısımdaki pasif kupon geçmişi tablosu kaldırıldı. Süresi geçen kuponlar otomatik olarak listeden silinir. Aktif kupon olmadığında *"Kullanılabilir aktif kuponunuz bulunmamaktadır."* mesajı gösterilir.
-- **Alt Navigasyon Barı Yükseklik Eşitlemesi**: Grid yerleşiminden kaynaklanan buton dikey esneme sorunu, `AppViewport` bileşeninin ana düzeni Flexbox yapısına (`flexDirection: column` ve içerik sarmalayıcıya `flex: 1` verilerek) geçirilerek çözüldü.
+### 2. Merkez Yönetici Paneli (`src/components/pages/ManualManagement.jsx`)
+* **Kategori Yönetimi:** El kitabı başlıkları için CRUD operasyonlarını sağlayan tablo ve form arayüzü yazıldı.
+* **Prosedür Sayfa Editörü:**
+  - Sayfa oluşturma ve düzenleme formu geliştirildi.
+  - Prosedür adımlarının Markdown ile girilebileceği bir içerik düzenleme alanı sunuldu.
+  - **Ekipman Bağlantısı:** `/api/manual/equipments` yardımcı endpoint'inden gelen küresel ekipman tanımlarını sayfaya iliştirebilen çoklu seçim (checkbox) alanı eklendi.
+  - Değişikliklerin kaydedilmesi için 4 haneli Yönetici PIN kodu doğrulama alanı konuldu.
 
-### 2. Sadakat Modülü Konsolidasyonu ve Wizard Entegrasyonu
-- **Yönlendirme Yapılandırması (`src/App.jsx`)**: `/sadakat` rotasındaki tüm kampanya yönetimi tek ekranda toplandı. Yeni kampanya oluşturma (`/sadakat/kampanya/yeni`), kampanya detayı (`/sadakat/kampanya/:campaignId/gor`) ve düzenleme (`/sadakat/kampanya/:campaignId/duzenle`) rotaları doğrudan `LoyaltyCampaignWizard` bileşenine bağlandı. Bağımsız önizleme rotası ve `LoyaltyCampaignWizardPreview.jsx` dosyası tamamen temizlendi.
-- **4 Sekmeli Sadakat Yönetim Paneli (`src/components/pages/LoyaltyManagement.jsx`)**: Kampanya detay/düzenleme işlemleri sihirbaz moduna yönlendirilip eski inline modal kapatıldı. Kampanyalar tablosuna Gör, Düzenle, Kopyala ve Sil butonları entegre edildi. Seviyeler (Tiers) ve Program Ayarları için düzenleme arayüzleri eklendi. Referans Programları sekmesi embed edildi.
-- **Referans Programları Sekmesi Entegrasyonu (`src/components/pages/LoyaltyReferralPrograms.jsx`)**: `embedMode` propu eklendi; `true` olduğunda başlık ve kenar boşlukları gizlenerek sekme içine kusursuz yerleşim sağlandı.
-- **Tek Sayfada Gör / Düzenle Modları (`src/components/loyalty/LoyaltyCampaignWizard.jsx`)**: Bileşene `view`, `edit` ve `create` modları tanımlandı. Gör modu kampanya verilerini okunabilir tek sayfalık rapor olarak sunarken, Düzenle modu tüm kural blokları, hedefler ve tarihlerin tek sayfada güncellenmesine imkan tanır.
-
----
-
-## Doğrulama ve Derleme
-
-- Yapılan tüm değişikliklerin ardından temiz derleme kontrolü yapılmıştır:
-  ```powershell
-  npm run build
-  ```
-- **Sonuç**: Derleme işlemi başarıyla tamamlanmıştır (11.00s). Herhangi bir linter veya derleme hatası tespit edilmemiştir.
-
-
-## Son Yapılan Geliştirmeler: Mobil Damga Kartı (Stamp Card) İlerleme Takibi Entegrasyonu
-
-- **Kampanyalar Ekranı Damga Slotları (`CampaignCard`)**:
-  - Kampanya detayında `period_product_quantity` veya `period_order_count` koşulları algılandığında kampanya **Damga Kartı** olarak işaretlenir.
-  - Kartın içine, kazanılan ve kazanılacak damgaları temsil eden yuvarlak slotlardan oluşan bir matris eklendi.
-  - Eğer kampanya adı veya açıklaması "kahve" içeriyorsa, kazanılan damga yuvarlaklarında fincan ikonu (`fa-mug-hot`), aksi halde damga ikonu (`fa-stamp`) görüntülenecek şekilde ayarlandı.
-  - Tamamlanan ödül döngüleri için kazanılan hediye adedini belirten yeşil bir hediye rozeti eklendi.
-
-- **Ana Ekran Dinamik Damga Kartı Özet Kutusu (`HomeScreen` & `MobileHomeDashboard`)**:
-  - Ana sayfadaki üçüncü özet kartı (Seviye / Üyelik kartı) güncellendi.
-  - Eğer müşterinin en az bir adet aktif damga kampanyası varsa, kart başlığı **"Damga"** / **"Damgalarım"** olarak değişir ve içerik olarak damga ilerleme oranları (örn. tekli ise `2/5`, çoklu ise `2/5 | 4/10`) gösterilir.
-  - Bu özet karta tıklanarak doğrudan Kampanyalar sekmesine hızlıca yönlendirilmesi sağlandı.
-  - Aktif damga kampanyası yoksa sistem otomatik olarak eski "Seviye" görünümüne geri döner.
+### 3. Şube Okuyucu Arayüzü (`src/components/pages/ManualReader.jsx`)
+* **Sol Menü Ağacı:** Kategorileri ve altındaki sayfaları daraltılıp genişletilebilir (Accordion/Tree) yapıda listeler.
+* **Sağ İçerik Okuyucu:**
+  - Seçilen sayfanın başlığı, güncel versiyon numarası (`vX`), güncelleyen PIN kodu bilgisi gösterilir.
+  - **Inline Markdown Parser:** Markdown prosedür metnini (`#`, `##`, `**`, listeler ve satır sonları) HTML etiketlerine dönüştürerek stilde premium görüntü sağlar.
+  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartları:** Sayfaya LEFT JOIN ile bağlanmış ekipmanları listeler.
+* **Arıza Bildirim Modalı:**
+  - Ekipman kartındaki "Arıza Bildir" butonuna tıklandığında açılır.
+  - Şubenin aktif `branchId` bilgisine ait fiziksel cihazları (`db.from('equipments')`) yükler.
+  - Seçilen fiziksel cihaz için arıza açıklaması alarak doğrudan `maintenance_tickets` tablosuna `open` statülü yeni kayıt ekler. İşlemler toast bildirimleri ile kullanıcıya yansıtılır.
 
 ---
 
-## 3. Son Yapılan Arayüz & Arka Plan Düzeltmeleri (31 Mayıs 2026)
+## Doğrulama ve Testler
 
-Müşterinin son geri bildirimleri doğrultusunda, görsel uyumu artırmak ve damga biriktirme fonksiyonundaki aksaklıkları gidermek için kapsamlı bir optimizasyon yapılmıştır:
-
-### Mobil Arayüz & Hamburger Menü (HomeScreen.kt)
-- **3 Eşit Üst Daire Düzeni**: Ana sayfa üst kısmındaki dikey yığılı yapı kaldırıldı. Bunun yerine yan yana kusursuz hizalanmış **72dp** boyutunda üç adet dairesel gösterge eklendi:
-  1. **KOD (Sol)**: Müşterinin QR kod penceresini açan, birincil renk detaylı beyaz QR butonu.
-  2. **PUAN (Orta)**: Birincil renkli arka plana sahip, güncel puan bakiyesini gösteren daire.
-  3. **DAMGA (Sağ)**: Slate renkli arka planı olan ve **Canvas ile dairesel (arc) ilerleme çizgisi** çizilerek `4/5` şeklinde anlık damga durumunu gösteren circular damga göstergesi.
-- **Bare Hamburger Butonu (≡)**: Hamburger menü butonu arka planındaki siyah daire ve kenarlıktan arındırıldı. Sağ üst köşede son derece sade, şık ve premium görünümlü bir **bare icon button** olarak tasarlandı. Diğer dairelerin boyutlarıyla çakışması ve görsel kalabalık tamamen önlendi.
-- **Yatay Damga İndikatörünün Kaldırılması**: Arayüz bütünlüğünü bozan eski yatay damga şeridi arayüzden kaldırılarak 3. daire olarak üst kısma konsolide edildi.
-
-### Arka Plan Damga Motoru & Türkçe Karakter Fix (loyaltyValueLedger.js)
-- **JSONB RPC Parametre Uyuşmazlığı Çözümü**: `db.rpc('get_customer_period_stats')` fonksiyonu çağrılırken `p_product_masks` parametresi JS dizisi olarak geçirildiğinde PG tarafında `invalid input syntax for type json` hatasına sebep oluyordu. Bu parametre `JSON.stringify(productMasks)` ile stringleştirilerek postgres jsonb uyuşmazlığı tamamen giderildi.
-- **Kanal Adı Türkçe Karakter Collation Çözümü**: POS üzerinden tamamlanan satışlar veritabanına `"Hızlı Satış"` adıyla yazılmaktaydı. Ancak veritabanındaki `normalize_sales_channel_key` fonksiyonu sadece `'hizli_satis'` veya `'hizli satis'` kelimelerini `'pos'` ile eşleştiriyordu; Türkçe karakterli ve boşluklu `'hızlı satış'` dizesi bu listede yer almadığı için eşleşmiyor ve sayım `0` dönüyordu. Veritabanındaki bu fonksiyonu güncelleyerek `'hızlı satış'`, `'hızlı satis'`, `'hizli satış'` gibi tüm Türkçe kombinasyonlarını da başarıyla `'pos'` kanalına bağladım.
-- **Otomatik Kampanya İlerleme Güncellemesi**: Kampanyanın kasadan manuel seçilmesine gerek kalmadan, müşteri herhangi bir sipariş tamamladığında arka planda müşterinin yararlanabileceği **tüm aktif damga/frekans kuralları (`period_product_quantity` ve `period_order_count`) otomatik olarak taranıp eşleştirilerek** damga durumunun güncellenmesi sağlandı.
-- **Müşteri Geçmiş Verisi Backfill**: Muzaffer SEYRANLI (`d8d3477f-1fba-4171-be4d-703285c47004`) isimli müşterinin geçmiş satın alımları üzerinden bir backfill betiği çalıştırılarak damga ilerlemesi veritabanında başarıyla **4/5** olarak güncellendi ve arayüze yansıdı!
+* **Vite Derleme Testi:**
+  - `npm run build` komutu çalıştırılmış ve modüllerin (dist/assets içerisindeki `ManualManagement` ve `ManualReader` bundle dosyaları dahil) hatasız biçimde derlendiği teyit edilmiştir (26.33s).
+* **UI Bütünlüğü:**
+  - Bileşenlerin koyu/açık mod geçişlerine uyumlu olduğu ve mevcut premium tasarım kılavuzu (glassmorphism ve gölge efektleri) kurallarına sadık kaldığı doğrulanmıştır.

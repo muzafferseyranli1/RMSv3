@@ -1,0 +1,19 @@
+**1. Proje Bağlamı ve Kesin Kurallar (Dikkatle Oku)**
+A. Bu görev "SuitableRMS" (RMSv3) projesi için yapılacaktır.
+B. Veri Kaynağı YALNIZCA Railway Postgres'tir. Tüm iş verileri veritabanında yaşamalıdır. LocalStorage veya mock veri kesinlikle yasaktır.
+C. Veritabanı işlemleri için YALNIZCA `import { db } from '@/lib/db'` kullanılacaktır. Projede `@supabase/supabase-js` paketi YOKTUR ve kod içinde `supabase` kelimesi KESİNLİKLE YASAKTIR.
+D. Sistemde Auth yoktur. Sadece PIN tabanlı `sessionStorage` mock yetkilendirmesi mevcuttur.
+
+**2. Form Oluşturucu (Builder) Geliştirmeleri (Merkez/HQ)**
+A. Form tasarım arayüzüne (Toolbox) "Finansal Girdi" (Financial Input) adında yeni bir bileşen ekle. Bu bileşen, form içine yerleştirildiğinde kullanıcının Tutar ve Para Birimi girebileceği ikili bir yapı sunmalıdır.
+B. Form Şablonu Ayarları bölümüne `requires_cost_input` (Görevin Kapatılma Maliyeti Girilmesi Zorunludur) adında bir kural (checkbox) ekle. Bu kural, sadece ekipman arızalarına değil, oluşturulacak her türlü forma (Örn: Pazarlama Faaliyeti, Tesisat Tamiri) eklenebilen evrensel bir yapı olmalıdır.
+
+**3. Form Kapatma ve Döviz Kuru İş Mantığı (Şube Modülü)**
+A. UI Kısıtlaması: Bir görev veya form kapatılırken, eğer o form şablonunda `requires_cost_input` kuralı aktifse; ekranda zorunlu olarak "Maliyet Tutarı" (Input), "Para Birimi" (Dropdown) ve "Harcama Tarihindeki Döviz Kuru" (Input) alanları gösterilmelidir. Bu üç alan dolmadan form kapatılamaz.
+B. Döviz Kuru Otomasyonu: Kullanıcı formu kapatırken tarihi değiştirdiğinde veya para birimini (Örn: EUR, USD) seçtiğinde, frontend arka planda `server/index.js` içindeki `/api/exchange-rate` endpoint'ini (TCMB EVDS entegrasyonlu) çağırmalıdır.
+C. Servisten dönen kur değeri, ekrandaki "Harcama Tarihindeki Döviz Kuru" kutucuğuna otomatik olarak doldurulmalıdır. Ancak faturada farklı bir kur kesilmiş olma ihtimaline karşı, personel gerektiğinde bu otomatik gelen değeri manuel olarak değiştirebilmelidir.
+
+**4. Ekipman Sistemi İle Çapraz Entegrasyon Mimarisi**
+A. Genel Form Davranışı: Dinamik form motoru, toplanan verileri (örneğin bir pazarlama formundaki maliyetleri) kendi standart JSON yapısı (`form_submissions` tablosu içindeki payload) içinde saklayabilmelidir.
+B. Ekipman Formu Davranışı (Özel Eşleştirme): Ancak form şablonu bir "Ekipman Arıza Bildirim Formu" olarak yapılandırılmışsa; form kapatılırken girilen finansal veriler sadece JSON içine hapsedilmemelidir. DOĞRUDAN `maintenance_tickets` tablosundaki ilgili kaydın `repair_cost`, `repair_currency` ve `repair_exchange_rate` sütunlarına (SQL UPDATE ile) yazılmalıdır.
+C. Eşleştirme Çözümü: Bu evrensel altyapı ayrımını yapabilmek için, form şablonu (template) nesnesine `linked_entity_table` (Örn: 'maintenance_tickets') ve `linked_entity_id` meta verilerini ekle. Form motoru (API), kayıt işlemi sırasında bu meta veriyi okuyarak finansal tutarı genel JSON'a mı yoksa spesifik bir tablonun sabit sütunlarına mı yazması gerektiğini otomatik anlamalıdır.

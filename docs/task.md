@@ -1,19 +1,18 @@
-# Görev Listesi - Görev Ekleri, Form Gösterimi ve Durum Aksiyonları
+# Görev Listesi - Operasyon El Kitabı (Faz 3: Arayüz ve Entegrasyon)
 
-- `[x]` 1. Android Veri Katmanı Değişiklikleri (`TaskRepository.kt`)
-  - `[x]` `TaskAttachment`, `FormSubmissionDetail` ve `FormSubmissionPhoto` veri sınıflarını (data class) tanımlamak.
-  - `[x]` `fetchTaskAttachments(taskId: String)` veritabanı sorgu fonksiyonunu eklemek.
-  - `[x]` `fetchFormSubmissionDetail(submissionId: String)` veritabanı sorgu fonksiyonunu eklemek.
-  - `[x]` `sendBackTask`, `delegateTask`, `softDeleteTask` ve `addSystemChatMessage` durum güncelleme ve chat fonksiyonlarını eklemek.
-- `[x]` 2. Arayüz Temizliği ve Ekler Listesi (`TasksScreen.kt`)
-  - `[x]` Regex helper fonksiyonu tanımlamak ve `TaskCard` ile `TaskDetailDialog` açıklamalarını temizleyip göstermek.
-  - `[x]` `TaskDetailDialog` bileşeninde `attachments` listesini yükleyip Coil `AsyncImage` ve dosya linkleri ile listelemek.
-- `[x]` 3. Form Detay Ekranı (`TasksScreen.kt`)
-  - `[x]` `FormDetailDialog` Compose diyalog bileşenini tasarlamak (Mor header, bildirim zili, şube pilleri, kanıt fotoğrafları ve soru-yanıt kartları).
-  - `[x]` `TaskDetailDialog` açıklamasının altına "İlişkili Form Yanıtını Göster" mor butonunu eklemek ve `FormDetailDialog`'u bağlamak.
-- `[x]` 4. Görev Durum Aksiyonları (`TasksScreen.kt`)
-  - `[x]` `SendBackPromptDialog` (gerekçe girişi) ve `DelegatePersonnelDialog` (personel seçimi) Compose diyaloglarını tasarlamak.
-  - `[x]` `TaskDetailDialog` altına "Geri Gönder", "Delege Et", "Pasife Al" butonlarını entegre etmek ve ilgili fonksiyonlara bağlamak.
-- `[x]` 5. Derleme ve Doğrulama
-  - `[x]` Android derleme testleri (`.\gradlew.bat compileDebugKotlin` ve `.\gradlew.bat assembleDebug`).
-  - `[x]` Değişiklikleri `walkthrough.md` ve `OperationSync.md` dosyalarına kaydetmek.
+- `[x]` 1. Rotalar ve Navigasyon Güncellemeleri
+  - `[x]` `src/components/layout/Sidebar.jsx` dosyasına menü linklerinin eklenmesi.
+  - `[x]` `src/App.jsx` dosyasına lazy import ve rota eşleştirmelerinin eklenmesi.
+- `[x]` 2. Merkez (HQ) Yönetici Paneli
+  - `[x]` `src/components/pages/ManualManagement.jsx` dosyasının premium UI ile oluşturulması.
+  - `[x]` Kategori CRUD arayüzünün yapılması.
+  - `[x]` Sayfa oluşturma/düzenleme formu, Markdown editör/textarea ve çoklu ekipman seçicinin tamamlanması.
+- `[x]` 3. Şube Okuyucu Modülü ve Arıza Modalı
+  - `[x]` `src/components/pages/ManualReader.jsx` dosyasının premium UI ile oluşturulması.
+  - `[x]` Sol menü hiyerarşisi (Accordion/Tree) ve zengin metin (Markdown to HTML) gösterim alanının yapılması.
+  - `[x]` Sayfa altı "Kullanılan Ekipmanlar" widget kartlarının tasarlanması.
+  - `[x]` Tıklanan ekipman için şubeye ait fiziksel kayıtları listeleyen ve `maintenance_tickets` oluşturan arıza bildirim modalının yapılması.
+- `[x]` 4. Derleme ve Entegrasyon Doğrulama
+  - `[x]` `npm run build` testinin sıfır hata ile tamamlanması.
+- `[x]` 5. Raporlama ve Kapanış
+  - `[x]` `walkthrough.md` ve `OperationSync.md` (Entry 031) dosyalarının güncellenmesi.

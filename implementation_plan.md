@@ -1,57 +1,62 @@
-# Kupon Koşulu (`coupon_present`) Yerel Değerlendirme Planı
+# Uygulama Planı - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
 
-Bu plan, "Kupon mevcut" (`coupon_present`) sadakat koşulunun POS, Garson, Kiosk ve Mobil Uygulama gibi tüm kanallarda sunucu değerlendiricisi gerektirmeden yerel/istemci tarafında (local) çözülebilmesi için gerekli altyapıyı tanımlar.
+Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"** gereksinimlerini hayata geçirmeyi hedefler. Önceki fazda oluşturulan API'leri tüketen, modern, duyarlı ve premium React (Tailwind CSS) bileşenlerini tasarlayacaktır.
 
-## Kullanıcı İncelemesi Gereken Konular
+## User Review Required
 
 > [!IMPORTANT]
-> - **Kupon Geçerlilik Kriterleri**: 
->   - Kupon aktif olmalıdır (`active !== false`).
->   - Kupon daha önce kullanılmamış olmalıdır (`is_used !== true` ve `redemption_status` değeri `'used'`, `'expired'`, `'cancelled'` olmamalıdır).
->   - Süresi dolmamış olmalıdır (varsa `expires_at >= now`).
->   - Kupon serisi, kuralın `seriesIds` listesinde tanımlı olmalıdır (eğer `anySeries` seçili değilse).
-> - **Veri Çekme Yaklaşımı**: Yerel değerlendirici senkron çalıştığından, kupon detayları `evaluateRuntimeOrderCampaignsAsync` fonksiyonu içerisinde önceden asenkron olarak veritabanından çekilip `orderContext` nesnesine (`couponDetails`) eklenecektir.
+> - **Arayüz Tasarımı:** Uygulamanın koyu/açık mod tasarımı (`[data-theme="dark"]`), renk paletleri ve kart (`.card`), buton (`.btn-p`, `.btn-o`), form (`.f-input`, `.f-label`) gibi global CSS sınıfları birebir kullanılacaktır.
+> - **Çevrimdışı ve Hata Yönetimi:** Ağ/veri çekme hataları ekranda açık ve net şekilde görüntülenecek (sessizce yutulmayacaktır).
+> - **Ekipman Arıza Bildirimi:** Şube personeli bir el kitabı sayfasını okurken, alt kısımdaki "Bu Prosedürde Kullanılan Ekipmanlar" kartından bir ekipmana tıkladığında bir modal açılacak, şubeye ait aktif fiziksel ekipman seçilecek (`equipments` tablosu) ve arıza açıklaması girilerek `maintenance_tickets` tablosuna doğrudan kayıt oluşturulacaktır.
 
 ---
 
-## Yapılacak Değişiklikler
+## Proposed Changes
 
-### 1. İş Mantığı Katmanı (JavaScript)
+### 1. Navigasyon ve Rota Güncellemeleri
 
-#### [MODIFY] [posLoyalty.js](file:///C:/RMSv3/src/lib/posLoyalty.js)
+#### [MODIFY] [Sidebar.jsx](file:///c:/RMSv3/src/components/layout/Sidebar.jsx)
+- **Merkez (HQ) Menüsü:** `İşlemler` (islemler) altına `El Kitabı Yönetimi` (`/manual-yonetimi`, ikon: `fa-book-open-reader`) menü elemanının eklenmesi.
+- **Şube Menüsü:** `İşlemler` (sube-islemler) altına `Operasyon El Kitabı` (`/manual`, ikon: `fa-book-open`) menü elemanının eklenmesi.
 
-- **Veritabanı İmport Ayarı**: Dosyanın en üstüne `import { db } from '@/lib/db'` eklenecektir.
-- **Koşulun Yerel Listeye Eklenmesi**: `LOCAL_RULE_CONDITION_KEYS` kümesine `'coupon_present'` eklenecektir.
-- **Kupon Özet Metni**: `getConditionPreview` fonksiyonunda `case 'coupon_present':` eklenerek kampanya detaylarında gösterilecek metin ayarlanacaktır:
-  - `anySeries` aktif ise: *"Herhangi bir kupon serisi"*
-  - Değilse: *"Seçili X kupon serisinden biri"*
-- **Asenkron Kupon Detayı Çekimi**: `evaluateRuntimeOrderCampaignsAsync` fonksiyonunun başında, `options.selectedCouponCode` veya `options.customerContext?.selectedCouponCode` alanlarından kupon kodu (`selectedCouponCode`) ayıklanacaktır.
-  - Eğer bir kupon kodu tanımlanmışsa, veritabanından asenkron olarak bilgileri çekilecektir:
-    ```javascript
-    const res = await db.from('loyalty_coupons')
-      .select('id,code,series_id,is_used,active,redemption_status,expires_at')
-      .eq('code', selectedCouponCode)
-      .maybeSingle()
-    ```
-  - Çekilen veri `couponDetails` adıyla `evaluateRuntimeOrderCampaigns` çağrısına argüman olarak eklenecektir.
-- **Kural Değerlendirme Parametreleri**: `evaluateRuntimeOrderCampaigns` fonksiyonu argümanlarında `selectedCouponCode` ve `couponDetails` parametrelerini karşılayacaktır. Bu değerler `buildCampaignCard` içindeki `orderContext` nesnesine aktarılacaktır.
-- **Koşul Değerlendirme Mantığı**: `evaluateSingleCondition` fonksiyonu altına `case 'coupon_present':` bloğu eklenerek aşağıdaki kontroller gerçekleştirilecektir:
-  - Aktiflik, kullanım durumu, son kullanma tarihi ve seri eşleşme doğrulamaları.
+#### [MODIFY] [App.jsx](file:///c:/RMSv3/src/App.jsx)
+- Lazy import listesine `ManualManagement` ve `ManualReader` bileşenlerinin eklenmesi.
+- Rota listesine ilgili sayfaların eklenmesi:
+  - `/manual-yonetimi` -> `<ManualManagement />`
+  - `/manual` -> `<WorkspaceBranchScope><ManualReader /></WorkspaceBranchScope>`
 
-#### [MODIFY] [loyaltyRuntimeStatus.js](file:///C:/RMSv3/src/lib/loyaltyRuntimeStatus.js)
+### 2. Arayüz Bileşenlerinin Oluşturulması
 
-- **Durum Güncellemesi**: `CONDITION_KEY_STATUS` haritasındaki `coupon_present` kaydının `category` değeri `'server'` yerine `'local'` olarak güncellenecektir. Böylece arayüzler ve motor bu kuralı doğrudan yerel olarak çalıştırılabilir kabul edecektir.
+#### [NEW] [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
+Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebileceği yönetim ekranı:
+- **Kategori Yönetimi Sekmesi:** Kategorileri listeleme (CRUD), `display_order` ve açıklama alanlarının eklenip güncellenmesi.
+- **Sayfa Yönetimi ve Düzenleyici Sekmesi:**
+  - Sayfaları listeleme, silme ve düzenleme paneli.
+  - **Editör Formu:**
+    - Kategori seçimi (Dropdown).
+    - Başlık ve İçerik (Markdown destekli Textarea).
+    - Düzenleyen Personel PIN Kodu girişi.
+    - **Ekipman İlişkilendir (Multi-select dropdown/onay kutuları):** Sistemde tanımlı küresel ekipman tanımlarını (`/api/manual/equipments`) çekerek sayfaya bağlanmasını sağlayan görsel seçim alanı.
+
+#### [NEW] [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
+Şube personelinin prosedürleri okuyabileceği ve ilgili ekipmanlara arıza bildirebileceği okuyucu arayüzü:
+- **Sol Panel (Accordion/Tree Menü):** Kategorilerin ve altındaki sayfaların listelendiği menü.
+- **Sağ Panel (Okuma Alanı):**
+  - Seçilen sayfanın başlığı, güncel versiyon numarası (`Versiyon: X`) ve son güncelleyen PIN kodu bilgisi.
+  - Markdown prosedür içeriğinin HTML formatına dönüştürülerek estetik biçimde gösterilmesi.
+  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartı (Widget):** Sayfaya LEFT JOIN ile bağlı ekipmanların isimleri ve görsellerini listeler.
+- **Arıza Kaydı Açma Modalı:**
+  - Bir ekipmana tıklandığında açılır.
+  - Şubenin aktif `branchId` bilgisiyle veritabanındaki fiziksel ekipmanları (`db.from('equipments')`) çeker ve listeler.
+  - Personelden bir arıza açıklaması alarak `maintenance_tickets` tablosuna doğrudan insert işlemi gerçekleştirir. Başarılı/Hatalı durumları toast mesajı ile bildirilir.
 
 ---
 
-## Doğrulama Planı
+## Verification Plan
 
-### Otomatik Testler (Derleme Kontrolü)
-- Projeyi derleyerek React bileşenlerinin sorunsuz yüklendiğini ve herhangi bir TypeScript/JavaScript derleme hatası olmadığını doğrulayacağız:
-  ```powershell
-  npm run build
-  ```
+### Automated Tests
+- Proje derleme testi: `npm run build` ile herhangi bir frontend derleme hatası olmadığını doğrulamak.
 
-### Manuel Doğrulama
-- Kampanya Yönetimi panelinden "Kupon" koşuluna sahip bir kampanya oluşturulacaktır.
-- İlgili kupon serisi ve kodları tanımlandıktan sonra sepet ekranında bu kupon kodu girilerek kampanyanın yerel olarak tetiklendiği doğrulanacaktır.
+### Manual Verification
+- Merkez modülü üzerinden yeni kategori ("Bar Operasyonu") ve yeni sayfa ("Kahve Değirmeni Kalibrasyonu") oluşturulup, örnek bir ekipman (Espresso Makinesi) ile ilişkilendirilecektir.
+- Şube modülüne geçiş yapılarak ilgili sayfa açılacak, sayfa altındaki Espresso Makinesi kartına tıklanıp arıza açıklaması girilerek arıza kaydı oluşturulacak ve veritabanına başarıyla yazıldığı doğrulanacaktır.

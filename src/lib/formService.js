@@ -54,7 +54,7 @@ export async function fetchFormTemplateDetail(templateId) {
   return db.from('form_templates').select('*').eq('id', templateId).maybeSingle()
 }
 
-export async function createFormTemplate({ title, description, formType = 'inspection', schemaJson, targetBranches = [], allowedContexts = ['center', 'branch', 'warehouse'], scoring = {}, recurrence, minCompletionSeconds, requireGeo = false, createdBy }) {
+export async function createFormTemplate({ title, description, formType = 'inspection', schemaJson, targetBranches = [], allowedContexts = ['center', 'branch', 'warehouse'], scoring = {}, recurrence, minCompletionSeconds, requireGeo = false, createdBy, requiresCostInput = false, linkedEntityTable = null }) {
   return db.from('form_templates').insert({
     title,
     description: description || null,
@@ -63,6 +63,8 @@ export async function createFormTemplate({ title, description, formType = 'inspe
     target_branches: targetBranches,
     allowed_contexts: allowedContexts,
     scoring,
+    requires_cost_input: requiresCostInput,
+    linked_entity_table: linkedEntityTable,
     recurrence: recurrence || null,
     min_completion_seconds: minCompletionSeconds || null,
     require_geo: requireGeo,
@@ -78,6 +80,8 @@ export async function updateFormTemplate(templateId, updates) {
   if (!('target_branches' in updates)) delete payload.target_branches
   if (!('allowed_contexts' in updates)) delete payload.allowed_contexts
   if (!('scoring' in updates)) delete payload.scoring
+  if (!('requires_cost_input' in updates)) delete payload.requires_cost_input
+  if (!('linked_entity_table' in updates)) delete payload.linked_entity_table
   return db.from('form_templates').update(payload).eq('id', templateId).select().maybeSingle()
 }
 
@@ -287,7 +291,7 @@ export function detectAnomalies(template, submission) {
 
 // ─── Submit Form ────────────────────────────────────────────
 
-export async function submitFormResponse({ templateId, branchId, submittedBy, answersJson, geoLatitude, geoLongitude, deviceTimestamp, completionTimeSeconds, isOffline = false, photos = [], metadata = {} }) {
+export async function submitFormResponse({ templateId, branchId, submittedBy, answersJson, geoLatitude, geoLongitude, deviceTimestamp, completionTimeSeconds, isOffline = false, photos = [], metadata = {}, repairCost = null, repairCurrency = null, repairExchangeRate = null, linkedEntityId = null }) {
   // Load template for scoring
   const templateResult = await fetchFormTemplateDetail(templateId)
   if (templateResult.error || !templateResult.data) {
@@ -328,6 +332,10 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
     completion_time_seconds: completionTimeSeconds || null,
     is_offline_submission: isOffline,
     synced_at: isOffline ? null : nowIso(),
+    linked_entity_id: linkedEntityId || null,
+    repair_cost: repairCost || null,
+    repair_currency: repairCurrency || null,
+    repair_exchange_rate: repairExchangeRate || null,
     metadata: mergedMetadata,
   }).select().maybeSingle()
 
@@ -360,6 +368,23 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
     }
   }
   submission.metadata = finalMetadata
+
+  // Update linked maintenance ticket cost if applicable
+  if (template.linked_entity_table === 'maintenance_tickets' && linkedEntityId) {
+    try {
+      await db.from('maintenance_tickets').update({
+        repair_cost: repairCost || null,
+        repair_currency: repairCurrency || null,
+        repair_exchange_rate: repairExchangeRate || null,
+        form_submission_id: submission.id,
+        status: 'resolved', // auto-resolve ticket on form submission
+        updated_at: nowIso()
+      }).eq('id', linkedEntityId)
+      console.log(`[formService] Successfully updated maintenance ticket ${linkedEntityId} with repair costs.`)
+    } catch (err) {
+      console.error(`[formService] Failed to update linked maintenance ticket ${linkedEntityId}:`, err)
+    }
+  }
 
   // Auto-create task
   let createdTaskId = null

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { fetchFormSubmissionDetail, fetchFormTemplates } from '@/lib/formService'
-import { buildApiUrl } from '@/lib/db'
+import { buildApiUrl, db } from '@/lib/db'
 
 const FORM_TYPE_MAP = {
   inspection: { label: 'Denetim Formu', icon: 'fa-file-shield' },
@@ -83,6 +83,7 @@ function calculateFieldScore(field, value) {
 export default function FormSubmissionDetailModal({ submissionId, submission: initialSubmission, templates: initialTemplates = [], onClose }) {
   const [submission, setSubmission] = useState(initialSubmission || null)
   const [templates, setTemplates] = useState(initialTemplates || [])
+  const [equipments, setEquipments] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -90,19 +91,35 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
       setLoading(true)
       try {
         let currentSub = submission
+        const promises = []
         if (!currentSub && submissionId) {
-          const { data, error } = await fetchFormSubmissionDetail(submissionId)
-          if (!error && data) {
-            currentSub = data
-            setSubmission(data)
-          }
+          promises.push(
+            fetchFormSubmissionDetail(submissionId).then(({ data, error }) => {
+              if (!error && data) {
+                currentSub = data
+                setSubmission(data)
+              }
+            })
+          )
         }
         if (templates.length === 0 || !templates.some(t => t.schema_json)) {
-          const { data, error } = await fetchFormTemplates({ activeOnly: false })
-          if (!error && data) {
-            setTemplates(data)
-          }
+          promises.push(
+            fetchFormTemplates({ activeOnly: false }).then(({ data, error }) => {
+              if (!error && data) {
+                setTemplates(data)
+              }
+            })
+          )
         }
+        promises.push(
+          db.from('equipments')
+            .select('id,name,code')
+            .order('name')
+            .then(res => {
+              setEquipments(res.data || [])
+            })
+        )
+        await Promise.all(promises)
       } catch (err) {
         console.error('Failed to load form submission detail:', err)
       } finally {
@@ -414,6 +431,22 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
                               const items = getDynamicFieldItems(ans.value)
                               displayValue = items.map(item => item.name).join(', ') || '—'
                             }
+                            if (field.type === 'equipment_select') {
+                              const eq = equipments.find(e => String(e.id) === String(ans.value))
+                              displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                            }
+                            if (field.type === 'financial_input') {
+                              try {
+                                const valObj = ans.value ? (typeof ans.value === 'object' ? ans.value : JSON.parse(ans.value)) : null
+                                if (valObj && valObj.amount !== undefined && valObj.amount !== '') {
+                                  displayValue = `${Number(valObj.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${valObj.currency || 'TRY'}`
+                                } else {
+                                  displayValue = '—'
+                                }
+                              } catch (e) {
+                                displayValue = String(ans.value || '—')
+                              }
+                            }
                             if (field.type === 'date' && ans.value) {
                               const parts = String(ans.value).split('-')
                               if (parts.length === 3) {
@@ -546,6 +579,22 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
                     if (field && (field.type === 'stock_item_select' || field.type === 'sale_item_select' || field.type === 'semi_product_select' || field.type === 'branch_select')) {
                       const items = getDynamicFieldItems(ans.value)
                       displayValue = items.map(item => item.name).join(', ') || '—'
+                    }
+                    if (field && field.type === 'equipment_select') {
+                      const eq = equipments.find(e => String(e.id) === String(ans.value))
+                      displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                    }
+                    if (field && field.type === 'financial_input') {
+                      try {
+                        const valObj = ans.value ? (typeof ans.value === 'object' ? ans.value : JSON.parse(ans.value)) : null
+                        if (valObj && valObj.amount !== undefined && valObj.amount !== '') {
+                          displayValue = `${Number(valObj.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${valObj.currency || 'TRY'}`
+                        } else {
+                          displayValue = '—'
+                        }
+                      } catch (e) {
+                        displayValue = String(ans.value || '—')
+                      }
                     }
                     if (field && field.type === 'date' && ans.value) {
                       const parts = String(ans.value).split('-')

@@ -1,0 +1,23 @@
+**1. Proje Bağlamı ve Kesin Kurallar (Dikkatle Oku)**
+A. Bu görev "SuitableRMS" (RMSv3) projesi için yapılacaktır.
+B. Veri Kaynağı YALNIZCA Railway Postgres'tir. Tüm iş verileri veritabanında yaşamalıdır. LocalStorage veya mock veri kesinlikle yasaktır.
+C. Veritabanı işlemleri için YALNIZCA `import { db } from '@/lib/db'` kullanılacaktır. Projede `@supabase/supabase-js` paketi YOKTUR ve kod içinde `supabase` kelimesi KESİNLİKLE YASAKTIR.
+D. Sistemde Auth yoktur. Sadece PIN tabanlı `sessionStorage` mock yetkilendirmesi mevcuttur.
+
+**2. Görev Fazı 1: Veritabanı Şeması (Operasyon El Kitabı)**
+Aşağıdaki yapıyı `schema-railway-master.sql` dosyasına eklenecek DDL SQL kodları olarak hazırla:
+A. `manual_categories` (Kategori Tablosu): Alanlar: `id`, `name`, `description`, `display_order` (INTEGER), `created_at`.
+B. `manual_pages` (Sayfa Tablosu): Alanlar: `id`, `category_id` (FK), `title`, `content` (TEXT - Markdown veya Rich Text formatında tutulacak), `version` (INTEGER, default: 1), `last_updated_by_pin`, `updated_at`, `created_at`.
+C. `manual_page_equipments` (Bağlantı Tablosu - Many-to-Many): Bir el kitabı sayfasında hangi ekipmanların geçtiğini/etiketlendiğini tutar. Alanlar: `page_id` (FK), `equipment_definition_id` (FK).
+
+**3. Görev Fazı 2: Backend, API ve İş Mantığı**
+Bir önceki fazda oluşturduğumuz veritabanı şemasına uygun olarak `server/index.js` içerisine Express endpoint'lerini yaz:
+A. Kategori ve Sayfa CRUD: `manual_categories` ve `manual_pages` için tam CRUD (Create, Read, Update, Delete) operasyonlarını sağlayan endpoint'ler oluştur.
+B. Sayfa Detay ve Ekipman Bağlantısı (İlişkisel Sorgu): Bir sayfanın detayını getiren endpoint (`GET /api/manual/pages/:id`), sadece `content` verisini değil, aynı zamanda `manual_page_equipments` tablosu üzerinden o sayfaya bağlanmış (etiketlenmiş) ekipmanların `equipment_definitions` tablosundaki temel bilgilerini (name, image_url, maintenance_period_days) de JOIN işlemiyle tek seferde JSON içinde döndürmelidir.
+C. Versiyonlama: Sayfa güncelleme (PUT) endpoint'i çağrıldığında, sayfanın `version` numarasını otomatik olarak 1 artır.
+
+**4. Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)**
+Önceki fazlarda kurulan API'leri tüketecek React (Tailwind CSS) bileşenlerini tasarla. Offline-First prensibini bozma. Sessiz fallback yapma, ağ hatalarını ekranda net göster.
+A. Merkez (HQ) Modülü (Yönetici Editörü): Kategori oluşturma ve Sayfa yazma arayüzü tasarla. Sayfa içeriği yazılırken (Textarea veya basit Markdown Editor), kullanıcının sistemdeki `equipment_definitions` listesinden seçim yaparak o sayfaya ekipman etiketlemesini/bağlamasını sağlayan bir "Ekipman İlişkilendir" (Select/Dropdown) bileşeni ekle.
+B. Şube Modülü (Okuyucu Arayüzü): Şube personeli sayfaları sadece "Okuma Modunda" görebilir; düzenleme veya silme yapamaz. Sol tarafta kategoriler ve sayfalar bir menü (Accordion/Tree) yapısında listelenmelidir.
+C. Zengin Metin ve Dinamik Etiket Gösterimi: Şube personeli bir sayfayı okurken, sayfanın altında veya yanında "Bu Prosedürde Kullanılan Ekipmanlar" adlı bir bilgi kartı (Widget) göster. Bu kart, o sayfaya bağlanmış ekipmanların resimlerini ve isimlerini listelemelidir. Ekipmana tıklandığında, personeli o ekipmanın arıza kaydı açabildiği detay modalına/sayfasına yönlendir.

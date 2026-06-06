@@ -22,6 +22,8 @@ const FIELD_TYPES = [
   { value: 'semi_product_select', label: 'Yarı Mamul Seçimi', icon: 'fa-cubes' },
   { value: 'branch_select', label: 'Şube Seçimi', icon: 'fa-store' },
   { value: 'date', label: 'Tarih Seçimi', icon: 'fa-calendar' },
+  { value: 'financial_input', label: 'Finansal Girdi', icon: 'fa-money-bill-wave' },
+  { value: 'equipment_select', label: 'Ekipman Seçimi', icon: 'fa-screwdriver-wrench' },
 ]
 
 const FORM_TYPES = [
@@ -247,6 +249,8 @@ export default function FormTemplates() {
       min_completion_seconds: null,
       scoring: { pass_threshold: 70 },
       allowed_contexts: ['center', 'branch', 'warehouse'],
+      requires_cost_input: false,
+      linked_entity_table: null,
     })
     setSchemaJson({ 
       sections: [EMPTY_SECTION()], 
@@ -272,6 +276,8 @@ export default function FormTemplates() {
       min_completion_seconds: template.min_completion_seconds,
       scoring: template.scoring || { pass_threshold: 70 },
       allowed_contexts: template.allowed_contexts || ['center', 'branch', 'warehouse'],
+      requires_cost_input: template.requires_cost_input || false,
+      linked_entity_table: template.linked_entity_table || null,
     })
     
     // Normalize max_points for select fields to be the sum of option points
@@ -363,6 +369,8 @@ export default function FormTemplates() {
       minCompletionSeconds: editing.min_completion_seconds || null,
       createdBy: user?.id,
       allowedContexts: editing.allowed_contexts || ['center', 'branch', 'warehouse'],
+      requiresCostInput: editing.requires_cost_input || false,
+      linkedEntityTable: editing.linked_entity_table || null,
     }
 
     if (editing.id) {
@@ -375,6 +383,8 @@ export default function FormTemplates() {
         require_geo: payload.requireGeo,
         min_completion_seconds: payload.minCompletionSeconds,
         allowed_contexts: payload.allowedContexts,
+        requires_cost_input: payload.requiresCostInput,
+        linked_entity_table: payload.linkedEntityTable,
       })
       if (error) return toast('Güncelleme başarısız', 'error')
       toast('Şablon güncellendi', 'success')
@@ -620,11 +630,31 @@ export default function FormTemplates() {
           </div>
           )}
           {editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
-            <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
+              <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={editing.requires_cost_input || false} onChange={e => setEditing(p => ({ ...p, requires_cost_input: e.target.checked }))} id="requires-cost-input" />
+              <label htmlFor="requires-cost-input" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Kapatmada Maliyet Girişi Zorunlu</label>
+            </div>
           </div>
           )}
+
+          <div>
+            <label className="f-label">İlişkili Sistem / Tablo (Linked Entity)</label>
+            <div className="sel-wrap">
+              <select
+                value={editing.linked_entity_table || ''}
+                onChange={e => setEditing(p => ({ ...p, linked_entity_table: e.target.value || null }))}
+                className="f-input"
+              >
+                <option value="">İlişki Yok</option>
+                <option value="maintenance_tickets">Ekipman Arıza Biletleri (maintenance_tickets)</option>
+              </select>
+            </div>
+          </div>
 
           <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
             <label className="f-label" style={{ marginBottom: 8, display: 'block' }}>Kullanım Bağlamı / Alanı</label>

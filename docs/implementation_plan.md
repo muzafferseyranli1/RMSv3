@@ -1,55 +1,62 @@
-# Görev Ekleri, Form Gösterimi ve Durum Aksiyonları Entegrasyonu
+# Uygulama Planı - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
 
-Bu plan, mobil uygulamada görev detaylarına eklerin (attachments) eklenmesini, formdan gelen görevlerde form yanıtlarının şık bir arayüzde gösterilmesini ve web sürümünde yer alan "Geri Gönder", "Delege Et", "Pasife Al" aksiyonlarının mobile entegrasyonunu kapsar.
+Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"** gereksinimlerini hayata geçirmeyi hedefler. Önceki fazda oluşturulan API'leri tüketen, modern, duyarlı ve premium React (Tailwind CSS) bileşenlerini tasarlayacaktır.
 
 ## User Review Required
 
-> [!NOTE]
-> - Görev açıklamasındaki `[Form ID: <submission_id>]` ifadesi regex ile gizlenecek, altına mor renkli "İlişkili Formu Göster" butonu yerleştirilecektir.
-> - Butona tıklanınca açılacak olan diyalog, mor header, bildirim zili, şube adı, tarih/süre pilleri, kanıt görselleri ve soru & yanıt detaylarını içerecektir.
-> - Görev detayının en altına web sürümündeki gibi 4 ana aksiyon butonu eklenecektir:
->   - **Geri Gönder (Send Back)**: Görev durumunu `rejected` yapar. Bir diyalog ile kullanıcıdan geri gönderme gerekçesi alınır.
->   - **Delege Et (Delegate)**: `delegation_allowed` aktifse görünür. Diğer personellerin listelendiği bir diyalog açar, seçim sonrası delege talebi (`task_approval_requests`) oluşturur.
->   - **Pasife Al (Soft Delete)**: Görevi oluşturan kişi ise görünür. Onay sonrası görevi `soft_deleted` durumuna çeker.
->   - **Tamamla (Complete) / Başlat (Start)**: Mevcut tamamlama ve başlatma mantığı mor/yeşil butonlarla sunulur.
+> [!IMPORTANT]
+> - **Arayüz Tasarımı:** Uygulamanın koyu/açık mod tasarımı (`[data-theme="dark"]`), renk paletleri ve kart (`.card`), buton (`.btn-p`, `.btn-o`), form (`.f-input`, `.f-label`) gibi global CSS sınıfları birebir kullanılacaktır.
+> - **Çevrimdışı ve Hata Yönetimi:** Ağ/veri çekme hataları ekranda açık ve net şekilde görüntülenecek (sessizce yutulmayacaktır).
+> - **Ekipman Arıza Bildirimi:** Şube personeli bir el kitabı sayfasını okurken, alt kısımdaki "Bu Prosedürde Kullanılan Ekipmanlar" kartından bir ekipmana tıkladığında bir modal açılacak, şubeye ait aktif fiziksel ekipman seçilecek (`equipments` tablosu) ve arıza açıklaması girilerek `maintenance_tickets` tablosuna doğrudan kayıt oluşturulacaktır.
+
+---
 
 ## Proposed Changes
 
-### 1. Android Veri Katmanı Entegrasyonu
+### 1. Navigasyon ve Rota Güncellemeleri
 
-#### [MODIFY] [TaskRepository.kt](file:///c:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
-- `TaskAttachment`, `FormSubmissionDetail` ve `FormSubmissionPhoto` veri sınıflarını eklemek.
-- `fetchTaskAttachments(taskId: String): List<TaskAttachment>` fonksiyonunu tanımlamak.
-- `fetchFormSubmissionDetail(submissionId: String): FormSubmissionDetail?` fonksiyonunu ekleyerek form şablonu, yanıtları ve kanıt fotoğraflarını çekip birleştirmek.
-- `sendBackTask(taskId: String, personnelId: String, reason: String, creatorId: String): Boolean` fonksiyonunu eklemek.
-- `delegateTask(taskId: String, fromPersonnelId: String, toPersonnelId: String, fromPositionId: String?, toPositionId: String?, positions: List<PositionInfo>): Boolean` fonksiyonunu eklemek.
-- `softDeleteTask(taskId: String, personnelId: String): Boolean` fonksiyonunu eklemek.
-- Sistem mesajlarını chat akışına eklemek üzere `addSystemChatMessage(taskId: String, body: String): Boolean` fonksiyonunu yazmak.
+#### [MODIFY] [Sidebar.jsx](file:///c:/RMSv3/src/components/layout/Sidebar.jsx)
+- **Merkez (HQ) Menüsü:** `İşlemler` (islemler) altına `El Kitabı Yönetimi` (`/manual-yonetimi`, ikon: `fa-book-open-reader`) menü elemanının eklenmesi.
+- **Şube Menüsü:** `İşlemler` (sube-islemler) altına `Operasyon El Kitabı` (`/manual`, ikon: `fa-book-open`) menü elemanının eklenmesi.
 
-### 2. Arayüz ve Diyalog Entegrasyonları
+#### [MODIFY] [App.jsx](file:///c:/RMSv3/src/App.jsx)
+- Lazy import listesine `ManualManagement` ve `ManualReader` bileşenlerinin eklenmesi.
+- Rota listesine ilgili sayfaların eklenmesi:
+  - `/manual-yonetimi` -> `<ManualManagement />`
+  - `/manual` -> `<WorkspaceBranchScope><ManualReader /></WorkspaceBranchScope>`
 
-#### [MODIFY] [TasksScreen.kt](file:///c:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
-- `TaskCard` ve `TaskDetailDialog` üzerinde `task.description` alanını regex (`\\[Form ID:\\s*([^\\]]+)\\]`) ile temizleyip göstermek.
-- `TaskDetailDialog` bileşeninde:
-  - `formId` tespit edilirse açıklamanın altına mor renkli "İlişkili Form Yanıtını Göster" butonu yerleştirmek.
-  - Göreve bağlı ekleri (`task_attachments`) database'den çekerek "Ekler" başlığı altında listelemek (Görseller Coil `AsyncImage` ile, dosyalar ise dosya adı ve tıklanabilir link ile gösterilir).
-  - Alt kısımdaki aksiyon butonlarını 2x2 grid yapısı veya şık buton grubu şeklinde sunmak:
-    - **Geri Gönder**: Tıklanınca gerekçe girmek için `SendBackPromptDialog` açılır.
-    - **Delege Et**: Tıklanınca personel listesinden seçim yapmak için `DelegatePersonnelDialog` açılır.
-    - **Pasife Al**: Tıklanınca onay penceresi açılır.
-    - **Görevi Başlat / Tamamla**: Mevcut başlatma ve tamamlama mekanizmaları bu buton grubuna entegre edilir.
-- `FormDetailDialog` Compose bileşenini tasarlamak:
-  - Mockup görselindeki mor header, zil simgesi, şube pilleri, kanıt fotoğrafları ve soru-yanıt listesini mobil ekran boyutuna uygun şekilde sunmak.
-- `SendBackPromptDialog` ve `DelegatePersonnelDialog` yardımcı diyaloglarını oluşturmak.
+### 2. Arayüz Bileşenlerinin Oluşturulması
+
+#### [NEW] [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
+Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebileceği yönetim ekranı:
+- **Kategori Yönetimi Sekmesi:** Kategorileri listeleme (CRUD), `display_order` ve açıklama alanlarının eklenip güncellenmesi.
+- **Sayfa Yönetimi ve Düzenleyici Sekmesi:**
+  - Sayfaları listeleme, silme ve düzenleme paneli.
+  - **Editör Formu:**
+    - Kategori seçimi (Dropdown).
+    - Başlık ve İçerik (Markdown destekli Textarea).
+    - Düzenleyen Personel PIN Kodu girişi.
+    - **Ekipman İlişkilendir (Multi-select dropdown/onay kutuları):** Sistemde tanımlı küresel ekipman tanımlarını (`/api/manual/equipments`) çekerek sayfaya bağlanmasını sağlayan görsel seçim alanı.
+
+#### [NEW] [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
+Şube personelinin prosedürleri okuyabileceği ve ilgili ekipmanlara arıza bildirebileceği okuyucu arayüzü:
+- **Sol Panel (Accordion/Tree Menü):** Kategorilerin ve altındaki sayfaların listelendiği menü.
+- **Sağ Panel (Okuma Alanı):**
+  - Seçilen sayfanın başlığı, güncel versiyon numarası (`Versiyon: X`) ve son güncelleyen PIN kodu bilgisi.
+  - Markdown prosedür içeriğinin HTML formatına dönüştürülerek estetik biçimde gösterilmesi.
+  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartı (Widget):** Sayfaya LEFT JOIN ile bağlı ekipmanların isimleri ve görsellerini listeler.
+- **Arıza Kaydı Açma Modalı:**
+  - Bir ekipmana tıklandığında açılır.
+  - Şubenin aktif `branchId` bilgisiyle veritabanındaki fiziksel ekipmanları (`db.from('equipments')`) çeker ve listeler.
+  - Personelden bir arıza açıklaması alarak `maintenance_tickets` tablosuna doğrudan insert işlemi gerçekleştirir. Başarılı/Hatalı durumları toast mesajı ile bildirilir.
+
+---
 
 ## Verification Plan
 
 ### Automated Tests
-- Projeyi `.\gradlew.bat compileDebugKotlin` ve `.\gradlew.bat assembleDebug` ile derleyerek herhangi bir Kotlin derleme veya dependency hatası olmadığını doğrulamak.
+- Proje derleme testi: `npm run build` ile herhangi bir frontend derleme hatası olmadığını doğrulamak.
 
 ### Manual Verification
-- Görev detaylarında "Geri Gönder", "Delege Et", "Pasife Al" butonlarının durumlarına göre göründüğü test edilecek.
-- Geri gönderme yapıldığında gerekçenin chat ekranına düştüğü ve durumun `rejected` olduğu doğrulanacak.
-- Delege etme işleminde seçilen personel için onay kaydı oluşturulduğu ve chat sistemine not düştüğü gözlemlenecek.
-- Pasife alma tıklandığında görevin listeden kaldırıldığı doğrulanacak.
-- Otomatik formdan oluşan görevlerde mor butona basılınca form verilerinin ve yüklenen görsellerin eksiksiz geldiği test edilecek.
+- Merkez modülü üzerinden yeni kategori ("Bar Operasyonu") ve yeni sayfa ("Kahve Değirmeni Kalibrasyonu") oluşturulup, örnek bir ekipman (Espresso Makinesi) ile ilişkilendirilecektir.
+- Şube modülüne geçiş yapılarak ilgili sayfa açılacak, sayfa altındaki Espresso Makinesi kartına tıklanıp arıza açıklaması girilerek arıza kaydı oluşturulacak ve veritabanına başarıyla yazıldığı doğrulanacaktır.

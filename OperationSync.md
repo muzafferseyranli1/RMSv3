@@ -8550,3 +8550,94 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - hooks/useToast.jsx içindeki özel useToast kancası import edildi ve toast.success, toast.error vb. metot çağrılarıyla geriye dönük uyumlu çalışacak bir sarmalayıcı (wrapper) tanımlandı.
 - Next Step: Arayüz üzerinden logo ve zemin resmi yükleme fonksiyonunun çalıştığını doğrulamak.
 - Handoff Contract: Sonraki agent çalışmaya başlamadan önce bu Entry 027'yi okusun. Müşteri uygulaması genel tasarım ayarlarındaki (branding) görsel yükleme ve ayarları kaydetme ekranındaki eksik toast kancası sorununun çözüldüğünü varsayabilir.
+
+
+## Entry 028
+
+- Timestamp: 2026-06-06T15:00:00+03:00
+- Agent: Antigravity
+- Task: Ekipman ve Finansal Form Entegrasyonu
+- Intent: Dinamik form motoruna ekipman seçimi ve finansal girdi bileşenlerini eklemek, TCMB döviz kurları otomasyonunu entegre etmek ve arıza biletlerinin (maintenance_tickets) otomatik maliyet güncellemelerini sağlamak.
+- Files Changed:
+  - migrations/026_add_equipment_and_financial_form_support.sql
+  - schema-railway-master.sql
+  - server/index.js
+  - src/lib/formService.js
+  - src/components/pages/FormTemplates.jsx
+  - src/components/pages/FormSubmissions.jsx
+  - src/components/ui/FormSubmissionDetailModal.jsx
+- Findings:
+  - Ekipman seçimi (`equipment_select`) ve finansal girdi (`financial_input`) bileşenleri toolbox'a ve form doldurma/görüntüleme ekranlarına eklendi.
+  - FormTemplates.jsx üzerinde kapatma maliyeti zorunluluğu (`requires_cost_input`) ve ilişkili tablo (`linked_entity_table = 'maintenance_tickets'`) ayarları getirildi.
+  - `/api/exchange-rate` TCMB XML döviz kuru API'si tatil günleri backtracking mantığıyla yazıldı.
+  - formService.js üzerinde form yanıtı gönderildiğinde (`submitFormResponse`), eğer ilişkili tablo `maintenance_tickets` ise arıza biletinin maliyet ve kur değerlerinin güncellenmesi ve biletin çözüldü statüsüne getirilmesi sağlandı.
+  - Form detayları ve yazdırma görünümlerinde `equipment_select` (ekipman adı çözümlenerek) ve `financial_input` formatlı (örn: `1.500,00 TRY`) görüntülenecek şekilde UI entegrasyonu tamamlandı.
+  - Proje `npm run build` ile hatasız derlendi.
+- Next Step: Uygulamanın test ortamına dağıtılması ve dinamik form doldurma akışının uçtan uca doğrulanması.
+- Handoff Contract: Sonraki agent çalışmaya başlamadan önce bu Entry 028'i okusun. Dinamik form motorundaki ekipman ve finansal girdi veri tabanı, backend, şablon tasarımı ve doldurma/görüntüleme entegrasyonunun tamamlanmış olduğunu varsayabilir.
+
+
+## Entry 029
+
+- Timestamp: 2026-06-06T18:30:00+03:00
+- Agent: Antigravity
+- Task: Operasyon El Kitabı (Phase 1: Veritabanı Şeması)
+- Intent: El kitabı kategorilerini, sayfalarını ve sayfalardaki ekipmanların etiketlenebilmesini sağlayan veri modelini kurmak, Postgres veritabanına migration uygulamak ve master şemayı güncellemek.
+- Files Changed:
+  - migrations/027_add_operation_manual_support.sql
+  - schema-railway-master.sql
+  - task.md
+  - walkthrough.md
+- Findings:
+  - `migrations/027_add_operation_manual_support.sql` başarıyla oluşturuldu ve Railway Postgres veritabanına uygulandı.
+  - Veritabanında `equipment_definitions`, `manual_categories`, `manual_pages` ve `manual_page_equipments` tabloları başarıyla oluşturuldu ve `equipment_definitions` (5 satır), `manual_categories` (3 satır) örnek verileri seed edildi.
+  - `schema-railway-master.sql` dosyasına yeni tabloların şemaları eklendi.
+  - Proje `npm run build` ile hatasız derlendi.
+- Next Step: Faz 2 API ve Express endpoint'lerinin (CRUD ve ilişkisel JOIN) `server/index.js` içerisine yazılması.
+- Handoff Contract: Operasyon El Kitabı modülü için Faz 1 veri tabanı altyapısı ve şema senkronizasyonu tamamlanmıştır. Postgres veritabanındaki tablolar hazırdır. Faz 2 backend implementasyonuna geçilebilir.
+
+
+## Entry 030
+
+- Timestamp: 2026-06-06T18:42:00+03:00
+- Agent: Antigravity
+- Task: Operasyon El Kitabı (Phase 2: Backend, API ve İş Mantığı)
+- Intent: Express CRUD API endpoint'lerini yazmak, ilişkisel JOIN ile ekipmanları tek JSON'da döndürmek, güncellemelerde sürüm numarasını otomatik artırmak, ve işlemlerin güvenliğini sağlamak için transactions kullanmak.
+- Files Changed:
+  - server/index.js
+  - package.json
+  - task.md
+  - walkthrough.md
+- Findings:
+  - `server/index.js` içerisine `/api/manual/categories` (CRUD), `/api/manual/pages` (CRUD, transaction-safe, otomatik versiyonlama), ve `/api/manual/equipments` endpoint'leri başarıyla eklendi.
+  - `GET /api/manual/pages/:id` endpoint'i LEFT JOIN kullanarak etiketlenmiş ekipmanları tek bir JSON içinde döndürecek şekilde geliştirildi.
+  - Express v5 uyumluluğu için CORS preflight wildcard'ı `'*any'` olarak güncellendi.
+  - Lokal sunucu için eksik `multer` ve `compression` paketleri projeye eklendi ve `server/.env` oluşturularak DB erişimi sağlandı.
+  - 11 adımlı API entegrasyon test scripti (`scratch/test_manual_api.cjs`) yazılarak çalıştırıldı ve tüm adımların lokal sunucu üzerinde başarıyla geçtiği doğrulandı.
+  - Proje `npm run build` ile hatasız derlendi.
+- Next Step: Faz 3 Kullanıcı Arayüzü (Merkez editöründe ekipman ilişkilendirme ve Şube okuyucu modülünde dinamik ekipman kartı widget'ı) geliştirmelerinin tamamlanması.
+- Handoff Contract: Operasyon El Kitabı için Faz 2 backend REST API altyapısı, transaction yönetimi, otomatik versiyonlama ve JOIN sorgusu tamamen çalışır durumdadır. Faz 3 arayüz geliştirmelerine geçilmeye hazırdır.
+
+
+## Entry 031
+
+- Timestamp: 2026-06-06T18:46:00+03:00
+- Agent: Antigravity
+- Task: Operasyon El Kitabı (Phase 3: Kullanıcı Arayüzü)
+- Intent: Merkez yöneticileri için kategori/sayfa düzenleyici paneli, şube personeli için accordion ağaç yapılı okuyucu arayüzü, zengin metin renderı, kullanılan ekipman widget'ı ve arıza bildirim modalını içeren komple UI entegrasyonunun tamamlanması.
+- Files Changed:
+  - src/components/layout/Sidebar.jsx
+  - src/App.jsx
+  - src/components/pages/ManualManagement.jsx
+  - src/components/pages/ManualReader.jsx
+  - task.md
+  - walkthrough.md
+- Findings:
+  - `Sidebar.jsx` dosyasına "El Kitabı Yönetimi" (Merkez) ve "Operasyon El Kitabı" (Şube) linkleri başarıyla eklendi.
+  - `App.jsx` üzerinde rotalar lazy-loaded olarak `/manual-yonetimi` ve `/manual` yollarına bağlandı.
+  - `ManualManagement.jsx` ile tam özellikli HQ kategori ve sayfa yönetici panel arayüzü yazıldı. Editörde Markdown içerik girdisi, çoklu ekipman tanımları ilişkisi seçimi ve PIN doğrulama sistemi tamamlandı.
+  - `ManualReader.jsx` ile hiyerarşik akordeon menüsü, regex tabanlı hafif Markdown-to-HTML parserı, sayfada kullanılan ekipmanları gösteren widget kartları tasarlandı.
+  - Ekipmana tıklandığında açılan arıza bildirim modalı, şubenin aktif `branchId` değerini kullanarak fiziksel cihazları (`equipments` tablosu) listeler ve `maintenance_tickets` tablosuna direkt insert işlemini gerçekleştirir.
+  - Proje `npm run build` ile hatasız şekilde derlendi.
+- Next Step: Kılavuz sayfalarının şube kullanıcıları tarafından test edilmesi ve veritabanı arıza biletlerinin form entegrasyonuyla olan bağlantısının canlıda izlenmesi.
+- Handoff Contract: Operasyon El Kitabı modülünün Faz 1 (Veritabanı), Faz 2 (Backend REST APIs) ve Faz 3 (HQ Yönetimi ve Şube Okuyucu Arayüzleri) entegrasyonu tamamen tamamlanmış, test edilmiş ve hatasız derlenmiştir. Modül kullanıma hazırdır.

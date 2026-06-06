@@ -3770,6 +3770,8 @@ CREATE TABLE IF NOT EXISTS public.form_templates (
   target_branches          JSONB DEFAULT '[]'::jsonb,
   allowed_contexts         JSONB DEFAULT '["center", "branch", "warehouse"]'::jsonb,
   scoring                  JSONB DEFAULT '{}'::jsonb,
+  requires_cost_input      BOOLEAN DEFAULT false,
+  linked_entity_table      TEXT DEFAULT NULL,
   recurrence               JSONB,
   min_completion_seconds   INTEGER,
   require_geo              BOOLEAN DEFAULT false,
@@ -3804,6 +3806,10 @@ CREATE TABLE IF NOT EXISTS public.form_submissions (
   completion_time_seconds   INTEGER,
   is_offline_submission     BOOLEAN DEFAULT false,
   synced_at                 TIMESTAMPTZ,
+  linked_entity_id          UUID DEFAULT NULL,
+  repair_cost               NUMERIC(12,2),
+  repair_currency           VARCHAR(3),
+  repair_exchange_rate      NUMERIC(12,4),
   metadata                  JSONB DEFAULT '{}'::jsonb,
   created_at                TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT form_submissions_pkey PRIMARY KEY (id),
@@ -3862,6 +3868,81 @@ CREATE TABLE IF NOT EXISTS public.announcement_reads (
 
 CREATE INDEX IF NOT EXISTS idx_announcements_created_by ON public.announcements (created_by_personnel_id);
 CREATE INDEX IF NOT EXISTS idx_announcement_reads_lookup ON public.announcement_reads (announcement_id, personnel_id);
+
+-- ============================================================
+-- EQUIPMENTS & MAINTENANCE TICKETS MODULE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.equipments (
+  id          UUID DEFAULT gen_random_uuid() NOT NULL,
+  branch_id   TEXT,
+  name        TEXT NOT NULL,
+  code        TEXT,
+  active      BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT equipments_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.maintenance_tickets (
+  id                    UUID DEFAULT gen_random_uuid() NOT NULL,
+  branch_id             TEXT,
+  equipment_id          UUID,
+  description           TEXT,
+  status                TEXT DEFAULT 'open' NOT NULL,
+  repair_cost           NUMERIC(12,2),
+  repair_currency       VARCHAR(3),
+  repair_exchange_rate  NUMERIC(12,4),
+  form_submission_id    UUID,
+  created_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT maintenance_tickets_pkey PRIMARY KEY (id),
+  CONSTRAINT maintenance_tickets_equipment_fkey FOREIGN KEY (equipment_id) REFERENCES public.equipments(id) ON DELETE SET NULL,
+  CONSTRAINT maintenance_tickets_status_check CHECK (status = ANY (ARRAY['open', 'in_progress', 'resolved', 'closed']))
+);
+
+-- ============================================================
+-- OPERASYON EL KİTABI (OPERATION MANUAL) MODULE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.equipment_definitions (
+  id                       UUID DEFAULT gen_random_uuid() NOT NULL,
+  name                     TEXT NOT NULL,
+  image_url                TEXT,
+  maintenance_period_days  INTEGER,
+  created_at               TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT equipment_definitions_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.manual_categories (
+  id             UUID DEFAULT gen_random_uuid() NOT NULL,
+  name           TEXT NOT NULL,
+  description    TEXT,
+  display_order  INTEGER DEFAULT 0 NOT NULL,
+  created_at     TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT manual_categories_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.manual_pages (
+  id                    UUID DEFAULT gen_random_uuid() NOT NULL,
+  category_id           UUID NOT NULL,
+  title                 TEXT NOT NULL,
+  content               TEXT,
+  version               INTEGER DEFAULT 1 NOT NULL,
+  last_updated_by_pin   TEXT,
+  updated_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  created_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT manual_pages_pkey PRIMARY KEY (id),
+  CONSTRAINT manual_pages_category_fkey FOREIGN KEY (category_id) REFERENCES public.manual_categories(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS public.manual_page_equipments (
+  page_id                  UUID NOT NULL,
+  equipment_definition_id  UUID NOT NULL,
+  CONSTRAINT manual_page_equipments_pkey PRIMARY KEY (page_id, equipment_definition_id),
+  CONSTRAINT manual_page_equipments_page_fkey FOREIGN KEY (page_id) REFERENCES public.manual_pages(id) ON DELETE CASCADE,
+  CONSTRAINT manual_page_equipments_eq_def_fkey FOREIGN KEY (equipment_definition_id) REFERENCES public.equipment_definitions(id) ON DELETE CASCADE
+);
 
 -- ============================================================
 -- END OF SCHEMA
