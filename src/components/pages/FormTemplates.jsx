@@ -637,19 +637,22 @@ export default function FormTemplates() {
           </div>
           )}
 
-          <div>
-            <label className="f-label">İlişkili Sistem / Tablo (Linked Entity)</label>
-            <div className="sel-wrap">
-              <select
-                value={editing.linked_entity_table || ''}
-                onChange={e => setEditing(p => ({ ...p, linked_entity_table: e.target.value || null }))}
-                className="f-input"
-              >
-                <option value="">İlişki Yok</option>
-                <option value="maintenance_tickets">Ekipman Arıza Biletleri (maintenance_tickets)</option>
-              </select>
-            </div>
+          {editing.form_type === 'notification_form' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              id="linked-maintenance"
+              checked={editing.linked_entity_table === 'maintenance_tickets'}
+              onChange={e => setEditing(p => ({ ...p, linked_entity_table: e.target.checked ? 'maintenance_tickets' : null }))}
+            />
+            <label htmlFor="linked-maintenance" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>
+              Bakım / Tamirat
+              <span style={{ marginLeft: 6, fontSize: '.7rem', color: '#94a3b8', fontWeight: 400 }}>
+                (Bu bildirim, ekipman arıza/bakım kaydına bağlanır)
+              </span>
+            </label>
           </div>
+          )}
 
           <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
             <label className="f-label" style={{ marginBottom: 8, display: 'block' }}>Kullanım Bağlamı / Alanı</label>
