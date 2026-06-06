@@ -8653,3 +8653,24 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - server/index.js içerisine sayfanýn ürün ile baðýný kuran ve reçeteyi çeken GET /api/manual/pages/:id/context eklendi.
   - ManualManagement.jsx üzerinde sayfalarý sisteme kayýtlý Ürün, Yarý Mamul ve Hammaddelerle iliþkilendirme seçeneði eklendi.
   - ManualReader.jsx üzerinde sayfadaki reçetelerin listelenmesi ve týkladýkça hammaddenin sayfasýna (Hyperlink) sýçranabilmesi kodlandý.
+
+
+## Entry 033
+
+- Timestamp: 2026-06-06T23:04:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yönetimi - Faz 1: Veritabaný Þemasý
+- Intent: Prompt setinde tanýmlanan Faz 1 gereksinimlerini karþýlamak; equipment_definitions'ý geniþletmek, fiziksel envanter (equipment_instances) ve transfer (equipment_transfers) tablolarýný oluþturmak, maintenance_tickets'ý güncellemek ve form kural motoruna arýza formu þablonu eklemek.
+- Files Changed:
+  - migrations/028_equipment_management_phase1.sql (YENÝ)
+  - schema-railway-master.sql (GÜNCELLENDÝ)
+  - scratch/run_migration_028.cjs (YENÝ - geçici doðrulama scripti)
+- Findings:
+  - equipment_definitions: description, purpose, useful_life_months, active sütunlarý eklendi.
+  - equipment_instances: definition_id (FK), current_location_id, serial_number, status [active/in_repair/transferred/decommissioned], installed_at, purchase_date, purchase_price, currency, purchase_exchange_rate, legacy_accumulated_depreciation, warranty_end_date tablosu oluþturuldu ve Railway'e uygulandý.
+  - equipment_transfers: equipment_instance_id (FK), from_location_id, to_location_id, status [pending/completed/rejected], transferred_by_pin tablosu oluþturuldu ve Railway'e uygulandý.
+  - maintenance_tickets: equipment_instance_id (FK), reported_by_pin, issue_description, resolved_at sütunlarý eklendi.
+  - form_templates'a "Ekipman Arýza Bildirim Formu" þablonu seed edildi (requires_cost_input=true, linked_entity_table=maintenance_tickets).
+  - Tüm deðiþiklikler node ile doðrulandý, git commit yapýldý (1171e56).
+- Next Step: Faz 2 - Backend API endpoint'leri: equipment_instances CRUD, CSV import/export, equipment_transfers akýþý, TCO agregasyon sorgusu.
+- Handoff Contract: Faz 1 tamamdýr. Railway Postgres'te equipment_instances, equipment_transfers tablolarý mevcuttur. maintenance_tickets güncellenmiþtir. Faz 2'ye geçilebilir.
