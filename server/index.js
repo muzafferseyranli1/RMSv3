@@ -1228,6 +1228,770 @@ app.delete('/api/manual/pages/:id', async (req, res) => {
   }
 })
 
+// ============================================================
+// EQUIPMENT MANAGEMENT - FAZ 2 API ENDPOINTS
+// ============================================================
+
+// ── CSV parse yardımcısı (harici paket gerekmez) ─────────────
+function parseCsvText(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim())
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+  return lines.slice(1).map(line => {
+    const values = []
+    let cur = '', inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (c === '"') { inQ = !inQ }
+      else if (c === ',' && !inQ) { values.push(cur.trim()); cur = '' }
+      else { cur += c }
+    }
+    values.push(cur.trim())
+    const row = {}
+    headers.forEach((h, i) => { row[h] = (values[i] || '').replace(/^"|"$/g, '') })
+    return row
+  })
+}
+
+// ── CSV multer (sadece text/csv + application/vnd.ms-excel) ──
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = ['text/csv', 'application/vnd.ms-excel', 'text/plain'].includes(file.mimetype)
+      || file.originalname.endsWith('.csv')
+    cb(null, ok)
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// A. EQUIPMENT DEFINITIONS CRUD
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/equipment/definitions
+app.get('/api/equipment/definitions', async (req, res) => {
+  try {
+    const { active } = req.query
+    let sql = 'SELECT * FROM public.equipment_definitions'
+    const vals = []
+    if (active !== undefined) {
+      sql += ' WHERE active = $1'
+      vals.push(active !== 'false')
+    }
+    sql += ' ORDER BY name ASC'
+    const { rows } = await pool.query(sql, vals)
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/equipment/definitions]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// GET /api/equipment/definitions/:id
+app.get('/api/equipment/definitions/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM public.equipment_definitions WHERE id = $1',
+      [req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[GET /api/equipment/definitions/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/equipment/definitions  (resim URL'si /api/upload'dan gelir)
+app.post('/api/equipment/definitions', async (req, res) => {
+  try {
+    const { name, description, purpose, image_url, maintenance_period_days, useful_life_months, active } = req.body
+    if (!name) return res.status(400).json({ data: null, error: { message: 'name is required' } })
+    const { rows } = await pool.query(
+      `INSERT INTO public.equipment_definitions
+         (name, description, purpose, image_url, maintenance_period_days, useful_life_months, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [name, description || null, purpose || null, image_url || null,
+       maintenance_period_days || null, useful_life_months || null,
+       active !== false]
+    )
+    return res.status(201).json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[POST /api/equipment/definitions]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// PUT /api/equipment/definitions/:id
+app.put('/api/equipment/definitions/:id', async (req, res) => {
+  try {
+    const { name, description, purpose, image_url, maintenance_period_days, useful_life_months, active } = req.body
+    const { rows } = await pool.query(
+      `UPDATE public.equipment_definitions SET
+         name = COALESCE($1, name),
+         description = $2,
+         purpose = $3,
+         image_url = COALESCE($4, image_url),
+         maintenance_period_days = $5,
+         useful_life_months = $6,
+         active = COALESCE($7, active)
+       WHERE id = $8 RETURNING *`,
+      [name, description, purpose, image_url, maintenance_period_days, useful_life_months, active, req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[PUT /api/equipment/definitions/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// DELETE /api/equipment/definitions/:id  (soft: active=false)
+app.delete('/api/equipment/definitions/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'UPDATE public.equipment_definitions SET active = false WHERE id = $1 RETURNING *',
+      [req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[DELETE /api/equipment/definitions/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// B. EQUIPMENT INSTANCES CRUD
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/equipment/instances?location_id=&status=&definition_id=
+app.get('/api/equipment/instances', async (req, res) => {
+  try {
+    const { location_id, status, definition_id } = req.query
+    const conditions = [], vals = []
+    if (location_id) { conditions.push(`ei.current_location_id = $${vals.length + 1}`); vals.push(location_id) }
+    if (status)      { conditions.push(`ei.status = $${vals.length + 1}`); vals.push(status) }
+    if (definition_id) { conditions.push(`ei.definition_id = $${vals.length + 1}`); vals.push(definition_id) }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const { rows } = await pool.query(
+      `SELECT ei.*,
+              ed.name           AS definition_name,
+              ed.image_url      AS definition_image_url,
+              ed.useful_life_months,
+              ed.purpose
+       FROM public.equipment_instances ei
+       JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       ${where}
+       ORDER BY ei.created_at DESC`,
+      vals
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/equipment/instances]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// GET /api/equipment/instances/:id
+app.get('/api/equipment/instances/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ei.*,
+              ed.name AS definition_name, ed.image_url AS definition_image_url,
+              ed.useful_life_months, ed.purpose
+       FROM public.equipment_instances ei
+       JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       WHERE ei.id = $1`,
+      [req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[GET /api/equipment/instances/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/equipment/instances
+app.post('/api/equipment/instances', async (req, res) => {
+  try {
+    const {
+      definition_id, current_location_id, serial_number, status,
+      installed_at, purchase_date, purchase_price, currency,
+      purchase_exchange_rate, legacy_accumulated_depreciation,
+      warranty_end_date, notes
+    } = req.body
+    if (!definition_id || !current_location_id) {
+      return res.status(400).json({ data: null, error: { message: 'definition_id and current_location_id are required' } })
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO public.equipment_instances
+         (definition_id, current_location_id, serial_number, status,
+          installed_at, purchase_date, purchase_price, currency,
+          purchase_exchange_rate, legacy_accumulated_depreciation,
+          warranty_end_date, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [definition_id, current_location_id, serial_number || null,
+       status || 'active', installed_at || null, purchase_date || null,
+       purchase_price || null, currency || 'TRY',
+       purchase_exchange_rate || 1.0,
+       legacy_accumulated_depreciation || 0,
+       warranty_end_date || null, notes || null]
+    )
+    return res.status(201).json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[POST /api/equipment/instances]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// PUT /api/equipment/instances/:id
+app.put('/api/equipment/instances/:id', async (req, res) => {
+  try {
+    const {
+      current_location_id, serial_number, status, installed_at,
+      purchase_date, purchase_price, currency, purchase_exchange_rate,
+      legacy_accumulated_depreciation, warranty_end_date, notes
+    } = req.body
+    const { rows } = await pool.query(
+      `UPDATE public.equipment_instances SET
+         current_location_id             = COALESCE($1, current_location_id),
+         serial_number                   = COALESCE($2, serial_number),
+         status                          = COALESCE($3, status),
+         installed_at                    = $4,
+         purchase_date                   = $5,
+         purchase_price                  = $6,
+         currency                        = COALESCE($7, currency),
+         purchase_exchange_rate          = COALESCE($8, purchase_exchange_rate),
+         legacy_accumulated_depreciation = COALESCE($9, legacy_accumulated_depreciation),
+         warranty_end_date               = $10,
+         notes                           = $11,
+         updated_at                      = now()
+       WHERE id = $12 RETURNING *`,
+      [current_location_id, serial_number, status, installed_at,
+       purchase_date, purchase_price, currency, purchase_exchange_rate,
+       legacy_accumulated_depreciation, warranty_end_date, notes, req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[PUT /api/equipment/instances/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// DELETE /api/equipment/instances/:id  (status=decommissioned)
+app.delete('/api/equipment/instances/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE public.equipment_instances SET status = 'decommissioned', updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    )
+    if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[DELETE /api/equipment/instances/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// C. CSV ŞABLON İNDİR
+// ─────────────────────────────────────────────────────────────
+
+app.get('/api/equipment/instances/csv-template', (_req, res) => {
+  const headers = [
+    'ekipman_tanim_adi', 'sube_adi', 'seri_numarasi', 'kurulum_tarihi',
+    'alim_tarihi', 'alim_bedeli', 'doviz_cinsi', 'alim_kuru',
+    'devreden_amortisman', 'garanti_bitis_tarihi'
+  ]
+  const example = [
+    'Fırın Model X', 'Merkez Şube', 'SN-2024-001', '2024-01-15',
+    '2023-12-01', '45000', 'TRY', '1', '0', '2026-12-01'
+  ]
+  const csv = headers.join(',') + '\n' + example.join(',') + '\n'
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', 'attachment; filename="ekipman_sablonu.csv"')
+  return res.send('\uFEFF' + csv) // UTF-8 BOM for Excel
+})
+
+// ─────────────────────────────────────────────────────────────
+// D. CSV TOPLU İÇE AKTARMA
+// ─────────────────────────────────────────────────────────────
+
+app.post('/api/equipment/instances/csv-import', csvUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ data: null, error: { message: 'CSV dosyası gereklidir' } })
+
+  const text = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '')
+  const rows = parseCsvText(text)
+  if (!rows.length) return res.status(400).json({ data: null, error: { message: 'CSV boş veya hatalı format' } })
+
+  const client = await pool.connect()
+  const newBranches = []
+  const inserted = []
+  const errors = []
+
+  try {
+    await client.query('BEGIN')
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const rowNum = i + 2 // header=1
+
+      try {
+        // 1. equipment_definition bul ya da ara
+        const defName = (row['ekipman_tanim_adi'] || '').trim()
+        if (!defName) { errors.push(`Satır ${rowNum}: ekipman_tanim_adi boş`); continue }
+
+        const defRes = await client.query(
+          'SELECT id FROM public.equipment_definitions WHERE LOWER(name) = LOWER($1) AND active = true LIMIT 1',
+          [defName]
+        )
+        if (!defRes.rows.length) { errors.push(`Satır ${rowNum}: "${defName}" tanımı bulunamadı`); continue }
+        const definition_id = defRes.rows[0].id
+
+        // 2. Şube bul ya da iskelet oluştur
+        const subeName = (row['sube_adi'] || '').trim()
+        if (!subeName) { errors.push(`Satır ${rowNum}: sube_adi boş`); continue }
+
+        let branchId = subeName  // branch_id TEXT
+        // Basit kontrol: branches tablosuna bak
+        const branchRes = await client.query(
+          `SELECT id FROM public.branches WHERE id = $1 OR LOWER(name) = LOWER($2) LIMIT 1`,
+          [subeName, subeName]
+        ).catch(() => ({ rows: [] }))  // branches tablosu yoksa hata verme
+
+        if (branchRes.rows.length) {
+          branchId = branchRes.rows[0].id
+        } else {
+          // iskelet şube: branch_id olarak şube adını metin olarak kullan
+          // Gerçek şube tablosuna yazma — sadece new_branches listesine ekle
+          if (!newBranches.includes(subeName)) newBranches.push(subeName)
+          branchId = subeName
+        }
+
+        // 3. Insert
+        const purchase_price = parseFloat(row['alim_bedeli']) || null
+        const purchase_exchange_rate = parseFloat(row['alim_kuru']) || 1.0
+        const legacy_dep = parseFloat(row['devreden_amortisman']) || 0
+        const currency = (row['doviz_cinsi'] || 'TRY').trim().toUpperCase()
+
+        const insRes = await client.query(
+          `INSERT INTO public.equipment_instances
+             (definition_id, current_location_id, serial_number,
+              installed_at, purchase_date, purchase_price, currency,
+              purchase_exchange_rate, legacy_accumulated_depreciation, warranty_end_date)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+          [
+            definition_id, branchId,
+            (row['seri_numarasi'] || '').trim() || null,
+            row['kurulum_tarihi'] || null,
+            row['alim_tarihi'] || null,
+            purchase_price, currency, purchase_exchange_rate,
+            legacy_dep,
+            row['garanti_bitis_tarihi'] || null
+          ]
+        )
+        inserted.push(insRes.rows[0].id)
+      } catch (rowErr) {
+        errors.push(`Satır ${rowNum}: ${rowErr.message}`)
+      }
+    }
+
+    await client.query('COMMIT')
+
+    const message = newBranches.length > 0
+      ? `İçe aktarma başarılı. Veritabanında olmayan yeni şubeler otomatik eklendi. Lütfen bu şubelerin detaylarını tamamlayınız.`
+      : `İçe aktarma başarılı.`
+
+    return res.json({
+      data: {
+        message,
+        inserted_count: inserted.length,
+        error_count: errors.length,
+        new_branches: newBranches,
+        errors: errors.length > 0 ? errors : undefined
+      },
+      error: null
+    })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[POST /api/equipment/instances/csv-import]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// E. EQUIPMENT TRANSFERS
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/equipment/transfers?instance_id=&status=
+app.get('/api/equipment/transfers', async (req, res) => {
+  try {
+    const { instance_id, status } = req.query
+    const conditions = [], vals = []
+    if (instance_id) { conditions.push(`et.equipment_instance_id = $${vals.length + 1}`); vals.push(instance_id) }
+    if (status)      { conditions.push(`et.status = $${vals.length + 1}`); vals.push(status) }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const { rows } = await pool.query(
+      `SELECT et.*,
+              ed.name AS definition_name
+       FROM public.equipment_transfers et
+       JOIN public.equipment_instances ei ON et.equipment_instance_id = ei.id
+       JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       ${where}
+       ORDER BY et.created_at DESC`,
+      vals
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/equipment/transfers]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/equipment/transfers  — Transfer başlat
+app.post('/api/equipment/transfers', async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { equipment_instance_id, to_location_id, notes, transferred_by_pin } = req.body
+    if (!equipment_instance_id || !to_location_id) {
+      return res.status(400).json({ data: null, error: { message: 'equipment_instance_id and to_location_id are required' } })
+    }
+
+    await client.query('BEGIN')
+
+    // Mevcut konumu al
+    const instRes = await client.query(
+      'SELECT current_location_id, status FROM public.equipment_instances WHERE id = $1 FOR UPDATE',
+      [equipment_instance_id]
+    )
+    if (!instRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ data: null, error: { message: 'Instance not found' } })
+    }
+    const { current_location_id, status } = instRes.rows[0]
+    if (status === 'in_repair') {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ data: null, error: { message: 'Arızada olan ekipman transfer edilemez' } })
+    }
+
+    // Transfer kaydı oluştur
+    const trRes = await client.query(
+      `INSERT INTO public.equipment_transfers
+         (equipment_instance_id, from_location_id, to_location_id, status, notes, transferred_by_pin)
+       VALUES ($1,$2,$3,'pending',$4,$5) RETURNING *`,
+      [equipment_instance_id, current_location_id, to_location_id, notes || null, transferred_by_pin || null]
+    )
+
+    // Instance'ı transferred olarak işaretle
+    await client.query(
+      `UPDATE public.equipment_instances SET status = 'transferred', updated_at = now() WHERE id = $1`,
+      [equipment_instance_id]
+    )
+
+    await client.query('COMMIT')
+    return res.status(201).json({ data: trRes.rows[0], error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[POST /api/equipment/transfers]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// PATCH /api/equipment/transfers/:id/complete  — Transfer onayla
+app.patch('/api/equipment/transfers/:id/complete', async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { transferred_by_pin } = req.body
+    await client.query('BEGIN')
+
+    const trRes = await client.query(
+      `UPDATE public.equipment_transfers
+       SET status = 'completed', transferred_at = now(), transferred_by_pin = COALESCE($1, transferred_by_pin), updated_at = now()
+       WHERE id = $2 AND status = 'pending'
+       RETURNING *`,
+      [transferred_by_pin || null, req.params.id]
+    )
+    if (!trRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ data: null, error: { message: 'Transfer bulunamadı veya zaten tamamlandı' } })
+    }
+
+    const tr = trRes.rows[0]
+    await client.query(
+      `UPDATE public.equipment_instances
+       SET current_location_id = $1, status = 'active', updated_at = now()
+       WHERE id = $2`,
+      [tr.to_location_id, tr.equipment_instance_id]
+    )
+
+    await client.query('COMMIT')
+    return res.json({ data: tr, error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[PATCH /api/equipment/transfers/:id/complete]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// PATCH /api/equipment/transfers/:id/reject  — Transfer reddet
+app.patch('/api/equipment/transfers/:id/reject', async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const trRes = await client.query(
+      `UPDATE public.equipment_transfers
+       SET status = 'rejected', updated_at = now()
+       WHERE id = $1 AND status = 'pending' RETURNING *`,
+      [req.params.id]
+    )
+    if (!trRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ data: null, error: { message: 'Transfer bulunamadı veya zaten işleme alındı' } })
+    }
+    // Instance'ı tekrar active yap (from_location_id'ye geri dön)
+    await client.query(
+      `UPDATE public.equipment_instances
+       SET status = 'active', updated_at = now()
+       WHERE id = $1`,
+      [trRes.rows[0].equipment_instance_id]
+    )
+    await client.query('COMMIT')
+    return res.json({ data: trRes.rows[0], error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('[PATCH /api/equipment/transfers/:id/reject]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// F. TCO (TOPLAM SAHİP OLMA MALİYETİ) AGREGASYonu
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/equipment/instances/:id/tco?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+app.get('/api/equipment/instances/:id/tco', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { startDate, endDate } = req.query
+
+    // Instance var mı?
+    const instRes = await pool.query(
+      `SELECT ei.*, ed.name AS definition_name, ed.useful_life_months,
+              ed.purpose
+       FROM public.equipment_instances ei
+       JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       WHERE ei.id = $1`,
+      [id]
+    )
+    if (!instRes.rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
+    const instance = instRes.rows[0]
+
+    // Tarih filtreli TCO sorgusu (mühürlenmiş kur bazlı)
+    const conditions = [`mt.equipment_instance_id = $1`, `mt.status IN ('resolved','closed')`]
+    const vals = [id]
+    if (startDate) { conditions.push(`mt.created_at >= $${vals.length + 1}`); vals.push(startDate) }
+    if (endDate)   { conditions.push(`mt.created_at <= $${vals.length + 1}`); vals.push(endDate + ' 23:59:59') }
+
+    const tcoRes = await pool.query(
+      `SELECT
+         COUNT(*)                                                   AS ticket_count,
+         COALESCE(SUM(mt.repair_cost * COALESCE(mt.repair_exchange_rate, 1)), 0) AS total_repair_cost_try,
+         COALESCE(SUM(mt.repair_cost), 0)                          AS total_repair_cost_original,
+         MAX(mt.repair_currency)                                    AS currency
+       FROM public.maintenance_tickets mt
+       WHERE ${conditions.join(' AND ')}`,
+      vals
+    )
+    const tco = tcoRes.rows[0]
+
+    // Doğrusal amortisman hesabı (frontend'e hazır veri)
+    let depreciation = null
+    if (instance.purchase_price && instance.useful_life_months) {
+      const purchaseDate = instance.purchase_date ? new Date(instance.purchase_date) : null
+      if (purchaseDate) {
+        const monthsElapsed = Math.max(0,
+          (new Date().getFullYear() - purchaseDate.getFullYear()) * 12 +
+          (new Date().getMonth() - purchaseDate.getMonth())
+        )
+        const monthlyDep = parseFloat(instance.purchase_price) / instance.useful_life_months
+        const accumulatedDep = Math.min(
+          monthlyDep * monthsElapsed + parseFloat(instance.legacy_accumulated_depreciation || 0),
+          parseFloat(instance.purchase_price)
+        )
+        const bookValue = Math.max(0, parseFloat(instance.purchase_price) - accumulatedDep)
+        const bookValueTRY = bookValue * parseFloat(instance.purchase_exchange_rate || 1)
+
+        depreciation = {
+          method: 'straight_line',
+          purchase_price: parseFloat(instance.purchase_price),
+          currency: instance.currency,
+          purchase_exchange_rate: parseFloat(instance.purchase_exchange_rate),
+          purchase_price_try: parseFloat(instance.purchase_price) * parseFloat(instance.purchase_exchange_rate),
+          useful_life_months: instance.useful_life_months,
+          months_elapsed: monthsElapsed,
+          monthly_depreciation: parseFloat(monthlyDep.toFixed(2)),
+          accumulated_depreciation: parseFloat(accumulatedDep.toFixed(2)),
+          book_value: parseFloat(bookValue.toFixed(2)),
+          book_value_try: parseFloat(bookValueTRY.toFixed(2))
+        }
+      }
+    }
+
+    return res.json({
+      data: {
+        instance,
+        tco: {
+          ticket_count: parseInt(tco.ticket_count),
+          total_repair_cost_try: parseFloat(tco.total_repair_cost_try),
+          total_repair_cost_original: parseFloat(tco.total_repair_cost_original),
+          currency: tco.currency || instance.currency,
+          date_range: { startDate: startDate || null, endDate: endDate || null }
+        },
+        depreciation
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('[GET /api/equipment/instances/:id/tco]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// G. MAINTENANCE TICKETS CRUD (genişletilmiş)
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/maintenance-tickets?branch_id=&status=&instance_id=
+app.get('/api/maintenance-tickets', async (req, res) => {
+  try {
+    const { branch_id, status, instance_id } = req.query
+    const conditions = [], vals = []
+    if (branch_id)   { conditions.push(`mt.branch_id = $${vals.length + 1}`); vals.push(branch_id) }
+    if (status)      { conditions.push(`mt.status = $${vals.length + 1}`); vals.push(status) }
+    if (instance_id) { conditions.push(`mt.equipment_instance_id = $${vals.length + 1}`); vals.push(instance_id) }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const { rows } = await pool.query(
+      `SELECT mt.*,
+              ei.serial_number,
+              ed.name AS equipment_name,
+              ed.image_url AS equipment_image_url,
+              ed.warranty_end_date
+       FROM public.maintenance_tickets mt
+       LEFT JOIN public.equipment_instances ei ON mt.equipment_instance_id = ei.id
+       LEFT JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       ${where}
+       ORDER BY mt.created_at DESC`,
+      vals
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/maintenance-tickets]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/maintenance-tickets
+app.post('/api/maintenance-tickets', async (req, res) => {
+  try {
+    const {
+      branch_id, equipment_instance_id, issue_description,
+      reported_by_pin, form_submission_id
+    } = req.body
+    if (!branch_id || !equipment_instance_id) {
+      return res.status(400).json({ data: null, error: { message: 'branch_id and equipment_instance_id are required' } })
+    }
+
+    // Garanti kontrolü için warranty_end_date al
+    const instRes = await pool.query(
+      `SELECT ei.warranty_end_date FROM public.equipment_instances ei WHERE ei.id = $1`,
+      [equipment_instance_id]
+    )
+    const warrantyEndDate = instRes.rows[0]?.warranty_end_date || null
+    const isUnderWarranty = warrantyEndDate && new Date(warrantyEndDate) > new Date()
+
+    const { rows } = await pool.query(
+      `INSERT INTO public.maintenance_tickets
+         (branch_id, equipment_instance_id, issue_description, reported_by_pin, form_submission_id, status)
+       VALUES ($1,$2,$3,$4,$5,'open') RETURNING *`,
+      [branch_id, equipment_instance_id, issue_description || null,
+       reported_by_pin || null, form_submission_id || null]
+    )
+
+    return res.status(201).json({
+      data: {
+        ...rows[0],
+        warranty_warning: isUnderWarranty
+          ? 'DİKKAT: Bu cihazın garantisi devam etmektedir! Yetkisiz müdahale yaptırmayınız.'
+          : null
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('[POST /api/maintenance-tickets]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// PATCH /api/maintenance-tickets/:id/resolve  — Formu kapat + maliyet doğrula
+app.patch('/api/maintenance-tickets/:id/resolve', async (req, res) => {
+  try {
+    const { repair_cost, repair_currency, repair_exchange_rate } = req.body
+
+    // Form şablonu requires_cost_input kontrolü
+    const ticketRes = await pool.query(
+      `SELECT mt.*, ft.requires_cost_input
+       FROM public.maintenance_tickets mt
+       LEFT JOIN public.form_submissions fs ON mt.form_submission_id = fs.id
+       LEFT JOIN public.form_templates ft ON fs.template_id = ft.id
+       WHERE mt.id = $1`,
+      [req.params.id]
+    )
+    if (!ticketRes.rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Ticket bulunamadı' } })
+    }
+    const ticket = ticketRes.rows[0]
+
+    if (ticket.requires_cost_input) {
+      if (!repair_cost || isNaN(parseFloat(repair_cost))) {
+        return res.status(400).json({ data: null, error: { message: 'Bu form için geçerli bir repair_cost girilmelidir' } })
+      }
+      if (!repair_currency) {
+        return res.status(400).json({ data: null, error: { message: 'Bu form için repair_currency girilmelidir' } })
+      }
+      if (!repair_exchange_rate || isNaN(parseFloat(repair_exchange_rate))) {
+        return res.status(400).json({ data: null, error: { message: 'Bu form için geçerli bir repair_exchange_rate girilmelidir' } })
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.maintenance_tickets SET
+         status               = 'resolved',
+         repair_cost          = $1,
+         repair_currency      = $2,
+         repair_exchange_rate = $3,
+         resolved_at          = now(),
+         updated_at           = now()
+       WHERE id = $4 RETURNING *`,
+      [repair_cost || null, repair_currency || null, repair_exchange_rate || null, req.params.id]
+    )
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[PATCH /api/maintenance-tickets/:id/resolve]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => console.log(`API server listening on port ${PORT}`))
-
