@@ -629,15 +629,10 @@ export default function FormTemplates() {
             />
           </div>
           )}
-          {editing.form_type !== 'customer_survey' && editing.form_type !== 'personnel_survey' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={editing.require_geo} onChange={e => setEditing(p => ({ ...p, require_geo: e.target.checked }))} id="require-geo" />
               <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={editing.requires_cost_input || false} onChange={e => setEditing(p => ({ ...p, requires_cost_input: e.target.checked }))} id="requires-cost-input" />
-              <label htmlFor="requires-cost-input" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Kapatmada Maliyet Girişi Zorunlu</label>
             </div>
           </div>
           )}
@@ -840,6 +835,7 @@ export default function FormTemplates() {
                       { key: 'closure_summary_required', label: 'Kapanış Özeti Zorunlu' },
                       { key: 'closure_file_required', label: 'Kapanış Dosyası Zorunlu' },
                       { key: 'closure_image_required', label: 'Kapanış Fotoğrafı Zorunlu' },
+                      { key: 'requires_cost_input', label: 'Kapatmada Maliyet Girişi Zorunlu 💰' },
                       { key: 'edit_due_date_allowed', label: 'Atanan Vade Değiştirebilir' },
                       { key: 'edit_schedule_allowed', label: 'Atanan Takvim Değiştirebilir' },
                       { key: 'incomplete_if_late', label: 'Süresinde Bitmezse Tamamlanmadı Say' }

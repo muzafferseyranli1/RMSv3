@@ -1593,6 +1593,25 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
             files: uploadedFiles,
             images: uploadedImages,
           }))
+
+          // Maliyet yazma: gorev bir maintenance_ticket'a bagliysa repair_cost guncelle
+          if (success && payload.cost != null && selectedTask?.linked_entity_table === 'maintenance_tickets' && selectedTask?.linked_entity_id) {
+            try {
+              const apiBase = import.meta.env.VITE_API_URL || ''
+              await fetch(`${apiBase}/api/maintenance-tickets/${selectedTask.linked_entity_id}/resolve`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  repair_cost: payload.cost,
+                  currency: payload.cost_currency || 'TRY',
+                  resolution_notes: payload.summary || '',
+                }),
+              })
+            } catch (err) {
+              console.warn('[TaskClosure] Maliyet ekipman gecmisine yazilamadi:', err)
+            }
+          }
+
           if (success) setClosureOpen(false)
         }}
       />

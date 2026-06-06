@@ -5,18 +5,33 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
   const [summary, setSummary] = useState('')
   const [files, setFiles] = useState([])
   const [images, setImages] = useState([])
+  const [cost, setCost] = useState('')
+  const [costCurrency, setCostCurrency] = useState('TRY')
+
+  // requires_cost_input kuralı: task.rules içinden veya doğrudan task alanından okunur
+  const rules = task?.rules || {}
+  const requiresCost = !!(rules.requires_cost_input || task?.requires_cost_input)
 
   const isSummaryMissing = !!task?.closure_summary_required && !summary.trim()
   const isFileMissing = !!task?.closure_file_required && files.length === 0
   const isImageMissing = !!task?.closure_image_required && images.length === 0
-  const isDisabled = isSummaryMissing || isFileMissing || isImageMissing
+  const isCostMissing = requiresCost && (!cost || isNaN(parseFloat(cost)) || parseFloat(cost) < 0)
+  const isDisabled = isSummaryMissing || isFileMissing || isImageMissing || isCostMissing
 
   async function handleSubmit() {
     if (isDisabled) return
-    await onSubmit({ summary, files, images })
+    await onSubmit({
+      summary,
+      files,
+      images,
+      cost: requiresCost ? parseFloat(cost) : null,
+      cost_currency: requiresCost ? costCurrency : null,
+    })
     setSummary('')
     setFiles([])
     setImages([])
+    setCost('')
+    setCostCurrency('TRY')
   }
 
   return (
@@ -41,6 +56,7 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
         <div style={{ fontSize: '.78rem', color: '#475569', lineHeight: 1.5 }}>
           {task?.approval_required ? 'Bu görev kapanış onayına düşecek.' : 'Bu görev doğrudan tamamlanacak.'}
         </div>
+
         <div>
           <label className="f-label">
             Kapanış Özeti
@@ -54,6 +70,51 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
             placeholder="Yapılan işi kısaca yaz..."
           />
         </div>
+
+        {/* Maliyet Alanı — yalnızca requires_cost_input görev kuralı aktifse görünür */}
+        {requiresCost && (
+          <div style={{
+            background: 'rgba(245,158,11,.06)',
+            border: '1px solid rgba(245,158,11,.35)',
+            borderRadius: 10,
+            padding: '14px 16px'
+          }}>
+            <label className="f-label" style={{ color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-coins" style={{ color: '#f59e0b' }} />
+              Bakım / Onarım Maliyeti
+              <span style={{ color: '#ef4444', marginLeft: 4 }}>* (Zorunlu)</span>
+            </label>
+            <p style={{ fontSize: '.74rem', color: '#78350f', margin: '4px 0 10px', lineHeight: 1.4 }}>
+              Bu görev bir bakım bildiriminden oluşturulmuşsa, girilen tutar ekipman geçmişine otomatik kaydedilir.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="number"
+                className="f-input"
+                value={cost}
+                onChange={e => setCost(e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                style={{ flex: 1 }}
+              />
+              <select
+                className="f-input"
+                value={costCurrency}
+                onChange={e => setCostCurrency(e.target.value)}
+                style={{ width: 90 }}
+              >
+                <option value="TRY">₺ TRY</option>
+                <option value="USD">$ USD</option>
+                <option value="EUR">€ EUR</option>
+              </select>
+            </div>
+            {isCostMissing && cost !== '' && (
+              <div style={{ fontSize: '.73rem', color: '#ef4444', marginTop: 4 }}>Geçerli bir tutar giriniz</div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
             <label className="f-label">
