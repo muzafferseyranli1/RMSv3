@@ -394,137 +394,157 @@ export default function ManualManagement() {
               <h2 className="text-primary" style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>
                 <i className="fa-solid fa-eye" style={{ marginRight: 8 }} /> Canlı Önizleme
               </h2>
-              <div style={{ background: '#fff', color: '#000', padding: '30px 40px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontFamily: 'Arial, sans-serif' }}>
-                {/* Header */}
-                <div style={{ borderBottom: '2px solid #14496b', paddingBottom: 10, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#999', fontSize: '.85rem' }}>İşletme ve Eğitim El Kitabı</span>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 'bold' }}>Logo</div>
-                </div>
+              {/* A4-like page */}
+              <div style={{ background: '#fff', color: '#222', padding: '28px 32px', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
 
-                {/* Title & Image */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 30, gap: 20 }}>
-                  <div style={{ flex: 1 }}>
-                    <h1 style={{ margin: '0 0 10px 0', fontSize: '1.6rem', color: '#333' }}>
+                {/* ── HEADER ── */}
+                <div style={{ borderBottom: '2.5px solid #14496b', paddingBottom: 10, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '.65rem', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 3 }}>İşletme ve Eğitim El Kitabı</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#14496b' }}>
                       {pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : 'Sayfa Başlığı')}
-                    </h1>
-                    {pageForm.title && pageForm.linked_item_id && (
-                      <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#555', fontWeight: 'normal' }}>
-                        {systemItems.find(i => i.id === pageForm.linked_item_id)?.name}
-                      </h2>
-                    )}
+                    </div>
                   </div>
-                  <div style={{ width: 160, height: 130, background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 6, background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.55rem', fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>LOGO</div>
+                </div>
+
+                {/* ── HERO ROW: Image + Recipe ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 26, alignItems: 'start' }}>
+                  {/* Product Image */}
+                  <div style={{ borderRadius: 8, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {pageForm.metadata?.product_image ? (
-                      <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : (
-                      <span style={{ padding: 10, fontSize: '1.1rem' }}>Yüklenen ürün resmi</span>
+                      <div style={{ textAlign: 'center', color: '#ccc', padding: 16 }}>
+                        <i className="fa-solid fa-camera" style={{ fontSize: '1.6rem', display: 'block', marginBottom: 6 }} />
+                        <span style={{ fontSize: '.7rem' }}>Ürün görseli</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recipe */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                      <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
+                      <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>Reçete</span>
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1.5px solid #14496b' }}>
+                          <th style={{ padding: '4px 6px', textAlign: 'left', color: '#666', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Malzeme</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'right', color: '#666', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Miktar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recipeContext.length > 0 ? recipeContext.map((r, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                            <td style={{ padding: '4px 6px', color: '#333' }}>{r.name}</td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan="2" style={{ padding: '10px 6px', color: '#ccc', textAlign: 'center', fontStyle: 'italic', fontSize: '.72rem' }}>Ürün seçilince buraya yüklenir</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* Ekipmanlar as pills */}
+                    {pageForm.equipment_ids.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+                          <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
+                          <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>Ekipmanlar</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {pageForm.equipment_ids.map(eqId => {
+                            const eq = equipments.find(e => e.id === eqId);
+                            if (!eq) return null;
+                            return <span key={eqId} style={{ padding: '3px 9px', background: '#eef4ff', border: '1px solid #c8d9f5', borderRadius: 20, fontSize: '.68rem', color: '#14496b', fontWeight: 600 }}>{eq.name}</span>;
+                          })}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Recipe Table */}
-                {recipeContext.length > 0 ? (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Standart</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                      <thead>
-                        <tr style={{ background: '#14496b', color: '#fff' }}>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Hammadde</th>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Miktar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recipeContext.map((r, i) => (
-                          <tr style={{ background: i % 2 === 0 ? '#e9ecef' : '#f8f9fa' }} key={i}>
-                            <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{r.name}</td>
-                            <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{r.qty} {r.unit}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Standart</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                      <thead>
-                        <tr style={{ background: '#14496b', color: '#fff' }}>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Hammadde</th>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Miktar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ background: '#e9ecef' }}>
-                          <td colSpan="2" style={{ padding: '8px 12px', color: '#777', textAlign: 'center' }}>Ürün reçetesi bulunamadı (veya ürün seçilmedi).</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* Steps */}
-                {pageForm.metadata?.steps?.length > 0 ? (
-                  pageForm.metadata.steps.map((step, idx) => (
-                    <div key={idx} style={{ display: 'flex', marginBottom: 10, border: '1px solid #14496b' }}>
-                      <div style={{ width: 140, background: '#14496b', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 10, textAlign: 'center', borderRight: '1px solid #0b304a' }}>
-                        {step.imageUrl ? (
-                          <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} alt="Step"/>
-                        ) : (
-                          <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{idx + 1}</div>
-                        )}
+                {/* ── STEPS ── */}
+                {pageForm.metadata?.steps?.length > 0 && (() => {
+                  const validSteps = pageForm.metadata.steps.filter(s => s.description?.trim() || s.imageUrl);
+                  if (validSteps.length === 0) return null;
+                  return (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+                        <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
+                        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>
+                          {validSteps.length > 1 ? 'Hazırlık Adımları' : 'Hazırlık Prosedürü'}
+                        </span>
                       </div>
-                      <div style={{ flex: 1, background: '#1b608a', color: '#fff', display: 'flex', alignItems: 'center', padding: 20, fontSize: '1.15rem' }}>
-                        {step.description || `Açıklama girilmedi...`}
-                      </div>
+                      {pageForm.metadata.steps.map((step, idx) => {
+                        const isEven = idx % 2 === 0; // even = image left; odd = image right
+                        const hasImg = !!step.imageUrl;
+                        return (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            flexDirection: isEven ? 'row' : 'row-reverse',
+                            marginBottom: 10,
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            border: '1px solid #e8e8e8',
+                            background: '#fff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                            minHeight: 80,
+                          }}>
+                            {/* Image / Number Block */}
+                            <div style={{
+                              width: hasImg ? 140 : 44,
+                              flexShrink: 0,
+                              background: hasImg ? '#f5f6f8' : '#14496b',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              position: 'relative',
+                              overflow: 'hidden',
+                            }}>
+                              {hasImg ? (
+                                <>
+                                  <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
+                                  <div style={{
+                                    position: 'absolute', top: 6,
+                                    [isEven ? 'right' : 'left']: 6,
+                                    width: 20, height: 20, borderRadius: '50%',
+                                    background: '#14496b', color: '#fff',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '.65rem', fontWeight: 800,
+                                    boxShadow: '0 1px 4px rgba(0,0,0,0.4)'
+                                  }}>{idx + 1}</div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'rgba(255,255,255,0.55)' }}>{idx + 1}</div>
+                              )}
+                            </div>
+                            {/* Text */}
+                            <div style={{
+                              flex: 1, padding: '12px 16px',
+                              display: 'flex', alignItems: 'center',
+                              fontSize: '.84rem', color: '#2d2d2d', lineHeight: 1.65,
+                              borderLeft: isEven ? '3px solid #14496b' : 'none',
+                              borderRight: isEven ? 'none' : '3px solid #14496b',
+                            }}>
+                              {step.description || <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))
-                ) : (
-                  <div style={{ display: 'flex', marginBottom: 10, border: '1px solid #14496b' }}>
-                    <div style={{ width: 140, background: '#14496b', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 10, textAlign: 'center', borderRight: '1px solid #0b304a' }}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>1</div>
-                    </div>
-                    <div style={{ flex: 1, background: '#1b608a', color: '#fff', display: 'flex', alignItems: 'center', padding: 20, fontSize: '1.15rem' }}>
-                      Adım açıklaması buraya gelecek...
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
-                {/* Equipments Table */}
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Ekipmanlar</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                    <thead>
-                      <tr style={{ background: '#14496b', color: '#fff' }}>
-                        <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Ekipman</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageForm.equipment_ids.length > 0 ? (
-                        pageForm.equipment_ids.map((eqId, i) => {
-                          const eq = equipments.find(e => e.id === eqId);
-                          if (!eq) return null;
-                          return (
-                            <tr style={{ background: i % 2 === 0 ? '#e9ecef' : '#f8f9fa' }} key={eqId}>
-                              <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{eq.name}</td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr style={{ background: '#e9ecef' }}>
-                          <td style={{ padding: '8px 12px', color: '#777', textAlign: 'center' }}>Henüz ekipman seçilmedi.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Footer */}
-                <div style={{ marginTop: 40, borderTop: '2px solid #ccc', paddingTop: 10, display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '.8rem', fontWeight: 'bold' }}>
+                {/* ── FOOTER ── */}
+                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 9, marginTop: 24, display: 'flex', justifyContent: 'space-between', color: '#bbb', fontSize: '.65rem' }}>
                   <span>{categories.find(c => c.id === activeTab)?.name}</span>
-                  <span>{pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : 'Ürün')}</span>
+                  <span>{pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : '')}</span>
                   <span>Sayfa 1</span>
                 </div>
-              </div>
+                            </div>
             </div>
           ) : (
           /* Page List Card */
