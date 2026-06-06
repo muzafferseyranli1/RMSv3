@@ -127,6 +127,7 @@ const NAV = [
       { label: 'Tahmin', path: '/forecast', icon: 'fa-chart-line', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'SipariÅŸler', path: '/orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
       { label: 'Mal Kabul', path: '/mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
+      { label: 'Operasyon El Kitabı', path: '/manual', icon: 'fa-book-open', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
       {
         label: 'Personel', icon: 'fa-users', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
         group: 'sube-personel',
