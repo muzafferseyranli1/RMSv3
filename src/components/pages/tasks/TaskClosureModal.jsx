@@ -41,6 +41,17 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
     }
   }, [costCurrency, open, requiresCost, fetchExchangeRate])
 
+  useEffect(() => {
+    if (open) {
+      setSummary('')
+      setFiles([])
+      setImages([])
+      setCost('')
+      setCostCurrency('TRY')
+      setExchangeRate(1.0)
+    }
+  }, [open])
+
   const isSummaryMissing = !!task?.closure_summary_required && !summary.trim()
   const isFileMissing = !!task?.closure_file_required && files.length === 0
   const isImageMissing = !!task?.closure_image_required && images.length === 0
@@ -160,6 +171,20 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
                   step="0.0001"
                   style={{ width: '100%' }}
                 />
+              </div>
+            )}
+            {costCurrency !== 'TRY' && cost && exchangeRate && !isNaN(parseFloat(cost)) && !isNaN(parseFloat(exchangeRate)) && (
+              <div style={{ 
+                marginTop: 10, 
+                fontSize: '.78rem', 
+                color: '#b45309', 
+                fontWeight: 700,
+                background: 'rgba(245,158,11,.1)',
+                padding: '6px 10px',
+                borderRadius: 6,
+                display: 'inline-block'
+              }}>
+                Yaklaşık Toplam: ₺ { (parseFloat(cost) * parseFloat(exchangeRate)).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } TL
               </div>
             )}
             {isCostMissing && cost !== '' && (
