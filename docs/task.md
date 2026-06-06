@@ -1,18 +1,18 @@
-# Görev Listesi - Operasyon El Kitabı (Faz 3: Arayüz ve Entegrasyon)
-
-- `[x]` 1. Rotalar ve Navigasyon Güncellemeleri
-  - `[x]` `src/components/layout/Sidebar.jsx` dosyasına menü linklerinin eklenmesi.
-  - `[x]` `src/App.jsx` dosyasına lazy import ve rota eşleştirmelerinin eklenmesi.
-- `[x]` 2. Merkez (HQ) Yönetici Paneli
-  - `[x]` `src/components/pages/ManualManagement.jsx` dosyasının premium UI ile oluşturulması.
-  - `[x]` Kategori CRUD arayüzünün yapılması.
-  - `[x]` Sayfa oluşturma/düzenleme formu, Markdown editör/textarea ve çoklu ekipman seçicinin tamamlanması.
-- `[x]` 3. Şube Okuyucu Modülü ve Arıza Modalı
-  - `[x]` `src/components/pages/ManualReader.jsx` dosyasının premium UI ile oluşturulması.
-  - `[x]` Sol menü hiyerarşisi (Accordion/Tree) ve zengin metin (Markdown to HTML) gösterim alanının yapılması.
-  - `[x]` Sayfa altı "Kullanılan Ekipmanlar" widget kartlarının tasarlanması.
-  - `[x]` Tıklanan ekipman için şubeye ait fiziksel kayıtları listeleyen ve `maintenance_tickets` oluşturan arıza bildirim modalının yapılması.
-- `[x]` 4. Derleme ve Entegrasyon Doğrulama
-  - `[x]` `npm run build` testinin sıfır hata ile tamamlanması.
-- `[x]` 5. Raporlama ve Kapanış
-  - `[x]` `walkthrough.md` ve `OperationSync.md` (Entry 031) dosyalarının güncellenmesi.
+- `[x]` Faz 1: Veritabanı Güncellemesi (schema-railway-master.sql)
+  - `[x]` `manual_pages` tablosuna `linked_item_id`, `linked_item_type` ve `is_draft` sütunlarını ekle.
+- `[x]` Faz 2: Reçete ve Sistem İncelemesi (schema-railway-master.sql)
+  - `[x]` `sale_items`, `stock_items` ve reçete (ingredients) tablolarının isimlerini ve yapılarını incele.
+- `[x]` Faz 3: Backend API Entegrasyonu (server/index.js)
+  - `[x]` `POST` ve `PUT` `/api/manual/pages` endpointlerini yeni alanları alacak şekilde güncelle.
+  - `[x]` `GET /api/manual/pages/:id/context` endpointini yaz (Reçeteyi ve bağlı sayfaları bulan mantık).
+  - `[x]` İsteğe bağlı: Yeni ürün eklendiğinde taslak oluşturacak webhook / trigger. (Şimdilik manuel oluşturmada item_id eşleştirme yapılabilir)
+- `[x]` Faz 4: Frontend Merkez Editörü (ManualManagement.jsx)
+  - `[x]` Sayfa oluştururken/düzenlerken "Sistemden Ürün/Hammadde/Ekipman Seç" (linked_item_id ve type) arayüzünü ekle.
+  - `[x]` Eğer bir ürün seçildiyse, reçetesini `/context` API'sinden çekip ekranda kilitli tablo olarak göster.
+- `[x]` Faz 5: Frontend Şube Okuyucusu (ManualReader.jsx)
+  - `[x]` Sayfa detayını çekerken `/context` verisini de çek.
+  - `[x]` Reçete (hammaddeler) listesini "hyperlink" şeklinde render et.
+  - `[x]` Ekipman listesini "hyperlink" şeklinde render et.
+- `[ ]` Faz 6: Loglama ve Walkthrough
+  - `[ ]` `OperationSync.md` dosyasına güncellemeleri kaydet.
+  - `[ ]` `docs/walkthrough.md` dosyasında yeni mimariyi anlat.

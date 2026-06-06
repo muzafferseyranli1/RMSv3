@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useToast } from '@/hooks/useToast'
-import { db, buildApiUrl, resolveImageUrl } from '@/lib/db'
+import { db, buildApiUrl } from '@/lib/db'
 
 const SYSTEM_CATEGORIES = [
   { name: 'Ürünler', display_order: 11, description: 'Satış malları prosedürleri belirlenir' },
@@ -37,18 +37,8 @@ export default function ManualManagement() {
     equipment_ids: [],
     linked_item_id: '',
     linked_item_type: '',
-    is_draft: false,
-    metadata: { product_image: '', steps: [] }
+    is_draft: false
   })
-
-  const uploadImage = async (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await fetch(buildApiUrl('/api/upload'), { method: 'POST', body: formData })
-    const data = await res.json()
-    if (data.error) throw new Error(data.error.message)
-    return data.data.file_url
-  }
 
   // Load Initial Data
   const loadData = async () => {
@@ -183,31 +173,11 @@ export default function ManualManagement() {
     if (!pageForm.title.trim()) return toast('Sayfa başlığı zorunludur', 'warning')
     if (!pageForm.last_updated_by_pin.trim()) return toast('PIN kodu zorunludur', 'warning')
 
-    const isUrunler = categories.find(c => c.id === activeTab)?.name === 'Ürünler';
-    let finalContent = pageForm.content;
-
-    if (isUrunler) {
-      if (!pageForm.linked_item_id) return toast('Lütfen bir ürün seçiniz.', 'warning')
-      const { product_image, steps } = pageForm.metadata || { steps: [] };
-      let md = '';
-      if (product_image) md += `![Ürün Görseli](${product_image})\n\n`;
-      const validSteps = steps.filter(s => s.description?.trim() || s.imageUrl);
-      if (validSteps.length > 0) {
-        md += `## Ürün hazırlığı ${validSteps.length > 1 ? 'Adımları' : 'prosedürleri'}\n\n`;
-        validSteps.forEach((step, idx) => {
-          md += `**${idx + 1}. Adım:**\n${step.description || ''}\n`;
-          if (step.imageUrl) md += `\n![Adım ${idx + 1} Görseli](${step.imageUrl})\n`;
-          md += `\n---\n`;
-        });
-      }
-      finalContent = md;
-    }
-
     try {
       const method = editingPage ? 'PUT' : 'POST'
       const url = editingPage ? buildApiUrl(`/api/manual/pages/${editingPage.id}`) : buildApiUrl('/api/manual/pages')
 
-      const bodyData = { ...pageForm, category_id: activeTab, content: finalContent }
+      const bodyData = { ...pageForm, category_id: activeTab }
 
       const response = await fetch(url, {
         method,
@@ -247,8 +217,7 @@ export default function ManualManagement() {
         equipment_ids: (details.equipments || []).map(eq => eq.id),
         linked_item_id: details.linked_item_id || '',
         linked_item_type: details.linked_item_type || '',
-        is_draft: details.is_draft || false,
-        metadata: details.metadata || { product_image: '', steps: [] }
+        is_draft: details.is_draft || false
       })
     } catch (err) {
       toast('Sayfa detayları yüklenemedi: ' + err.message, 'error')
@@ -285,50 +254,9 @@ export default function ManualManagement() {
       equipment_ids: [],
       linked_item_id: '',
       linked_item_type: '',
-      is_draft: false,
-      metadata: { product_image: '', steps: [] }
+      is_draft: false
     })
     setRecipeContext([])
-  }
-
-  // Lightweight Regex-based Markdown Parser with Image support
-  const renderMarkdown = (text) => {
-    if (!text) return ''
-    let html = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-
-    // Headers
-    html = html.replace(/^# (.*?)$/gm, '<h1 style="font-size: 1.5rem; font-weight: 800; margin: 24px 0 12px; color: var(--text-strong); border-bottom: 1px solid var(--border); padding-bottom: 6px;">$1</h1>')
-    html = html.replace(/^## (.*?)$/gm, '<h2 style="font-size: 1.22rem; font-weight: 700; margin: 18px 0 10px; color: var(--text-strong);">$1</h2>')
-    html = html.replace(/^### (.*?)$/gm, '<h3 style="font-size: 1.1rem; font-weight: 700; margin: 14px 0 8px; color: var(--text-strong);">$1</h3>')
-
-    // Images
-    html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; border: 1px solid var(--border);" />')
-
-    // Bold
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--text-strong);">$1</strong>')
-    // Italic
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-
-    // Code blocks / inline code
-    html = html.replace(/`(.*?)`/g, '<code style="font-family: monospace; background: var(--surface-2); padding: 2px 5px; borderRadius: 4px; fontSize: .85rem;">$1</code>')
-
-    // Horizontal rules
-    html = html.replace(/^---$/gm, '<hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0;" />')
-
-    // Bullet Lists (unordered)
-    html = html.replace(/^- (.*?)$/gm, '<li style="margin-left: 18px; margin-bottom: 6px; list-style-type: disc;">$1</li>')
-    html = html.replace(/^\* (.*?)$/gm, '<li style="margin-left: 18px; margin-bottom: 6px; list-style-type: disc;">$1</li>')
-
-    // Ordered Lists
-    html = html.replace(/^\d+\.\s(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 6px; list-style-type: decimal;">$1</li>')
-
-    // Break lines
-    html = html.replace(/\n/g, '<br />')
-
-    return <div dangerouslySetInnerHTML={{ __html: html }} style={{ lineHeight: '1.65', color: 'var(--text-strong)', fontSize: '.92rem' }} />
   }
 
   const handleEquipmentCheckboxChange = (eqId) => {
@@ -387,185 +315,36 @@ export default function ManualManagement() {
       </div>
 
       {activeTab !== 'categories' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: categories.find(c => c.id === activeTab)?.name === 'Ürünler' && (editingPage || pageForm.title || pageForm.linked_item_id) ? '1fr 1fr' : 'minmax(0, 5fr) minmax(0, 7fr)', gap: 24 }}>
-          
-          {categories.find(c => c.id === activeTab)?.name === 'Ürünler' && (editingPage || pageForm.title || pageForm.linked_item_id) ? (
-            <div className="card" style={{ padding: 20 }}>
-              <h2 className="text-primary" style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>
-                <i className="fa-solid fa-eye" style={{ marginRight: 8 }} /> Canlı Önizleme
-              </h2>
-              <div style={{ background: '#fff', color: '#000', padding: '30px 40px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontFamily: 'Arial, sans-serif' }}>
-                {/* Header */}
-                <div style={{ borderBottom: '2px solid #14496b', paddingBottom: 10, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#999', fontSize: '.85rem' }}>İşletme ve Eğitim El Kitabı</span>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 'bold' }}>Logo</div>
-                </div>
-
-                {/* Title & Image */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 30, gap: 20 }}>
-                  <div style={{ flex: 1 }}>
-                    <h1 style={{ margin: '0 0 10px 0', fontSize: '1.6rem', color: '#333' }}>
-                      {pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : 'Sayfa Başlığı')}
-                    </h1>
-                    {pageForm.title && pageForm.linked_item_id && (
-                      <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#555', fontWeight: 'normal' }}>
-                        {systemItems.find(i => i.id === pageForm.linked_item_id)?.name}
-                      </h2>
-                    )}
-                  </div>
-                  <div style={{ width: 160, height: 130, background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden' }}>
-                    {pageForm.metadata?.product_image ? (
-                      <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ padding: 10, fontSize: '1.1rem' }}>Yüklenen ürün resmi</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Recipe Table */}
-                {recipeContext.length > 0 ? (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Standart</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                      <thead>
-                        <tr style={{ background: '#14496b', color: '#fff' }}>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Hammadde</th>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Miktar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recipeContext.map((r, i) => (
-                          <tr style={{ background: i % 2 === 0 ? '#e9ecef' : '#f8f9fa' }} key={i}>
-                            <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{r.name}</td>
-                            <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{r.qty} {r.unit}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Standart</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                      <thead>
-                        <tr style={{ background: '#14496b', color: '#fff' }}>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Hammadde</th>
-                          <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Miktar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ background: '#e9ecef' }}>
-                          <td colSpan="2" style={{ padding: '8px 12px', color: '#777', textAlign: 'center' }}>Ürün reçetesi bulunamadı (veya ürün seçilmedi).</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* Steps */}
-                {pageForm.metadata?.steps?.length > 0 ? (
-                  pageForm.metadata.steps.map((step, idx) => (
-                    <div key={idx} style={{ display: 'flex', marginBottom: 10, border: '1px solid #14496b' }}>
-                      <div style={{ width: 140, background: '#14496b', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 10, textAlign: 'center', borderRight: '1px solid #0b304a' }}>
-                        {step.imageUrl ? (
-                          <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} alt="Step"/>
-                        ) : (
-                          <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{idx + 1}</div>
-                        )}
-                      </div>
-                      <div style={{ flex: 1, background: '#1b608a', color: '#fff', display: 'flex', alignItems: 'center', padding: 20, fontSize: '1.15rem' }}>
-                        {step.description || `Açıklama girilmedi...`}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ display: 'flex', marginBottom: 10, border: '1px solid #14496b' }}>
-                    <div style={{ width: 140, background: '#14496b', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 10, textAlign: 'center', borderRight: '1px solid #0b304a' }}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>1</div>
-                    </div>
-                    <div style={{ flex: 1, background: '#1b608a', color: '#fff', display: 'flex', alignItems: 'center', padding: 20, fontSize: '1.15rem' }}>
-                      Adım açıklaması buraya gelecek...
-                    </div>
-                  </div>
-                )}
-
-                {/* Equipments Table */}
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: '.95rem', fontWeight: 'bold', marginBottom: 6, color: '#333' }}>Ekipmanlar</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.9rem' }}>
-                    <thead>
-                      <tr style={{ background: '#14496b', color: '#fff' }}>
-                        <th style={{ padding: '8px 12px', border: '1px solid #fff' }}>Ekipman</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageForm.equipment_ids.length > 0 ? (
-                        pageForm.equipment_ids.map((eqId, i) => {
-                          const eq = equipments.find(e => e.id === eqId);
-                          if (!eq) return null;
-                          return (
-                            <tr style={{ background: i % 2 === 0 ? '#e9ecef' : '#f8f9fa' }} key={eqId}>
-                              <td style={{ padding: '8px 12px', border: '1px solid #fff' }}>{eq.name}</td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr style={{ background: '#e9ecef' }}>
-                          <td style={{ padding: '8px 12px', color: '#777', textAlign: 'center' }}>Henüz ekipman seçilmedi.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Footer */}
-                <div style={{ marginTop: 40, borderTop: '2px solid #ccc', paddingTop: 10, display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '.8rem', fontWeight: 'bold' }}>
-                  <span>{categories.find(c => c.id === activeTab)?.name}</span>
-                  <span>{pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : 'Ürün')}</span>
-                  <span>Sayfa 1</span>
-                </div>
-              </div>
-            </div>
-          ) : (
-          /* Page List Card */
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 5fr)', gap: 24 }}>
+          {/* Page List Card */}
           <div className="card" style={{ padding: 20 }}>
-            <h2 className="text-primary" style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 16px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Bu Kategorideki Sayfalar</span>
-              <button className="btn-o" onClick={() => handleEditPage(null)} style={{ fontSize: '.75rem', padding: '4px 8px' }}>
-                <i className="fa-solid fa-plus" /> Yeni Sayfa
-              </button>
+            <h2 className="text-primary" style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 16px' }}>
+              {categories.find(c => c.id === activeTab)?.name} Sayfaları
             </h2>
             <div style={{ overflowX: 'auto' }}>
               <table className="tbl">
                 <thead>
                   <tr>
                     <th>Başlık</th>
-                    <th>Bağlantı</th>
                     <th style={{ textAlign: 'center' }}>Sürüm</th>
                     <th style={{ textAlign: 'center' }}>PIN</th>
-                    <th>Güncelleme</th>
+                    <th>Tarih</th>
                     <th style={{ textAlign: 'center' }}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pages.filter(p => p.category_id === activeTab).length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-                        Bu kategoride henüz bir sayfa oluşturulmamış.
+                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>
+                        <i className="fa-solid fa-circle-info" style={{ fontSize: '1.5rem', display: 'block', marginBottom: 8 }} />
+                        Bu kategoride henüz hiç sayfa oluşturulmamış. Sağdaki formu kullanarak yeni bir sayfa ekleyin.
                       </td>
                     </tr>
                   ) : (
                     pages.filter(p => p.category_id === activeTab).map(page => {
-                      const linkedItemName = page.linked_item_id 
-                        ? systemItems.find(i => i.id === page.linked_item_id)?.name || 'Bilinmiyor'
-                        : '-'
                       return (
                         <tr key={page.id}>
-                          <td style={{ fontWeight: 600 }}>
-                            {page.is_draft && <span style={{ color: 'var(--status-draft)', marginRight: 6 }}>[TASLAK]</span>}
-                            {page.title}
-                          </td>
-                          <td style={{ fontSize: '.8rem', color: 'var(--accent-primary)' }}>{linkedItemName}</td>
+                          <td style={{ fontWeight: 700 }}>{page.title}</td>
                           <td style={{ textAlign: 'center', fontWeight: 'bold' }}>v{page.version}</td>
                           <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{page.last_updated_by_pin || '-'}</td>
                           <td style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
@@ -576,7 +355,7 @@ export default function ManualManagement() {
                               <button className="ico-btn edit" onClick={() => handleEditPage(page)} title="Düzenle">
                                 <i className="fa-solid fa-pen" />
                               </button>
-                              <button className="ico-btn del" onClick={() => handleDeletePage(page.id)} title="Sil">
+                              <button className="ico-btn del" onClick={() => handleDeletePage(page)} title="Sil">
                                 <i className="fa-solid fa-trash" />
                               </button>
                             </div>
@@ -589,22 +368,16 @@ export default function ManualManagement() {
               </table>
             </div>
           </div>
-          )}
 
           {/* Page Editor Form Card */}
           <div className="card" style={{ padding: 20, height: 'fit-content' }}>
             <h2 className="text-primary" style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{editingPage ? 'Sayfayı Düzenle' : 'Yeni Sayfa Ekle'}</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {editingPage && (
-                  <button type="button" className="btn-g" onClick={handleCancelPageEdit} style={{ fontSize: '.8rem', padding: '6px 12px' }}>
-                    İptal Et
-                  </button>
-                )}
-                <button type="button" className="btn-p" onClick={handleSavePage} style={{ fontSize: '.8rem', padding: '6px 12px' }}>
-                  <i className="fa-solid fa-save" /> {editingPage ? 'Güncelle' : 'Kaydet'}
+              {editingPage && (
+                <button className="btn-g" onClick={handleCancelPageEdit} style={{ fontSize: '.75rem', padding: '2px 8px' }}>
+                  İptal Et
                 </button>
-              </div>
+              )}
             </h2>
             <form onSubmit={handleSavePage} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
@@ -619,40 +392,29 @@ export default function ManualManagement() {
               </div>
 
               <div>
-                <label className="f-label">{categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? 'Ürün Seçiniz' : 'Sistemden Ürün/Hammadde Bağla (İsteğe Bağlı)'}</label>
+                <label className="f-label">Sistemden Ürün/Hammadde Bağla (İsteğe Bağlı)</label>
                 <div className="sel-wrap">
                   <select
                     className="f-input"
                     value={pageForm.linked_item_id ? `${pageForm.linked_item_type}::${pageForm.linked_item_id}` : '::'}
-                    onChange={async (e) => {
+                    onChange={e => {
                       const val = e.target.value;
                       if (!val || val === '::') {
                         setPageForm(prev => ({ ...prev, linked_item_id: '', linked_item_type: '' }));
-                        setRecipeContext([]);
                       } else {
                         const [type, id] = val.split('::');
                         setPageForm(prev => ({ ...prev, linked_item_id: id, linked_item_type: type }));
                         
                         // Automatically set title if it's empty
                         const selectedItem = systemItems.find(i => i.id === id);
-                        if (selectedItem && !pageForm.title) {
+                        if (selectedItem && !prev.title) {
                           setPageForm(prev => ({ ...prev, title: selectedItem.name, linked_item_id: id, linked_item_type: type }));
-                        }
-
-                        // Fetch recipe dynamically
-                        try {
-                          const ctxRes = await fetch(buildApiUrl(`/api/manual/context-by-item?linked_item_id=${id}&linked_item_type=${type}`)).then(r => r.json());
-                          setRecipeContext(ctxRes.data?.recipe || []);
-                        } catch (err) {
-                          console.error('Recipe fetch error', err);
                         }
                       }
                     }}
                   >
-                    <option value="::">-- {categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? 'Satış Ürünü Seçiniz' : 'Bağımsız Sayfa (Sistem Bağlantısı Yok)'} --</option>
-                    {systemItems
-                      .filter(item => categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? item.type === 'sale_item' : true)
-                      .map(item => (
+                    <option value="::">-- Bağımsız Sayfa (Sistem Bağlantısı Yok) --</option>
+                    {systemItems.map(item => (
                       <option key={`${item.type}::${item.id}`} value={`${item.type}::${item.id}`}>
                         [{item.typeName}] {item.name}
                       </option>
@@ -662,7 +424,7 @@ export default function ManualManagement() {
                 <p className="f-hint">Ürün bağlanırsa, reçetesi el kitabında otomatik listelenir.</p>
               </div>
 
-              {categories.find(c => c.id === activeTab)?.name !== 'Ürünler' && recipeContext.length > 0 && (
+              {recipeContext.length > 0 && (
                 <div style={{ background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
                   <h4 className="text-primary" style={{ margin: '0 0 8px', fontSize: '.9rem' }}>
                     <i className="fa-solid fa-list-check" style={{ marginRight: 6 }}/>
@@ -679,135 +441,17 @@ export default function ManualManagement() {
                 </div>
               )}
 
-              {categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? (
-                <>
-                  <div>
-                    <label className="f-label">Ürün Resmi Yükleyin</label>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="f-input"
-                      onChange={async (e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        try {
-                          const url = await uploadImage(file);
-                          setPageForm(prev => ({ 
-                            ...prev, 
-                            metadata: { ...prev.metadata, product_image: url } 
-                          }));
-                          toast('Ürün resmi yüklendi', 'success');
-                        } catch (err) {
-                          toast('Resim yüklenemedi: ' + err.message, 'error');
-                        }
-                      }}
-                    />
-                    {pageForm.metadata?.product_image && (
-                      <div style={{ marginTop: 8 }}>
-                        <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Preview" style={{ height: 60, borderRadius: 6, objectFit: 'cover' }} />
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <label className="f-label" style={{ margin: 0 }}>Ürün Hazırlığı Adımları</label>
-                      <button 
-                        type="button" 
-                        className="btn-p" 
-                        style={{ padding: '4px 10px', fontSize: '.75rem' }}
-                        onClick={() => {
-                          setPageForm(prev => ({
-                            ...prev,
-                            metadata: {
-                              ...prev.metadata,
-                              steps: [...(prev.metadata?.steps || []), { description: '', imageUrl: '' }]
-                            }
-                          }))
-                        }}
-                      >
-                        <i className="fa-solid fa-plus" /> Adım Ekle
-                      </button>
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {pageForm.metadata?.steps?.map((step, index) => (
-                        <div key={index} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 8, position: 'relative' }}>
-                          <button 
-                            type="button"
-                            className="ico-btn del"
-                            style={{ position: 'absolute', top: 8, right: 8 }}
-                            onClick={() => {
-                              const newSteps = [...pageForm.metadata.steps];
-                              newSteps.splice(index, 1);
-                              setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, steps: newSteps }
-                              }));
-                            }}
-                          >
-                            <i className="fa-solid fa-xmark" />
-                          </button>
-
-                          <h5 style={{ margin: '0 0 8px', fontSize: '.85rem' }}>{index + 1}. Adım</h5>
-                          <textarea
-                            className="f-input"
-                            rows={2}
-                            placeholder="Bu adımda ne yapılması gerektiğini açıklayın..."
-                            value={step.description}
-                            onChange={(e) => {
-                              const newSteps = [...pageForm.metadata.steps];
-                              newSteps[index].description = e.target.value;
-                              setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, steps: newSteps }
-                              }));
-                            }}
-                            style={{ marginBottom: 8 }}
-                          />
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="f-input"
-                            style={{ fontSize: '.75rem', padding: '6px' }}
-                            onChange={async (e) => {
-                              const file = e.target.files[0];
-                              if (!file) return;
-                              try {
-                                const url = await uploadImage(file);
-                                const newSteps = [...pageForm.metadata.steps];
-                                newSteps[index].imageUrl = url;
-                                setPageForm(prev => ({
-                                  ...prev,
-                                  metadata: { ...prev.metadata, steps: newSteps }
-                                }));
-                                toast('Adım resmi yüklendi', 'success');
-                              } catch (err) {
-                                toast('Resim yüklenemedi: ' + err.message, 'error');
-                              }
-                            }}
-                          />
-                          {step.imageUrl && (
-                            <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${index + 1}`} style={{ height: 60, borderRadius: 6, objectFit: 'cover', marginTop: 8 }} />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <label className="f-label">Prosedür İçeriği (Markdown Desteklenir)</label>
-                  <textarea
-                    className="f-input"
-                    rows={8}
-                    placeholder="# Başlık&#10;1. Adım 1&#10;2. Adım 2&#10;&#10;**Önemli**: Güvenlik kurallarına uyun."
-                    style={{ fontFamily: 'monospace', fontSize: '.8rem', resize: 'vertical' }}
-                    value={pageForm.content}
-                    onChange={e => setPageForm(prev => ({ ...prev, content: e.target.value }))}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="f-label">Prosedür İçeriği (Markdown Desteklenir)</label>
+                <textarea
+                  className="f-input"
+                  rows={8}
+                  placeholder="# Başlık&#10;1. Adım 1&#10;2. Adım 2&#10;&#10;**Önemli**: Güvenlik kurallarına uyun."
+                  style={{ fontFamily: 'monospace', fontSize: '.8rem', resize: 'vertical' }}
+                  value={pageForm.content}
+                  onChange={e => setPageForm(prev => ({ ...prev, content: e.target.value }))}
+                />
+              </div>
 
               {/* Equipment Linking */}
               <div>
