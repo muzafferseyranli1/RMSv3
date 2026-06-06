@@ -1014,7 +1014,7 @@ app.get('/api/manual/pages/:id', async (req, res) => {
 app.post('/api/manual/pages', async (req, res) => {
   const client = await pool.connect()
   try {
-    const { category_id, title, content, last_updated_by_pin, equipment_ids } = req.body
+    const { category_id, title, content, last_updated_by_pin, equipment_ids, linked_item_id, linked_item_type, is_draft, metadata } = req.body
     if (!category_id || !title) {
       return res.status(400).json({ data: null, error: { message: 'category_id and title are required' } })
     }
@@ -1022,9 +1022,9 @@ app.post('/api/manual/pages', async (req, res) => {
     await client.query('BEGIN')
 
     const pageRes = await client.query(
-      `INSERT INTO public.manual_pages (category_id, title, content, last_updated_by_pin, version) 
-       VALUES ($1, $2, $3, $4, 1) RETURNING *;`,
-      [category_id, title, content, last_updated_by_pin]
+      `INSERT INTO public.manual_pages (category_id, title, content, last_updated_by_pin, linked_item_id, linked_item_type, is_draft, metadata, version) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1) RETURNING *;`,
+      [category_id, title, content, last_updated_by_pin, linked_item_id || null, linked_item_type || null, is_draft || false, metadata || null]
     )
     const page = pageRes.rows[0]
 
@@ -1052,7 +1052,7 @@ app.put('/api/manual/pages/:id', async (req, res) => {
   const client = await pool.connect()
   try {
     const { id } = req.params
-    const { category_id, title, content, last_updated_by_pin, equipment_ids } = req.body
+    const { category_id, title, content, last_updated_by_pin, equipment_ids, linked_item_id, linked_item_type, is_draft, metadata } = req.body
     if (!category_id || !title) {
       return res.status(400).json({ data: null, error: { message: 'category_id and title are required' } })
     }
@@ -1061,9 +1061,9 @@ app.put('/api/manual/pages/:id', async (req, res) => {
 
     const pageRes = await client.query(
       `UPDATE public.manual_pages 
-       SET category_id = $1, title = $2, content = $3, last_updated_by_pin = $4, version = version + 1, updated_at = now() 
-       WHERE id = $5 RETURNING *;`,
-      [category_id, title, content, last_updated_by_pin, id]
+       SET category_id = $1, title = $2, content = $3, last_updated_by_pin = $4, linked_item_id = $5, linked_item_type = $6, is_draft = $7, metadata = $8, version = version + 1, updated_at = now() 
+       WHERE id = $9 RETURNING *;`,
+      [category_id, title, content, last_updated_by_pin, linked_item_id || null, linked_item_type || null, is_draft || false, metadata || null, id]
     )
 
     if (!pageRes.rows.length) {
@@ -1095,7 +1095,124 @@ app.put('/api/manual/pages/:id', async (req, res) => {
   }
 })
 
-// 5. DELETE PAGE
+})
+
+// 5. GET RECIPE CONTEXT FOR AN ITEM (For Live Preview)
+app.get('/api/manual/context-by-item', async (req, res) => {
+  try {
+    const { linked_item_id, linked_item_type } = req.query;
+    if (!linked_item_id || !linked_item_type) {
+      return res.json({ data: { recipe: [] }, error: null });
+    }
+    
+    let recipeRows = [];
+    if (linked_item_type === 'sale_item') {
+      const itemRes = await pool.query('SELECT recipe_rows FROM public.sale_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+    } else if (linked_item_type === 'semi_product') {
+      const itemRes = await pool.query('SELECT recipe_rows FROM public.semi_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+    }
+    
+    if (typeof recipeRows === 'string') {
+      try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
+    }
+    
+    const enrichedRecipe = [];
+    for (const row of recipeRows) {
+      const isSemi = row.ingredient_type === 'semi_item' || row.semi_item_id;
+      const targetId = isSemi ? row.semi_item_id : row.stock_item_id;
+      
+      if (!targetId) continue;
+      
+      let name = '';
+      if (isSemi) {
+        const nameRes = await pool.query('SELECT name FROM public.semi_items WHERE id = $1', [targetId]);
+        if (nameRes.rows.length) name = nameRes.rows[0].name;
+      } else {
+        const nameRes = await pool.query('SELECT name FROM public.stock_items WHERE id = $1', [targetId]);
+        if (nameRes.rows.length) name = nameRes.rows[0].name;
+      }
+      
+      const manualRes = await pool.query('SELECT id FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
+      const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
+      
+      enrichedRecipe.push({
+        ...row,
+        name,
+        linked_page_id: manualPageId
+      });
+    }
+    
+    return res.json({ data: { recipe: enrichedRecipe }, error: null });
+  } catch (err) {
+    console.error('[GET /api/manual/context-by-item]', err.message);
+    return res.status(500).json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 6. GET RECIPE CONTEXT FOR A PAGE
+app.get('/api/manual/pages/:id/context', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // First find the page to see if it's linked
+    const pageRes = await pool.query('SELECT linked_item_id, linked_item_type FROM public.manual_pages WHERE id = $1', [id]);
+    if (!pageRes.rows.length) return res.status(404).json({ data: null, error: { message: 'Page not found' } });
+    
+    const { linked_item_id, linked_item_type } = pageRes.rows[0];
+    
+    if (!linked_item_id || !linked_item_type) {
+      return res.json({ data: { recipe: [] }, error: null });
+    }
+    
+    let recipeRows = [];
+    if (linked_item_type === 'sale_item') {
+      const itemRes = await pool.query('SELECT recipe_rows FROM public.sale_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+    } else if (linked_item_type === 'semi_product') {
+      const itemRes = await pool.query('SELECT recipe_rows FROM public.semi_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+    }
+    
+    if (typeof recipeRows === 'string') {
+      try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
+    }
+    
+    const enrichedRecipe = [];
+    for (const row of recipeRows) {
+      const isSemi = row.ingredient_type === 'semi_item' || row.semi_item_id;
+      const targetId = isSemi ? row.semi_item_id : row.stock_item_id;
+      
+      if (!targetId) continue;
+      
+      let name = '';
+      if (isSemi) {
+        const nameRes = await pool.query('SELECT name FROM public.semi_items WHERE id = $1', [targetId]);
+        if (nameRes.rows.length) name = nameRes.rows[0].name;
+      } else {
+        const nameRes = await pool.query('SELECT name FROM public.stock_items WHERE id = $1', [targetId]);
+        if (nameRes.rows.length) name = nameRes.rows[0].name;
+      }
+      
+      const manualRes = await pool.query('SELECT id FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
+      const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
+      
+      enrichedRecipe.push({
+        ...row,
+        name,
+        linked_page_id: manualPageId
+      });
+    }
+    
+    return res.json({ data: { recipe: enrichedRecipe }, error: null });
+  } catch (err) {
+    console.error('[GET /api/manual/pages/:id/context]', err.message);
+    return res.status(500).json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 6. DELETE PAGE
 app.delete('/api/manual/pages/:id', async (req, res) => {
   try {
     const { id } = req.params

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useToast } from '@/hooks/useToast'
 import { useWorkspace } from '@/context/WorkspaceContext'
-import { db, resolveImageUrl } from '@/lib/db'
+import { db, resolveImageUrl, buildApiUrl } from '@/lib/db'
 
 export default function ManualReader() {
   const toast = useToast()
@@ -13,6 +13,7 @@ export default function ManualReader() {
   const [expandedCategories, setExpandedCategories] = useState({}) // { [catId]: boolean }
   const [selectedPageId, setSelectedPageId] = useState(null)
   const [pageDetails, setPageDetails] = useState(null)
+  const [recipeContext, setRecipeContext] = useState([])
   const [loadingList, setLoadingList] = useState(false)
   const [loadingDetails, setLoadingDetails] = useState(false)
 
@@ -29,8 +30,8 @@ export default function ManualReader() {
     setLoadingList(true)
     try {
       const [catsRes, pagesRes] = await Promise.all([
-        fetch('/api/manual/categories').then(r => r.json()),
-        fetch('/api/manual/pages').then(r => r.json())
+        fetch(buildApiUrl('/api/manual/categories')).then(r => r.json()),
+        fetch(buildApiUrl('/api/manual/pages')).then(r => r.json())
       ])
 
       if (catsRes.error) throw new Error(catsRes.error.message)
@@ -55,9 +56,13 @@ export default function ManualReader() {
   const loadPageDetails = useCallback(async (pageId) => {
     setLoadingDetails(true)
     try {
-      const res = await fetch(`/api/manual/pages/${pageId}`).then(r => r.json())
+      const [res, ctxRes] = await Promise.all([
+        fetch(buildApiUrl(`/api/manual/pages/${pageId}`)).then(r => r.json()),
+        fetch(buildApiUrl(`/api/manual/pages/${pageId}/context`)).then(r => r.json())
+      ])
       if (res.error) throw new Error(res.error.message)
       setPageDetails(res.data)
+      setRecipeContext(ctxRes.data?.recipe || [])
     } catch (err) {
       console.error('Sayfa detayları yüklenemedi:', err)
       toast('Sayfa detayları yüklenirken hata oluştu: ' + err.message, 'error')
@@ -330,6 +335,40 @@ export default function ManualReader() {
                   </div>
                 )}
               </div>
+
+              {/* Recipe / Ingredients Widget */}
+              {recipeContext.length > 0 && (
+                <div style={{ background: 'var(--surface-2)', padding: '16px 20px', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 24 }}>
+                  <h3 className="text-primary" style={{ margin: '0 0 12px', fontSize: '.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-list-ul" style={{ color: 'var(--accent-primary)' }}/>
+                    İçindekiler / Reçete (Otomatik Sistem Bağlantısı)
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                    {recipeContext.map((r, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '.85rem', fontWeight: 600 }}>{r.name}</span>
+                          <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{r.qty} {r.unit}</span>
+                        </div>
+                        {r.linked_page_id && (
+                          <button 
+                            className="btn-p" 
+                            style={{ padding: '4px 8px', fontSize: '.7rem', background: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+                            onClick={() => {
+                              setSelectedPageId(r.linked_page_id)
+                              // Otomatik scroll yukarı
+                              window.scrollTo({ top: 0, behavior: 'smooth' })
+                            }}
+                            title={`${r.name} El Kitabına Git`}
+                          >
+                            <i className="fa-solid fa-link" style={{ marginRight: 4 }} /> Git
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Renders Content HTML */}
               <div style={{ minHeight: 180 }}>
