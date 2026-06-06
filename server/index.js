@@ -1095,8 +1095,6 @@ app.put('/api/manual/pages/:id', async (req, res) => {
   }
 })
 
-})
-
 // 5. GET RECIPE CONTEXT FOR AN ITEM (For Live Preview)
 app.get('/api/manual/context-by-item', async (req, res) => {
   try {
