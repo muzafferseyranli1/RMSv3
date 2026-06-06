@@ -3887,19 +3887,27 @@ CREATE TABLE IF NOT EXISTS public.equipments (
 CREATE TABLE IF NOT EXISTS public.maintenance_tickets (
   id                    UUID DEFAULT gen_random_uuid() NOT NULL,
   branch_id             TEXT,
-  equipment_id          UUID,
+  equipment_id          UUID,                          -- legacy FK → public.equipments(id)
+  equipment_instance_id UUID,                          -- yeni FK → public.equipment_instances(id)
   description           TEXT,
+  issue_description     TEXT,
+  reported_by_pin       TEXT,
   status                TEXT DEFAULT 'open' NOT NULL,
   repair_cost           NUMERIC(12,2),
   repair_currency       VARCHAR(3),
   repair_exchange_rate  NUMERIC(12,4),
   form_submission_id    UUID,
+  resolved_at           TIMESTAMPTZ,
   created_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT maintenance_tickets_pkey PRIMARY KEY (id),
   CONSTRAINT maintenance_tickets_equipment_fkey FOREIGN KEY (equipment_id) REFERENCES public.equipments(id) ON DELETE SET NULL,
+  CONSTRAINT maintenance_tickets_instance_fkey FOREIGN KEY (equipment_instance_id) REFERENCES public.equipment_instances(id) ON DELETE SET NULL,
   CONSTRAINT maintenance_tickets_status_check CHECK (status = ANY (ARRAY['open', 'in_progress', 'resolved', 'closed']))
 );
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_tickets_instance ON public.maintenance_tickets (equipment_instance_id);
+CREATE INDEX IF NOT EXISTS idx_maintenance_tickets_status   ON public.maintenance_tickets (status);
 
 -- ============================================================
 -- OPERASYON EL KİTABI (OPERATION MANUAL) MODULE
@@ -3908,11 +3916,63 @@ CREATE TABLE IF NOT EXISTS public.maintenance_tickets (
 CREATE TABLE IF NOT EXISTS public.equipment_definitions (
   id                       UUID DEFAULT gen_random_uuid() NOT NULL,
   name                     TEXT NOT NULL,
+  description              TEXT,
+  purpose                  TEXT,
   image_url                TEXT,
   maintenance_period_days  INTEGER,
+  useful_life_months       INTEGER,
+  active                   BOOLEAN DEFAULT true NOT NULL,
   created_at               TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT equipment_definitions_pkey PRIMARY KEY (id)
 );
+
+CREATE TABLE IF NOT EXISTS public.equipment_instances (
+  id                              UUID DEFAULT gen_random_uuid() NOT NULL,
+  definition_id                   UUID NOT NULL,
+  current_location_id             TEXT NOT NULL,
+  serial_number                   TEXT,
+  status                          TEXT DEFAULT 'active' NOT NULL,
+  installed_at                    DATE,
+  purchase_date                   DATE,
+  purchase_price                  NUMERIC(14,2),
+  currency                        VARCHAR(10) DEFAULT 'TRY' NOT NULL,
+  purchase_exchange_rate          NUMERIC(12,4) DEFAULT 1.0,
+  legacy_accumulated_depreciation NUMERIC(14,2) DEFAULT 0,
+  warranty_end_date               DATE,
+  notes                           TEXT,
+  created_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT equipment_instances_pkey PRIMARY KEY (id),
+  CONSTRAINT equipment_instances_definition_fkey
+    FOREIGN KEY (definition_id) REFERENCES public.equipment_definitions(id) ON DELETE RESTRICT,
+  CONSTRAINT equipment_instances_status_check
+    CHECK (status = ANY (ARRAY['active', 'in_repair', 'transferred', 'decommissioned']))
+);
+
+CREATE INDEX IF NOT EXISTS idx_equipment_instances_definition ON public.equipment_instances (definition_id);
+CREATE INDEX IF NOT EXISTS idx_equipment_instances_location   ON public.equipment_instances (current_location_id);
+CREATE INDEX IF NOT EXISTS idx_equipment_instances_status     ON public.equipment_instances (status);
+
+CREATE TABLE IF NOT EXISTS public.equipment_transfers (
+  id                    UUID DEFAULT gen_random_uuid() NOT NULL,
+  equipment_instance_id UUID NOT NULL,
+  from_location_id      TEXT NOT NULL,
+  to_location_id        TEXT NOT NULL,
+  status                TEXT DEFAULT 'pending' NOT NULL,
+  notes                 TEXT,
+  transferred_at        TIMESTAMPTZ,
+  transferred_by_pin    TEXT,
+  created_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at            TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT equipment_transfers_pkey PRIMARY KEY (id),
+  CONSTRAINT equipment_transfers_instance_fkey
+    FOREIGN KEY (equipment_instance_id) REFERENCES public.equipment_instances(id) ON DELETE CASCADE,
+  CONSTRAINT equipment_transfers_status_check
+    CHECK (status = ANY (ARRAY['pending', 'completed', 'rejected']))
+);
+
+CREATE INDEX IF NOT EXISTS idx_equipment_transfers_instance ON public.equipment_transfers (equipment_instance_id);
+CREATE INDEX IF NOT EXISTS idx_equipment_transfers_status   ON public.equipment_transfers (status);
 
 CREATE TABLE IF NOT EXISTS public.manual_categories (
   id             UUID DEFAULT gen_random_uuid() NOT NULL,
@@ -3950,7 +4010,7 @@ CREATE TABLE IF NOT EXISTS public.manual_page_equipments (
 
 -- Seed Data for manual_categories
 INSERT INTO public.manual_categories (name, display_order)
-SELECT name, display_order FROM (VALUES 
+SELECT name, display_order FROM (VALUES
   ('Ürünler', 1),
   ('Hammaddeler', 2),
   ('Ekipmanlar', 3),
@@ -3961,3 +4021,4 @@ WHERE NOT EXISTS (SELECT 1 FROM public.manual_categories LIMIT 1);
 -- ============================================================
 -- END OF SCHEMA
 -- ============================================================
+
