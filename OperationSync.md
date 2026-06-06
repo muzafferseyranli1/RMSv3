@@ -8726,3 +8726,35 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - CSV: sablon indirme + toplu ice aktarma
 - Commits: c119751 (Faz 2), 201ca35 (Faz 2 fix), 139abee (Faz 3)
 - Durum: Ekipman Yonetimi modulu (Faz 1 DB + Faz 2 API + Faz 3 Frontend) TAMAMLANDI.
+
+## Entry 036
+
+- Timestamp: 2026-06-07T02:42:00+03:00
+- Agent: Antigravity
+- Task: Checklist Form Tipi Ozellestirmeleri
+- Intent: Checklist form tipinde saptanacak sube secimi kosullari, merkez calisanlarinin katilimci/gozlemci sinirlamalari ve otomatik gorevlerde ana sorumlu atamalarini duzenlemek.
+- Files Changed:
+  - src/components/pages/FormTemplates.jsx (GUNCELLENDI - 'Sube Secimi Gerekli mi?' checkboxi, hidePositions destegi, atanan placeholderi)
+  - src/components/pages/FormSubmissions.jsx (GUNCELLENDI - Checklist metadata header karti, sube secimi dropdown kosulu, submitBranchId hesaplamasi, branch secim dogrulamasi)
+  - src/lib/formService.js (GUNCELLENDI - require_branch_selection false oldugunda gorevin submitted_by'a atanmasi)
+- Durum: Checklist form yapisi ve otomatik gorev olusturma akisi TAMAMLANDI.
+
+
+## Entry 036
+
+- Timestamp: 2026-06-07T02:44:00+03:00
+- Agent: Antigravity
+- Task: El Kitabı - Reçete Hammaddeleri Tıklanabilirlik, Mobil Responsive Tasarım ve Gelişmiş Raf Ömrü (2. Raf Ömrü) Entegrasyonu
+- Intent: Reçete tablosundaki hammaddeleri el kitabındaki ilgili sayfalara tıklanabilir yapmak; el kitabının A4 kutu düzeni yerine mobil uyumlu esnek düzen ve yazdırırken A4 PDF formatını koruyan CSS print kuralları entegre etmek; hammadde ve ürünler için 1. ve 2. (açıldıktan/çözündükten sonraki) raf ömürleri ile operasyon detaylarını girmeyi ve görüntülemeyi sağlamak.
+- Files Changed:
+  - src/components/pages/ManualReader.jsx (GÜNCELLEME - tıklanabilir hammaddeler, responsive & @media print CSS, özellikler & raf ömrü kartları gösterimi)
+  - src/components/pages/ManualManagement.jsx (GÜNCELLEME - mutfak operasyon detayları & raf ömrü girdi alanları ve önizleme entegrasyonu)
+- Features Implemented:
+  - Reçete tablosunda hammadde isimlerinin el kitabındaki ilgili sayfalara tıklanabilir link haline getirilmesi (ID veya isim eşleşmesiyle).
+  - Mutfak operasyon detayları için isteğe bağlı veri giriş alanları (Hazırlanma, çözünme, saklama sıcaklığı, porsiyon gramajı, alerjenler vb.).
+  - 1. Raf Ömrü (Kapalı ambalaj) ve 2. Raf Ömrü (Açıldıktan/Çözündükten sonraki farklı saklama durumları) giriş ve gösterim özellikleri.
+  - Arayüzde 2. Raf Ömrü için sarı renkli dikkat çekici gıda güvenliği bilgi kutusu.
+  - Mobil cihazlarda sidebar ve içeriğin alt alta katlandığı responsive yapı.
+  - Yazdırma veya PDF kaydetmede sol menüyü gizleyen ve sayfayı A4 kağıda sığdıran @media print CSS kuralları.
+- Commits: 9b9f2fc, 3062c8a
+- Durum: Reçete tıklanabilirlik, responsive mobil tasarımı ve gelişmiş raf ömrü modülü TAMAMLANDI.

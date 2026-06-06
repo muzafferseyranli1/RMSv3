@@ -1,62 +1,58 @@
-# Uygulama Planı - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
+# El Kitabı Sayfalarında Responsive Yapı ve Gelişmiş Raf Ömrü / Ürün Özellikleri Entegrasyonu
 
-Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"** gereksinimlerini hayata geçirmeyi hedefler. Önceki fazda oluşturulan API'leri tüketen, modern, duyarlı ve premium React (Tailwind CSS) bileşenlerini tasarlayacaktır.
+Bu plan, el kitabı sayfalarının sabit A4 görünümü yerine her ekran boyutuna (özellikle mobil cihazlara) tam uyum sağlayan esnek bir web sayfasına dönüştürülmesini ve yazdırılmak istendiğinde otomatik olarak A4 kağıt düzenine uymasını (CSS `@media print` kullanarak) amaçlar. Ayrıca "2. Raf Ömrü" (açıldıktan/çözündükten sonraki ömür) dahil olmak üzere kritik mutfak operasyonel parametrelerinin eklenmesini kapsar.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> - **Arayüz Tasarımı:** Uygulamanın koyu/açık mod tasarımı (`[data-theme="dark"]`), renk paletleri ve kart (`.card`), buton (`.btn-p`, `.btn-o`), form (`.f-input`, `.f-label`) gibi global CSS sınıfları birebir kullanılacaktır.
-> - **Çevrimdışı ve Hata Yönetimi:** Ağ/veri çekme hataları ekranda açık ve net şekilde görüntülenecek (sessizce yutulmayacaktır).
-> - **Ekipman Arıza Bildirimi:** Şube personeli bir el kitabı sayfasını okurken, alt kısımdaki "Bu Prosedürde Kullanılan Ekipmanlar" kartından bir ekipmana tıkladığında bir modal açılacak, şubeye ait aktif fiziksel ekipman seçilecek (`equipments` tablosu) ve arıza açıklaması girilerek `maintenance_tickets` tablosuna doğrudan kayıt oluşturulacaktır.
-
----
+> **Yazıcı ve PDF Çıktı Desteği (`@media print`):**
+> Kullanıcılar el kitabını yazdırmak veya PDF kaydetmek istediğinde, tarayıcının "Yazdır" (Ctrl+P) komutu çalıştırıldığında sol menü, arıza modalı gibi web arayüzü bileşenleri otomatik olarak gizlenecek, sadece A4 boyutunda optimize edilmiş temiz içerik sayfası basılacaktır.
+>
+> **2. Raf Ömrü Standardı:**
+> Restoran operasyonlarında çok önemli olan "ikincil raf ömrü" verilerini esnek bir şekilde tutabilmek için `metadata` şemamıza yeni alanlar ekleyeceğiz. Örneğin:
+> - **Teneke Ketçap (Orijinal Ambalaj):** Oda Sıcaklığında 3 ay
+> - **Teneke Ketçap (Açıldıktan Sonra - Durum 1):** +4°C'de 1 hafta
+> - **Teneke Ketçap (Açıldıktan Sonra - Durum 2):** Oda Sıcaklığında 4 saat
 
 ## Proposed Changes
 
-### 1. Navigasyon ve Rota Güncellemeleri
+### [Manual Page Metadata Schema]
+`manual_pages.metadata` JSONB kolonuna eklenecek yeni alanlar:
+- `prep_time`: Hazırlanma süresi (örn. "5 dakika")
+- `thaw_time`: Çözünme süresi (örn. "4 saat")
+- `cooling_time`: Ilınma/soğuma süresi (örn. "10 dakika")
+- `portion_qty`: Porsiyon miktarı (örn. "150 gram")
+- `allergens`: Alerjen bilgileri (örn. "Glüten, Soya")
+- `storage_temp`: Saklama sıcaklığı (örn. "+4°C Dolap" veya "-18°C Donuk")
+- `primary_shelf_life`: Birincil raf ömrü (kapalı ambalaj, örn. "3 ay")
+- `secondary_shelf_life_1`: İkincil raf ömrü (açıldıktan/çözündükten sonra 1. koşul, örn. "1 hafta")
+- `secondary_storage_cond_1`: İkincil saklama koşulu 1 (örn. "+4°C Dolap")
+- `secondary_shelf_life_2`: İkincil raf ömrü (açıldıktan sonra 2. koşul, örn. "4 saat")
+- `secondary_storage_cond_2`: İkincil saklama koşulu 2 (örn. "Oda Sıcaklığı")
 
-#### [MODIFY] [Sidebar.jsx](file:///c:/RMSv3/src/components/layout/Sidebar.jsx)
-- **Merkez (HQ) Menüsü:** `İşlemler` (islemler) altına `El Kitabı Yönetimi` (`/manual-yonetimi`, ikon: `fa-book-open-reader`) menü elemanının eklenmesi.
-- **Şube Menüsü:** `İşlemler` (sube-islemler) altına `Operasyon El Kitabı` (`/manual`, ikon: `fa-book-open`) menü elemanının eklenmesi.
+---
 
-#### [MODIFY] [App.jsx](file:///c:/RMSv3/src/App.jsx)
-- Lazy import listesine `ManualManagement` ve `ManualReader` bileşenlerinin eklenmesi.
-- Rota listesine ilgili sayfaların eklenmesi:
-  - `/manual-yonetimi` -> `<ManualManagement />`
-  - `/manual` -> `<WorkspaceBranchScope><ManualReader /></WorkspaceBranchScope>`
+### [Components]
 
-### 2. Arayüz Bileşenlerinin Oluşturulması
+#### [MODIFY] [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
+- **Responsive Düzen**: Sabit `width` veya sınırlayıcı A4 kutusu yerine mobil/tablet/desktop duyarlı flex/grid yapısına geçiş.
+- **Detay Paneli (Ürün Özellikleri ve Raf Ömrü)**: Ürün görselinin yanına veya altına, doldurulan bilgileri gösterecek şık ikonlu kartlar (pills/cards).
+- **2. Raf Ömrü Akışı**: Birincil depo ömrü ve açıldıktan sonraki ikincil ömür durumlarını (Durum 1 ve Durum 2 şeklinde) net bir zaman çizgisi veya karşılaştırma tablosu olarak sunma.
+- **Yazdırma Stili (CSS)**: `@media print` eklenerek sol menünün gizlenmesi, yazı tipi boyutlarının yazıcıya göre optimize edilmesi, A4 sayfaya sığacak şekilde düzenin ayarlanması.
 
-#### [NEW] [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
-Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebileceği yönetim ekranı:
-- **Kategori Yönetimi Sekmesi:** Kategorileri listeleme (CRUD), `display_order` ve açıklama alanlarının eklenip güncellenmesi.
-- **Sayfa Yönetimi ve Düzenleyici Sekmesi:**
-  - Sayfaları listeleme, silme ve düzenleme paneli.
-  - **Editör Formu:**
-    - Kategori seçimi (Dropdown).
-    - Başlık ve İçerik (Markdown destekli Textarea).
-    - Düzenleyen Personel PIN Kodu girişi.
-    - **Ekipman İlişkilendir (Multi-select dropdown/onay kutuları):** Sistemde tanımlı küresel ekipman tanımlarını (`/api/manual/equipments`) çekerek sayfaya bağlanmasını sağlayan görsel seçim alanı.
-
-#### [NEW] [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
-Şube personelinin prosedürleri okuyabileceği ve ilgili ekipmanlara arıza bildirebileceği okuyucu arayüzü:
-- **Sol Panel (Accordion/Tree Menü):** Kategorilerin ve altındaki sayfaların listelendiği menü.
-- **Sağ Panel (Okuma Alanı):**
-  - Seçilen sayfanın başlığı, güncel versiyon numarası (`Versiyon: X`) ve son güncelleyen PIN kodu bilgisi.
-  - Markdown prosedür içeriğinin HTML formatına dönüştürülerek estetik biçimde gösterilmesi.
-  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartı (Widget):** Sayfaya LEFT JOIN ile bağlı ekipmanların isimleri ve görsellerini listeler.
-- **Arıza Kaydı Açma Modalı:**
-  - Bir ekipmana tıklandığında açılır.
-  - Şubenin aktif `branchId` bilgisiyle veritabanındaki fiziksel ekipmanları (`db.from('equipments')`) çeker ve listeler.
-  - Personelden bir arıza açıklaması alarak `maintenance_tickets` tablosuna doğrudan insert işlemi gerçekleştirir. Başarılı/Hatalı durumları toast mesajı ile bildirilir.
+#### [MODIFY] [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
+- **Yeni Girdi Alanları**: Sayfa oluşturma/düzenleme formunda, "Ürün Detayları ve Raf Ömrü" adında katlanabilir yeni bir bölüm oluşturulması.
+- Burada hazırlanma süresi, çözünme süresi, birincil/ikincil raf ömürleri ve saklama koşulları için temiz form elemanları yer alacak.
+- **Canlı Önizleme Güncellemesi**: Yönetici düzenleme yaparken, sağdaki canlı önizlemede de responsive tasarım ve girilen yeni ürün özellikleri ikonlarıyla anlık görüntülenecek.
 
 ---
 
 ## Verification Plan
 
 ### Automated Tests
-- Proje derleme testi: `npm run build` ile herhangi bir frontend derleme hatası olmadığını doğrulamak.
+- `npm run build` ile projenin hatasız derlendiğini doğrulama.
 
 ### Manual Verification
-- Merkez modülü üzerinden yeni kategori ("Bar Operasyonu") ve yeni sayfa ("Kahve Değirmeni Kalibrasyonu") oluşturulup, örnek bir ekipman (Espresso Makinesi) ile ilişkilendirilecektir.
-- Şube modülüne geçiş yapılarak ilgili sayfa açılacak, sayfa altındaki Espresso Makinesi kartına tıklanıp arıza açıklaması girilerek arıza kaydı oluşturulacak ve veritabanına başarıyla yazıldığı doğrulanacaktır.
+- **Mobil Görünüm Testi**: Tarayıcı geliştirici araçlarında mobil boyutlarda (örneğin 375px genişlik) sayfanın taşma yapmadan, hamburger menüsü ve sidebar ile düzgün aktığını doğrulama.
+- **Yazdırma Önizleme Testi**: Tarayıcıda Ctrl+P yapıldığında sol menünün kaybolduğunu, sadece ürün kılavuzunun A4 formatında temizce yerleştiğini doğrulama.
+- **Raf Ömrü Alanları Testi**: Yönetim panelinden yeni raf ömürlerini ("Teneke Ketçap" örneğindeki gibi) girip kaydederek okuyucu ekranında doğru ve şık şekilde görüntülendiğini teyit etme.

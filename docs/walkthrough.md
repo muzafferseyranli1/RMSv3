@@ -1,41 +1,36 @@
-# Walkthrough - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
+# Walkthrough: Responsive Print Layout & 2. Raf Ömrü (Secondary Shelf Life) Entegrasyonu
 
-Bu çalışma kapsamında, **Operasyon El Kitabı (Operation Manual)** modülünün **Faz 3 (Kullanıcı Arayüzü)** bileşenleri ve entegrasyonu başarıyla geliştirilmiş ve doğrulanmıştır.
+Bu dökümanda el kitabı sayfalarında yapılan responsive tasarım dönüşümleri, A4 yazdırılabilirlik desteği ve ikincil raf ömrü (2. Raf Ömrü) gibi gelişmiş mutfak operasyonu verilerinin sisteme entegrasyonu özetlenmiştir.
 
-## Gerçekleştirilen Değişiklikler
+## Yapılan Değişiklikler
 
-### 1. Navigasyon ve Rota Entegrasyonu
-* **Sidebar Menü Güncellemesi (`src/components/layout/Sidebar.jsx`):**
-  - Merkez (HQ) görünümünde "İşlemler" altına **"El Kitabı Yönetimi"** (`/manual-yonetimi`, ikon: `fa-book-open-reader`) eklendi.
-  - Şube görünümünde "İşlemler" altına **"Operasyon El Kitabı"** (`/manual`, ikon: `fa-book-open`) eklendi.
-* **Rota Haritalaması (`src/App.jsx`):**
-  - `ManualManagement` ve `ManualReader` bileşenleri lazy loading ile içe aktarıldı.
-  - İlgili yollar rota tablosuna tanımlandı (Şube okuyucusu şube bağlam koruyucusu `WorkspaceBranchScope` ile sarmalandı).
+### 1. Mutfak Operasyon Detayları ve Gelişmiş Raf Ömrü Girişi
+`ManualManagement.jsx` (Yönetim Paneli) içerisine **Mutfak Operasyon Detayları ve Raf Ömrü (İsteğe Bağlı)** adında katlanabilir (collapsible) yeni bir form bölümü eklendi:
+- **Operasyonel Alanlar**: Hazırlanma Süresi, Çözünme Süresi, Ilınma/Soğuma Süresi, Porsiyon Gramajı, Alerjen Bilgileri, Saklama Sıcaklığı.
+- **Birincil Raf Ömrü**: Orijinal/kapalı ambalajdaki saklama süresi ve depolama koşulu.
+- **İkincil Raf Ömrü (2. Raf Ömrü)**: Ambalaj açıldıktan veya çözündükten sonraki farklı saklama durumlarına göre (Durum 1 ve Durum 2 olarak) ömür ve saklama koşulu giriş alanları.
+- Girilen tüm veriler `manual_pages` tablosundaki `metadata` JSONB alanına kaydedilmektedir (SQL şema değişikliğine gerek olmadan çalışır).
 
-### 2. Merkez Yönetici Paneli (`src/components/pages/ManualManagement.jsx`)
-* **Kategori Yönetimi:** El kitabı başlıkları için CRUD operasyonlarını sağlayan tablo ve form arayüzü yazıldı.
-* **Prosedür Sayfa Editörü:**
-  - Sayfa oluşturma ve düzenleme formu geliştirildi.
-  - Prosedür adımlarının Markdown ile girilebileceği bir içerik düzenleme alanı sunuldu.
-  - **Ekipman Bağlantısı:** `/api/manual/equipments` yardımcı endpoint'inden gelen küresel ekipman tanımlarını sayfaya iliştirebilen çoklu seçim (checkbox) alanı eklendi.
-  - Değişikliklerin kaydedilmesi için 4 haneli Yönetici PIN kodu doğrulama alanı konuldu.
+### 2. Canlı Önizleme ve Okuyucu Ekranı Geliştirmeleri (`ManualManagement.jsx` & `ManualReader.jsx`)
+- Sayfanın A4 önizlemesinde (Yönetim Paneli) ve personelin okuduğu ekranda (`ManualReader`), girilen operasyonel detaylar ürün görselinin hemen altına yerleştirildi.
+- Her alan için şık SVG ikonlar ve hafif gri kart/pill tasarımı uygulandı.
+- **2. Raf Ömrü Uyarı Kutusu**: Ambalaj açıldıktan sonra değişen raf ömrü bilgileri, mutfakta hemen fark edilmesi için **yumuşak sarı renkli (#fef08a) dikkat çekici bir gıda güvenliği kutusu** olarak gösterilmektedir.
+- Bu özellikler tamamen isteğe bağlıdır; admin alanları doldurmazsa ekranda hiçbir şekilde yer kaplamaz veya tasarımı bozmaz.
 
-### 3. Şube Okuyucu Arayüzü (`src/components/pages/ManualReader.jsx`)
-* **Sol Menü Ağacı:** Kategorileri ve altındaki sayfaları daraltılıp genişletilebilir (Accordion/Tree) yapıda listeler.
-* **Sağ İçerik Okuyucu:**
-  - Seçilen sayfanın başlığı, güncel versiyon numarası (`vX`), güncelleyen PIN kodu bilgisi gösterilir.
-  - **Inline Markdown Parser:** Markdown prosedür metnini (`#`, `##`, `**`, listeler ve satır sonları) HTML etiketlerine dönüştürerek stilde premium görüntü sağlar.
-  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartları:** Sayfaya LEFT JOIN ile bağlanmış ekipmanları listeler.
-* **Arıza Bildirim Modalı:**
-  - Ekipman kartındaki "Arıza Bildir" butonuna tıklandığında açılır.
-  - Şubenin aktif `branchId` bilgisine ait fiziksel cihazları (`db.from('equipments')`) yükler.
-  - Seçilen fiziksel cihaz için arıza açıklaması alarak doğrudan `maintenance_tickets` tablosuna `open` statülü yeni kayıt ekler. İşlemler toast bildirimleri ile kullanıcıya yansıtılır.
+### 3. Mobil ve Tablet Uyumlu Responsive Tasarım
+- El kitabının ana sayfa düzenindeki sabit sütun sınırları kaldırıldı.
+- Mutfakta cep telefonu veya tablet kullanan personel için, sidebar (sol menü) ve sağdaki el kitabı içeriği ekran genişliğine göre otomatik olarak alt alta katlanacak (stack) şekilde responsive CSS kuralları eklendi.
+- Ürün resmi, reçete tablosu ve operasyon kartları mobil cihazlarda taşma yapmadan düzgünce hizalanır.
+
+### 4. Profesyonel A4 Yazıcı ve PDF Desteği (`@media print`)
+- Personel sayfayı yazdırmak (Ctrl+P) veya PDF olarak kaydetmek istediğinde, tarayıcının yazdırma modunda çalışan özel `@media print` CSS kuralları yazıldı.
+- Yazdırma esnasında sol menü, üst/alt gezinme barları, butonlar gibi web elemanları otomatik olarak gizlenir.
+- Sayfa içeriği tüm gölge ve kenarlıklardan arındırılarak standart A4 kağıdına tam oturacak şekilde optimize edilmiştir.
 
 ---
 
-## Doğrulama ve Testler
+## Doğrulama ve Test Sonuçları
 
-* **Vite Derleme Testi:**
-  - `npm run build` komutu çalıştırılmış ve modüllerin (dist/assets içerisindeki `ManualManagement` ve `ManualReader` bundle dosyaları dahil) hatasız biçimde derlendiği teyit edilmiştir (26.33s).
-* **UI Bütünlüğü:**
-  - Bileşenlerin koyu/açık mod geçişlerine uyumlu olduğu ve mevcut premium tasarım kılavuzu (glassmorphism ve gölge efektleri) kurallarına sadık kaldığı doğrulanmıştır.
+- **Derleme Testi**: `npm run build` komutu başarıyla çalıştırıldı ve projenin hatasız derlendiği doğrulandı.
+- **Veri Girişi Testi**: Yeni eklenen tüm girdi alanları form üzerinden kontrol edilerek `metadata` objesine doğru şekilde kaydedilip güncellendiği doğrulandı.
+- **Print Görünümü**: Tarayıcıda yazdırma moduna geçildiğinde sol menünün gizlendiği ve el kitabının temiz bir A4 dökümanı olarak görüntülendiği teyit edildi.
