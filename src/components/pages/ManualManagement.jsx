@@ -29,6 +29,7 @@ export default function ManualManagement() {
   // Page Form State
   const [editingPage, setEditingPage] = useState(null) // null or {...}
   const [recipeContext, setRecipeContext] = useState([]) // For displaying recipe when editing
+  const [showOpsDetails, setShowOpsDetails] = useState(false)
   const [pageForm, setPageForm] = useState({
     category_id: '',
     title: '',
@@ -409,15 +410,122 @@ export default function ManualManagement() {
                 </div>
 
                 {/* ── HERO ROW: Image + Recipe ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 26, alignItems: 'start' }}>
-                  {/* Product Image */}
-                  <div style={{ borderRadius: 8, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {pageForm.metadata?.product_image ? (
-                      <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    ) : (
-                      <div style={{ textAlign: 'center', color: '#ccc', padding: 16 }}>
-                        <i className="fa-solid fa-camera" style={{ fontSize: '1.6rem', display: 'block', marginBottom: 6 }} />
-                        <span style={{ fontSize: '.7rem' }}>Ürün görseli</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18, marginBottom: 26, alignItems: 'start' }}>
+                  {/* Product Image + Details */}
+                  <div>
+                    <div style={{ borderRadius: 8, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {pageForm.metadata?.product_image ? (
+                        <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      ) : (
+                        <div style={{ textAlign: 'center', color: '#ccc', padding: 16 }}>
+                          <i className="fa-solid fa-camera" style={{ fontSize: '1.6rem', display: 'block', marginBottom: 6 }} />
+                          <span style={{ fontSize: '.7rem' }}>Ürün görseli</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Product Details & Shelf Life */}
+                    {(pageForm.metadata?.prep_time || pageForm.metadata?.thaw_time || pageForm.metadata?.cooling_time || pageForm.metadata?.portion_qty || pageForm.metadata?.allergens || pageForm.metadata?.storage_temp || pageForm.metadata?.primary_shelf_life || pageForm.metadata?.secondary_shelf_life_1 || pageForm.metadata?.secondary_shelf_life_2) && (
+                      <div style={{ marginTop: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <i className="fa-solid fa-circle-info" style={{ color: '#14496b', fontSize: '.8rem' }} />
+                          <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Ürün Özellikleri</span>
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6, marginBottom: 10 }}>
+                          {pageForm.metadata.prep_time && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-clock" style={{ color: '#14496b', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Hazırlama</div>
+                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.prep_time}</div>
+                              </div>
+                            </div>
+                          )}
+                          {pageForm.metadata.thaw_time && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-snowflake" style={{ color: '#0284c7', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Çözünme</div>
+                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.thaw_time}</div>
+                              </div>
+                            </div>
+                          )}
+                          {pageForm.metadata.cooling_time && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-temperature-arrow-down" style={{ color: '#f59e0b', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Ilınma/Soğuma</div>
+                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.cooling_time}</div>
+                              </div>
+                            </div>
+                          )}
+                          {pageForm.metadata.portion_qty && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-scale-balanced" style={{ color: '#10b981', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Porsiyon</div>
+                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.portion_qty}</div>
+                              </div>
+                            </div>
+                          )}
+                          {pageForm.metadata.storage_temp && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-temperature-three-quarters" style={{ color: '#6366f1', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Saklama</div>
+                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.storage_temp}</div>
+                              </div>
+                            </div>
+                          )}
+                          {pageForm.metadata.allergens && (
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ef4444', opacity: 0.8 }} />
+                              <div>
+                                <div style={{ fontSize: '.55rem', color: '#888' }}>Alerjenler</div>
+                                <div style={{ fontWeight: 600, color: '#ef4444' }}>{pageForm.metadata.allergens}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {(pageForm.metadata.primary_shelf_life || pageForm.metadata.secondary_shelf_life_1 || pageForm.metadata.secondary_shelf_life_2) && (
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 8, marginTop: 8 }}>
+                            <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
+                              Raf Ömrü Standartları
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                              {pageForm.metadata.primary_shelf_life && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                  <span style={{ color: '#666', fontWeight: 500 }}>1. Raf Ömrü (Kapalı)</span>
+                                  <span style={{ fontWeight: 700, color: '#333' }}>{pageForm.metadata.primary_shelf_life} {pageForm.metadata.primary_storage_cond ? `(${pageForm.metadata.primary_storage_cond})` : ''}</span>
+                                </div>
+                              )}
+                              
+                              {(pageForm.metadata.secondary_shelf_life_1 || pageForm.metadata.secondary_shelf_life_2) && (
+                                <div style={{ background: '#fef08a', padding: '6px 8px', borderRadius: 6, border: '1px solid #fde047' }}>
+                                  <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#854d0e', textTransform: 'uppercase', marginBottom: 3 }}>
+                                    2. Raf Ömrü (Açıldıktan Sonra)
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                    {pageForm.metadata.secondary_shelf_life_1 && (
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.68rem', color: '#713f12', borderBottom: pageForm.metadata.secondary_shelf_life_2 ? '1px solid rgba(133, 77, 14, 0.08)' : 'none', paddingBottom: pageForm.metadata.secondary_shelf_life_2 ? 2 : 0 }}>
+                                        <span>Koşul 1 {pageForm.metadata.secondary_storage_cond_1 ? `(${pageForm.metadata.secondary_storage_cond_1})` : ''}</span>
+                                        <span style={{ fontWeight: 800 }}>{pageForm.metadata.secondary_shelf_life_1}</span>
+                                      </div>
+                                    )}
+                                    {pageForm.metadata.secondary_shelf_life_2 && (
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.68rem', color: '#713f12', paddingTop: pageForm.metadata.secondary_shelf_life_1 ? 2 : 0 }}>
+                                        <span>Koşul 2 {pageForm.metadata.secondary_storage_cond_2 ? `(${pageForm.metadata.secondary_storage_cond_2})` : ''}</span>
+                                        <span style={{ fontWeight: 800 }}>{pageForm.metadata.secondary_shelf_life_2}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -828,6 +936,219 @@ export default function ManualManagement() {
                   />
                 </div>
               )}
+
+              {/* Collapsible Operations & Shelf Life Details */}
+              <div style={{ border: '1.5px solid #cbd5e1', borderRadius: 10, overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowOpsDetails(!showOpsDetails)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'var(--surface-2)',
+                    border: 'none',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '.85rem',
+                    color: 'var(--text-strong)'
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-clock-rotate-left" style={{ color: 'var(--accent-primary)' }} />
+                    Mutfak Operasyon Detayları ve Raf Ömrü (İsteğe Bağlı)
+                  </span>
+                  <i className={`fa-solid fa-chevron-${showOpsDetails ? 'up' : 'down'}`} style={{ opacity: 0.5 }} />
+                </button>
+                
+                {showOpsDetails && (
+                  <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16, background: '#fff', borderTop: '1px solid var(--border)' }}>
+                    {/* First Row: Prep Time, Thaw Time, Cooling Time */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Hazırlanma Süresi</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: 5 dk"
+                          value={pageForm.metadata?.prep_time || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, prep_time: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Çözünme Süresi (Thawing)</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: 4 saat"
+                          value={pageForm.metadata?.thaw_time || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, thaw_time: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Ilınma/Soğuma Süresi</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: 10 dk"
+                          value={pageForm.metadata?.cooling_time || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, cooling_time: e.target.value }
+                          }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Second Row: Portion Weight, Allergens, Storage Temperature */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Porsiyon Gramajı / Çıktı</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: 150 gr"
+                          value={pageForm.metadata?.portion_qty || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, portion_qty: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Alerjen Bilgileri</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: Glüten, Soya"
+                          value={pageForm.metadata?.allergens || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, allergens: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Saklama Sıcaklığı</label>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: +4°C Dolap"
+                          value={pageForm.metadata?.storage_temp || ''}
+                          onChange={e => setPageForm(prev => ({
+                            ...prev,
+                            metadata: { ...prev.metadata, storage_temp: e.target.value }
+                          }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
+                      <h4 style={{ margin: '0 0 10px', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)' }}>Raf Ömrü Bilgileri</h4>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {/* Primary Shelf Life */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>1. Raf Ömrü (Kapalı Ambalaj / Depolama)</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: 3 ay"
+                              value={pageForm.metadata?.primary_shelf_life || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, primary_shelf_life: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Depolama Koşulu</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: Oda Sıcaklığı"
+                              value={pageForm.metadata?.primary_storage_cond || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, primary_storage_cond: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Secondary Shelf Life 1 */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>2. Raf Ömrü (Açıldıktan/Çözündükten Sonra - Durum 1)</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: 1 hafta"
+                              value={pageForm.metadata?.secondary_shelf_life_1 || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, secondary_shelf_life_1: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Saklama Koşulu (Durum 1)</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: +4°C Dolap"
+                              value={pageForm.metadata?.secondary_storage_cond_1 || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, secondary_storage_cond_1: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Secondary Shelf Life 2 */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>2. Raf Ömrü (Açıldıktan/Çözündükten Sonra - Durum 2)</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: 4 saat"
+                              value={pageForm.metadata?.secondary_shelf_life_2 || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, secondary_shelf_life_2: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Saklama Koşulu (Durum 2)</label>
+                            <input
+                              type="text"
+                              className="f-input"
+                              placeholder="Örn: Oda Sıcaklığı"
+                              value={pageForm.metadata?.secondary_storage_cond_2 || ''}
+                              onChange={e => setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, secondary_storage_cond_2: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Equipment Linking */}
               <div>

@@ -117,10 +117,74 @@ export default function ManualReader() {
     : ''
 
   return (
-    <div className="page-enter" style={{ display: 'grid', gridTemplateColumns: '250px minmax(0,1fr)', gap: 24, maxWidth: 1300, margin: '0 auto' }}>
+    <div className="page-enter manual-reader-container">
+      <style>{`
+        .manual-reader-container {
+          display: grid;
+          grid-template-columns: 250px minmax(0, 1fr);
+          gap: 24px;
+          max-width: 1300px;
+          margin: 0 auto;
+        }
+
+        @media (max-width: 768px) {
+          .manual-reader-container {
+            grid-template-columns: 1fr !important;
+            gap: 16px;
+          }
+          .sidebar-container {
+            position: relative !important;
+            top: 0 !important;
+            height: auto !important;
+          }
+        }
+
+        @media print {
+          /* Hide everything except the main content */
+          .sidebar-container, 
+          nav, 
+          header, 
+          footer, 
+          button,
+          .top-nav,
+          #sidebar,
+          .navbar,
+          .sidebar,
+          .topbar,
+          .layout-sidebar,
+          .layout-topbar,
+          .layout-sidebar-anchor {
+            display: none !important;
+          }
+          
+          .manual-reader-container {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          
+          .a4-print-page {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #fff !important;
+            color: #000 !important;
+            width: 100% !important;
+            font-size: 11pt !important;
+          }
+          
+          /* Adjust layout columns for print so they look like A4 format */
+          .a4-print-page > div {
+            display: block !important;
+          }
+        }
+      `}</style>
 
       {/* ── SIDEBAR ── */}
-      <div className="card hide-scrollbar" style={{ padding: '16px 12px', height: 'calc(100vh - 80px)', overflowY: 'auto', position: 'sticky', top: 24 }}>
+      <div className="card hide-scrollbar sidebar-container" style={{ padding: '16px 12px', height: 'calc(100vh - 80px)', overflowY: 'auto', position: 'sticky', top: 24 }}>
         <h3 style={{ fontSize: '.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', margin: '0 0 14px 6px', color: 'var(--text-muted)' }}>
           El Kitabı
         </h3>
@@ -197,7 +261,7 @@ export default function ManualReader() {
           </div>
         ) : (
           /* ── A4 STYLE PAGE ── */
-          <div style={{ background: '#fff', color: '#222', padding: '32px 40px', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.1)', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+          <div className="a4-print-page" style={{ background: '#fff', color: '#222', padding: '32px 40px', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.1)', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
 
             {/* Header */}
             <div style={{ borderBottom: '2.5px solid #14496b', paddingBottom: 12, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -215,13 +279,120 @@ export default function ManualReader() {
 
             {/* Hero Row: Product Image + Recipe */}
             {(pageDetails.metadata?.product_image || recipeContext.length > 0) && (
-              <div style={{ display: 'grid', gridTemplateColumns: pageDetails.metadata?.product_image ? '1fr 1fr' : '1fr', gap: 20, marginBottom: 28, alignItems: 'start' }}>
-                {/* Product Image */}
-                {pageDetails.metadata?.product_image && (
-                  <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3' }}>
-                    <img src={resolveImageUrl(pageDetails.metadata.product_image)} alt={pageDetails.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  </div>
-                )}
+              <div style={{ display: 'grid', gridTemplateColumns: pageDetails.metadata?.product_image ? 'repeat(auto-fit, minmax(280px, 1fr))' : '1fr', gap: 20, marginBottom: 28, alignItems: 'start' }}>
+                {/* Left Column: Image + Specs */}
+                <div>
+                  {pageDetails.metadata?.product_image && (
+                    <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3' }}>
+                      <img src={resolveImageUrl(pageDetails.metadata.product_image)} alt={pageDetails.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </div>
+                  )}
+                  
+                  {/* Product Details & Shelf Life */}
+                  {(pageDetails.metadata?.prep_time || pageDetails.metadata?.thaw_time || pageDetails.metadata?.cooling_time || pageDetails.metadata?.portion_qty || pageDetails.metadata?.allergens || pageDetails.metadata?.storage_temp || pageDetails.metadata?.primary_shelf_life || pageDetails.metadata?.secondary_shelf_life_1 || pageDetails.metadata?.secondary_shelf_life_2) && (
+                    <div style={{ marginTop: 16, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                        <i className="fa-solid fa-circle-info" style={{ color: '#14496b', fontSize: '.85rem' }} />
+                        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>Ürün Özellikleri</span>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 12 }}>
+                        {pageDetails.metadata.prep_time && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-clock" style={{ color: '#14496b', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Hazırlama</div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>{pageDetails.metadata.prep_time}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pageDetails.metadata.thaw_time && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-snowflake" style={{ color: '#0284c7', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Çözünme</div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>{pageDetails.metadata.thaw_time}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pageDetails.metadata.cooling_time && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-temperature-arrow-down" style={{ color: '#f59e0b', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Ilınma/Soğuma</div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>{pageDetails.metadata.cooling_time}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pageDetails.metadata.portion_qty && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-scale-balanced" style={{ color: '#10b981', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Porsiyon</div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>{pageDetails.metadata.portion_qty}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pageDetails.metadata.storage_temp && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-temperature-three-quarters" style={{ color: '#6366f1', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Saklama</div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>{pageDetails.metadata.storage_temp}</div>
+                            </div>
+                          </div>
+                        )}
+                        {pageDetails.metadata.allergens && (
+                          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ef4444', opacity: 0.8 }} />
+                            <div>
+                              <div style={{ fontSize: '.6rem', color: '#888' }}>Alerjenler</div>
+                              <div style={{ fontWeight: 600, color: '#ef4444' }}>{pageDetails.metadata.allergens}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {(pageDetails.metadata.primary_shelf_life || pageDetails.metadata.secondary_shelf_life_1 || pageDetails.metadata.secondary_shelf_life_2) && (
+                        <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 10, marginTop: 10 }}>
+                          <div style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 8 }}>
+                            Raf Ömrü Standartları
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {pageDetails.metadata.primary_shelf_life && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.75rem' }}>
+                                <span style={{ color: '#666', fontWeight: 500 }}>1. Raf Ömrü (Kapalı Ambalaj)</span>
+                                <span style={{ fontWeight: 700, color: '#333' }}>{pageDetails.metadata.primary_shelf_life} {pageDetails.metadata.primary_storage_cond ? `(${pageDetails.metadata.primary_storage_cond})` : ''}</span>
+                              </div>
+                            )}
+                            
+                            {(pageDetails.metadata.secondary_shelf_life_1 || pageDetails.metadata.secondary_shelf_life_2) && (
+                              <div style={{ background: '#fef08a', padding: '8px 10px', borderRadius: 6, border: '1px solid #fde047' }}>
+                                <div style={{ fontSize: '.68rem', fontWeight: 700, color: '#854d0e', textTransform: 'uppercase', marginBottom: 4 }}>
+                                  2. Raf Ömrü (Açıldıktan / Çözündükten Sonra)
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {pageDetails.metadata.secondary_shelf_life_1 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: '#713f12', borderBottom: pageDetails.metadata.secondary_shelf_life_2 ? '1px solid rgba(133, 77, 14, 0.1)' : 'none', paddingBottom: pageDetails.metadata.secondary_shelf_life_2 ? 3 : 0 }}>
+                                      <span>Koşul 1 {pageDetails.metadata.secondary_storage_cond_1 ? `(${pageDetails.metadata.secondary_storage_cond_1})` : ''}</span>
+                                      <span style={{ fontWeight: 800 }}>{pageDetails.metadata.secondary_shelf_life_1}</span>
+                                    </div>
+                                  )}
+                                  {pageDetails.metadata.secondary_shelf_life_2 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: '#713f12', paddingTop: pageDetails.metadata.secondary_shelf_life_1 ? 3 : 0 }}>
+                                      <span>Koşul 2 {pageDetails.metadata.secondary_storage_cond_2 ? `(${pageDetails.metadata.secondary_storage_cond_2})` : ''}</span>
+                                      <span style={{ fontWeight: 800 }}>{pageDetails.metadata.secondary_shelf_life_2}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Recipe */}
                 {recipeContext.length > 0 && (
