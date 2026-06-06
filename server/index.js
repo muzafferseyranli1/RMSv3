@@ -1393,6 +1393,23 @@ app.get('/api/equipment/instances', async (req, res) => {
   }
 })
 
+// GET /api/equipment/instances/csv-template  (must be BEFORE /:id to avoid route capture)
+app.get('/api/equipment/instances/csv-template', (_req, res) => {
+  const headers = [
+    'ekipman_tanim_adi', 'sube_adi', 'seri_numarasi', 'kurulum_tarihi',
+    'alim_tarihi', 'alim_bedeli', 'doviz_cinsi', 'alim_kuru',
+    'devreden_amortisman', 'garanti_bitis_tarihi'
+  ]
+  const example = [
+    'Firn Model X', 'Merkez Sube', 'SN-2024-001', '2024-01-15',
+    '2023-12-01', '45000', 'TRY', '1', '0', '2026-12-01'
+  ]
+  const csv = headers.join(',') + '\n' + example.join(',') + '\n'
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', 'attachment; filename="ekipman_sablonu.csv"')
+  return res.send('\uFEFF' + csv)
+})
+
 // GET /api/equipment/instances/:id
 app.get('/api/equipment/instances/:id', async (req, res) => {
   try {
@@ -1498,24 +1515,9 @@ app.delete('/api/equipment/instances/:id', async (req, res) => {
 })
 
 // ─────────────────────────────────────────────────────────────
-// C. CSV ŞABLON İNDİR
+// C. CSV ŞABLON İNDİR  (route yukarıda /:id'den önce tanımlandı)
 // ─────────────────────────────────────────────────────────────
 
-app.get('/api/equipment/instances/csv-template', (_req, res) => {
-  const headers = [
-    'ekipman_tanim_adi', 'sube_adi', 'seri_numarasi', 'kurulum_tarihi',
-    'alim_tarihi', 'alim_bedeli', 'doviz_cinsi', 'alim_kuru',
-    'devreden_amortisman', 'garanti_bitis_tarihi'
-  ]
-  const example = [
-    'Fırın Model X', 'Merkez Şube', 'SN-2024-001', '2024-01-15',
-    '2023-12-01', '45000', 'TRY', '1', '0', '2026-12-01'
-  ]
-  const csv = headers.join(',') + '\n' + example.join(',') + '\n'
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-  res.setHeader('Content-Disposition', 'attachment; filename="ekipman_sablonu.csv"')
-  return res.send('\uFEFF' + csv) // UTF-8 BOM for Excel
-})
 
 // ─────────────────────────────────────────────────────────────
 // D. CSV TOPLU İÇE AKTARMA
@@ -1885,9 +1887,9 @@ app.get('/api/maintenance-tickets', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT mt.*,
               ei.serial_number,
+              ei.warranty_end_date,
               ed.name AS equipment_name,
-              ed.image_url AS equipment_image_url,
-              ed.warranty_end_date
+              ed.image_url AS equipment_image_url
        FROM public.maintenance_tickets mt
        LEFT JOIN public.equipment_instances ei ON mt.equipment_instance_id = ei.id
        LEFT JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
