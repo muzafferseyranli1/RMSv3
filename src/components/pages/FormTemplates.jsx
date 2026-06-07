@@ -229,12 +229,22 @@ export default function FormTemplates() {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null) // null = list view, object = editor
-  const [schemaJson, setSchemaJson] = useState({ sections: [], task_config: { targets: [], rules: {} } })
+  const [schemaJson, setSchemaJson] = useState({ sections: [], survey_config: { allow_anonymous: true }, task_config: { targets: [], rules: {} } })
   const [personnelList, setPersonnelList] = useState([])
   const [positions, setPositions] = useState([])
   const [targetSearch, setTargetSearch] = useState('')
   const [targetDropdownOpen, setTargetDropdownOpen] = useState(false)
   const targetDropdownRef = useRef(null)
+
+  // Survey QR/Link states
+  const [surveyTokens, setSurveyTokens] = useState([])
+  const [loadingTokens, setLoadingTokens] = useState(false)
+  const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [qrMode, setQrMode] = useState('anonymous')
+  const [qrBranchId, setQrBranchId] = useState('')
+  const [qrBranchIds, setQrBranchIds] = useState([])
+  const [qrLabel, setQrLabel] = useState('')
+  const [branches, setBranches] = useState([])
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -273,6 +283,514 @@ export default function FormTemplates() {
 
   useEffect(() => { loadTemplates() }, [loadTemplates])
 
+  const loadSurveyTokens = useCallback(async (templateId) => {
+    if (!templateId) return
+    setLoadingTokens(true)
+    try {
+      const { buildApiUrl } = await import('@/lib/db')
+      const res = await fetch(buildApiUrl(`/api/survey-tokens?templateId=${templateId}`))
+      if (res.ok) {
+        const json = await res.json()
+        setSurveyTokens(json.data || [])
+      }
+    } catch (err) {
+      console.error('Failed to load survey tokens:', err)
+    } finally {
+      setLoadingTokens(false)
+    }
+  }, [])
+
+  const loadBranches = useCallback(async () => {
+    try {
+      const { buildApiUrl } = await import('@/lib/db')
+      const res = await fetch(buildApiUrl('/api/branches/list'))
+      if (res.ok) {
+        const json = await res.json()
+        setBranches(json.data || [])
+      }
+    } catch (err) {
+      console.error('Failed to load branches:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (editing?.id && editing?.form_type === 'customer_survey') {
+      loadSurveyTokens(editing.id)
+    }
+  }, [editing?.id, editing?.form_type, loadSurveyTokens])
+
+  useEffect(() => {
+    if (editing?.form_type === 'customer_survey') {
+      loadBranches()
+    }
+  }, [editing?.form_type, loadBranches])
+
+  const handleCreateToken = async () => {
+    if (!qrLabel.trim()) {
+      toast('Lütfen bir etiket giriniz', 'warning')
+      return
+    }
+    if (qrMode === 'branch' && !qrBranchId) {
+      toast('Lütfen şube seçiniz', 'warning')
+      return
+    }
+    if (qrMode === 'multi_branch' && qrBranchIds.length === 0) {
+      toast('Lütfen en az bir şube seçiniz', 'warning')
+      return
+    }
+
+    try {
+      const { buildApiUrl } = await import('@/lib/db')
+      
+      if (qrMode === 'all_branches_individual') {
+        let successCount = 0
+        for (const b of branches) {
+          const res = await fetch(buildApiUrl('/api/survey-tokens'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              template_id: editing.id,
+              mode: 'branch',
+              branch_id: b.id,
+              label: `${qrLabel} - ${b.name}`,
+              qr_config: {}
+            })
+          })
+          if (res.ok) successCount++
+        }
+        toast(`${successCount} adet şube özel QR kodu başarıyla oluşturuldu`, 'success')
+      } else {
+        const payload = {
+          template_id: editing.id,
+          mode: qrMode === 'multi_branch' ? 'multi_branch' : (qrMode === 'branch' ? 'branch' : 'anonymous'),
+          branch_id: qrMode === 'branch' ? qrBranchId : null,
+          branch_ids: qrMode === 'multi_branch' ? qrBranchIds : null,
+          label: qrLabel,
+          qr_config: {}
+        }
+        const res = await fetch(buildApiUrl('/api/survey-tokens'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) {
+          const errData = await res.json()
+          throw new Error(errData?.error?.message || 'Token oluşturulamadı')
+        }
+        toast('Link ve QR başarıyla oluşturuldu', 'success')
+      }
+      
+      setQrModalOpen(false)
+      setQrLabel('')
+      setQrBranchId('')
+      setQrBranchIds([])
+      setQrMode('anonymous')
+      loadSurveyTokens(editing.id)
+    } catch (err) {
+      console.error(err)
+      toast(err.message, 'error')
+    }
+  }
+
+  const handleDeleteToken = async (tokenId) => {
+    if (!window.confirm('Bu QR kodunu/linkini kalıcı olarak deaktif etmek istediğinize emin misiniz?')) return
+    try {
+      const { buildApiUrl } = await import('@/lib/db')
+      const res = await fetch(buildApiUrl(`/api/survey-tokens/${tokenId}`), { method: 'DELETE' })
+      if (res.ok) {
+        toast('QR / Link başarıyla deaktif edildi', 'success')
+        loadSurveyTokens(editing.id)
+      } else {
+        toast('Deaktif etme işlemi başarısız', 'error')
+      }
+    } catch (err) {
+      console.error(err)
+      toast('Hata oluştu', 'error')
+    }
+  }
+
+  const handlePrintTokens = (selectedTokens) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      toast('Lütfen tarayıcınızın pop-up engelleyicisini kapatıp tekrar deneyin.', 'warning')
+      return
+    }
+
+    const qrItemsHtml = selectedTokens.map(tok => {
+      const url = window.location.origin + '/anket/' + tok.token
+      const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`
+      
+      let branchText = 'Anonim Müşteri Anketi'
+      if (tok.mode === 'branch' && tok.branch_id) {
+        const branchObj = branches.find(b => String(b.id) === String(tok.branch_id))
+        branchText = branchObj ? branchObj.name : `Şube ID: ${tok.branch_id}`
+      } else if (tok.mode === 'multi_branch') {
+        branchText = 'Çoklu Şube Anketi'
+      }
+
+      return `
+        <div class="qr-card">
+          <div class="header-line">${editing.title}</div>
+          <div class="qr-container">
+            <img src="${qrImgUrl}" alt="QR Code" />
+          </div>
+          <div class="branch-line">${branchText}</div>
+          <div class="instructions">Lütfen telefonunuzun kamerası ile okutarak ankete katılın.</div>
+          <div class="footer-line">Görüşleriniz bizim için değerlidir.</div>
+        </div>
+      `
+    }).join('')
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${editing.title} - QR Kod Yazdır</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+            body {
+              font-family: 'Outfit', sans-serif;
+              margin: 0;
+              padding: 20px;
+              background: #fff;
+              color: #333;
+            }
+            .grid-container {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 20px;
+              page-break-inside: avoid;
+            }
+            .qr-card {
+              border: 2px dashed #cbd5e1;
+              border-radius: 12px;
+              padding: 24px;
+              text-align: center;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              background: #fff;
+              page-break-inside: avoid;
+              height: 400px;
+            }
+            .header-line {
+              font-size: 1.15rem;
+              font-weight: 800;
+              color: #1e1b4b;
+              margin-bottom: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .qr-container {
+              margin: 16px 0;
+              padding: 10px;
+              border: 1px solid #f1f5f9;
+              background: #fff;
+              border-radius: 8px;
+            }
+            .qr-container img {
+              width: 180px;
+              height: 180px;
+              display: block;
+            }
+            .branch-line {
+              font-size: 1rem;
+              font-weight: 700;
+              color: #4f46e5;
+              margin-top: 8px;
+            }
+            .instructions {
+              font-size: 0.75rem;
+              color: #64748b;
+              margin-top: 10px;
+              font-weight: 600;
+            }
+            .footer-line {
+              font-size: 0.65rem;
+              color: #94a3b8;
+              margin-top: 4px;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+              .qr-card {
+                page-break-inside: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="grid-container">
+            ${qrItemsHtml}
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              setTimeout(function() {
+                window.print();
+                window.close();
+              }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
+
+  const renderQrManagementPanel = () => {
+    if (editing.form_type !== 'customer_survey') return null
+
+    if (!editing.id) {
+      return (
+        <div className="card" style={{ padding: 20, marginTop: 20, borderLeft: '4px solid #f59e0b', background: 'var(--surface-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#d97706' }}>
+            <i className="fa-solid fa-triangle-exclamation" />
+            <span>Link ve QR Kod Yönetimi</span>
+          </div>
+          <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '8px 0 0 0' }}>
+            Anket için Link ve QR kod oluşturabilmek için lütfen önce şablonu yukarıdaki <strong>Kaydet</strong> butonu ile kaydedin.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="card" style={{ padding: 24, marginTop: 20, borderLeft: '4px solid #4f46e5' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-strong)' }}>
+              <i className="fa-solid fa-qrcode" style={{ marginRight: 8, color: '#4f46e5' }} />
+              Link ve QR Kod Yönetimi
+            </h3>
+            <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+              Müşterilerin anket formuna erişebilmesi için benzersiz yönlendirme linkleri ve yazdırılabilir QR kodları oluşturun.
+            </p>
+          </div>
+          <button className="btn-p" onClick={() => setQrModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px' }}>
+            <i className="fa-solid fa-plus" /> Yeni Link / QR Oluştur
+          </button>
+        </div>
+
+        {loadingTokens ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 12, color: 'var(--text-muted)', fontSize: '.8rem' }}>
+            <i className="fa-solid fa-spinner fa-spin" /> Linkler yükleniyor...
+          </div>
+        ) : surveyTokens.length === 0 ? (
+          <div style={{ padding: 24, border: '1px dashed var(--border)', borderRadius: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: '.8rem' }}>
+            Henüz bu anket için tanımlanmış bir Link veya QR kodu bulunmuyor. Başlamak için yukarıdaki butonu kullanın.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ width: '100%', fontSize: '.8rem' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Etiket</th>
+                  <th style={{ textAlign: 'left' }}>Çalışma Modu</th>
+                  <th style={{ textAlign: 'left' }}>Bağlı Şube</th>
+                  <th style={{ textAlign: 'left' }}>Anket Linki</th>
+                  <th style={{ width: 180, textAlign: 'right' }}>Aksiyonlar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {surveyTokens.map(tok => {
+                  const url = window.location.origin + '/anket/' + tok.token
+                  
+                  let modeText = 'Anonim'
+                  if (tok.mode === 'branch') modeText = 'Şube Özel'
+                  if (tok.mode === 'multi_branch') modeText = 'Çoklu Şube'
+
+                  let branchText = '-'
+                  if (tok.mode === 'branch' && tok.branch_id) {
+                    const branchObj = branches.find(b => String(b.id) === String(tok.branch_id))
+                    branchText = branchObj ? branchObj.name : `Şube ID: ${tok.branch_id}`
+                  } else if (tok.mode === 'multi_branch') {
+                    let ids = []
+                    try {
+                      ids = Array.isArray(tok.branch_ids) ? tok.branch_ids : JSON.parse(tok.branch_ids || '[]')
+                    } catch (e) {}
+                    branchText = `${ids.length} Şube`
+                  }
+
+                  return (
+                    <tr key={tok.id}>
+                      <td style={{ fontWeight: 700, color: 'var(--text-strong)' }}>{tok.label || 'İsimsiz Link'}</td>
+                      <td>
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 99,
+                          fontSize: '.7rem',
+                          fontWeight: 700,
+                          background: tok.mode === 'anonymous' ? 'rgba(100, 116, 139, 0.15)' : 'rgba(79, 70, 229, 0.15)',
+                          color: tok.mode === 'anonymous' ? '#64748b' : '#4f46e5'
+                        }}>
+                          {modeText}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{branchText}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '.75rem', background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {url}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-o"
+                            style={{ padding: '2px 6px', fontSize: '.7rem' }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(url)
+                              toast('Link kopyalandı', 'success')
+                            }}
+                            title="Linki kopyala"
+                          >
+                            <i className="fa-solid fa-copy" />
+                          </button>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn-o"
+                            style={{ padding: '4px 8px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => handlePrintTokens([tok])}
+                          >
+                            <i className="fa-solid fa-print" /> Yazdır
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-o"
+                            style={{ padding: '4px 8px', fontSize: '.75rem', borderColor: '#ef4444', color: '#ef4444' }}
+                            onClick={() => handleDeleteToken(tok.id)}
+                            title="Sil / Deaktif Et"
+                          >
+                            <i className="fa-solid fa-trash-can" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            
+            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-start' }}>
+              <button
+                type="button"
+                className="btn-o"
+                onClick={() => handlePrintTokens(surveyTokens)}
+                style={{ fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <i className="fa-solid fa-print" /> Tümünü A4 Olarak Yazdır
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderQrModal = () => {
+    if (!qrModalOpen) return null
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+        <div className="card" style={{ width: '100%', maxWidth: 500, padding: 24, display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+              Yeni Link & QR Kod Oluştur
+            </h3>
+            <button className="btn-o" onClick={() => setQrModalOpen(false)} style={{ padding: 4 }}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label className="f-label">Link/QR Etiketi *</label>
+              <input
+                type="text"
+                className="f-input"
+                placeholder="Örn: Masa QR - Kadıköy Şubesi, Instagram Kampanyası"
+                value={qrLabel}
+                onChange={e => setQrLabel(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px' }}
+              />
+            </div>
+
+            <div>
+              <label className="f-label">Çalışma Modu</label>
+              <select
+                className="f-input"
+                value={qrMode}
+                onChange={e => setQrMode(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', height: 38 }}
+              >
+                <option value="anonymous">Anonim Mod (Şube ve Müşteri Bilinmez)</option>
+                <option value="branch">Şube Modu (Tek Bir Şubeye Bağlı)</option>
+                <option value="multi_branch">Çoklu Şube Modu (Ziyaretçi Şubesini Seçer)</option>
+                <option value="all_branches_individual">Tüm Şubeler için Ayrı Ayrı QR Kod Üret</option>
+              </select>
+            </div>
+
+            {qrMode === 'branch' && (
+              <div>
+                <label className="f-label">Bağlı Şube Seçimi *</label>
+                <select
+                  className="f-input"
+                  value={qrBranchId}
+                  onChange={e => setQrBranchId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', height: 38 }}
+                >
+                  <option value="">Şube Seçin...</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {qrMode === 'multi_branch' && (
+              <div>
+                <label className="f-label">İzin Verilen Şubeler (En az bir tane seçin) *</label>
+                <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--surface-2)' }}>
+                  {branches.map(b => {
+                    const isChecked = qrBranchIds.includes(b.id)
+                    return (
+                      <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.8rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setQrBranchIds(p => [...p, b.id])
+                            } else {
+                              setQrBranchIds(p => p.filter(id => id !== b.id))
+                            }
+                          }}
+                          style={{ accentColor: '#4f46e5' }}
+                        />
+                        <span>{b.name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
+            <button className="btn-o" onClick={() => setQrModalOpen(false)}>Vazgeç</button>
+            <button className="btn-p" onClick={handleCreateToken}>Oluştur</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  useEffect(() => { loadTemplates() }, [loadTemplates])
+
   const startNew = () => {
     setEditing({
       title: '',
@@ -287,6 +805,7 @@ export default function FormTemplates() {
     })
     setSchemaJson({ 
       sections: [EMPTY_SECTION()], 
+      survey_config: { allow_anonymous: true },
       task_config: { 
         enabled: false,
         assignee: { positions: [], personnel: [] },
@@ -315,6 +834,11 @@ export default function FormTemplates() {
     
     // Normalize max_points for select fields to be the sum of option points
     const schema = template.schema_json ? JSON.parse(JSON.stringify(template.schema_json)) : { sections: [EMPTY_SECTION()] }
+    if (!schema.survey_config) {
+      schema.survey_config = { allow_anonymous: true }
+    } else if (schema.survey_config.allow_anonymous === undefined) {
+      schema.survey_config.allow_anonymous = true
+    }
     if (!schema.task_config) {
       schema.task_config = { 
         enabled: false,
@@ -587,6 +1111,8 @@ export default function FormTemplates() {
   }
 
   // ─── EDITOR VIEW ───
+  const isAnonSurvey = editing?.form_type === 'customer_survey' && schemaJson?.survey_config?.allow_anonymous !== false
+
   return (
     <div style={{ maxWidth: 1000 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -669,6 +1195,35 @@ export default function FormTemplates() {
               <label htmlFor="require-geo" style={{ fontSize: '.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>GPS Zorunlu</label>
             </div>
           </div>
+          )}
+
+          {editing.form_type === 'customer_survey' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="allow-anonymous"
+                  checked={schemaJson.survey_config?.allow_anonymous !== false}
+                  onChange={e => {
+                    const val = e.target.checked
+                    setSchemaJson(p => ({
+                      ...p,
+                      survey_config: {
+                        ...(p.survey_config || {}),
+                        allow_anonymous: val
+                      }
+                    }))
+                  }}
+                  style={{ width: 15, height: 15, accentColor: '#4f46e5', cursor: 'pointer' }}
+                />
+                <label htmlFor="allow-anonymous" style={{ fontSize: '.78rem', color: 'var(--text-strong)', cursor: 'pointer', fontWeight: 700 }}>
+                  Anonim Doldurmaya İzin Ver
+                </label>
+              </div>
+              <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '0 0 0 24px', lineHeight: 1.3 }}>
+                Seçildiğinde anket link/QR üzerinden herhangi bir kullanıcı girişi olmadan anonim olarak doldurulabilir.
+              </p>
+            </div>
           )}
 
 
@@ -758,6 +1313,13 @@ export default function FormTemplates() {
                 <i className="fa-solid fa-bullseye" style={{ marginRight: 8, color: '#3b82f6' }} />
                 Görev Kuralları ve Katılımcılar
               </h3>
+
+              {isAnonSurvey && (
+                <div style={{ padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '.8rem', color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, gridColumn: '1 / -1' }}>
+                  <i className="fa-solid fa-info-circle" style={{ color: '#4f46e5', fontSize: '1.1rem' }} />
+                  <span>Anonim doldurmada tüm atamalar yalnızca merkez çalışanlarına yapılır. Görevi otomatik oluşturan: <strong>Görev Yöneticisi (Task Manager)</strong></span>
+                </div>
+              )}
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Sol Taraf: Sorumlular ve Süre */}
@@ -781,6 +1343,7 @@ export default function FormTemplates() {
                       onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
                       positions={positions}
                       personnelList={personnelList}
+                      hidePositions={isAnonSurvey}
                     />
                   )}
 
@@ -791,7 +1354,7 @@ export default function FormTemplates() {
                     onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
                     positions={positions}
                     personnelList={personnelList}
-                    hidePositions={editing.form_type === 'checklist'}
+                    hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
                   />
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -802,9 +1365,9 @@ export default function FormTemplates() {
                       onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
                       positions={positions}
                       personnelList={personnelList}
-                      hidePositions={editing.form_type === 'checklist'}
+                      hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
                     />
-                    {editing.form_type !== 'checklist' && (
+                    {editing.form_type !== 'checklist' && !isAnonSurvey && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
                         <input
                           type="checkbox"
@@ -1227,9 +1790,13 @@ export default function FormTemplates() {
         </div>
       ))}
 
-      <button className="btn-o" onClick={addSection} style={{ width: '100%', padding: 12, justifyContent: 'center', borderStyle: 'dashed', background: 'var(--surface)' }}>
+      <button className="btn-o" onClick={addSection} style={{ width: '100%', padding: 12, justifyContent: 'center', borderStyle: 'dashed', background: 'var(--surface)', marginBottom: 20 }}>
         <i className="fa-solid fa-layer-group" style={{ marginRight: 6 }} /> Bölüm Ekle
       </button>
+
+      {/* QR/Link Management Card */}
+      {renderQrManagementPanel()}
+      {renderQrModal()}
     </div>
   )
 }

@@ -8830,3 +8830,24 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - DB Actions: equipment_instances tablosuna name TEXT kolonu eklendi.
 - Durum: Build basarili, auto-deploy icin push tamamlandi.
 
+
+
+
+## Entry 042
+
+- Timestamp: 2026-06-07T10:45:00+03:00
+- Agent: Antigravity
+- Task: Müşteri Anketi Form Yapısı, Link/QR Oluşturucu, Görev Yöneticisi ve Sadakat Entegrasyonu
+- Intent: Müşteri anketi için anonim ve şubeli doldurma, QR/Link oluşturucu panel, herkese açık bypass anket sayfası, otomatik 'task_manager' (Görev Yöneticisi) görev atama mantığı, sadakat programı kategori eşleştirme (/api/customer-category-assign) ve merkezi bir Görev Yöneticisi ekranı (/gorev-yoneticisi) entegrasyonu.
+- Files Changed:
+  - server/index.js (POST /api/survey-tokens, GET /api/survey-tokens/:token, DELETE /api/survey-tokens/:id, GET /api/branches/list, GET /api/customer-surveys, POST /api/customer-category-assign)
+  - src/lib/formService.js (createTaskFromCustomerSurvey fonksiyonu eklendi, submitFormResponse entegrasyonu sağlandı, buildApiUrl wrap yapıldı)
+  - src/lib/publicDisplayRoutes.js (anket bypass rotası eklendi)
+  - src/App.jsx (anket ve görev yöneticisi lazy import ve rotaları eklendi)
+  - src/components/layout/Sidebar.jsx (Görev Yöneticisi menü öğesi eklendi)
+  - src/components/pages/FormTemplates.jsx (Anonim mod seçimi, Link & QR yönetim kartı, PDF yazdırma modalı)
+  - src/components/pages/PublicSurvey.jsx (YENİ - Herkese açık anket doldurma arayüzü)
+  - src/components/pages/TaskManager.jsx (YENİ - Merkezi Görev Yöneticisi dashboard'u, NPS analizi ve şube atamaları)
+  - schema-railway-master.sql (survey_tokens tablosu şemaya eklendi)
+- DB Actions: survey_tokens tablosu oluşturuldu (migrations/029_survey_qr_tokens.sql).
+- Durum: Tüm geliştirmeler yapıldı, build başarılı ve Railway auto-deploy tamamlandı.

@@ -1,4 +1,4 @@
-import { db, uploadApiFile } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import { readSettingArray, PERSONNEL_SETTINGS_KEYS, normalizeEmployeeRecord } from '@/lib/personnelConfig'
 
 
@@ -390,7 +390,27 @@ export async function submitFormResponse({ templateId, branchId, submittedBy, an
   let createdTaskId = null
   const taskConfig = template.schema_json?.task_config || {}
   
-  if (taskConfig.enabled) {
+  if (template.form_type === 'customer_survey') {
+    if (taskConfig.enabled !== false) {
+      try {
+        createdTaskId = await createTaskFromCustomerSurvey(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
+      } catch (err) {
+        console.error('Failed to auto-create customer survey task:', err)
+      }
+    }
+    // Assign loyalty customer category if submitted from customer app
+    if (metadata?.source === 'customer_app' && submittedBy && submittedBy !== 'anonymous') {
+      try {
+        fetch(buildApiUrl('/api/customer-category-assign'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customerId: submittedBy })
+        }).catch(err => console.error('Failed to assign loyalty category:', err))
+      } catch (err) {
+        console.error('Failed to call loyalty category assignment API:', err)
+      }
+    }
+  } else if (taskConfig.enabled) {
     try {
       createdTaskId = await createTaskFromNotification(template, submission, answersJson, { ...finalMetadata, branch_id: branchId })
     } catch (err) {
@@ -990,4 +1010,260 @@ export async function fetchTemplatesForBranch(branchId) {
   })
 
   return { data: filtered, error: null }
+}
+
+// ─── Customer Survey -> Task auto-creation ────────────────────
+
+async function createTaskFromCustomerSurvey(template, submission, answersJson, meta) {
+  const taskConfig = template.schema_json?.task_config || {}
+  
+  const subIdShort = submission.id ? submission.id.slice(0, 8) : '--------'
+  const title = `Müşteri Anketi Takip Görevi: ${template.title || 'Müşteri Bildirimi'} (${subIdShort})`
+
+  let formDateFormatted = ''
+  if (meta && meta.form_date) {
+    const parts = meta.form_date.split('-')
+    if (parts.length === 3) {
+      formDateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`
+    } else {
+      formDateFormatted = meta.form_date
+    }
+  } else {
+    const d = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    formDateFormatted = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+  }
+
+  const startTime = (meta && meta.start_time) || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const branchName = (meta && meta.branch_name) || 'İlgili'
+  const creatorName = (meta && meta.source === 'customer_app') ? 'Sadakat Müşterisi' : 'Anonim Müşteri'
+  
+  let description = `${formDateFormatted} tarihi ${startTime} saatinde `
+  if (meta && meta.branch_id) {
+    description += `${branchName} şubesi için `
+  }
+  description += `${creatorName} tarafından doldurulan "${template.title}" müşteri anketinin takibi için otomatik oluşturulmuştur.\n\n[Form ID: ${submission.id}]`
+
+  const now = new Date()
+  const completionHours = Number(taskConfig.completion_hours) || 72
+  const dueDate = new Date(now.getTime() + completionHours * 60 * 60 * 1000)
+  const branchNodeId = meta.branch_id || submission.branch_id || null
+
+  const rules = taskConfig.rules || {}
+
+  // 1) Task kaydı oluştur. 
+  // created_by_personnel_id is NOT NULL, so use 'task_manager' for survey auto tasks
+  const taskInsert = await db.from('tasks').insert({
+    branch_node_id: branchNodeId || null,
+    organization_node_id: null,
+    created_by_personnel_id: 'task_manager',
+    created_by_position_id: null,
+    title,
+    description,
+    status: 'open',
+    priority: taskConfig.priority || 'high',
+    due_at: dueDate.toISOString(),
+    start_at: now.toISOString(),
+    has_specific_time: false,
+    timezone: 'Europe/Istanbul',
+    is_recurring: false,
+    recurrence_rule_id: null,
+    delegation_allowed: !!rules.delegation_allowed,
+    approval_required: !!rules.approval_required,
+    closure_summary_required: !!rules.closure_summary_required,
+    closure_file_required: !!rules.closure_file_required,
+    closure_image_required: !!rules.closure_image_required,
+    edit_due_date_allowed: !!rules.edit_due_date_allowed,
+    edit_schedule_allowed: !!rules.edit_schedule_allowed,
+    incomplete_if_late: !!rules.incomplete_if_late,
+    requires_cost_input: !!rules.requires_cost_input,
+    linked_entity_table: template.linked_entity_table || null,
+    linked_entity_id: submission.linked_entity_id || null,
+    metadata: {
+      created_by_label: 'Görev Yöneticisi',
+      survey_submission_id: submission.id
+    },
+    updated_at: nowIso(),
+  }).select().maybeSingle()
+
+  if (taskInsert.error) {
+    console.error('[Survey→Task] Task insert error:', taskInsert.error)
+    return null
+  }
+  const task = taskInsert.data
+  console.log('[Survey→Task] Task created:', task.id)
+
+  // 2) Katılımcıları Belirle
+  const participantRows = []
+  
+  let allEmployees = []
+  try {
+    allEmployees = await readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord)
+  } catch (err) {
+    console.error('[Survey→Task] Error reading employees:', err)
+  }
+
+  const worksAtBranch = (emp, branchId) => {
+    if (!branchId) return false
+    const bid = String(branchId)
+    const defaultBranch = String(emp.defaultBranchId || '')
+    const workingBranches = Array.isArray(emp.workingBranchIds) ? emp.workingBranchIds.map(String) : []
+    const managedBranches = Array.isArray(emp.managedBranchIds) ? emp.managedBranchIds.map(String) : []
+    return defaultBranch === bid || workingBranches.includes(bid) || managedBranches.includes(bid)
+  }
+
+  const assigneeIds = new Set()
+  const collaboratorIds = new Set()
+  const watcherIds = new Set()
+
+  // Assignees
+  if (taskConfig.assignee) {
+    if (branchNodeId) {
+      const posIds = taskConfig.assignee.positions || []
+      posIds.forEach(posId => {
+        const empsInPosition = allEmployees.filter(e => 
+          String(e.positionId) === String(posId) && 
+          !e.deletedAt && 
+          !e.terminationDate &&
+          worksAtBranch(e, branchNodeId)
+        )
+        empsInPosition.forEach(e => assigneeIds.add(String(e.id)))
+      })
+    }
+    const persIds = taskConfig.assignee.personnel || []
+    persIds.forEach(id => assigneeIds.add(String(id)))
+  }
+
+  // Collaborators
+  if (taskConfig.collaborators) {
+    if (branchNodeId) {
+      const posIds = taskConfig.collaborators.positions || []
+      posIds.forEach(posId => {
+        const empsInPosition = allEmployees.filter(e => 
+          String(e.positionId) === String(posId) && 
+          !e.deletedAt && 
+          !e.terminationDate &&
+          worksAtBranch(e, branchNodeId)
+        )
+        empsInPosition.forEach(e => collaboratorIds.add(String(e.id)))
+      })
+    }
+    const persIds = taskConfig.collaborators.personnel || []
+    persIds.forEach(id => collaboratorIds.add(String(id)))
+  }
+
+  // Watchers
+  if (taskConfig.watchers) {
+    if (branchNodeId) {
+      const posIds = taskConfig.watchers.positions || []
+      posIds.forEach(posId => {
+        const empsInPosition = allEmployees.filter(e => 
+          String(e.positionId) === String(posId) && 
+          !e.deletedAt && 
+          !e.terminationDate &&
+          worksAtBranch(e, branchNodeId)
+        )
+        empsInPosition.forEach(e => watcherIds.add(String(e.id)))
+      })
+      if (taskConfig.watchers.responsibles) {
+        const branchManagers = allEmployees.filter(e => 
+          !e.deletedAt && 
+          !e.terminationDate && 
+          Array.isArray(e.managedBranchIds) && 
+          e.managedBranchIds.map(String).includes(String(branchNodeId))
+        )
+        branchManagers.forEach(e => watcherIds.add(String(e.id)))
+      }
+    }
+    const persIds = taskConfig.watchers.personnel || []
+    persIds.forEach(id => watcherIds.add(String(id)))
+  }
+
+  // Assignees
+  for (const assigneeId of assigneeIds) {
+    participantRows.push({
+      task_id: task.id,
+      participant_type: 'assignee',
+      personnel_id: assigneeId,
+      position_id: null,
+      node_id: branchNodeId || null,
+    })
+  }
+
+  // Collaborators
+  for (const collabId of collaboratorIds) {
+    if (!assigneeIds.has(collabId)) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'assignee',
+        personnel_id: collabId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+    }
+  }
+
+  // Watchers
+  for (const watcherId of watcherIds) {
+    if (!assigneeIds.has(watcherId) && !collaboratorIds.has(watcherId)) {
+      participantRows.push({
+        task_id: task.id,
+        participant_type: 'watcher',
+        personnel_id: watcherId,
+        position_id: null,
+        node_id: branchNodeId || null,
+      })
+    }
+  }
+
+  if (participantRows.length > 0) {
+    const partResult = await db.from('task_participants').insert(participantRows).select()
+    if (partResult.error) {
+      console.error('[Survey→Task] Participants insert error:', partResult.error)
+    }
+  }
+
+  // 3) Checklist
+  const answersMap = new Map(toArray(answersJson).map(a => [a.field_id, a]))
+  let answerSummary = ''
+  for (const section of toArray(template.schema_json?.sections)) {
+    for (const field of toArray(section.fields)) {
+      const answer = answersMap.get(field.id)
+      if (answer && answer.value !== null && answer.value !== undefined) {
+        let valStr = String(answer.value)
+        if (typeof answer.value === 'boolean') {
+          valStr = answer.value ? 'Evet' : 'Hayır'
+        }
+        answerSummary += `**${field.label}**: ${valStr}\n`
+      }
+    }
+  }
+
+  // 4) Chat thread
+  const threadResult = await db.from('task_chat_threads').insert({ task_id: task.id }).select().maybeSingle()
+  
+  // 5) System note
+  if (threadResult.data?.id) {
+    await db.from('task_history').insert({
+      task_id: task.id,
+      action: 'created',
+      performed_by: 'task_manager',
+      metadata: { title: task.title },
+    })
+    
+    let sysBody = `Müşteri anketinden otomatik oluşturuldu.`
+    if (answerSummary) {
+      sysBody += `\n\n**Müşteri Yanıtları:**\n${answerSummary}`
+    }
+
+    await db.from('task_chat_messages').insert({
+      thread_id: threadResult.data.id,
+      task_id: task.id,
+      message_type: 'system',
+      body: sysBody,
+      metadata: { title: task.title },
+    })
+  }
+
+  return task.id
 }

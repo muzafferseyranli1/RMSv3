@@ -325,34 +325,26 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
   const labelStyle = { fontSize: '.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: 3 }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#0006', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: 24 }}>
-      <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 760, maxWidth: '95vw', boxShadow: '0 20px 60px #0002' }}>
-        <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 20 }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#0006', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 760, maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px #0002' }}>
+        <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 20, flexShrink: 0 }}>
           {instance ? 'Ekipman Düzenle' : 'Yeni Ekipman Ekle'}
         </div>
 
-        <div style={{ display: 'flex', gap: 20 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: 8, marginBottom: 12 }}>
           {/* Sol Kolon - Genel Tanımlar & Finans */}
-          <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <label style={labelStyle}>Ekipman Adı *</label>
               <input value={form.name} onChange={set('name')} style={inputStyle} placeholder="Örn: 60x60 kare masa" />
             </div>
 
-            <div>
-              <label style={labelStyle}>Ekipman Kategorisi *</label>
-              <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle} disabled={!!instance}>
-                <option value="">Seçin</option>
-                {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12 }}>
               <div>
-                <label style={labelStyle}>Konum (Şube) *</label>
-                <select value={form.current_location_id} onChange={set('current_location_id')} style={inputStyle}>
-                  <option value="">Şube Seçin</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <label style={labelStyle}>Ekipman Kategorisi *</label>
+                <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle} disabled={!!instance}>
+                  <option value="">Seçin</option>
+                  {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
               <div>
@@ -361,11 +353,12 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr', gap: 12, alignItems: 'end' }}>
               <div>
-                <label style={labelStyle}>Durum</label>
-                <select value={form.status} onChange={set('status')} style={inputStyle}>
-                  {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                <label style={labelStyle}>Konum (Şube) *</label>
+                <select value={form.current_location_id} onChange={set('current_location_id')} style={inputStyle}>
+                  <option value="">Şube Seçin</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div>
@@ -380,6 +373,17 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
                   placeholder="Örn: 25"
                 />
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', height: 38 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.8rem', fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    style={{ width: 15, height: 15, cursor: 'pointer' }}
+                    checked={form.status === 'active'} 
+                    onChange={e => setForm(f => ({ ...f, status: e.target.checked ? 'active' : 'decommissioned' }))} 
+                  />
+                  <span>Aktif</span>
+                </label>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -388,32 +392,31 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
                 <input type="date" value={form.purchase_date} onChange={e => { setForm(f => ({ ...f, purchase_date: e.target.value })) }} style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Alım Bedeli</label>
-                <input type="number" value={form.purchase_price} onChange={set('purchase_price')} style={inputStyle} placeholder="0.00" />
+                <label style={labelStyle}>Devreden Amortisman</label>
+                <input type="number" value={form.legacy_accumulated_depreciation} onChange={set('legacy_accumulated_depreciation')} style={inputStyle} placeholder="0" />
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: 12, alignItems: 'end' }}>
+              <div>
+                <label style={labelStyle}>Alım Bedeli</label>
+                <input type="number" value={form.purchase_price} onChange={set('purchase_price')} style={inputStyle} placeholder="0.00" />
+              </div>
               <div>
                 <label style={labelStyle}>Döviz Cinsi</label>
                 <select value={form.currency} onChange={set('currency')} style={inputStyle}>
                   {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Alım Kuru</label>
-                  <input type="number" value={form.purchase_exchange_rate} onChange={set('purchase_exchange_rate')} style={inputStyle} step="0.0001" />
+              <div>
+                <label style={labelStyle}>Alım Kuru</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="number" value={form.purchase_exchange_rate} onChange={set('purchase_exchange_rate')} style={{ ...inputStyle, minWidth: 0 }} step="0.0001" />
+                  <button onClick={fetchRate} disabled={exchangeLoading} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--card-bg,#fff)', cursor: 'pointer', fontSize: '.75rem', whiteSpace: 'nowrap' }}>
+                    {exchangeLoading ? '…' : 'Kur Al'}
+                  </button>
                 </div>
-                <button onClick={fetchRate} disabled={exchangeLoading} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--card-bg,#fff)', cursor: 'pointer', fontSize: '.78rem', whiteSpace: 'nowrap' }}>
-                  {exchangeLoading ? '…' : '🔄 Kur Al'}
-                </button>
               </div>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Devreden Amortisman</label>
-              <input type="number" value={form.legacy_accumulated_depreciation} onChange={set('legacy_accumulated_depreciation')} style={inputStyle} placeholder="0" />
             </div>
 
             {/* Uploadlar ve Bağlantı */}
@@ -462,7 +465,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
           </div>
 
           {/* Sağ Kolon - Kurulum & Garanti Box ve QR */}
-          <div style={{ flex: 0.8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{
               border: '1px solid var(--border-color,#e2e8f0)',
               borderRadius: 12,
@@ -538,8 +541,8 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
           </div>
         </div>
 
-        {err && <div style={{ color: '#ef4444', fontSize: '.8rem', marginTop: 12 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+        {err && <div style={{ color: '#ef4444', fontSize: '.8rem', marginTop: 12, flexShrink: 0 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20, flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer' }}>İptal</button>
           <button onClick={handleSubmit} disabled={saving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--primary,#6366f1)', color: '#fff', fontWeight: 700, cursor: saving ? 'wait' : 'pointer' }}>
             {saving ? 'Kaydediliyor…' : (instance ? 'Güncelle' : 'Ekle')}

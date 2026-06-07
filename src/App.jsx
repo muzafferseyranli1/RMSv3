@@ -100,8 +100,10 @@ const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 const ManualManagement = lazy(() => import('@/components/pages/ManualManagement'))
 const ManualReader = lazy(() => import('@/components/pages/ManualReader'))
 const EquipmentManagement = lazy(() => import('@/components/pages/EquipmentManagement'))
+const PublicSurvey = lazy(() => import('@/components/pages/PublicSurvey'))
+const TaskManager = lazy(() => import('@/components/pages/TaskManager'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -337,6 +339,7 @@ function AppShell() {
             <Route path="/kds-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><KDS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><PickupScreen /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/q/:token" element={<QrRedirector />} />
+            <Route path="/anket/:token" element={<PublicSurvey />} />
           </Routes>
         </Suspense>
       </PageErrorBoundary>
@@ -472,6 +475,7 @@ function AppShell() {
               <Route path="/merkez-transfer" element={<InventoryTransfer scopeVariant="warehouse" />} />
               <Route path="/merkez-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
               <Route path="/merkez-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
+              <Route path="/gorev-yoneticisi" element={<TaskManager />} />
               <Route path="*" element={<Navigate to={defaultPath} replace />} />
             </Routes>
           </Suspense>

@@ -180,6 +180,7 @@ Bir agent bu kurallara aykırı bir değişiklik önerirse, o öneri reddedilir 
 ```
 VITE_API_URL=https://rms-api-production-219d.up.railway.app
 VITE_DISABLE_AUTH=true
+TCMB_EVDS_API_KEY=9dcVSyM1Ex
 ```
 
 Server tarafı (`server/.env` veya Railway Variables):

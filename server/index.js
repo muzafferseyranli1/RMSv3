@@ -543,45 +543,141 @@ function fetchTcmbXml(url) {
   })
 }
 
-async function getRateForDate(dateObj, currency) {
-  let attempts = 0
-  let currentObj = new Date(dateObj)
-  
-  while (attempts < 6) {
-    const yyyy = currentObj.getFullYear()
-    const mm = String(currentObj.getMonth() + 1).padStart(2, '0')
-    const dd = String(currentObj.getDate()).padStart(2, '0')
-    
-    // Check if it is today (local date)
-    const todayStr = new Date().toLocaleDateString('en-CA')
-    const targetStr = `${yyyy}-${mm}-${dd}`
-    
-    let url
-    if (targetStr === todayStr) {
-      url = 'https://www.tcmb.gov.tr/kurlar/today.xml'
-    } else {
-      url = `https://www.tcmb.gov.tr/kurlar/${yyyy}${mm}/${dd}${mm}${yyyy}.xml`
-    }
-    
-    try {
-      console.log(`[ExchangeRate] Trying TCMB URL: ${url}`)
-      const xml = await fetchTcmbXml(url)
-      // parse rate from XML
-      const regex = new RegExp(`<Currency[^>]*Kod="${currency}"[^>]*>[\\s\\S]*?<ForexBuying>([\\d.]+)<\\/ForexBuying>`, 'i')
-      const match = xml.match(regex)
-      if (match) {
-        const rate = parseFloat(match[1])
-        return { rate, date: targetStr, url }
+function fetchJson(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers }, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Failed to fetch JSON: status code ${res.statusCode}`))
+        return
       }
-      throw new Error(`Currency ${currency} not found in XML`)
-    } catch (err) {
-      console.log(`[ExchangeRate] Failed to fetch rate for ${targetStr}: ${err.message}. Trying previous day.`)
-      // Go back 1 day
-      currentObj.setDate(currentObj.getDate() - 1)
-      attempts++
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data))
+        } catch (e) {
+          reject(e)
+        }
+      })
+    }).on('error', reject)
+  })
+}
+
+async function getRateFromEvds(dateObj, currency, apiKey) {
+  const yyyy = dateObj.getFullYear()
+  const mm = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const dd = String(dateObj.getDate()).padStart(2, '0')
+
+  const startDateObj = new Date(dateObj)
+  startDateObj.setDate(startDateObj.getDate() - 5)
+  const s_yyyy = startDateObj.getFullYear()
+  const s_mm = String(startDateObj.getMonth() + 1).padStart(2, '0')
+  const s_dd = String(startDateObj.getDate()).padStart(2, '0')
+
+  const startDateStr = `${s_dd}-${s_mm}-${s_yyyy}`
+  const endDateStr = `${dd}-${mm}-${yyyy}`
+
+  const series = `TP.DK.${currency}.A`
+  const url = `https://evds2.tcmb.gov.tr/service/evds/series=${series}&startDate=${startDateStr}&endDate=${endDateStr}&type=json`
+
+  const res = await fetchJson(url, { key: apiKey })
+  if (!res.items || res.items.length === 0) {
+    throw new Error('No items returned from EVDS')
+  }
+
+  for (let i = res.items.length - 1; i >= 0; i--) {
+    const item = res.items[i]
+    const val = item[series]
+    if (val !== undefined && val !== null && val !== 'null' && String(val).trim() !== '') {
+      return {
+        rate: parseFloat(val),
+        date: item.Tarih || `${dd}-${mm}-${yyyy}`,
+        url
+      }
     }
   }
-  throw new Error(`Could not find exchange rate for ${currency} starting from date ${dateObj.toLocaleDateString('en-CA')}`)
+  throw new Error(`Could not find EVDS rate for ${currency} in range`)
+}
+
+async function getRateFromOpenExchange(currency) {
+  const url = 'https://open.er-api.com/v6/latest/TRY'
+  const data = await fetchJson(url)
+  if (data && data.result === 'success' && data.rates) {
+    const rateInTry = data.rates[currency]
+    if (rateInTry) {
+      const rate = 1 / rateInTry
+      return {
+        rate,
+        date: data.time_last_update_utc ? data.time_last_update_utc.split(' ').slice(0, 4).join(' ') : new Date().toLocaleDateString('en-CA'),
+        url
+      }
+    }
+  }
+  throw new Error(`Currency ${currency} not found in Open Exchange Rates`)
+}
+
+async function getRateForDate(dateObj, currency) {
+  // 1. Check if TCMB EVDS API Key is present in environment variables
+  const apiKey = process.env.TCMB_EVDS_API_KEY || process.env.TCMB_API_KEY || process.env.EVDS_API_KEY
+  if (apiKey) {
+    try {
+      console.log(`[ExchangeRate] Trying TCMB EVDS API for ${currency}`)
+      const res = await getRateFromEvds(dateObj, currency, apiKey)
+      return { rate: res.rate, date: res.date, url: res.url, source: 'TCMB EVDS API' }
+    } catch (err) {
+      console.error(`[ExchangeRate] EVDS API failed: ${err.message}. Falling back.`)
+    }
+  }
+
+  // 2. Try the public TCMB XML feed
+  try {
+    let attempts = 0
+    let currentObj = new Date(dateObj)
+    while (attempts < 6) {
+      const yyyy = currentObj.getFullYear()
+      const mm = String(currentObj.getMonth() + 1).padStart(2, '0')
+      const dd = String(currentObj.getDate()).padStart(2, '0')
+      
+      const todayStr = new Date().toLocaleDateString('en-CA')
+      const targetStr = `${yyyy}-${mm}-${dd}`
+      
+      let url
+      if (targetStr === todayStr) {
+        url = 'https://www.tcmb.gov.tr/kurlar/today.xml'
+      } else {
+        url = `https://www.tcmb.gov.tr/kurlar/${yyyy}${mm}/${dd}${mm}${yyyy}.xml`
+      }
+      
+      try {
+        console.log(`[ExchangeRate] Trying TCMB XML URL: ${url}`)
+        const xml = await fetchTcmbXml(url)
+        const regex = new RegExp(`<Currency[^>]*Kod="${currency}"[^>]*>[\\s\\S]*?<ForexBuying>([\\d.]+)<\\/ForexBuying>`, 'i')
+        const match = xml.match(regex)
+        if (match) {
+          const rate = parseFloat(match[1])
+          return { rate, date: targetStr, url, source: 'TCMB XML Feed' }
+        }
+        throw new Error(`Currency ${currency} not found in XML`)
+      } catch (err) {
+        console.log(`[ExchangeRate] Failed to fetch rate for ${targetStr}: ${err.message}. Trying previous day.`)
+        currentObj.setDate(currentObj.getDate() - 1)
+        attempts++
+      }
+    }
+  } catch (err) {
+    console.error(`[ExchangeRate] TCMB XML Feed failed: ${err.message}`)
+  }
+
+  // 3. Fallback to Open Exchange Rates (essential for cloud hosting without TCMB API Key)
+  try {
+    console.log(`[ExchangeRate] Trying Open Exchange Rates for ${currency}`)
+    const res = await getRateFromOpenExchange(currency)
+    return { rate: res.rate, date: res.date, url: res.url, source: 'Open Exchange Rates (Fallback)' }
+  } catch (err) {
+    console.error(`[ExchangeRate] Open Exchange Rates failed: ${err.message}`)
+  }
+
+  throw new Error(`Could not find exchange rate for ${currency} from any provider`)
 }
 
 app.get('/api/exchange-rate', async (req, res) => {
@@ -609,7 +705,7 @@ app.get('/api/exchange-rate', async (req, res) => {
       data: {
         rate: result.rate,
         date: result.date,
-        source: 'TCMB XML Feed',
+        source: result.source || 'Unknown',
         resolvedUrl: result.url
       },
       error: null
@@ -2031,6 +2127,191 @@ app.patch('/api/maintenance-tickets/:id/resolve', async (req, res) => {
     return res.json({ data: rows[0], error: null })
   } catch (err) {
     console.error('[PATCH /api/maintenance-tickets/:id/resolve]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// H. SURVEY QR/LINK TOKENS AND CUSTOMER SURVEY INTEGRATION APIs
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/survey-tokens/:token — Herkese açık token doğrulama ve şablon getirme
+app.get('/api/survey-tokens/:token', async (req, res) => {
+  try {
+    const { token } = req.params
+    const { rows } = await pool.query(
+      `SELECT st.*, 
+              ft.title AS template_title, 
+              ft.schema_json AS template_schema
+       FROM public.survey_tokens st
+       JOIN public.form_templates ft ON st.template_id = ft.id
+       WHERE st.token = $1 AND st.active = TRUE`,
+      [token]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Geçersiz veya deaktif anket linki/QR kodu.' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[GET /api/survey-tokens/:token]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// GET /api/survey-tokens?templateId=X — Şablona ait tüm token listesi
+app.get('/api/survey-tokens', async (req, res) => {
+  try {
+    const { templateId } = req.query
+    if (!templateId) {
+      return res.status(400).json({ data: null, error: { message: 'templateId parametresi gereklidir' } })
+    }
+    const { rows } = await pool.query(
+      `SELECT * FROM public.survey_tokens 
+       WHERE template_id = $1 
+       ORDER BY created_at DESC`,
+      [templateId]
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/survey-tokens]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/survey-tokens — Yeni token oluştur
+app.post('/api/survey-tokens', async (req, res) => {
+  try {
+    const { template_id, mode, branch_id, branch_ids, label, qr_config } = req.body
+    if (!template_id || !mode) {
+      return res.status(400).json({ data: null, error: { message: 'template_id ve mode alanları zorunludur' } })
+    }
+
+    const token = require('crypto').randomBytes(16).toString('hex')
+    const { rows } = await pool.query(
+      `INSERT INTO public.survey_tokens 
+         (template_id, token, mode, branch_id, branch_ids, label, qr_config, active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, now(), now()) 
+       RETURNING *`,
+      [
+        template_id, 
+        token, 
+        mode, 
+        branch_id || null, 
+        branch_ids ? JSON.stringify(branch_ids) : null, 
+        label || null, 
+        qr_config ? JSON.stringify(qr_config) : '{}'
+      ]
+    )
+    return res.status(201).json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[POST /api/survey-tokens]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// DELETE /api/survey-tokens/:id — Token sil
+app.delete('/api/survey-tokens/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { rows } = await pool.query(
+      `DELETE FROM public.survey_tokens WHERE id = $1 RETURNING *`,
+      [id]
+    )
+    if (!rows.length) {
+      return res.status(404).json({ data: null, error: { message: 'Token bulunamadı' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('[DELETE /api/survey-tokens/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// GET /api/branches/list — Herkese açık anket doldururken şube seçebilmek için aktif şube listesi
+app.get('/api/branches/list', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id::text, name 
+       FROM public.company_nodes 
+       WHERE type = 'sube' 
+       ORDER BY name ASC`
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/branches/list]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// GET /api/customer-surveys?customerId=X — Müşteriye ait anket gönderilerini listele
+app.get('/api/customer-surveys', async (req, res) => {
+  try {
+    const { customerId } = req.query
+    if (!customerId) {
+      return res.status(400).json({ data: null, error: { message: 'customerId parametresi gereklidir' } })
+    }
+    const { rows } = await pool.query(
+      `SELECT fs.*, ft.title AS template_title
+       FROM public.form_submissions fs
+       JOIN public.form_templates ft ON fs.template_id = ft.id
+       WHERE fs.submitted_by = $1 AND ft.form_type = 'customer_survey'
+       ORDER BY fs.created_at DESC`,
+      [customerId]
+    )
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/customer-surveys]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// POST /api/customer-category-assign — Müşteriyi 'feedback_source' kategorisine ekle
+app.post('/api/customer-category-assign', async (req, res) => {
+  try {
+    const { customerId } = req.body
+    if (!customerId) {
+      return res.status(400).json({ data: null, error: { message: 'customerId gereklidir' } })
+    }
+    const categoryId = 'feedback_source'
+
+    // Kategori var mı? Yoksa oluştur
+    const catCheck = await pool.query(
+      `SELECT id FROM public.loyalty_customer_categories WHERE id = $1`,
+      [categoryId]
+    )
+    if (!catCheck.rows.length) {
+      await pool.query(
+        `INSERT INTO public.loyalty_customer_categories 
+           (id, scope_type, name, code, description, color, active, sort_order, metadata, created_at, updated_at)
+         VALUES 
+           ($1, 'global', 'Geri Bildirimden Gelen', 'FEEDBACK_SOURCE', 
+            'Geri bildirim oluşturan veya anket dolduran müşteriler', '#ef4444', true, 0, '{}', now(), now())
+         ON CONFLICT (id) DO NOTHING`,
+        [categoryId]
+      )
+    }
+
+    // Müşterinin bu kategoriye üyeliği var mı?
+    const memCheck = await pool.query(
+      `SELECT id FROM public.loyalty_customer_category_members 
+       WHERE customer_id = $1 AND category_id = $2 AND deleted_at IS NULL`,
+      [customerId, categoryId]
+    )
+
+    if (!memCheck.rows.length) {
+      const memberId = 'member_' + require('crypto').randomUUID()
+      await pool.query(
+        `INSERT INTO public.loyalty_customer_category_members 
+           (id, customer_id, category_id, scope_type, scope_branch_id, scope_branch_name, active, metadata, created_at, updated_at, deleted_at)
+         VALUES 
+           ($1, $2, $3, 'global', null, null, true, '{}', now(), now(), null)`,
+        [memberId, customerId, categoryId]
+      )
+    }
+
+    return res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    console.error('[POST /api/customer-category-assign]', err.message)
     return res.status(500).json({ data: null, error: { message: err.message } })
   }
 })
