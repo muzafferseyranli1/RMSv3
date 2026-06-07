@@ -719,7 +719,11 @@ async function createTaskFromNotification(template, submission, answersJson, met
   }
 
   // Assignee: Birincil Sorumlu
-  if (taskConfig.assignee) {
+  if (template.form_type === 'checklist' && !template.schema_json?.require_branch_selection) {
+    if (submission.submitted_by) {
+      assigneeIds.add(String(submission.submitted_by))
+    }
+  } else if (taskConfig.assignee) {
     const posIds = taskConfig.assignee.positions || []
     posIds.forEach(posId => {
       const empsInPosition = allEmployees.filter(e => 
@@ -751,6 +755,12 @@ async function createTaskFromNotification(template, submission, answersJson, met
         })
       }
     }
+  }
+
+  // If the auditor is the branch official (i.e. submitted_by matches branch_authorized_id), 
+  // they must be an assignee (both task creator/giver and assignee).
+  if (meta && meta.branch_authorized_id && String(submission.submitted_by) === String(meta.branch_authorized_id)) {
+    assigneeIds.add(String(submission.submitted_by))
   }
 
   // Collaborator: Ek Sorumlu

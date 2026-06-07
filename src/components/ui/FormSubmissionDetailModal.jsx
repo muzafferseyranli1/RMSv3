@@ -313,8 +313,8 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
               {[
                 { icon: 'fa-user-shield', label: 'Denetleyen', value: submission.metadata.inspector_name, color: '#8b5cf6' },
-                { icon: 'fa-building', label: 'Şube', value: submission.metadata.branch_name || '—', color: '#22d3ee' },
-                { icon: 'fa-user-tie', label: 'Şube Yetkilisi', value: submission.metadata.branch_authorized_name || '—', color: '#10b981', extra: submission.metadata.branch_authorized_name ? (submission.metadata.send_to_authorized ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: submission.metadata.send_to_authorized ? '#10b981' : '#ef4444' },
+                { icon: 'fa-building', label: 'Denetim Noktası', value: submission.metadata.branch_name || '—', color: '#22d3ee' },
+                { icon: 'fa-user-tie', label: 'Denetim Sırasındaki Yetkili', value: submission.metadata.branch_authorized_name || '—', color: '#10b981', extra: submission.metadata.branch_authorized_name ? (submission.metadata.send_to_authorized ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: submission.metadata.send_to_authorized ? '#10b981' : '#ef4444' },
                 { icon: 'fa-id-badge', label: 'Vardiya Görevlisi', value: submission.metadata.shift_officer_name || '—', color: '#f59e0b', extra: submission.metadata.shift_officer_name ? (submission.metadata.send_to_shift_officer ? '✓ Gönderildi' : '✗ Gönderilmedi') : null, extraColor: submission.metadata.send_to_shift_officer ? '#10b981' : '#ef4444' },
                 { icon: 'fa-user', label: 'Gönderen (ID)', value: submission.submitted_by, color: '#94a3b8' },
               ].map((item, idx) => (

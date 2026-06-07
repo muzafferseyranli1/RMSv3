@@ -69,23 +69,58 @@ export default function TaskCard({ task, peopleById, onOpen }) {
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontSize: '.74rem', color: '#475569', fontWeight: 700 }}>
           <i className="fa-solid fa-calendar-day" style={{ marginRight: 6 }} />
           {formatDueLabel(task)}
         </span>
         <span style={{ fontSize: '.74rem', color: '#475569', fontWeight: 700 }}>
           <i className="fa-solid fa-user" style={{ marginRight: 6 }} />
-          {peopleById.get(String(task.created_by_personnel_id || ''))?.firstName || 'Olusturan bilinmiyor'}
+          Görevi Veren: {peopleById.get(String(task.created_by_personnel_id || ''))?.firstName || 'Olusturan bilinmiyor'}
         </span>
-        <span style={{ fontSize: '.74rem', color: '#475569', fontWeight: 700 }}>
-          <i className="fa-solid fa-users" style={{ marginRight: 6 }} />
-          {assignees.length ? assignees.map(item => {
-            const person = peopleById.get(String(item.personnel_id))
-            const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
-            return item.is_completed ? `${fullName} (✓)` : fullName
-          }).join(', ') : 'Atanan yok'}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        <span style={{ fontSize: '.74rem', color: '#475569', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <i className="fa-solid fa-users" />
+          Görevliler:
         </span>
+        {assignees.length > 1 && (
+          <span style={{ 
+            fontSize: '.7rem', 
+            fontWeight: 800, 
+            background: 'rgba(59,130,246,0.1)', 
+            color: '#2563eb', 
+            padding: '2px 6px', 
+            borderRadius: 4, 
+          }}>
+            {assignees.filter(a => a.is_completed).length}/{assignees.length} Tamamlandı
+          </span>
+        )}
+        {assignees.length ? assignees.map((item, idx) => {
+          const person = peopleById.get(String(item.personnel_id))
+          const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
+          return (
+            <span 
+              key={item.id || idx} 
+              style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: 4, 
+                padding: '2px 8px', 
+                borderRadius: 6, 
+                fontSize: '.72rem', 
+                fontWeight: 600,
+                background: item.is_completed ? 'rgba(22,163,74,0.06)' : 'rgba(217,119,6,0.06)', 
+                color: item.is_completed ? '#16a34a' : '#d97706',
+                border: `1px solid ${item.is_completed ? 'rgba(22,163,74,0.15)' : 'rgba(217,119,6,0.15)'}`
+              }}
+            >
+              <i className={`fa-solid ${item.is_completed ? 'fa-circle-check' : 'fa-circle-dot'}`} style={{ fontSize: '.65rem' }} />
+              {fullName}
+            </span>
+          )
+        }) : <span style={{ fontSize: '.74rem', color: '#94a3b8' }}>Atanan yok</span>}
       </div>
 
       <div style={{ display: 'grid', gap: 6 }}>

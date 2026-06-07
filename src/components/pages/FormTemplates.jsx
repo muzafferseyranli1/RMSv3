@@ -63,7 +63,7 @@ const EMPTY_SECTION = () => ({
   fields: [EMPTY_FIELD()],
 })
 
-const TargetSelector = ({ title, description, value, onChange, positions, personnelList }) => {
+const TargetSelector = ({ title, description, value, onChange, positions, personnelList, hidePositions = false }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [search, setSearch] = useState('')
   const dropdownRef = useRef(null)
@@ -78,10 +78,17 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const safePositions = value?.positions || []
+  useEffect(() => {
+    if (!dropdownOpen) {
+      setSearch('')
+    }
+  }, [dropdownOpen])
+
+  const safePositions = hidePositions ? [] : (value?.positions || [])
   const safePersonnel = value?.personnel || []
 
   const handleTogglePosition = (id) => {
+    if (hidePositions) return
     const list = [...safePositions]
     const idx = list.indexOf(id)
     if (idx > -1) list.splice(idx, 1)
@@ -97,8 +104,10 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
     onChange({ ...value, personnel: list })
   }
 
-  const filteredPos = positions.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
-  const filteredEmp = personnelList.filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(search.toLowerCase()))
+  const filteredPos = hidePositions ? [] : positions.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
+  const filteredEmp = personnelList
+    .filter(e => e.authorityLevel === 'Genel Merkez' && !e.deletedAt && !e.terminationDate)
+    .filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div style={{ display: 'grid', gap: 4 }}>
@@ -107,17 +116,17 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
       
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <div 
-          onClick={() => setDropdownOpen(true)}
+          onClick={() => setDropdownOpen(prev => !prev)}
           style={{ 
             minHeight: 40, border: '1px solid var(--border)', borderRadius: 8, padding: '5px 8px',
             display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: 'var(--surface)',
-            cursor: 'text'
+            cursor: 'pointer', position: 'relative', paddingRight: '30px', transition: 'border-color 0.15s, box-shadow 0.15s'
           }}
         >
           {safePositions.length === 0 && safePersonnel.length === 0 && (
-            <span style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Pozisyon veya kişi seçin...</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>{hidePositions ? "Kişi seçin..." : "Pozisyon veya kişi seçin..."}</span>
           )}
-          {safePositions.map(posId => {
+          {!hidePositions && safePositions.map(posId => {
             const pos = positions.find(p => p.id === posId)
             if (!pos) return null
             return (
@@ -139,20 +148,42 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
               </span>
             )
           })}
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); if (!dropdownOpen) setDropdownOpen(true) }}
-            onFocus={() => setDropdownOpen(true)}
-            placeholder=""
-            style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1, minWidth: 60, fontSize: '.8rem', color: 'var(--text-strong)' }}
-          />
+          <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.75rem', pointerEvents: 'none' }}>
+            <i className={`fa-solid fa-chevron-${dropdownOpen ? 'up' : 'down'}`} />
+          </div>
         </div>
 
         {dropdownOpen && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto', zIndex: 1000 }}>
-            <div style={{ padding: 6 }}>
-              {filteredPos.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Pozisyonlar</div>}
-              {filteredPos.map(pos => {
+          <div style={{ 
+            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, 
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, 
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', 
+            zIndex: 1000, display: 'flex', flexDirection: 'column', maxHeight: 250
+          }}>
+            <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.015)' }}>
+              <i className="fa-solid fa-magnifying-glass" style={{ color: 'var(--text-muted)', fontSize: '.75rem' }} />
+              <input 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={hidePositions ? "Merkez çalışanı ara..." : "Pozisyon veya merkez çalışanı ara..."} 
+                style={{ 
+                  border: 'none', outline: 'none', background: 'transparent', flex: 1, 
+                  fontSize: '.82rem', color: 'var(--text-strong)', padding: '2px 0'
+                }} 
+                autoFocus 
+              />
+              {search && (
+                <i 
+                  className="fa-solid fa-circle-xmark" 
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.85rem', opacity: 0.7 }} 
+                  onClick={() => setSearch('')} 
+                />
+              )}
+            </div>
+            
+            <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
+              {!hidePositions && filteredPos.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Pozisyonlar</div>}
+              {!hidePositions && filteredPos.map(pos => {
                 const isSelected = safePositions.includes(pos.id)
                 return (
                   <div 
@@ -166,7 +197,7 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
                 )
               })}
               
-              {filteredEmp.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', marginTop: 4, textTransform: 'uppercase', letterSpacing: '.05em', borderTop: '1px solid var(--border)' }}>Personeller</div>}
+              {filteredEmp.length > 0 && <div style={{ fontSize: '.68rem', fontWeight: 800, color: 'var(--text-muted)', padding: '4px 6px 2px', marginTop: 4, textTransform: 'uppercase', letterSpacing: '.05em', borderTop: hidePositions ? 'none' : '1px solid var(--border)' }}>Personeller (Merkez)</div>}
               {filteredEmp.map(emp => {
                 const isSelected = safePersonnel.includes(emp.id)
                 return (
@@ -181,8 +212,10 @@ const TargetSelector = ({ title, description, value, onChange, positions, person
                 )
               })}
 
-              {filteredPos.length === 0 && filteredEmp.length === 0 && (
-                <div style={{ padding: 12, textAlign: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
+              {hidePositions ? (
+                filteredEmp.length === 0 && <div style={{ padding: 12, textAlign: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
+              ) : (
+                filteredPos.length === 0 && filteredEmp.length === 0 && <div style={{ padding: 12, textAlign: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>Sonuç bulunamadı</div>
               )}
             </div>
           </div>
@@ -729,55 +762,72 @@ export default function FormTemplates() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Sol Taraf: Sorumlular ve Süre */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <TargetSelector
-                    title="Birincil Sorumlu (Atanan)"
-                    description="Form tamamlandığında oluşturulacak görev bu hedeflere atanacaktır."
-                    value={schemaJson.task_config?.assignee}
-                    onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
-                    positions={positions}
-                    personnelList={personnelList}
-                  />
+                  {editing.form_type === 'checklist' && !schemaJson.require_branch_selection ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label className="f-label">Birincil Sorumlu (Atanan)</label>
+                      <div style={{ minHeight: 40, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', background: 'var(--surface-2)', color: 'var(--text-main)', fontSize: '.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <i className="fa-solid fa-user-gear" style={{ color: '#8b5cf6' }} />
+                        <span>Formu Dolduran Kişi (Otomatik Sorumlu Olur)</span>
+                      </div>
+                      <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '4px 0 0 0', lineHeight: 1.3 }}>
+                        Şube seçimi gerekli olmadığı için formu dolduran kişi otomatik olarak görevin birincil sorumlusu atanır.
+                      </p>
+                    </div>
+                  ) : (
+                    <TargetSelector
+                      title="Birincil Sorumlu (Atanan)"
+                      description="Form tamamlandığında oluşturulacak görev bu hedeflere atanacaktır. Seçilen pozisyonlar denetim yapılan şube çalışanlarına göre filtrelenerek atanır. Listede sadece merkez çalışanları isimle seçilebilir."
+                      value={schemaJson.task_config?.assignee}
+                      onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
+                      positions={positions}
+                      personnelList={personnelList}
+                    />
+                  )}
 
                   <TargetSelector
                     title="Ek Sorumlular (İşbirlikçiler)"
-                    description="Görevi birlikte yürütecek ve tamamlayabilecek ek personel veya pozisyonlar."
+                    description="Görevi birlikte yürütecek ve tamamlayabilecek ek personel veya pozisyonlar. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
                     value={schemaJson.task_config?.collaborators}
                     onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
                     positions={positions}
                     personnelList={personnelList}
+                    hidePositions={editing.form_type === 'checklist'}
                   />
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <TargetSelector
                       title="Gözlemciler (Takip Edenler)"
-                      description="Görevin durumunu izleyebilecek, ancak üzerinde işlem yapmayacak personel."
+                      description="Görevin durumunu izleyebilecek, ancak üzerinde işlem yapmayacak personel. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
                       value={schemaJson.task_config?.watchers}
                       onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
                       positions={positions}
                       personnelList={personnelList}
+                      hidePositions={editing.form_type === 'checklist'}
                     />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!schemaJson.task_config?.watchers?.responsibles}
-                        onChange={e => {
-                          const val = e.target.checked
-                          setSchemaJson(p => {
-                            const task_config = p.task_config || {}
-                            const watchers = task_config.watchers || { positions: [], personnel: [], responsibles: false }
-                            return {
-                              ...p,
-                              task_config: {
-                                ...task_config,
-                                watchers: { ...watchers, responsibles: val }
+                    {editing.form_type !== 'checklist' && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!schemaJson.task_config?.watchers?.responsibles}
+                          onChange={e => {
+                            const val = e.target.checked
+                            setSchemaJson(p => {
+                              const task_config = p.task_config || {}
+                              const watchers = task_config.watchers || { positions: [], personnel: [], responsibles: false }
+                              return {
+                                ...p,
+                                task_config: {
+                                  ...task_config,
+                                  watchers: { ...watchers, responsibles: val }
+                                }
                               }
-                            }
-                          })
-                        }}
-                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#8b5cf6' }}
-                      />
-                      <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Şube Sorumlularını Otomatik Gözlemci Ekle</span>
-                    </label>
+                            })
+                          }}
+                          style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                        />
+                        <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Şube Sorumlularını Otomatik Gözlemci Ekle</span>
+                      </label>
+                    )}
                   </div>
 
                   <div>
@@ -871,6 +921,76 @@ export default function FormTemplates() {
 
         </div>
       </div>
+
+      {/* Form Doldurma Önizlemesi (Üst Bilgiler) */}
+      {editing.form_type === 'inspection' && (
+        <div className="card" style={{ padding: 22, marginBottom: 16, borderLeft: '4px solid #06b6d4', background: 'var(--surface-2)', borderRadius: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: '.95rem', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fa-solid fa-eye" style={{ fontSize: '1rem' }} />
+              Form Doldurma Ekranı Önizlemesi (Üst Bilgiler)
+            </div>
+            <span style={{ fontSize: '.7rem', padding: '3px 8px', borderRadius: 99, background: 'rgba(6,182,212,.15)', color: '#06b6d4', fontWeight: 700 }}>Denetim Modu</span>
+          </div>
+
+          <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '0 0 16px 0', lineHeight: 1.4 }}>
+            Bu şablonla bir denetici form doldurmaya başladığında, soruların hemen öncesinde aşağıdaki üst bilgiler kartı görüntülenecektir:
+          </p>
+
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label className="f-label" style={{ opacity: 0.85 }}>Denetimi Yapan</label>
+              <input type="text" className="f-input" disabled value="[Aktif Denetçi Kullanıcı]" style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }} />
+            </div>
+            <div>
+              <label className="f-label" style={{ opacity: 0.85 }}>Denetim Noktası (Şube)</label>
+              <div className="sel-wrap">
+                <select className="f-input" disabled style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }}>
+                  <option>[Şube Listesinden Seçilir]</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="f-label" style={{ opacity: 0.85 }}>Denetim Tarihi</label>
+              <input type="date" className="f-input" disabled style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <div>
+                <label className="f-label" style={{ opacity: 0.85 }}>Başlangıç</label>
+                <input type="time" className="f-input" disabled style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }} />
+              </div>
+              <div>
+                <label className="f-label" style={{ opacity: 0.85 }}>Bitiş</label>
+                <input type="time" className="f-input" disabled style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }} />
+              </div>
+            </div>
+            <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
+              <label className="f-label" style={{ fontWeight: 700, opacity: 0.85 }}>Denetim Sırasındaki Yetkili</label>
+              <div className="sel-wrap">
+                <select className="f-input" disabled style={{ cursor: 'not-allowed', background: 'var(--surface-2)' }}>
+                  <option>[Seçiniz...]</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: 12, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 10, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <i className="fa-solid fa-circle-info" style={{ color: '#8b5cf6', marginTop: 3 }} />
+            <div style={{ fontSize: '.78rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
+              <strong>Otomatik Görev Akışı Bilgilendirmesi:</strong><br />
+              {schemaJson.task_config?.enabled ? (
+                <span style={{ color: 'var(--text-strong)' }}>
+                  ✓ <strong>Otomatik Görev Aktif:</strong> Denetim gönderildiğinde, başarısız olunan (maksimum puandan düşük alan) tüm sorular otomatik olarak bir takip görevi olarak açılacaktır. Bu görev, yukarıda seçilecek olan <strong>Denetim Sırasındaki Yetkili</strong>'ye atanacaktır.
+                </span>
+              ) : (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  ✗ <strong>Otomatik Görev Kapalı:</strong> Denetim sonucunda otomatik bir görev açılmayacaktır. Etkinleştirmek için yukarıdaki "Form Gönderildiğinde Otomatik Görev Oluştur" seçeneğini işaretleyin.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sections & Fields */}
       {schemaJson.sections.map((section, sIdx) => (

@@ -6,8 +6,6 @@ export function isPublicDisplayPath(pathname = '') {
     path === '/kiosk-tablet' ||
     path.startsWith('/kiosk/') ||
     path.startsWith('/kiosk-link/') ||
-    path === '/musteri-app' ||
-    path.startsWith('/musteri-app/') ||
     path === '/mobil-app/qr-menu' ||
     path === '/pos-loyalty-link' ||
     path.startsWith('/pos-loyalty-link/') ||

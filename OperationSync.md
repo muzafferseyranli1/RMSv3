@@ -8758,3 +8758,15 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - Yazdırma veya PDF kaydetmede sol menüyü gizleyen ve sayfayı A4 kağıda sığdıran @media print CSS kuralları.
 - Commits: 9b9f2fc, 3062c8a
 - Durum: Reçete tıklanabilirlik, responsive mobil tasarımı ve gelişmiş raf ömrü modülü TAMAMLANDI.
+
+
+## Entry 037
+
+- Timestamp: 2026-06-07T03:12:00+03:00
+- Agent: Antigravity
+- Task: Android Personnel Application Compilation Fixes
+- Intent: Fix Kotlin compilation and syntax layout errors in TasksScreen.kt for personel-android and restrict task participants to center-only personnel.
+- Files Changed:
+  - personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt (GUNCELLENDI - syntax errors fixed, state variables and time pickers restored, single assignee select dialog integrated)
+  - personel-android/HANDOFF.md (GUNCELLENDI - updated with single assignee selection and assignee filtering changes)
+- Durum: Personnel Android uygulamasi basariyla derlendi (BUILD SUCCESSFUL).

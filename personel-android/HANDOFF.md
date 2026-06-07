@@ -60,6 +60,9 @@ Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla
   - Görevi izleyen personellerin (watchers) onay kutularıyla yönetimi sağlandı.
   - Görev kapatma/tamamlama sırasında kapatma özeti ve açıklama girilmesini sağlayan diyalog pencereleri eklendi.
   - Projenin son durumunu içeren debug sürümü Gradle paketi (`.\gradlew.bat assembleDebug`) başarıyla derlenerek [app-debug.apk](file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) konumunda hazırlandı.
+- **Tek Atanan (Sorumlu) Arama Modali Entegrasyonu (Tamamlandı):**
+  - Görev oluşturulurken tek sorumlu seçimi için dropdown yerine arama filtreleme ve listeleme özelliğine sahip `SinglePersonnelSelectDialog` entegre edildi.
+  - Sorumlu ve diğer tüm görevli seçimleri (`collaboratorIds`, `observerIds`), şube çalışanlarının kısıtlanması amacıyla, sadece genel merkez personelleriyle (`authorityLevel === 'Genel Merkez'`) sınırlandırıldı.
 - Sonraki çalışmalarda yeni eklenebilecek mal kabul ve depo modülleri için Compose ekranları geliştirilebilir.
 
 

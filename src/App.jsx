@@ -77,14 +77,14 @@ const Count = lazy(() => import('@/components/pages/Count'))
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
 const Orders = lazy(() => import('@/components/pages/Orders'))
-const MalKabul = lazy(() => import('@/components/pages/MalKabul'))
+const CustomerAppAdminSettings = lazy(() => import('@/components/pages/CustomerAppAdminSettings'))
+const CustomerMobileAppPage = lazy(() => import('@/components/pages/CustomerMobileAppPage'))
+const QrMenuStandalone = lazy(() => import('@/components/pages/QrMenuStandalone'))
 const KioskBig = lazy(() => import('@/components/pages/KioskBig'))
 const KioskTablet = lazy(() => import('@/components/pages/KioskTablet'))
 const KioskBackupPreview = lazy(() => import('@/components/pages/KioskBackupPreview'))
 const KioskManagementDesktop = lazy(() => import('@/components/pages/KioskManagementDesktop'))
-const CustomerAppAdminSettings = lazy(() => import('@/components/pages/CustomerAppAdminSettings'))
-const CustomerMobileAppPage = lazy(() => import('@/components/pages/CustomerMobileAppPage'))
-const PersonnelMobileAppPage = lazy(() => import('@/components/pages/PersonnelMobileAppPage'))
+const MalKabul = lazy(() => import('@/components/pages/MalKabul'))
 const KDS = lazy(() => import('@/components/pages/KDS'))
 const PickupScreen = lazy(() => import('@/components/pages/PickupScreen'))
 const QueueScreen = lazy(() => import('@/components/pages/QueueScreen'))
@@ -101,7 +101,7 @@ const ManualManagement = lazy(() => import('@/components/pages/ManualManagement'
 const ManualReader = lazy(() => import('@/components/pages/ManualReader'))
 const EquipmentManagement = lazy(() => import('@/components/pages/EquipmentManagement'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/musteri-app', '/personel-app', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -325,13 +325,9 @@ function AppShell() {
               <Route path="/kiosk/backup/:backupId" element={<WorkspaceBranchScope><WorkspaceGate><KioskBackupPreview /></WorkspaceGate></WorkspaceBranchScope>} />
               <Route path="/kiosk/big" element={<WorkspaceBranchScope><WorkspaceGate><KioskBig /></WorkspaceGate></WorkspaceBranchScope>} />
               <Route path="/kiosk/tablet" element={<WorkspaceBranchScope><WorkspaceGate><KioskTablet /></WorkspaceGate></WorkspaceBranchScope>} />
-              <Route path="/musteri-app" element={<CustomerMobileAppPage />} />
-              <Route path="/musteri-app/pos/:token" element={<CustomerMobileAppPage linkChannel="pos" />} />
-              <Route path="/musteri-app/kiosk/:token" element={<CustomerMobileAppPage linkChannel="kiosk" />} />
               <Route path="/kiosk-link/:token" element={<CustomerMobileAppPage linkChannel="kiosk" />} />
               <Route path="/pos-loyalty-link" element={<CustomerMobileAppPage />} />
               <Route path="/pos-loyalty-link/:token" element={<CustomerMobileAppPage linkChannel="pos" />} />
-              <Route path="/personel-app" element={<WorkspaceBranchScope><WorkspaceGate><PersonnelMobileAppPage /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/kds" element={<WorkspaceBranchScope><WorkspaceGate><KDS /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup" element={<WorkspaceBranchScope><WorkspaceGate><PickupScreen /></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/queue" element={<WorkspaceBranchScope><WorkspaceGate><QueueScreen /></WorkspaceGate></WorkspaceBranchScope>} />
@@ -414,7 +410,7 @@ function AppShell() {
               <Route path="/cariler" element={<Musteriler />} />
               <Route path="/call-center" element={<OrderHub />} />
               <Route path="/mobil-app/personel" element={<MobileAppShells screenKey="personnel" />} />
-              <Route path="/mobil-app/qr-menu" element={<MobileAppShells screenKey="qrMenu" />} />
+              <Route path="/mobil-app/qr-menu" element={<QrMenuStandalone />} />
               <Route path="/mobil-app/musteri" element={<MobileAppShells screenKey="customer" />} />
               <Route path="/mobil-app/boss" element={<MobileAppShells screenKey="boss" />} />
               <Route path="/sadakat" element={<LoyaltyManagement />} />

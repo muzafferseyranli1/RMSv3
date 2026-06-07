@@ -122,8 +122,8 @@ export function extractPosLoyaltyToken(input = '') {
 export function getPosLoyaltyLinkUrl(token) {
   const safeToken = String(token || '').trim()
   if (!safeToken) return ''
-  if (typeof window === 'undefined') return `/musteri-app/pos/${safeToken}`
-  return `${window.location.origin}/musteri-app/pos/${safeToken}`
+  if (typeof window === 'undefined') return `/pos-loyalty-link/${safeToken}`
+  return `${window.location.origin}/pos-loyalty-link/${safeToken}`
 }
 
 export async function createPosLoyaltyLinkSession({

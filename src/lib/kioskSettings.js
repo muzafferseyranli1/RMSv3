@@ -541,7 +541,7 @@ export function isOrderVisibleForScreen(order, visibilityMap, key) {
 }
 
 export function getKioskLoyaltyUrl(token) {
-  return `${window.location.origin}/musteri-app/kiosk/${token}`
+  return `${window.location.origin}/kiosk-link/${token}`
 }
 
 export function applyKioskBranchFilter(query, branchId, branchName = '') {

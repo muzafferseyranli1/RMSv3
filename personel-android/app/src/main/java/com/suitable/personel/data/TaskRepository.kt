@@ -31,7 +31,10 @@ data class TaskItem(
     val formTemplateId: String?,
     var participants: List<TaskParticipant> = emptyList(),
     var checklistCount: Int = 0,
-    var checklistDoneCount: Int = 0
+    var checklistDoneCount: Int = 0,
+    val requiresCostInput: Boolean = false,
+    val linkedEntityTable: String? = null,
+    val linkedEntityId: String? = null
 )
 
 data class TaskParticipant(
@@ -387,7 +390,10 @@ class TaskRepository {
                         formTemplateId = row["form_template_id"]?.toString(),
                         participants = taskParticipants,
                         checklistCount = checklistCount,
-                        checklistDoneCount = checklistDoneCount
+                        checklistDoneCount = checklistDoneCount,
+                        requiresCostInput = parseBool(row["requires_cost_input"]),
+                        linkedEntityTable = row["linked_entity_table"]?.toString(),
+                        linkedEntityId = row["linked_entity_id"]?.toString()
                     )
                 }.sortedByDescending { it.createdAt }
             } catch (e: Exception) {
@@ -498,10 +504,175 @@ class TaskRepository {
 
     // ─── Eylem Güncellemeleri ────────────────────────────────────────────────
 
-    suspend fun updateTaskStatus(taskId: String, newStatus: String, personnelId: String, closureSummary: String? = null): Boolean {
+    suspend fun fetchExchangeRate(currency: String, date: String?): Double? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val res = ApiClient.apiService.getExchangeRate(currency, date)
+                if (res.error == null) {
+                    val dataMap = res.data as? Map<*, *>
+                    val rateVal = dataMap?.get("rate")
+                    when (rateVal) {
+                        is Number -> rateVal.toDouble()
+                        is String -> rateVal.toDoubleOrNull()
+                        else -> null
+                    }
+                } else null
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchExchangeRate error", e)
+                null
+            }
+        }
+    }
+
+    suspend fun resolveMaintenanceTicket(
+        ticketId: String,
+        repairCost: Double,
+        repairCurrency: String,
+        repairExchangeRate: Double,
+        notes: String
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val body = mapOf(
+                    "repair_cost" to repairCost,
+                    "repair_currency" to repairCurrency,
+                    "repair_exchange_rate" to repairExchangeRate,
+                    "resolution_notes" to notes
+                )
+                val res = ApiClient.apiService.resolveMaintenanceTicket(ticketId, body)
+                res.error == null
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "resolveMaintenanceTicket error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun updateTaskStatus(
+        taskId: String,
+        newStatus: String,
+        personnelId: String,
+        closureSummary: String? = null,
+        cost: Double? = null,
+        costCurrency: String? = null,
+        costExchangeRate: Double? = null,
+        linkedEntityTable: String? = null,
+        linkedEntityId: String? = null
+    ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 if (newStatus == "completed" || newStatus == "pending_completion_approval") {
+                    // 0) Fetch task details to check if creator
+                    val taskReq = QueryRequest(
+                        table = "tasks",
+                        filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId))
+                    )
+                    val taskRes = ApiClient.apiService.executeQuery(taskReq)
+                    val taskRow = (taskRes.data as? List<*>)?.firstOrNull() as? Map<*, *>
+                    val createdBy = taskRow?.get("created_by_personnel_id")?.toString() ?: ""
+                    val approvalRequired = when (val appReqVal = taskRow?.get("approval_required")) {
+                        is Boolean -> appReqVal
+                        is String -> appReqVal.toBoolean()
+                        is Number -> appReqVal.toInt() == 1
+                        else -> false
+                    }
+                    val isCreator = createdBy == personnelId
+
+                    if (isCreator) {
+                        // Force update all assignees for this task to is_completed = true
+                        val partUpdateAllReq = QueryRequest(
+                            table = "task_participants",
+                            operation = "update",
+                            filters = listOf(
+                                mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                                mapOf("type" to "eq", "col" to "participant_type", "val" to "assignee")
+                            ),
+                            data = mapOf("is_completed" to true)
+                        )
+                        ApiClient.apiService.executeQuery(partUpdateAllReq)
+
+                        // Create approval request if required
+                        if (approvalRequired) {
+                            val checkApprovalReq = QueryRequest(
+                                table = "task_approval_requests",
+                                filters = listOf(
+                                    mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                                    mapOf("type" to "eq", "col" to "request_type", "val" to "closure_approval"),
+                                    mapOf("type" to "eq", "col" to "status", "val" to "pending")
+                                )
+                            )
+                            val checkRes = ApiClient.apiService.executeQuery(checkApprovalReq)
+                            val checkRows = (checkRes.data as? List<*>) ?: emptyList<Any>()
+                            if (checkRows.isEmpty()) {
+                                val insApprovalReq = QueryRequest(
+                                    table = "task_approval_requests",
+                                    operation = "insert",
+                                    data = mapOf(
+                                        "id" to java.util.UUID.randomUUID().toString(),
+                                        "task_id" to taskId,
+                                        "request_type" to "closure_approval",
+                                        "from_personnel" to personnelId,
+                                        "to_personnel" to createdBy,
+                                        "status" to "pending",
+                                        "created_at" to java.time.Instant.now().toString()
+                                    )
+                                )
+                                ApiClient.apiService.executeQuery(insApprovalReq)
+                            }
+                        }
+
+                        // Fetch employee name
+                        val empReq = QueryRequest(
+                            table = "settings",
+                            select = "value",
+                            filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
+                        )
+                        val empRes = ApiClient.apiService.executeQuery(empReq)
+                        val empList = parseJsonList((empRes.data as? List<*>)?.firstOrNull() as? Map<*, *>) ?: emptyList()
+                        val employeeRow = empList.find { it["id"]?.toString() == personnelId }
+                        val firstName = employeeRow?.get("firstName")?.toString() ?: ""
+                        val lastName = employeeRow?.get("lastName")?.toString() ?: ""
+                        val employeeName = "$firstName $lastName".trim().ifEmpty { "Görevi veren" }
+
+                        // Mark entire task completed / pending completion approval
+                        val dataMap = mutableMapOf<String, Any?>(
+                            "status" to newStatus,
+                            "updated_at" to java.time.Instant.now().toString()
+                        )
+                        if (closureSummary != null) {
+                            dataMap["closure_summary"] = closureSummary
+                        }
+                        val req = QueryRequest(
+                            table = "tasks",
+                            operation = "update",
+                            filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId)),
+                            data = dataMap
+                        )
+                        val res = ApiClient.apiService.executeQuery(req)
+                        val isSuccess = res.error == null
+
+                        if (isSuccess) {
+                            val text = "${employeeName} (Görevi veren) görevi tamamen kapattı. Görev ${if (newStatus == "pending_completion_approval") "kapanış onayına gönderildi" else "tamamlandı"}."
+                            addSystemChatMessage(taskId, text)
+
+                            // Resolve linked maintenance ticket if necessary
+                            if (cost != null && linkedEntityTable == "maintenance_tickets" && !linkedEntityId.isNullOrBlank()) {
+                                try {
+                                    resolveMaintenanceTicket(
+                                        ticketId = linkedEntityId,
+                                        repairCost = cost,
+                                        repairCurrency = costCurrency ?: "TRY",
+                                        repairExchangeRate = costExchangeRate ?: 1.0,
+                                        notes = closureSummary ?: ""
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e("TaskRepository", "Failed to resolve linked maintenance ticket", e)
+                                }
+                            }
+                        }
+                        return@withContext isSuccess
+                    }
+
                     // 1) Update this personnel's record in task_participants to is_completed = true
                     val partUpdateReq = QueryRequest(
                         table = "task_participants",
@@ -554,7 +725,7 @@ class TaskRepository {
                     val lastName = employeeRow?.get("lastName")?.toString() ?: ""
                     val employeeName = "$firstName $lastName".trim().ifEmpty { "Bir personel" }
 
-                    if (remainingIncomplete.isNotEmpty()) {
+                    val isSuccess = if (remainingIncomplete.isNotEmpty()) {
                         // Not all completed! Just add a system message and update task's updated_at
                         val text = "${employeeName} görevini tamamladı. Özet: ${closureSummary ?: "Özet girilmedi"}"
                         addSystemChatMessage(taskId, text)
@@ -586,12 +757,31 @@ class TaskRepository {
                             data = dataMap
                         )
                         val res = ApiClient.apiService.executeQuery(req)
-                        if (res.error == null) {
+                        res.error == null
+                    }
+
+                    if (isSuccess) {
+                        if (remainingIncomplete.isEmpty()) {
                             val text = "${employeeName} görevini tamamladı. Tüm atananlar görevlerini tamamladığı için görev ${if (newStatus == "pending_completion_approval") "kapanış onayına gönderildi" else "tamamlandı"}."
                             addSystemChatMessage(taskId, text)
-                            true
-                        } else false
+                        }
+
+                        // Write cost if linked to maintenance ticket
+                        if (cost != null && linkedEntityTable == "maintenance_tickets" && !linkedEntityId.isNullOrBlank()) {
+                            try {
+                                resolveMaintenanceTicket(
+                                    ticketId = linkedEntityId,
+                                    repairCost = cost,
+                                    repairCurrency = costCurrency ?: "TRY",
+                                    repairExchangeRate = costExchangeRate ?: 1.0,
+                                    notes = closureSummary ?: ""
+                                )
+                            } catch (e: Exception) {
+                                Log.e("TaskRepository", "Failed to resolve linked maintenance ticket", e)
+                            }
+                        }
                     }
+                    isSuccess
                 } else {
                     // Regular status change (like "started" / "in_progress")
                     val dataMap = mutableMapOf<String, Any?>(

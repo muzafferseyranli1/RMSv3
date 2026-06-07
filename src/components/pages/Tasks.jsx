@@ -631,6 +631,11 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
     return (selectedTask.participants || []).some(p => String(p.personnel_id) === String(actor.id) && p.participant_type === 'watcher')
   }, [selectedTask, actor])
 
+  const isCreator = useMemo(() => {
+    if (!selectedTask || !actor) return false
+    return String(selectedTask.created_by_personnel_id) === String(actor.id)
+  }, [selectedTask, actor])
+
   const canRejectCreator = useMemo(() => {
     if (!selectedTask || !actor || selectedTask.form_template_id) return false
     return canReject(selectedTask.created_by_position_id, actor.positionId, positionRecords)
@@ -1549,6 +1554,7 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
         onClose={() => setSelectedTask(null)}
         isAssignee={isAssignee}
         isWatcher={isWatcher}
+        isCreator={isCreator}
         canRejectCreator={canRejectCreator}
         onChangeDates={({ dueAt, startAt }) => runTaskAction(() => changeDueDate(selectedTask.id, actor.id, { dueAt, startAt }))}
         onStart={() => runTaskAction(() => acceptTask(selectedTask.id, actor.id))}

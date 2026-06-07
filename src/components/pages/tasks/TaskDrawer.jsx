@@ -28,6 +28,7 @@ export default function TaskDrawer({
   onSendMessage,
   isAssignee,
   isWatcher,
+  isCreator,
   canRejectCreator,
   onChangeDates,
 }) {
@@ -84,16 +85,23 @@ export default function TaskDrawer({
             {task.status === 'open' && isAssignee && !isWatcher && (
               <button type="button" className="btn-p" onClick={onStart}>Goreve Basla</button>
             )}
-            {task.status === 'in_progress' && !isWatcher && (
+            {['open', 'in_progress'].includes(task.status) && !isWatcher && (
               <>
-                {isAssignee && canRejectCreator && (
+                {task.status === 'in_progress' && isAssignee && canRejectCreator && (
                   <button type="button" className="btn-o" onClick={onOpenSendBack}>Geri Gonder</button>
                 )}
-                {task.delegation_allowed && isAssignee && (
+                {task.status === 'in_progress' && task.delegation_allowed && isAssignee && (
                   <button type="button" className="btn-o" onClick={onOpenDelegate}>Delege Et</button>
                 )}
-                {isAssignee && (
-                  <button type="button" className="btn-p" onClick={onOpenClosure}>Tamamla</button>
+                {(isAssignee || isCreator) && (
+                  <button 
+                    type="button" 
+                    className="btn-p" 
+                    onClick={onOpenClosure}
+                    style={{ background: isCreator && !isAssignee ? '#b91c1c' : undefined, borderColor: isCreator && !isAssignee ? '#b91c1c' : undefined }}
+                  >
+                    {isCreator && !isAssignee ? 'Görevi Kapat (Tümü İçin)' : 'Tamamla'}
+                  </button>
                 )}
               </>
             )}
@@ -190,21 +198,35 @@ export default function TaskDrawer({
 
             <section className="card" style={{ padding: 16 }}>
               <div style={{ fontSize: '.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Katilimcilar</div>
-              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+              <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: '.74rem', fontWeight: 700, color: '#0f172a' }}>Atananlar</div>
-                  <div style={{ marginTop: 4, fontSize: '.8rem', color: '#475569' }}>
+                  <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {assignees.length ? assignees.map((item, idx) => {
                       const person = peopleById.get(String(item.personnel_id))
                       const fullName = [person?.firstName, person?.lastName].filter(Boolean).join(' ') || person?.username || 'Personel'
                       return (
-                        <span key={item.id || idx}>
+                        <span 
+                          key={item.id || idx} 
+                          style={{ 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: 6, 
+                            padding: '4px 10px', 
+                            borderRadius: 8, 
+                            fontSize: '.76rem', 
+                            fontWeight: 600,
+                            background: item.is_completed ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)', 
+                            color: item.is_completed ? '#16a34a' : '#d97706',
+                            border: `1px solid ${item.is_completed ? 'rgba(22,163,74,0.2)' : 'rgba(217,119,6,0.2)'}`
+                          }}
+                        >
+                          <i className={`fa-solid ${item.is_completed ? 'fa-circle-check' : 'fa-circle-dot'}`} style={{ fontSize: '.7rem' }} />
                           {fullName}
-                          {item.is_completed && <span style={{ color: '#16a34a', marginLeft: 4, fontWeight: 'bold' }} title="Tamamladı">✓</span>}
-                          {idx < assignees.length - 1 ? ', ' : ''}
+                          {item.is_completed ? ' (Tamamladı)' : ' (Devam Ediyor)'}
                         </span>
                       )
-                    }) : 'Atanan yok'}
+                    }) : <span style={{ fontSize: '.8rem', color: '#94a3b8' }}>Atanan yok</span>}
                   </div>
                 </div>
                 <div>

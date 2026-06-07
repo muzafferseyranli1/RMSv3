@@ -6,6 +6,11 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import com.google.gson.Gson
 
+import retrofit2.http.GET
+import retrofit2.http.PATCH
+import retrofit2.http.Path
+import retrofit2.http.Query
+
 data class QueryRequest(
     val table: String,
     val operation: String = "select",
@@ -22,7 +27,20 @@ data class QueryResponse(
 interface ApiService {
     @POST("api/query")
     suspend fun executeQuery(@Body request: QueryRequest): QueryResponse
+
+    @GET("api/exchange-rate")
+    suspend fun getExchangeRate(
+        @Query("currency") currency: String,
+        @Query("date") date: String?
+    ): QueryResponse
+
+    @PATCH("api/maintenance-tickets/{id}/resolve")
+    suspend fun resolveMaintenanceTicket(
+        @Path("id") id: String,
+        @Body requestBody: Map<String, @kotlin.jvm.JvmSuppressWildcards Any?>
+    ): QueryResponse
 }
+
 
 object ApiClient {
     const val BASE_URL = "https://rms-api-production-219d.up.railway.app/"

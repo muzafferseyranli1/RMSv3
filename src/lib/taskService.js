@@ -712,6 +712,55 @@ export async function completeTask(taskId, personnelId, closure) {
     if (attachmentInsert.error) return attachmentInsert
   }
 
+  const context = await loadTaskContext()
+  const employee = context.employeesById.get(String(personnelId))
+  const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : 'Bir personel'
+
+  const isCreator = String(task.created_by_personnel_id) === String(personnelId)
+
+  if (isCreator) {
+    // Force completion for all assignees
+    await db.from('task_participants')
+      .update({ is_completed: true })
+      .eq('task_id', taskId)
+      .eq('participant_type', 'assignee')
+
+    // Mark task completed / pending completion approval
+    if (task.approval_required) {
+      const existingReq = await db.from('task_approval_requests')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('request_type', 'closure_approval')
+        .eq('status', 'pending')
+        .maybeSingle()
+      
+      if (!existingReq.data) {
+        await db.from('task_approval_requests').insert({
+          task_id: taskId,
+          request_type: 'closure_approval',
+          from_personnel: personnelId,
+          to_personnel: task.created_by_personnel_id,
+        })
+      }
+    }
+
+    const status = task.approval_required ? TASK_STATUS.pendingCompletionApproval : TASK_STATUS.completed
+    const update = await db.from('tasks').update({
+      status,
+      closure_summary: closureSummary || null,
+      updated_at: nowIso(),
+    }).eq('id', taskId).select().maybeSingle()
+
+    if (!update.error) {
+      await appendSystemNote(taskId, task.approval_required ? 'pending_completion_approval' : 'completed', personnelId, {
+        body: `${employeeName} (Görevi veren) görevi tamamen kapattı. Görev ${task.approval_required ? 'kapanış onayına gönderildi' : 'tamamlandı'}.`,
+        closure_summary: closureSummary || null,
+      })
+      triggerStatusChangeNotification(taskId, status, personnelId).catch(() => {})
+    }
+    return update
+  }
+
   // Update individual assignee participant status
   const participantUpdate = await db.from('task_participants')
     .update({ is_completed: true })
@@ -726,10 +775,6 @@ export async function completeTask(taskId, personnelId, closure) {
     const isSelf = String(item.personnel_id) === String(personnelId)
     return isSelf ? false : !item.is_completed
   })
-
-  const context = await loadTaskContext()
-  const employee = context.employeesById.get(String(personnelId))
-  const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : 'Bir personel'
 
   if (remainingIncomplete.length > 0) {
     // There are still other incomplete assignees. Do not mark task completed overall.

@@ -241,6 +241,7 @@ export default function FormSubmissions() {
   const [metaFormDate, setMetaFormDate] = useState('')
   const [metaStartTime, setMetaStartTime] = useState('')
   const [metaEndTime, setMetaEndTime] = useState('')
+  const [autoDateTime, setAutoDateTime] = useState(true)
 
   useEffect(() => {
     async function loadEmployeesAndPositions() {
@@ -627,12 +628,25 @@ export default function FormSubmissions() {
     setLinkedEntityId(queryLinkedEntityId || '')
 
     // Initialize metadata states
-    const activeBranch = branchId || (branches && branches[0]?.id) || ''
+    const allowedContexts = template.allowed_contexts || ['center', 'branch', 'warehouse']
+    const isBranchAllowed = allowedContexts.includes('branch')
+    
+    const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+    const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+    
+    let activeBranch = ''
+    if (isBranchAllowed && activeUser?.defaultBranchId) {
+      activeBranch = activeUser.defaultBranchId
+    } else {
+      activeBranch = branchId || (branches && branches[0]?.id) || ''
+    }
+
     setMetaBranchId(activeBranch)
     setMetaAuthorizedId('')
     setMetaSendToAuthorized(false)
     setMetaShiftOfficerId('')
     setMetaSendToShiftOfficer(false)
+    setAutoDateTime(true)
     
     const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
     setMetaFormDate(todayStr)
@@ -646,16 +660,27 @@ export default function FormSubmissions() {
     const endTimeStr = `${pad(later.getHours())}:${pad(later.getMinutes())}`
     setMetaEndTime(endTimeStr)
 
-    const branchManagers = employees.filter(emp => 
-      !emp.deletedAt && 
-      Array.isArray(emp.managedBranchIds) && 
-      emp.managedBranchIds.includes(activeBranch)
-    )
-    setMetaResponsibles(branchManagers.map(m => ({
-      id: m.id,
-      name: `${m.firstName} ${m.lastName}`.trim(),
-      sendResult: true
-    })))
+    if (activeBranch) {
+      const branchManagers = employees.filter(emp => 
+        !emp.deletedAt && 
+        Array.isArray(emp.managedBranchIds) && 
+        emp.managedBranchIds.map(String).includes(String(activeBranch))
+      )
+      setMetaResponsibles(branchManagers.map(m => ({
+        id: m.id,
+        name: `${m.firstName} ${m.lastName}`.trim(),
+        sendResult: true
+      })))
+      
+      // Auto-select "Denetim Sırasındaki Yetkili" if activeUser is a manager of this branch
+      const isManager = branchManagers.some(m => String(m.id) === String(activeUser?.id))
+      if (isManager) {
+        setMetaAuthorizedId(activeUser.id)
+        setMetaSendToAuthorized(true)
+      }
+    } else {
+      setMetaResponsibles([])
+    }
   }
 
   useEffect(() => {
@@ -716,7 +741,7 @@ export default function FormSubmissions() {
     const branchManagers = employees.filter(emp => 
       !emp.deletedAt && 
       Array.isArray(emp.managedBranchIds) && 
-      emp.managedBranchIds.includes(newBranchId)
+      emp.managedBranchIds.map(String).includes(String(newBranchId))
     )
     setMetaResponsibles(branchManagers.map(m => ({
       id: m.id,
@@ -729,24 +754,53 @@ export default function FormSubmissions() {
     const template = getTemplate(fillTemplateId)
     if (!template) return
 
-
-
-    const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
-
     // Get inspector name from pin session
     const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
     const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
     const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
 
-    const submitBranchId = template.form_type === 'inspection' && metaBranchId ? metaBranchId : branchId
+    // Validation
+    if (template.form_type === 'inspection' && !metaBranchId) {
+      return toast('Lütfen denetim noktasını (şubeyi) seçin', 'warning')
+    }
+    if (template.form_type === 'checklist' && (scope === 'center' || scope === 'admin') && template.schema_json?.require_branch_selection && !metaBranchId) {
+      return toast('Lütfen şubeyi seçin', 'warning')
+    }
+
+    let submitBranchId = branchId
+    if (template.form_type === 'inspection') {
+      submitBranchId = metaBranchId || branchId
+    } else if (template.form_type === 'checklist') {
+      if (scope === 'center' || scope === 'admin') {
+        if (template.schema_json?.require_branch_selection) {
+          submitBranchId = metaBranchId
+        } else {
+          submitBranchId = null
+        }
+      } else {
+        submitBranchId = branchId || activeUser?.defaultBranchId || null
+      }
+    }
+
+    const completionTimeSeconds = formStartTime ? Math.round((Date.now() - formStartTime) / 1000) : null
+
+    // Auto date/time calculation on submit
+    let finalFormDate = metaFormDate
+    let finalEndTime = metaEndTime
+    if (autoDateTime) {
+      finalFormDate = new Date().toLocaleDateString('en-CA')
+      const now = new Date()
+      const pad = (n) => String(n).padStart(2, '0')
+      finalEndTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+    }
 
     // Form-specific metadata
     const metadata = {
       creator_name: inspectorName,
       branch_name: branches.find(b => b.id === submitBranchId)?.name || '',
-      form_date: metaFormDate,
+      form_date: finalFormDate,
       start_time: metaStartTime,
-      end_time: metaEndTime,
+      end_time: finalEndTime,
       ...(template.form_type === 'inspection' ? {
         inspector_name: inspectorName,
         branch_id: metaBranchId,
@@ -1408,6 +1462,31 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
             <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#06b6d4', marginBottom: 14 }}>
               <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Denetim Formu Bilgileri
             </div>
+
+            {/* Otomatik Sistem Tarih Saat Checkbox */}
+            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoDateTime}
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setAutoDateTime(checked)
+                    if (checked) {
+                      const todayStr = new Date().toLocaleDateString('en-CA')
+                      setMetaFormDate(todayStr)
+                      const now = new Date()
+                      const pad = (n) => String(n).padStart(2, '0')
+                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
+                      const later = new Date(now.getTime() + 15 * 60 * 1000)
+                      setMetaEndTime(`${pad(later.getHours())}:${pad(later.getMinutes())}`)
+                    }
+                  }}
+                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
+                />
+                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
+              </label>
+            </div>
             
             <div className="form-info-grid">
               {/* Denetimi Yapan */}
@@ -1428,9 +1507,9 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                 />
               </div>
 
-              {/* Şube Seçimi */}
+              {/* Denetim Noktası (Şube) */}
               <div>
-                <label className="f-label">Hangi Şube</label>
+                <label className="f-label">Denetim Noktası</label>
                 <div className="sel-wrap">
                   <select
                     value={metaBranchId}
@@ -1453,6 +1532,8 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   className="f-input"
                   value={metaFormDate}
                   onChange={e => setMetaFormDate(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
                 />
               </div>
 
@@ -1465,6 +1546,8 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     className="f-input"
                     value={metaStartTime}
                     onChange={e => setMetaStartTime(e.target.value)}
+                    disabled={autoDateTime}
+                    style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
                   />
                 </div>
                 <div>
@@ -1474,15 +1557,17 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     className="f-input"
                     value={metaEndTime}
                     onChange={e => setMetaEndTime(e.target.value)}
+                    disabled={autoDateTime}
+                    style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
                   />
                 </div>
               </div>
             </div>
 
             <div className="form-info-grid" style={{ marginBottom: 0, gridTemplateColumns: '1fr' }}>
-              {/* Şube Yetkilisi */}
+              {/* Denetim Sırasındaki Yetkili */}
               <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 10, background: 'var(--surface-2)' }}>
-                <label className="f-label" style={{ fontWeight: 700 }}>Şube Yetkilisi</label>
+                <label className="f-label" style={{ fontWeight: 700 }}>Denetim Sırasındaki Yetkili</label>
                 <div className="sel-wrap" style={{ marginBottom: 8 }}>
                   <select
                     value={metaShiftOfficerId}
@@ -1506,6 +1591,127 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     onChange={e => setMetaSendToShiftOfficer(e.target.checked)}
                   />
                   <label htmlFor="send-to-shift" style={{ fontSize: '.76rem', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Sonucu Gönder</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {template.form_type === 'checklist' && (
+          <div className="card" style={{ padding: 18, marginBottom: 16, borderLeft: '4px solid #8b5cf6', background: 'var(--surface)' }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6', marginBottom: 14 }}>
+              <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Checklist Bilgileri
+            </div>
+
+            {/* Otomatik Sistem Tarih Saat Checkbox */}
+            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoDateTime}
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setAutoDateTime(checked)
+                    if (checked) {
+                      const todayStr = new Date().toLocaleDateString('en-CA')
+                      setMetaFormDate(todayStr)
+                      const now = new Date()
+                      const pad = (n) => String(n).padStart(2, '0')
+                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
+                      const later = new Date(now.getTime() + 15 * 60 * 1000)
+                      setMetaEndTime(`${pad(later.getHours())}:${pad(later.getMinutes())}`)
+                    }
+                  }}
+                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
+                />
+                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
+              </label>
+            </div>
+
+            <div className="form-info-grid">
+              {/* Formu Dolduran */}
+              <div>
+                <label className="f-label">Formu Dolduran</label>
+                <input
+                  type="text"
+                  className="f-input"
+                  value={
+                    (() => {
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                      const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+                      return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
+                    })()
+                  }
+                  disabled
+                  style={{ background: 'var(--surface-2)' }}
+                />
+              </div>
+
+              {/* Şube Seçimi (Koşullu) */}
+              {((scope === 'center' || scope === 'admin') ? template.schema_json?.require_branch_selection : true) && (
+                <div>
+                  <label className="f-label">Denetim Noktası (Şube)</label>
+                  {(scope === 'center' || scope === 'admin') ? (
+                    <div className="sel-wrap">
+                      <select
+                        value={metaBranchId}
+                        onChange={e => handleMetaBranchChange(e.target.value)}
+                        className="f-input"
+                      >
+                        <option value="">Şube Seçiniz</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      className="f-input"
+                      value={branches.find(b => b.id === metaBranchId)?.name || branchName || 'Şubem'}
+                      disabled
+                      style={{ background: 'var(--surface-2)' }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Tarih */}
+              <div>
+                <label className="f-label">Tarih</label>
+                <input
+                  type="date"
+                  className="f-input"
+                  value={metaFormDate}
+                  onChange={e => setMetaFormDate(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                />
+              </div>
+
+              {/* Saatler */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label className="f-label">Başlangıç Saati</label>
+                  <input
+                    type="time"
+                    className="f-input"
+                    value={metaStartTime}
+                    onChange={e => setMetaStartTime(e.target.value)}
+                    disabled={autoDateTime}
+                    style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Bitiş Saati</label>
+                  <input
+                    type="time"
+                    className="f-input"
+                    value={metaEndTime}
+                    onChange={e => setMetaEndTime(e.target.value)}
+                    disabled={autoDateTime}
+                    style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                  />
                 </div>
               </div>
             </div>
@@ -2425,10 +2631,10 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                         {[
                           { icon: 'fa-user-shield', label: 'Denetleyen', value: selectedSub.metadata.inspector_name, color: '#8b5cf6' },
-                          { icon: 'fa-building', label: 'Şube', value: selectedSub.metadata.branch_name || '—', color: '#22d3ee' },
+                          { icon: 'fa-building', label: 'Denetim Noktası', value: selectedSub.metadata.branch_name || '—', color: '#22d3ee' },
                           { 
                             icon: 'fa-user-tie', 
-                            label: 'Şube Yetkilisi', 
+                            label: 'Denetim Sırasındaki Yetkili', 
                             value: selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name || '—', 
                             color: '#10b981', 
                             extra: (selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name) 
@@ -2926,7 +3132,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
             <tbody>
               <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Şube:</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Denetim Noktası:</td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.branch_name || '—'}</td>
                 <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Denetleyen:</td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.inspector_name || submission.submitted_by}</td>
@@ -2943,7 +3149,7 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                 </td>
               </tr>
               <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Şube Yetkilisi:</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Denetim Sırasındaki Yetkili:</td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>
                   {submission.metadata?.branch_authorized_name || '—'}
                   {submission.metadata?.branch_authorized_name && (
@@ -3215,8 +3421,8 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
             </div>
             
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>ŞUBE YETKİLİSİ</div>
-              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.shift_officer_name || submission.metadata?.branch_authorized_name || 'Şube Yetkilisi'}</div>
+              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>DENETİM SIRASINDAKİ YETKİLİ</div>
+              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.shift_officer_name || submission.metadata?.branch_authorized_name || 'Denetim Sırasındaki Yetkili'}</div>
               <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
               <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
             </div>
