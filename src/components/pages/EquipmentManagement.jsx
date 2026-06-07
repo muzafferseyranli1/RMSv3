@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { db } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -200,11 +200,18 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
     legacy_accumulated_depreciation: instance?.legacy_accumulated_depreciation || '0',
     warranty_end_date: instance?.warranty_end_date ? instance.warranty_end_date.split('T')[0] : '',
     notes: instance?.notes || '',
+    quantity: '1',
+    image_url: instance?.image_url || '',
+    file_url: instance?.file_url || '',
+    external_url: instance?.external_url || '',
+    qr_code: instance?.qr_code || '',
   })
   const [branches, setBranches] = useState([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [exchangeLoading, setExchangeLoading] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
 
   useEffect(() => {
     db.from('branches').select('id,name').order('name')
@@ -226,6 +233,38 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await uploadApiFile(formData)
+      setForm(f => ({ ...f, image_url: buildApiUrl(res.file_url) }))
+    } catch (err) {
+      alert('Resim yüklenemedi: ' + err.message)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingFile(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await uploadApiFile(formData)
+      setForm(f => ({ ...f, file_url: buildApiUrl(res.file_url) }))
+    } catch (err) {
+      alert('Dosya yüklenemedi: ' + err.message)
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!form.definition_id || !form.current_location_id) {
       setErr('Ekipman kategorisi ve konum zorunludur'); return
@@ -237,6 +276,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
         purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
         purchase_exchange_rate: parseFloat(form.purchase_exchange_rate) || 1,
         legacy_accumulated_depreciation: parseFloat(form.legacy_accumulated_depreciation) || 0,
+        quantity: parseInt(form.quantity) || 1,
       }
       const url = instance ? `${API}/api/equipment/instances/${instance.id}` : `${API}/api/equipment/instances`
       const r = await fetch(url, {
@@ -251,91 +291,249 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
     finally { setSaving(false) }
   }
 
+  const getWarrantyInfo = (endDateStr) => {
+    if (!endDateStr) return { note: '', active: false }
+    const endDate = new Date(endDateStr)
+    if (isNaN(endDate.getTime())) return { note: '', active: false }
+    const today = new Date()
+    today.setHours(0,0,0,0)
+    endDate.setHours(0,0,0,0)
+    const diffTime = endDate.getTime() - today.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    if (diffDays < 0) {
+      const absDays = Math.abs(diffDays)
+      if (absDays >= 30) {
+        const months = Math.floor(absDays / 30)
+        return { note: `⚠️ Garanti süresi ${months} ay önce doldu`, active: false }
+      }
+      return { note: `⚠️ Garanti süresi ${absDays} gün önce doldu`, active: false }
+    } else {
+      if (diffDays >= 30) {
+        const months = Math.floor(diffDays / 30)
+        const days = diffDays % 30
+        return { note: `✅ Kalan Garanti: ${months} ay ${days} gün`, active: true }
+      }
+      return { note: `✅ Kalan Garanti: ${diffDays} gün`, active: true }
+    }
+  }
+
+  const warrantyInfo = getWarrantyInfo(form.warranty_end_date)
+
   const CURRENCIES = ['TRY', 'USD', 'EUR', 'GBP']
   const inputStyle = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--input-bg,#f8fafc)', fontSize: '.85rem' }
   const labelStyle = { fontSize: '.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: 3 }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0006', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: 24 }}>
-      <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 600, maxWidth: '95vw', boxShadow: '0 20px 60px #0002' }}>
+      <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 760, maxWidth: '95vw', boxShadow: '0 20px 60px #0002' }}>
         <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 20 }}>
           {instance ? 'Ekipman Düzenle' : 'Yeni Ekipman Ekle'}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div style={{ gridColumn: '1/-1' }}>
-            <label style={labelStyle}>Ekipman Kategorisi *</label>
-            <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle}>
-              <option value="">Seçin</option>
-              {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label style={labelStyle}>Konum (Şube) *</label>
-            <select value={form.current_location_id} onChange={set('current_location_id')} style={inputStyle}>
-              <option value="">Şube Seçin</option>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Seri Numarası</label>
-            <input value={form.serial_number} onChange={set('serial_number')} style={inputStyle} placeholder="SN-..." />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Durum</label>
-            <select value={form.status} onChange={set('status')} style={inputStyle}>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Garanti Bitiş</label>
-            <input type="date" value={form.warranty_end_date} onChange={set('warranty_end_date')} style={inputStyle} />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Kurulum Tarihi</label>
-            <input type="date" value={form.installed_at} onChange={set('installed_at')} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Alım Tarihi</label>
-            <input type="date" value={form.purchase_date} onChange={e => { setForm(f => ({ ...f, purchase_date: e.target.value })) }} style={inputStyle} />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Alım Bedeli</label>
-            <input type="number" value={form.purchase_price} onChange={set('purchase_price')} style={inputStyle} placeholder="0.00" />
-          </div>
-          <div>
-            <label style={labelStyle}>Döviz Cinsi</label>
-            <select value={form.currency} onChange={set('currency')} style={inputStyle}>
-              {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-          <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Alım Kuru (TRY karşılığı)</label>
-              <input type="number" value={form.purchase_exchange_rate} onChange={set('purchase_exchange_rate')} style={inputStyle} step="0.0001" />
+        <div style={{ display: 'flex', gap: 20 }}>
+          {/* Sol Kolon - Genel Tanımlar & Finans */}
+          <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Ekipman Kategorisi *</label>
+              <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle} disabled={!!instance}>
+                <option value="">Seçin</option>
+                {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
             </div>
-            <button onClick={fetchRate} disabled={exchangeLoading} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--card-bg,#fff)', cursor: 'pointer', fontSize: '.78rem', whiteSpace: 'nowrap' }}>
-              {exchangeLoading ? '…' : '🔄 TCMB Kur Al'}
-            </button>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Konum (Şube) *</label>
+                <select value={form.current_location_id} onChange={set('current_location_id')} style={inputStyle}>
+                  <option value="">Şube Seçin</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Seri Numarası</label>
+                <input value={form.serial_number} onChange={set('serial_number')} style={inputStyle} placeholder="SN-..." />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Durum</label>
+                <select value={form.status} onChange={set('status')} style={inputStyle}>
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Kaç Adet Ekipman?</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  value={form.quantity} 
+                  onChange={set('quantity')} 
+                  style={inputStyle} 
+                  disabled={!!instance} 
+                  placeholder="Örn: 25"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Alım Tarihi</label>
+                <input type="date" value={form.purchase_date} onChange={e => { setForm(f => ({ ...f, purchase_date: e.target.value })) }} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Alım Bedeli</label>
+                <input type="number" value={form.purchase_price} onChange={set('purchase_price')} style={inputStyle} placeholder="0.00" />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Döviz Cinsi</label>
+                <select value={form.currency} onChange={set('currency')} style={inputStyle}>
+                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Alım Kuru</label>
+                  <input type="number" value={form.purchase_exchange_rate} onChange={set('purchase_exchange_rate')} style={inputStyle} step="0.0001" />
+                </div>
+                <button onClick={fetchRate} disabled={exchangeLoading} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--card-bg,#fff)', cursor: 'pointer', fontSize: '.78rem', whiteSpace: 'nowrap' }}>
+                  {exchangeLoading ? '…' : '🔄 Kur Al'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Devreden Amortisman</label>
+              <input type="number" value={form.legacy_accumulated_depreciation} onChange={set('legacy_accumulated_depreciation')} style={inputStyle} placeholder="0" />
+            </div>
+
+            {/* Uploadlar ve Bağlantı */}
+            <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Görsel Yükleme */}
+              <div>
+                <label style={labelStyle}>Ekipman Resmi</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {form.image_url && (
+                    <img src={form.image_url} alt="Thumbnail" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                  )}
+                  <label style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px dashed #cbd5e1', background: '#f8fafc', cursor: 'pointer', textAlign: 'center', fontSize: '.78rem', color: '#475569' }}>
+                    {uploadingImage ? 'Yükleniyor…' : (form.image_url ? 'Resmi Değiştir' : 'Resim Yükle')}
+                    <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Kullanım Kılavuzu Yükleme */}
+              <div>
+                <label style={labelStyle}>Kullanım Kılavuzu / Dosya</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {form.file_url && (
+                    <span style={{ fontSize: '.78rem', color: '#6366f1', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                      📎 Yüklendi
+                    </span>
+                  )}
+                  <label style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px dashed #cbd5e1', background: '#f8fafc', cursor: 'pointer', textAlign: 'center', fontSize: '.78rem', color: '#475569' }}>
+                    {uploadingFile ? 'Yükleniyor…' : (form.file_url ? 'Dosyayı Değiştir' : 'Dosya Yükle')}
+                    <input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Web sayfası/Video URL */}
+              <div>
+                <label style={labelStyle}>Dış Bağlantı / Bakım Video Linki</label>
+                <input value={form.external_url} onChange={set('external_url')} style={inputStyle} placeholder="https://..." />
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Notlar</label>
+              <input value={form.notes} onChange={set('notes')} style={inputStyle} />
+            </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>Devreden Amortisman</label>
-            <input type="number" value={form.legacy_accumulated_depreciation} onChange={set('legacy_accumulated_depreciation')} style={inputStyle} placeholder="0" />
-          </div>
-          <div>
-            <label style={labelStyle}>Notlar</label>
-            <input value={form.notes} onChange={set('notes')} style={inputStyle} />
+          {/* Sağ Kolon - Kurulum & Garanti Box ve QR */}
+          <div style={{ flex: 0.8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{
+              border: '1px solid var(--border-color,#e2e8f0)',
+              borderRadius: 12,
+              padding: 16,
+              background: 'var(--input-bg,#f8fafc)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#475569', borderBottom: '1px solid var(--border-color,#e2e8f0)', paddingBottom: 6, marginBottom: 4 }}>
+                📅 Kurulum & Garanti
+              </div>
+              <div>
+                <label style={labelStyle}>Kurulum Tarihi</label>
+                <input type="date" value={form.installed_at} onChange={set('installed_at')} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Garanti Bitiş Tarihi</label>
+                <input type="date" value={form.warranty_end_date} onChange={set('warranty_end_date')} style={inputStyle} />
+              </div>
+              {/* Garanti hesaplama notu */}
+              {warrantyInfo.note && (
+                <div style={{
+                  fontSize: '.75rem',
+                  fontWeight: 600,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  background: warrantyInfo.active ? '#dcfce7' : '#fee2e2',
+                  color: warrantyInfo.active ? '#16a34a' : '#dc2626',
+                  marginTop: 4
+                }}>
+                  {warrantyInfo.note}
+                </div>
+              )}
+            </div>
+
+            {/* QR Kod Görsel */}
+            <div style={{
+              border: '1px solid var(--border-color,#e2e8f0)',
+              borderRadius: 12,
+              padding: 16,
+              background: 'var(--input-bg,#f8fafc)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              textAlign: 'center'
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#475569', borderBottom: '1px solid var(--border-color,#e2e8f0)', width: '100%', paddingBottom: 6, marginBottom: 4 }}>
+                🏷️ Ekipman QR Kodu
+              </div>
+              {form.qr_code ? (
+                <>
+                  <div style={{ background: '#fff', padding: 8, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(form.qr_code)}`} 
+                      alt="QR Code" 
+                      style={{ width: 120, height: 120, display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '.72rem', fontFamily: 'monospace', color: '#64748b' }}>
+                    {form.qr_code}
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '20px 10px', color: '#94a3b8', fontSize: '.78rem' }}>
+                  <i className="fa-solid fa-qrcode" style={{ fontSize: '2rem', marginBottom: 8, display: 'block', color: '#cbd5e1' }} />
+                  Kaydedildiğinde benzersiz QR kod otomatik üretilecektir.
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {err && <div style={{ color: '#ef4444', fontSize: '.8rem', marginBottom: 12 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        {err && <div style={{ color: '#ef4444', fontSize: '.8rem', marginTop: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer' }}>İptal</button>
           <button onClick={handleSubmit} disabled={saving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--primary,#6366f1)', color: '#fff', fontWeight: 700, cursor: saving ? 'wait' : 'pointer' }}>
             {saving ? 'Kaydediliyor…' : (instance ? 'Güncelle' : 'Ekle')}
@@ -440,6 +638,7 @@ export default function EquipmentManagement() {
   const [statusFilter, setStatusFilter] = useState('')
   const [csvImporting, setCsvImporting] = useState(false)
   const [csvResult, setCsvResult] = useState(null)
+  const [qrTarget, setQrTarget] = useState(null)
   const fileRef = useRef()
 
   const load = async () => {
@@ -580,8 +779,25 @@ export default function EquipmentManagement() {
                     return (
                       <tr key={inst.id} style={{ borderBottom: '1px solid var(--border-color,#e2e8f0)', background: idx % 2 === 0 ? 'transparent' : 'var(--table-stripe,#fafafa)' }}>
                         <td style={{ padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-1,#1e293b)', fontSize: '.88rem' }}>{inst.definition_name}</div>
-                          {inst.purpose && <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{inst.purpose}</div>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {inst.image_url ? (
+                              <img src={inst.image_url} alt="Equipment" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                            ) : (
+                              <div style={{ width: 36, height: 36, borderRadius: 6, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', fontSize: '.88rem' }}>🔧</div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 700, color: 'var(--text-1,#1e293b)', fontSize: '.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {inst.definition_name}
+                                {inst.file_url && (
+                                  <a href={inst.file_url} target="_blank" rel="noreferrer" title="Kullanım Kılavuzu" style={{ textDecoration: 'none', fontSize: '.9rem' }}>📎</a>
+                                )}
+                                {inst.external_url && (
+                                  <a href={inst.external_url} target="_blank" rel="noreferrer" title="Bağlantı Linki" style={{ textDecoration: 'none', fontSize: '.9rem' }}>🔗</a>
+                                )}
+                              </div>
+                              {inst.purpose && <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{inst.purpose}</div>}
+                            </div>
+                          </div>
                         </td>
                         <td style={{ padding: '10px 14px', fontSize: '.82rem', color: '#475569' }}>{inst.serial_number || '—'}</td>
                         <td style={{ padding: '10px 14px', fontSize: '.82rem', color: '#475569' }}>{inst.current_location_id}</td>
@@ -598,6 +814,7 @@ export default function EquipmentManagement() {
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => setQrTarget(inst)} title="QR Kod Görüntüle / Yazdır" style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: '.78rem' }}>🏷️</button>
                             <button onClick={() => setTcoInstance(inst)} title="TCO / Amortisman" style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: '.78rem' }}>📊</button>
                             <button onClick={() => setTransferTarget(inst)} title="Transfer" style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: '.78rem' }}>🔄</button>
                             <button onClick={() => { setEditInstance(inst); setShowInstanceForm(true) }} title="Düzenle" style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-color,#e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: '.78rem' }}>✏️</button>
@@ -709,6 +926,73 @@ export default function EquipmentManagement() {
       )}
       {showDefForm && (
         <DefinitionFormModal def={editDef} onClose={() => { setShowDefForm(false); setEditDef(null) }} onSuccess={() => { setShowDefForm(false); setEditDef(null); load() }} />
+      )}
+      {qrTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0006', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 340, textAlign: 'center', boxShadow: '0 20px 60px #0002' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ fontWeight: 800, fontSize: '1rem' }}>Ekipman QR Kodu</span>
+              <button onClick={() => setQrTarget(null)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: 6 }}>{qrTarget.definition_name}</div>
+            <div style={{ fontSize: '.75rem', color: '#64748b', marginBottom: 16 }}>Seri No: {qrTarget.serial_number || 'Yok'}</div>
+            {qrTarget.qr_code ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: '#fff', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrTarget.qr_code)}`} 
+                    alt="QR Code" 
+                    style={{ width: 180, height: 180 }}
+                  />
+                </div>
+                <div style={{ fontSize: '.78rem', fontFamily: 'monospace', color: '#475569', background: '#f1f5f9', padding: '4px 10px', borderRadius: 6 }}>
+                  {qrTarget.qr_code}
+                </div>
+                <button 
+                  onClick={() => {
+                    const win = window.open('', '_blank');
+                    win.document.write(`
+                      <html>
+                        <head>
+                          <title>QR Print - ${qrTarget.definition_name}</title>
+                          <style>
+                            body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
+                            .card { border: 2px solid #000; padding: 20px; border-radius: 15px; text-align: center; }
+                            h2 { margin: 10px 0 5px; }
+                            p { margin: 0 0 15px; color: #555; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="card">
+                            <h2>${qrTarget.definition_name}</h2>
+                            <p>SN: ${qrTarget.serial_number || '—'}</p>
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrTarget.qr_code)}" />
+                          </div>
+                          <script>window.onload = function() { window.print(); }</script>
+                        </body>
+                      </html>
+                    `);
+                  }}
+                  style={{
+                    marginTop: 10,
+                    width: '100%',
+                    padding: '8px 16px',
+                    background: 'var(--primary,#6366f1)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🖨️ QR Kodu Yazdır
+                </button>
+              </div>
+            ) : (
+              <div style={{ color: '#94a3b8', fontSize: '.85rem', padding: 20 }}>QR Kod üretilmemiş.</div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

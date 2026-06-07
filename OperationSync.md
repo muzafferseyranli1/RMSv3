@@ -8802,3 +8802,17 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - DB Actions: equipment_definitions tablosundan category kolonu DROP edildi.
 - Durum: Build basarili, auto-deploy icin push hazir.
 
+
+## Entry 040
+
+- Timestamp: 2026-06-07T11:00:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yonetimi - Gelismis Ozellikler, Upload, Barkod/QR ve Toplu Kayit
+- Intent: Ekipman ekleme ekranina toplu giris (adet), QR kod otomatik ureteci, dosya/resim yukleme (kullanim kilavuzu ve resim), kurulum/alim tarihi yer degisimi, kalan garanti suresi hesaplamasi ve QR yazdýrma popup'i eklendi.
+- Files Changed:
+  - server/index.js (POST/PUT ekipman instance endpoint'leri adet, otomatik seri no, benzersiz QR ve yeni alanlari destekleyecek sekilde guncellendi)
+  - src/components/pages/EquipmentManagement.jsx (Ekipman ekleme formu gelismis iki sutunlu yapiya tasindi, görsel/dosya yukleme ekleri saglandi, kalan garanti takip notu, envanter tablosunda ek gorseller ve QR yazdýrma modalý eklendi)
+  - schema-railway-master.sql (equipment_instances tablosu yeni kolonlarla guncellendi)
+- DB Actions: equipment_instances tablosuna image_url, file_url, external_url ve qr_code kolonlari eklendi.
+- Durum: Build basarili, auto-deploy icin push hazir.
+

@@ -3940,6 +3940,10 @@ CREATE TABLE IF NOT EXISTS public.equipment_instances (
   legacy_accumulated_depreciation NUMERIC(14,2) DEFAULT 0,
   warranty_end_date               DATE,
   notes                           TEXT,
+  image_url                       TEXT,
+  file_url                        TEXT,
+  external_url                    TEXT,
+  qr_code                         TEXT UNIQUE,
   created_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT equipment_instances_pkey PRIMARY KEY (id),
@@ -4019,6 +4023,29 @@ SELECT name, display_order FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM public.manual_categories LIMIT 1);
 
 -- ============================================================
+-- SURVEY QR/LINK TOKENS MODULE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.survey_tokens (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id UUID NOT NULL REFERENCES public.form_templates(id) ON DELETE CASCADE,
+  token       TEXT NOT NULL UNIQUE,
+  mode        TEXT NOT NULL DEFAULT 'anonymous' CHECK (mode IN ('anonymous','branch','multi_branch')),
+  branch_id   TEXT,
+  branch_ids  JSONB,
+  label       TEXT,
+  qr_config   JSONB NOT NULL DEFAULT '{}',
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_tokens_template ON public.survey_tokens(template_id);
+CREATE INDEX IF NOT EXISTS idx_survey_tokens_token    ON public.survey_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_survey_tokens_active   ON public.survey_tokens(active) WHERE active = TRUE;
+
+-- ============================================================
 -- END OF SCHEMA
 -- ============================================================
+
 
