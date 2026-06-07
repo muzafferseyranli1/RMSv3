@@ -350,10 +350,10 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
 function DefinitionFormModal({ def, onClose, onSuccess }) {
   const [form, setForm] = useState({
     name: def?.name || '',
+    category: def?.category || '',
     description: def?.description || '',
     purpose: def?.purpose || '',
-    maintenance_period_days: def?.maintenance_period_days || '',
-    useful_life_months: def?.useful_life_months || '',
+    depreciation_months: def?.useful_life_months || '',
     active: def?.active !== false,
   })
   const [saving, setSaving] = useState(false)
@@ -370,8 +370,7 @@ function DefinitionFormModal({ def, onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          maintenance_period_days: form.maintenance_period_days ? parseInt(form.maintenance_period_days) : null,
-          useful_life_months: form.useful_life_months ? parseInt(form.useful_life_months) : null,
+          useful_life_months: form.depreciation_months ? parseInt(form.depreciation_months) : null,
         })
       })
       const d = await r.json()
@@ -396,6 +395,10 @@ function DefinitionFormModal({ def, onClose, onSuccess }) {
             <input value={form.name} onChange={set('name')} style={inputStyle} />
           </div>
           <div>
+            <label style={labelStyle}>Kategori</label>
+            <input value={form.category} onChange={set('category')} style={inputStyle} placeholder="Örn: Mutfak Ekipmanı, Soğutma, Mobilya…" />
+          </div>
+          <div>
             <label style={labelStyle}>Açıklama</label>
             <textarea value={form.description} onChange={set('description')} rows={2} style={{ ...inputStyle, resize: 'none' }} />
           </div>
@@ -403,15 +406,9 @@ function DefinitionFormModal({ def, onClose, onSuccess }) {
             <label style={labelStyle}>Amaç / Kullanım</label>
             <input value={form.purpose} onChange={set('purpose')} style={inputStyle} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={labelStyle}>Bakım Periyodu (gün)</label>
-              <input type="number" value={form.maintenance_period_days} onChange={set('maintenance_period_days')} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Faydalı Ömür (ay)</label>
-              <input type="number" value={form.useful_life_months} onChange={set('useful_life_months')} style={inputStyle} />
-            </div>
+          <div>
+            <label style={labelStyle}>Amortisman Süresi (ay)</label>
+            <input type="number" value={form.depreciation_months} onChange={set('depreciation_months')} style={inputStyle} placeholder="Örn: 60" />
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', cursor: 'pointer' }}>
             <input type="checkbox" checked={form.active} onChange={set('active')} />
@@ -635,10 +632,14 @@ export default function EquipmentManagement() {
                   {d.active ? 'Aktif' : 'Pasif'}
                 </span>
               </div>
+              {d.category && (
+                <div style={{ fontSize: '.72rem', color: '#6366f1', fontWeight: 600, marginBottom: 6, background: '#eef2ff', display: 'inline-block', padding: '2px 8px', borderRadius: 6 }}>
+                  🏷️ {d.category}
+                </div>
+              )}
               {d.description && <div style={{ fontSize: '.78rem', color: '#64748b', marginBottom: 8 }}>{d.description}</div>}
               <div style={{ display: 'flex', gap: 10, fontSize: '.75rem', color: '#94a3b8', marginBottom: 12 }}>
-                {d.maintenance_period_days && <span>🔧 {d.maintenance_period_days} gün</span>}
-                {d.useful_life_months && <span>📅 {d.useful_life_months} ay ömür</span>}
+                {d.useful_life_months && <span>📅 {d.useful_life_months} ay amortisman</span>}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '.75rem', color: '#94a3b8' }}>

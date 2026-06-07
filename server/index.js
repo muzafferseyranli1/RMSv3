@@ -1305,14 +1305,14 @@ app.get('/api/equipment/definitions/:id', async (req, res) => {
 // POST /api/equipment/definitions  (resim URL'si /api/upload'dan gelir)
 app.post('/api/equipment/definitions', async (req, res) => {
   try {
-    const { name, description, purpose, image_url, maintenance_period_days, useful_life_months, active } = req.body
+    const { name, description, purpose, image_url, category, useful_life_months, active } = req.body
     if (!name) return res.status(400).json({ data: null, error: { message: 'name is required' } })
     const { rows } = await pool.query(
       `INSERT INTO public.equipment_definitions
-         (name, description, purpose, image_url, maintenance_period_days, useful_life_months, active)
+         (name, category, description, purpose, image_url, useful_life_months, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [name, description || null, purpose || null, image_url || null,
-       maintenance_period_days || null, useful_life_months || null,
+      [name, category || null, description || null, purpose || null, image_url || null,
+       useful_life_months || null,
        active !== false]
     )
     return res.status(201).json({ data: rows[0], error: null })
@@ -1325,18 +1325,18 @@ app.post('/api/equipment/definitions', async (req, res) => {
 // PUT /api/equipment/definitions/:id
 app.put('/api/equipment/definitions/:id', async (req, res) => {
   try {
-    const { name, description, purpose, image_url, maintenance_period_days, useful_life_months, active } = req.body
+    const { name, description, purpose, image_url, category, useful_life_months, active } = req.body
     const { rows } = await pool.query(
       `UPDATE public.equipment_definitions SET
          name = COALESCE($1, name),
-         description = $2,
-         purpose = $3,
-         image_url = COALESCE($4, image_url),
-         maintenance_period_days = $5,
+         category = $2,
+         description = $3,
+         purpose = $4,
+         image_url = COALESCE($5, image_url),
          useful_life_months = $6,
          active = COALESCE($7, active)
        WHERE id = $8 RETURNING *`,
-      [name, description, purpose, image_url, maintenance_period_days, useful_life_months, active, req.params.id]
+      [name, category, description, purpose, image_url, useful_life_months, active, req.params.id]
     )
     if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
     return res.json({ data: rows[0], error: null })
