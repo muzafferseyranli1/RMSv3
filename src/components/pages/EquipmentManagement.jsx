@@ -205,6 +205,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
     file_url: instance?.file_url || '',
     external_url: instance?.external_url || '',
     qr_code: instance?.qr_code || '',
+    name: instance?.name || '',
   })
   const [branches, setBranches] = useState([])
   const [saving, setSaving] = useState(false)
@@ -266,8 +267,8 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
   }
 
   const handleSubmit = async () => {
-    if (!form.definition_id || !form.current_location_id) {
-      setErr('Ekipman kategorisi ve konum zorunludur'); return
+    if (!form.name || !form.definition_id || !form.current_location_id) {
+      setErr('Ekipman adı, kategorisi ve konum zorunludur'); return
     }
     setSaving(true); setErr('')
     try {
@@ -333,6 +334,11 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
         <div style={{ display: 'flex', gap: 20 }}>
           {/* Sol Kolon - Genel Tanımlar & Finans */}
           <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Ekipman Adı *</label>
+              <input value={form.name} onChange={set('name')} style={inputStyle} placeholder="Örn: 60x60 kare masa" />
+            </div>
+
             <div>
               <label style={labelStyle}>Ekipman Kategorisi *</label>
               <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle} disabled={!!instance}>
@@ -787,7 +793,7 @@ export default function EquipmentManagement() {
                             )}
                             <div>
                               <div style={{ fontWeight: 700, color: 'var(--text-1,#1e293b)', fontSize: '.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                {inst.definition_name}
+                                {inst.name || inst.definition_name}
                                 {inst.file_url && (
                                   <a href={inst.file_url} target="_blank" rel="noreferrer" title="Kullanım Kılavuzu" style={{ textDecoration: 'none', fontSize: '.9rem' }}>📎</a>
                                 )}
@@ -795,7 +801,12 @@ export default function EquipmentManagement() {
                                   <a href={inst.external_url} target="_blank" rel="noreferrer" title="Bağlantı Linki" style={{ textDecoration: 'none', fontSize: '.9rem' }}>🔗</a>
                                 )}
                               </div>
-                              {inst.purpose && <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{inst.purpose}</div>}
+                              <div style={{ fontSize: '.72rem', display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                                <span style={{ color: '#6366f1', fontWeight: 600, background: '#eef2ff', padding: '1px 6px', borderRadius: 4 }}>
+                                  🏷️ {inst.definition_name}
+                                </span>
+                                {inst.purpose && <span style={{ color: '#94a3b8' }}>· {inst.purpose}</span>}
+                              </div>
                             </div>
                           </div>
                         </td>

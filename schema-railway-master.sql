@@ -3944,6 +3944,7 @@ CREATE TABLE IF NOT EXISTS public.equipment_instances (
   file_url                        TEXT,
   external_url                    TEXT,
   qr_code                         TEXT UNIQUE,
+  name                            TEXT,
   created_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at                      TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT equipment_instances_pkey PRIMARY KEY (id),

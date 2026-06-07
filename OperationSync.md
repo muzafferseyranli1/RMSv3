@@ -8816,3 +8816,17 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 - DB Actions: equipment_instances tablosuna image_url, file_url, external_url ve qr_code kolonlari eklendi.
 - Durum: Build basarili, auto-deploy icin push hazir.
 
+
+## Entry 041
+
+- Timestamp: 2026-06-07T11:15:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yonetimi - Ekipman Adi Alani Entegrasyonu
+- Intent: Ekipman Ekle formuna 'Ekipman Adi' (serbest metin giriþi) alani eklendi. Kategori (Oturma Gruplarý) ve Ekipman Adý (60x60 kare masa) mantýðý birbirinden ayrýþtýrýldý.
+- Files Changed:
+  - server/index.js (POST ve PUT ekipman instance endpoint'leri name kolonunu alacak ve guncelleyecek sekilde guncellendi)
+  - src/components/pages/EquipmentManagement.jsx (Forma Ekipman Adý zorunlu alani eklendi; envanter tablosunda ekipman adý baslik, kategori adý ise subtext-badge olarak listelenecek sekilde duzenlendi)
+  - schema-railway-master.sql (equipment_instances tablosu name kolonuyla guncellendi)
+- DB Actions: equipment_instances tablosuna name TEXT kolonu eklendi.
+- Durum: Build basarili, auto-deploy icin push tamamlandi.
+

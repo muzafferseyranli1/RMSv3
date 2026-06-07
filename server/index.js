@@ -1436,7 +1436,7 @@ app.post('/api/equipment/instances', async (req, res) => {
       definition_id, current_location_id, serial_number, status,
       installed_at, purchase_date, purchase_price, currency,
       purchase_exchange_rate, legacy_accumulated_depreciation,
-      warranty_end_date, notes, quantity, image_url, file_url, external_url
+      warranty_end_date, notes, quantity, image_url, file_url, external_url, name
     } = req.body
     if (!definition_id || !current_location_id) {
       return res.status(400).json({ data: null, error: { message: 'definition_id and current_location_id are required' } })
@@ -1473,8 +1473,8 @@ app.post('/api/equipment/instances', async (req, res) => {
            (definition_id, current_location_id, serial_number, status,
             installed_at, purchase_date, purchase_price, currency,
             purchase_exchange_rate, legacy_accumulated_depreciation,
-            warranty_end_date, notes, image_url, file_url, external_url, qr_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            warranty_end_date, notes, image_url, file_url, external_url, qr_code, name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
         [
           definition_id, current_location_id, finalSerial,
           status || 'active', installed_at || null, purchase_date || null,
@@ -1483,7 +1483,7 @@ app.post('/api/equipment/instances', async (req, res) => {
           legacy_accumulated_depreciation || 0,
           warranty_end_date || null, notes || null,
           image_url || null, file_url || null, external_url || null,
-          qrCodeVal
+          qrCodeVal, name || null
         ]
       )
       insertedRows.push(rows[0])
@@ -1503,7 +1503,7 @@ app.put('/api/equipment/instances/:id', async (req, res) => {
       current_location_id, serial_number, status, installed_at,
       purchase_date, purchase_price, currency, purchase_exchange_rate,
       legacy_accumulated_depreciation, warranty_end_date, notes,
-      image_url, file_url, external_url, qr_code
+      image_url, file_url, external_url, qr_code, name
     } = req.body
     const { rows } = await pool.query(
       `UPDATE public.equipment_instances SET
@@ -1522,12 +1522,13 @@ app.put('/api/equipment/instances/:id', async (req, res) => {
          file_url                        = $13,
          external_url                    = $14,
          qr_code                         = COALESCE($15, qr_code),
+         name                            = $16,
          updated_at                      = now()
-       WHERE id = $16 RETURNING *`,
+       WHERE id = $17 RETURNING *`,
       [current_location_id, serial_number, status, installed_at,
        purchase_date, purchase_price, currency, purchase_exchange_rate,
        legacy_accumulated_depreciation, warranty_end_date, notes,
-       image_url, file_url, external_url, qr_code, req.params.id]
+       image_url, file_url, external_url, qr_code, name, req.params.id]
     )
     if (!rows.length) return res.status(404).json({ data: null, error: { message: 'Not found' } })
     return res.json({ data: rows[0], error: null })
