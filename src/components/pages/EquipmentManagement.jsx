@@ -228,7 +228,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
 
   const handleSubmit = async () => {
     if (!form.definition_id || !form.current_location_id) {
-      setErr('Ekipman tanımı ve konum zorunludur'); return
+      setErr('Ekipman kategorisi ve konum zorunludur'); return
     }
     setSaving(true); setErr('')
     try {
@@ -264,7 +264,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={{ gridColumn: '1/-1' }}>
-            <label style={labelStyle}>Ekipman Tanımı *</label>
+            <label style={labelStyle}>Ekipman Kategorisi *</label>
             <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle}>
               <option value="">Seçin</option>
               {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -346,11 +346,10 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
   )
 }
 
-// ── Definition Form Modal ────────────────────────────────────────
+// ── Category Form Modal ──────────────────────────────────────────
 function DefinitionFormModal({ def, onClose, onSuccess }) {
   const [form, setForm] = useState({
     name: def?.name || '',
-    category: def?.category || '',
     description: def?.description || '',
     purpose: def?.purpose || '',
     depreciation_months: def?.useful_life_months || '',
@@ -361,7 +360,7 @@ function DefinitionFormModal({ def, onClose, onSuccess }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
   const handleSubmit = async () => {
-    if (!form.name) { setErr('Ekipman adı zorunludur'); return }
+    if (!form.name) { setErr('Kategori adı zorunludur'); return }
     setSaving(true); setErr('')
     try {
       const url = def ? `${API}/api/equipment/definitions/${def.id}` : `${API}/api/equipment/definitions`
@@ -387,16 +386,12 @@ function DefinitionFormModal({ def, onClose, onSuccess }) {
     <div style={{ position: 'fixed', inset: 0, background: '#0006', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--card-bg,#fff)', borderRadius: 18, padding: 28, width: 480, boxShadow: '0 20px 60px #0002' }}>
         <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 20 }}>
-          {def ? 'Tanım Düzenle' : 'Yeni Ekipman Tanımı'}
+          {def ? 'Kategori Düzenle' : 'Yeni Ekipman Kategorisi'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <label style={labelStyle}>Ekipman Adı *</label>
+            <label style={labelStyle}>Kategori Adı *</label>
             <input value={form.name} onChange={set('name')} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Kategori</label>
-            <input value={form.category} onChange={set('category')} style={inputStyle} placeholder="Örn: Mutfak Ekipmanı, Soğutma, Mobilya…" />
           </div>
           <div>
             <label style={labelStyle}>Açıklama</label>
@@ -499,7 +494,7 @@ export default function EquipmentManagement() {
             🔧 Ekipman Yönetimi
           </h1>
           <div style={{ fontSize: '.82rem', color: '#64748b', marginTop: 4 }}>
-            {instances.length} kayıtlı ekipman · {definitions.length} tanım · {transfers.filter(t => t.status === 'pending').length} bekleyen transfer
+            {instances.length} kayıtlı ekipman · {definitions.length} kategori · {transfers.filter(t => t.status === 'pending').length} bekleyen transfer
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -519,7 +514,7 @@ export default function EquipmentManagement() {
           )}
           {tab === 'definitions' && (
             <button onClick={() => { setShowDefForm(true); setEditDef(null) }} style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: 'var(--primary,#6366f1)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '.85rem' }}>
-              + Tanım Ekle
+              + Kategori Ekle
             </button>
           )}
         </div>
@@ -540,7 +535,7 @@ export default function EquipmentManagement() {
       {/* Tab Bar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--card-bg,#fff)', borderRadius: 12, padding: 4, border: '1px solid var(--border-color,#e2e8f0)', width: 'fit-content' }}>
         <TabBtn active={tab === 'instances'} onClick={() => setTab('instances')}>📦 Envanter</TabBtn>
-        <TabBtn active={tab === 'definitions'} onClick={() => setTab('definitions')}>📋 Katalog</TabBtn>
+        <TabBtn active={tab === 'definitions'} onClick={() => setTab('definitions')}>📋 Kategori</TabBtn>
         <TabBtn active={tab === 'transfers'} onClick={() => setTab('transfers')}>
           🔄 Transferler
           {transfers.filter(t => t.status === 'pending').length > 0 && (
@@ -621,7 +616,7 @@ export default function EquipmentManagement() {
         </div>
       )}
 
-      {/* ─── KATALOG ─── */}
+      {/* ─── KATEGORİ ─── */}
       {tab === 'definitions' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {definitions.map(d => (
@@ -632,11 +627,6 @@ export default function EquipmentManagement() {
                   {d.active ? 'Aktif' : 'Pasif'}
                 </span>
               </div>
-              {d.category && (
-                <div style={{ fontSize: '.72rem', color: '#6366f1', fontWeight: 600, marginBottom: 6, background: '#eef2ff', display: 'inline-block', padding: '2px 8px', borderRadius: 6 }}>
-                  🏷️ {d.category}
-                </div>
-              )}
               {d.description && <div style={{ fontSize: '.78rem', color: '#64748b', marginBottom: 8 }}>{d.description}</div>}
               <div style={{ display: 'flex', gap: 10, fontSize: '.75rem', color: '#94a3b8', marginBottom: 12 }}>
                 {d.useful_life_months && <span>📅 {d.useful_life_months} ay amortisman</span>}
@@ -649,7 +639,7 @@ export default function EquipmentManagement() {
               </div>
             </div>
           ))}
-          {definitions.length === 0 && <div style={{ padding: 32, color: '#94a3b8', fontSize: '.85rem', gridColumn: '1/-1', textAlign: 'center' }}>Henüz ekipman tanımı yok</div>}
+          {definitions.length === 0 && <div style={{ padding: 32, color: '#94a3b8', fontSize: '.85rem', gridColumn: '1/-1', textAlign: 'center' }}>Henüz ekipman kategorisi yok</div>}
         </div>
       )}
 

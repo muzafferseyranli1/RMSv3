@@ -8770,3 +8770,35 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt (GUNCELLENDI - syntax errors fixed, state variables and time pickers restored, single assignee select dialog integrated)
   - personel-android/HANDOFF.md (GUNCELLENDI - updated with single assignee selection and assignee filtering changes)
 - Durum: Personnel Android uygulamasi basariyla derlendi (BUILD SUCCESSFUL).
+
+## Entry 038
+
+- Timestamp: 2026-06-07T10:29:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Katalogu - Form Guncellemesi
+- Intent: Katalog tanim formunda kullanici istekleri dogrultusunda 3 degisiklik yapildi.
+- Files Changed:
+  - src/components/pages/EquipmentManagement.jsx (GUNCELLENDI)
+  - server/index.js (GUNCELLENDI)
+- Changes:
+  - Kategori alani eklendi (Ekipman Adi'ndan sonra, serbest metin girisi)
+  - Bakim Periyodu (gun) alani formdan ve katalog kartlarindan kaldirildi
+  - Faydali Omur (ay) -> Amortisman Suresi (ay) olarak yeniden adlandirildi
+  - Katalog kartlarinda kategori varsa mor badge olarak gosteriliyor
+- DB Migration: equipment_definitions tablosuna category TEXT kolonu eklendi (Railway Postgres)
+- Commit: 4f7fd06
+- Durum: Tamamlandi, git push ile Railway auto-deploy tetiklendi.
+
+
+## Entry 039
+
+- Timestamp: 2026-06-07T10:40:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Yonetimi - Kategori Revizyonu ve Katalog Yeniden Adlandirma
+- Intent: Ekipman Katalogu'na eklenen extra 'category' alani kullanicinin talebiyle kaldirildi. Bunun yerine halihazirda var olan 'Katalog' sekmesi/kavrami 'Kategori' olarak degistirildi ve ekipman tanimi formundaki etiketler buna gore guncellendi.
+- Files Changed:
+  - server/index.js (POST ve PUT endpoint'lerindeki category alanlari kaldirildi)
+  - src/components/pages/EquipmentManagement.jsx (Formdaki category girdisi ve karttaki badge kaldirildi, sekme 'Kategori' yapildi, 'Tanimi' kelimeleri 'Kategorisi' ile degistirildi)
+- DB Actions: equipment_definitions tablosundan category kolonu DROP edildi.
+- Durum: Build basarili, auto-deploy icin push hazir.
+
