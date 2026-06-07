@@ -1,13 +1,12 @@
-# Görev Listesi: Müşteri Anketi Yapısı
+# Görev Listesi - Müşteri Anketi QR ve Link Yönetimi UX İyileştirmesi
 
-- [x] 1. migrations/029_survey_qr_tokens.sql → Railway uygula + schema-railway-master.sql güncelle
-- [x] 2. server/index.js → survey-token API endpoint'leri (GET token, GET list, POST, DELETE, customer-category-assign)
-- [x] 3. src/lib/publicDisplayRoutes.js → /anket/ prefix ekle
-- [x] 4. src/components/pages/PublicSurvey.jsx → Herkese açık anket sayfası
-- [x] 5. src/App.jsx → /anket/:token ve /gorev-yoneticisi route'ları ekle
-- [x] 6. src/lib/formService.js → createTaskFromCustomerSurvey mantığı
-- [x] 7. src/components/pages/FormTemplates.jsx → customer_survey özellikleri + QR yönetim kartı
-- [x] 7a. FormTemplates.jsx → QR Modalında Anonim, Tek Şube, Çoklu Şube, Şube Şablonu, Tüm Şubeler desteği ve Tek QR / Ayrı Ayrı QR üretim tiplerinin entegrasyonu (TAMAMLANDI)
-- [x] 8. src/components/pages/TaskManager.jsx → Yeni Task Manager sayfası (ve inline CSS düzeltmeleri)
-- [x] 9. src/components/layout/Sidebar.jsx → Görev Yöneticisi menü öğesi
-- [ ] 10. OperationSync.md → Entry ekle + git commit
+- `[x]` 1. FormTemplates.jsx handleSave Mantığı Revizyonu
+  - `[x]` `handleSave` fonksiyonuna `stayAndOpenQr` parametresinin eklenmesi.
+  - `[x]` `createFormTemplate` ve `updateFormTemplate` Supabase dönüşlerinden `data` (kaydedilen şablon) nesnesinin yakalanması.
+  - `[x]` Kayıttan sonra listenin `loadTemplates()` ile yenilenmesi ve `stayAndOpenQr` parametresine bağlı olarak editör modunda kalınması (`startEdit(savedTemplate)` + `setQrModalOpen(true)`).
+- `[x]` 2. FormTemplates.jsx renderQrManagementPanel Arayüz Revizyonu
+  - `[x]` `!editing.id` (yeni şablon) durumundaki uyarı kartına "Şablonu Kaydet ve QR Koda Geç" butonunun eklenmesi.
+  - `[x]` Butonun `handleSave(true)` fonksiyonunu tetikleyecek şekilde bağlanması.
+- `[x]` 3. Derleme ve Entegrasyon Doğrulama
+  - `[x]` Projeyi `npm run build` ile derleyerek derleme hatası olmadığını doğrulama.
+  - `[x]` `OperationSync.md` dosyasına yeni girdi (Entry 045) eklenmesi.

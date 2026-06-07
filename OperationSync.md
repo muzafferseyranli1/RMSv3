@@ -8865,3 +8865,33 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - docs/task.md (Güncellendi)
   - docs/walkthrough.md (Güncellendi)
 - Durum: Geliştirmeler yapıldı, build testi başarıyla tamamlandı.
+
+
+## Entry 044
+
+- Timestamp: 2026-06-07T12:08:00+03:00
+- Agent: Antigravity
+- Task: Ekipman Secim Araci Duzeltmeleri
+- Intent: Form gonderimlerindeki ve el kitabi sayfalarindaki ekipman secim araclarinin guncellenerek fiziksel ekipman (equipment_instances) tablosuna/API'sine baglanmasi, sube bazli filtrelenmesi, arama ozellikleri eklenmesi ve dropdownlarin SearchableSelect bilesenine donusturulmesi.
+- Files Changed:
+  - src/components/ui/FormSubmissionDetailModal.jsx (Guncellendi)
+  - src/components/pages/ManualReader.jsx (Guncellendi)
+  - src/components/pages/ManualManagement.jsx (Guncellendi)
+  - docs/implementation_plan.md (Guncellendi)
+  - docs/task.md (Guncellendi)
+  - docs/walkthrough.md (Guncellendi)
+- Durum: Tum gelistirmeler basariyla tamamlandi ve npm run build ile sorunsuzca derlendi.
+
+
+## Entry 045
+
+- Timestamp: 2026-06-07T12:45:00+03:00
+- Agent: Antigravity
+- Task: Müşteri Anketi QR ve Link Yönetimi UX İyileştirmesi
+- Intent: Yeni oluşturulan müşteri anketlerinde QR kod ve link oluşturabilmek için şablonun kaydedilip listeden tekrar düzenlenmesi adımlarının yarattığı kullanıcı deneyimi zorluğunun giderilmesi. 'Şablonu Kaydet ve QR Koda Geç' butonu ile tek tıkla kaydetme, düzenleme modunda kalma (stay-and-edit) ve QR oluşturma modalını otomatik tetikleme akışı entegre edildi.
+- Files Changed:
+  - src/components/pages/FormTemplates.jsx (handleSave stayAndOpenQr parametresiyle genişletildi, renderQrManagementPanel kartına kaydet & devam et butonu eklendi)
+  - docs/implementation_plan.md (Güncellendi)
+  - docs/task.md (Güncellendi)
+  - docs/walkthrough.md (Güncellendi)
+- Durum: Tüm geliştirmeler yapıldı, npm run build testi başarıyla tamamlandı.

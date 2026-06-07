@@ -626,13 +626,21 @@ export default function FormTemplates() {
     if (!editing.id) {
       return (
         <div className="card" style={{ padding: 20, marginTop: 20, borderLeft: '4px solid #f59e0b', background: 'var(--surface-2)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#d97706' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#d97706', marginBottom: 8 }}>
             <i className="fa-solid fa-triangle-exclamation" />
             <span>Link ve QR Kod Yönetimi</span>
           </div>
-          <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '8px 0 0 0' }}>
-            Anket için Link ve QR kod oluşturabilmek için lütfen önce şablonu yukarıdaki <strong>Kaydet</strong> butonu ile kaydedin.
+          <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
+            Anket için Link ve QR kod oluşturabilmek için öncelikle şablonun kaydedilmesi gerekmektedir. Aşağıdaki butona basarak şablonu kaydedebilir ve doğrudan QR kod oluşturma ekranına geçiş yapabilirsiniz.
           </p>
+          <button
+            type="button"
+            className="btn-p"
+            onClick={() => handleSave(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#d97706', borderColor: '#d97706', color: '#fff', fontSize: '.8rem', fontWeight: 700, borderRadius: 8, cursor: 'pointer' }}
+          >
+            <i className="fa-solid fa-floppy-disk" /> Şablonu Kaydet ve QR Koda Geç
+          </button>
         </div>
       )
     }
@@ -1022,7 +1030,7 @@ export default function FormTemplates() {
     setSchemaJson(schema)
   }
 
-  const handleSave = async () => {
+  const handleSave = async (stayAndOpenQr = false) => {
     if (!editing.title.trim()) return toast('Başlık gerekli', 'warning')
     
     // Clean and normalize sections, ensuring max_points of select fields is correct
@@ -1054,8 +1062,10 @@ export default function FormTemplates() {
       linkedEntityTable: editing.linked_entity_table || null,
     }
 
+    let savedTemplate = null
+
     if (editing.id) {
-      const { error } = await updateFormTemplate(editing.id, {
+      const { data, error } = await updateFormTemplate(editing.id, {
         title: payload.title,
         description: payload.description,
         form_type: payload.formType,
@@ -1069,14 +1079,22 @@ export default function FormTemplates() {
       })
       if (error) return toast('Güncelleme başarısız', 'error')
       toast('Şablon güncellendi', 'success')
+      savedTemplate = data
     } else {
-      const { error } = await createFormTemplate(payload)
+      const { data, error } = await createFormTemplate(payload)
       if (error) return toast('Oluşturma başarısız', 'error')
       toast('Şablon oluşturuldu', 'success')
+      savedTemplate = data
     }
 
-    setEditing(null)
     loadTemplates()
+
+    if (stayAndOpenQr === true && savedTemplate) {
+      startEdit(savedTemplate)
+      setQrModalOpen(true)
+    } else {
+      setEditing(null)
+    }
   }
 
   const handleDelete = async (templateId) => {
