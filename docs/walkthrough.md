@@ -1,6 +1,6 @@
 # Müşteri Anketi Form Yapısı — Uygulama Walkthrough
 
-Müşteri Anketi form yapısı, anonim / şubeli QR & Link oluşturma mekanizmaları, herkese açık doldurma sayfası, loyalty entegrasyonu ve merkezi Görev Yöneticisi ekranı başarıyla uygulandı.
+Müşteri Anketi form yapısı, gelişmiş anonim / şubeli / çoklu şubeli / şablon bazlı QR & Link oluşturma mekanizmaları, herkese açık doldurma sayfası, loyalty entegrasyonu ve merkezi Görev Yöneticisi ekranı başarıyla uygulandı.
 
 ---
 
@@ -12,10 +12,18 @@ Müşteri Anketi form yapısı, anonim / şubeli QR & Link oluşturma mekanizmal
 - **Şube Listesi:** Herkese açık doldurma ekranlarında şube seçilebilmesi için `GET /api/branches/list` endpoint'i eklendi.
 - **Loyalty Kategori Atama:** Müşteri uygulamasından anket dolduranları `'feedback_source'` ("Geri Bildirimden Gelen") kategorisine atayan `/api/customer-category-assign` endpoint'i entegre edildi.
 
-### 2. Form Templates Editörü Güncellemeleri
-- **Anonim Doldurma Seçeneği:** `FormTemplates.jsx` editöründe `customer_survey` tipi formlar için "Anonim Doldurmaya İzin Ver" checkbox'ı eklendi.
-- **Otomatik Görev Kısıtları:** Anonim modda şube personeli atamaları engellendi, tüm atamalar merkez personeline kısıtlandı.
-- **Link & QR Yönetim Paneli:** Şablon detayında QR oluşturma, listeleme, link kopyalama, A4 formatında yazdırma (PDF) ve deaktive etme özelliklerini barındıran kontrol paneli eklendi.
+### 2. Gelişmiş Link & QR Yönetim Paneli
+- **Şablon Editörü Entegrasyonu:** `FormTemplates.jsx` editöründe `customer_survey` tipi formlar için "Anonim Doldurmaya İzin Ver" seçeneği sunuldu.
+- **Çok Yönlü Hedef Seçim Kaynakları:** QR oluştururken aşağıdaki kaynaklar seçilebilir hale getirildi:
+  - *Anonim Mod:* Şube ve müşteri bilgisi olmadan genel doldurma.
+  - *Tek Şube:* Seçilen belirli bir şubeye özel.
+  - *Çoklu Şube:* Checklist üzerinden seçilen şubeler.
+  - *Şube Şablonu:* `branch_templates` tablosundan dinamik çekilen ve çözümlenen şube grupları.
+  - *Tüm Şubeler:* Sistemde kayıtlı olan tüm şubeler.
+- **Dinamik Üretim Tipleri:** Çoklu şube içeren kaynaklar için kullanıcıya iki alternatif sunuldu:
+  - *Tek Bir QR Kod / Link (Tek URL):* `multi_branch` modunda tek bir QR üretir; müşteri sayfayı açınca şubesini seçer.
+  - *Her Şube İçin Ayrı Ayrı Link ve QR (Çoklu URL):* Belirtilen şubelerin her biri için arka arkaya `branch` modunda bağımsız QR kodlar üretir.
+- **Yazdırma ve Yönetim:** A4 düzeninde toplu yazdırma, tekil link kopyalama ve deaktive etme özellikleri eksiksiz çalışmaktadır.
 
 ### 3. Herkese Açık Anket Doldurma Ekranı
 - `src/components/pages/PublicSurvey.jsx` oluşturuldu.
@@ -40,4 +48,4 @@ Müşteri Anketi form yapısı, anonim / şubeli QR & Link oluşturma mekanizmal
 
 - **Derleme Testi:** `npm run build` ile Vite build işlemi sorunsuz şekilde tamamlandı, herhangi bir derleme veya import hatası bulunmuyor.
 - **CSS Stilleri:** `TaskManager.jsx` dosyasındaki geçersiz `justifyBetween` stilleri standart `justifyContent` ile değiştirilerek derleme hatası düzeltildi.
-- **SQL Şeması:** Railway veritabanı tablolarının şeması doğrulandı.
+- **Şablon / Çözümleme Testi:** Şube şablonundan tekil ve çoğul QR üretim senaryolarının mantığı kod düzeyinde doğrulandı.

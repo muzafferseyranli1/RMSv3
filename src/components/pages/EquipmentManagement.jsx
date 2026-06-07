@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -134,7 +135,7 @@ function TransferModal({ instance, onClose, onSuccess }) {
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    db.from('branches').select('id,name').order('name')
+    db.from('company_nodes').select('id,name').eq('type', 'sube').order('name')
       .then(({ data }) => setBranches(data || []))
   }, [])
 
@@ -164,10 +165,15 @@ function TransferModal({ instance, onClose, onSuccess }) {
         </div>
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: '.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Hedef Şube *</label>
-          <select value={toLocation} onChange={e => setToLocation(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--input-bg,#f8fafc)' }}>
-            <option value="">Şube Seçin</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          <SearchableSelect
+            value={toLocation}
+            onChange={val => setToLocation(val)}
+            options={branches.map(b => ({ value: b.id, label: b.name }))}
+            placeholder="Şube Seçin"
+            searchPlaceholder="Şube ara..."
+            noResultsLabel="Eşleşen şube bulunamadı"
+            allowClear={true}
+          />
         </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: '.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Notlar</label>
@@ -215,7 +221,7 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
   const [uploadingFile, setUploadingFile] = useState(false)
 
   useEffect(() => {
-    db.from('branches').select('id,name').order('name')
+    db.from('company_nodes').select('id,name').eq('type', 'sube').order('name')
       .then(({ data }) => setBranches(data || []))
   }, [])
 
@@ -342,10 +348,16 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12 }}>
               <div>
                 <label style={labelStyle}>Ekipman Kategorisi *</label>
-                <select value={form.definition_id} onChange={set('definition_id')} style={inputStyle} disabled={!!instance}>
-                  <option value="">Seçin</option>
-                  {definitions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.definition_id}
+                  onChange={val => setForm(f => ({ ...f, definition_id: val }))}
+                  options={definitions.map(d => ({ value: d.id, label: d.name }))}
+                  placeholder="Seçin"
+                  searchPlaceholder="Kategori ara..."
+                  noResultsLabel="Eşleşen kategori bulunamadı"
+                  disabled={!!instance}
+                  allowClear={true}
+                />
               </div>
               <div>
                 <label style={labelStyle}>Seri Numarası</label>
@@ -356,10 +368,15 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr', gap: 12, alignItems: 'end' }}>
               <div>
                 <label style={labelStyle}>Konum (Şube) *</label>
-                <select value={form.current_location_id} onChange={set('current_location_id')} style={inputStyle}>
-                  <option value="">Şube Seçin</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.current_location_id}
+                  onChange={val => setForm(f => ({ ...f, current_location_id: val }))}
+                  options={branches.map(b => ({ value: b.id, label: b.name }))}
+                  placeholder="Şube Seçin"
+                  searchPlaceholder="Şube ara..."
+                  noResultsLabel="Eşleşen şube bulunamadı"
+                  allowClear={true}
+                />
               </div>
               <div>
                 <label style={labelStyle}>Kaç Adet Ekipman?</label>
@@ -404,9 +421,14 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
               </div>
               <div>
                 <label style={labelStyle}>Döviz Cinsi</label>
-                <select value={form.currency} onChange={set('currency')} style={inputStyle}>
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.currency}
+                  onChange={val => setForm(f => ({ ...f, currency: val }))}
+                  options={CURRENCIES.map(c => ({ value: c, label: c }))}
+                  placeholder="Seçin"
+                  searchPlaceholder="Döviz ara..."
+                  allowClear={false}
+                />
               </div>
               <div>
                 <label style={labelStyle}>Alım Kuru</label>
@@ -418,6 +440,13 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
                 </div>
               </div>
             </div>
+
+            {form.currency && form.currency !== 'TRY' && form.purchase_price && (
+              <div style={{ fontSize: '.78rem', color: '#16a34a', fontWeight: 700, display: 'flex', gap: 4, alignItems: 'center', marginTop: 2 }}>
+                <span>💵 TL Karşılığı:</span>
+                <span>₺ {fmt((parseFloat(form.purchase_price) || 0) * (parseFloat(form.purchase_exchange_rate) || 1))}</span>
+              </div>
+            )}
 
             {/* Uploadlar ve Bağlantı */}
             <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -764,10 +793,16 @@ export default function EquipmentManagement() {
               value={search} onChange={e => setSearch(e.target.value)}
               style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--input-bg,#f8fafc)' }}
             />
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-color,#e2e8f0)', background: 'var(--input-bg,#f8fafc)' }}>
-              <option value="">Tüm Durumlar</option>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <div style={{ width: 180, flexShrink: 0 }}>
+              <SearchableSelect
+                value={statusFilter}
+                onChange={val => setStatusFilter(val)}
+                options={Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v }))}
+                placeholder="Tüm Durumlar"
+                searchPlaceholder="Durum ara..."
+                allowClear={true}
+              />
+            </div>
           </div>
 
           {loading ? (
@@ -824,7 +859,16 @@ export default function EquipmentManagement() {
                           ) : '—'}
                         </td>
                         <td style={{ padding: '10px 14px', fontSize: '.78rem', color: '#475569' }}>
-                          {inst.purchase_price ? `${fmt(inst.purchase_price)} ${inst.currency}` : '—'}
+                          {inst.purchase_price ? (
+                            <div>
+                              <div style={{ fontWeight: 500 }}>{fmt(inst.purchase_price)} {inst.currency}</div>
+                              {inst.currency !== 'TRY' && inst.purchase_exchange_rate && (
+                                <div style={{ fontSize: '.7rem', color: '#16a34a', fontWeight: 600, marginTop: 2 }}>
+                                  ₺ {fmt(inst.purchase_price * inst.purchase_exchange_rate)}
+                                </div>
+                              )}
+                            </div>
+                          ) : '—'}
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', gap: 6 }}>

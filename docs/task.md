@@ -7,6 +7,7 @@
 - [x] 5. src/App.jsx → /anket/:token ve /gorev-yoneticisi route'ları ekle
 - [x] 6. src/lib/formService.js → createTaskFromCustomerSurvey mantığı
 - [x] 7. src/components/pages/FormTemplates.jsx → customer_survey özellikleri + QR yönetim kartı
+- [x] 7a. FormTemplates.jsx → QR Modalında Anonim, Tek Şube, Çoklu Şube, Şube Şablonu, Tüm Şubeler desteği ve Tek QR / Ayrı Ayrı QR üretim tiplerinin entegrasyonu (TAMAMLANDI)
 - [x] 8. src/components/pages/TaskManager.jsx → Yeni Task Manager sayfası (ve inline CSS düzeltmeleri)
 - [x] 9. src/components/layout/Sidebar.jsx → Görev Yöneticisi menü öğesi
 - [ ] 10. OperationSync.md → Entry ekle + git commit

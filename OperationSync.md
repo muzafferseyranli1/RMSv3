@@ -8851,3 +8851,17 @@ ull\, completely removing the invisible unpair trigger from the DOM.
   - schema-railway-master.sql (survey_tokens tablosu şemaya eklendi)
 - DB Actions: survey_tokens tablosu oluşturuldu (migrations/029_survey_qr_tokens.sql).
 - Durum: Tüm geliştirmeler yapıldı, build başarılı ve Railway auto-deploy tamamlandı.
+
+
+
+## Entry 043
+
+- Timestamp: 2026-06-07T11:55:00+03:00
+- Agent: Antigravity
+- Task: Müşteri Anketi QR/Link Oluşturucu Panel Revizyonu (Anonim/Şube/Şubeler/Şablon Desteği)
+- Intent: QR oluşturulurken Anonim, Tek Şube, Çoklu Şube, Şube Şablonu (branch_templates tablosundan dinamik çözümleme) veya Tüm Şubeler seçilebilmesi; seçime göre "Tek Bir QR" veya "Ayrı Ayrı QR" üretilebilmesi özellikleri entegre edildi.
+- Files Changed:
+  - src/components/pages/FormTemplates.jsx (branch_templates yükleme fonksiyonu eklendi, handleCreateToken ve renderQrModal modalı şablon ve üretim tipi seçimlerini destekleyecek şekilde genişletildi)
+  - docs/task.md (Güncellendi)
+  - docs/walkthrough.md (Güncellendi)
+- Durum: Geliştirmeler yapıldı, build testi başarıyla tamamlandı.

@@ -3,6 +3,7 @@ import { fetchFormTemplates, createFormTemplate, updateFormTemplate, softDeleteF
 import { readSettingArray, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/useToast'
+import { db } from '@/lib/db'
 
 const FIELD_TYPES = [
   { value: 'yes_no', label: 'Evet/Hayır', icon: 'fa-toggle-on' },
@@ -245,6 +246,10 @@ export default function FormTemplates() {
   const [qrBranchIds, setQrBranchIds] = useState([])
   const [qrLabel, setQrLabel] = useState('')
   const [branches, setBranches] = useState([])
+  const [branchTemplates, setBranchTemplates] = useState([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [qrTargetSource, setQrTargetSource] = useState('anonymous')
+  const [qrGenerationType, setQrGenerationType] = useState('single_qr')
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -319,32 +324,80 @@ export default function FormTemplates() {
     }
   }, [editing?.id, editing?.form_type, loadSurveyTokens])
 
+  const loadBranchTemplates = useCallback(async () => {
+    try {
+      const { data, error } = await db.from('branch_templates').select('*').is('deleted_at', null).order('name')
+      if (!error) {
+        setBranchTemplates(data || [])
+      }
+    } catch (err) {
+      console.error('Failed to load branch templates:', err)
+    }
+  }, [])
+
   useEffect(() => {
     if (editing?.form_type === 'customer_survey') {
       loadBranches()
+      loadBranchTemplates()
     }
-  }, [editing?.form_type, loadBranches])
+  }, [editing?.form_type, loadBranches, loadBranchTemplates])
 
   const handleCreateToken = async () => {
     if (!qrLabel.trim()) {
       toast('Lütfen bir etiket giriniz', 'warning')
       return
     }
-    if (qrMode === 'branch' && !qrBranchId) {
-      toast('Lütfen şube seçiniz', 'warning')
-      return
-    }
-    if (qrMode === 'multi_branch' && qrBranchIds.length === 0) {
-      toast('Lütfen en az bir şube seçiniz', 'warning')
-      return
+
+    // Resolve targeted branches
+    let targetBranches = []
+    if (qrTargetSource === 'single_branch') {
+      if (!qrBranchId) {
+        toast('Lütfen şube seçiniz', 'warning')
+        return
+      }
+      const bObj = branches.find(b => String(b.id) === String(qrBranchId))
+      if (bObj) targetBranches = [bObj]
+    } else if (qrTargetSource === 'multi_branch') {
+      if (qrBranchIds.length === 0) {
+        toast('Lütfen en az bir şube seçiniz', 'warning')
+        return
+      }
+      targetBranches = branches.filter(b => qrBranchIds.includes(b.id))
+    } else if (qrTargetSource === 'branch_template') {
+      if (!selectedTemplateId) {
+        toast('Lütfen şube şablonu seçiniz', 'warning')
+        return
+      }
+      const template = branchTemplates.find(t => String(t.id) === String(selectedTemplateId))
+      if (template) {
+        let branchIds = []
+        try {
+          branchIds = Array.isArray(template.branch_ids) 
+            ? template.branch_ids 
+            : JSON.parse(template.branch_ids || '[]')
+        } catch (e) {
+          console.error(e)
+        }
+        targetBranches = branches.filter(b => branchIds.includes(b.id))
+      }
+      if (targetBranches.length === 0) {
+        toast('Seçilen şablonun içerisinde şube bulunamadı', 'warning')
+        return
+      }
+    } else if (qrTargetSource === 'all_branches') {
+      targetBranches = branches
+      if (targetBranches.length === 0) {
+        toast('Sistemde kayıtlı şube bulunamadı', 'warning')
+        return
+      }
     }
 
     try {
       const { buildApiUrl } = await import('@/lib/db')
-      
-      if (qrMode === 'all_branches_individual') {
+
+      if (qrGenerationType === 'individual_qrs' && targetBranches.length > 0) {
         let successCount = 0
-        for (const b of branches) {
+        for (const b of targetBranches) {
           const res = await fetch(buildApiUrl('/api/survey-tokens'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -358,16 +411,40 @@ export default function FormTemplates() {
           })
           if (res.ok) successCount++
         }
-        toast(`${successCount} adet şube özel QR kodu başarıyla oluşturuldu`, 'success')
+        toast(`${successCount} adet şubeye özel ayrı ayrı QR kod başarıyla oluşturuldu`, 'success')
       } else {
-        const payload = {
-          template_id: editing.id,
-          mode: qrMode === 'multi_branch' ? 'multi_branch' : (qrMode === 'branch' ? 'branch' : 'anonymous'),
-          branch_id: qrMode === 'branch' ? qrBranchId : null,
-          branch_ids: qrMode === 'multi_branch' ? qrBranchIds : null,
-          label: qrLabel,
-          qr_config: {}
+        // Single QR Generation
+        let payload = {}
+        if (qrTargetSource === 'anonymous') {
+          payload = {
+            template_id: editing.id,
+            mode: 'anonymous',
+            branch_id: null,
+            branch_ids: null,
+            label: qrLabel,
+            qr_config: {}
+          }
+        } else if (qrTargetSource === 'single_branch') {
+          payload = {
+            template_id: editing.id,
+            mode: 'branch',
+            branch_id: qrBranchId,
+            branch_ids: null,
+            label: qrLabel,
+            qr_config: {}
+          }
+        } else {
+          // multi_branch, branch_template, all_branches (as a single multi-branch QR)
+          payload = {
+            template_id: editing.id,
+            mode: 'multi_branch',
+            branch_id: null,
+            branch_ids: targetBranches.map(b => b.id),
+            label: qrLabel,
+            qr_config: {}
+          }
         }
+
         const res = await fetch(buildApiUrl('/api/survey-tokens'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -379,12 +456,15 @@ export default function FormTemplates() {
         }
         toast('Link ve QR başarıyla oluşturuldu', 'success')
       }
-      
+
+      // Reset states and reload list
       setQrModalOpen(false)
       setQrLabel('')
       setQrBranchId('')
       setQrBranchIds([])
-      setQrMode('anonymous')
+      setSelectedTemplateId('')
+      setQrTargetSource('anonymous')
+      setQrGenerationType('single_qr')
       loadSurveyTokens(editing.id)
     } catch (err) {
       console.error(err)
@@ -694,6 +774,10 @@ export default function FormTemplates() {
 
   const renderQrModal = () => {
     if (!qrModalOpen) return null
+
+    // Determine if individual generation option should be shown
+    const canGenerateIndividual = ['multi_branch', 'branch_template', 'all_branches'].includes(qrTargetSource)
+
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
         <div className="card" style={{ width: '100%', maxWidth: 500, padding: 24, display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--surface)', borderRadius: 12, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
@@ -720,21 +804,29 @@ export default function FormTemplates() {
             </div>
 
             <div>
-              <label className="f-label">Çalışma Modu</label>
+              <label className="f-label">Hedef Seçim Kaynağı</label>
               <select
                 className="f-input"
-                value={qrMode}
-                onChange={e => setQrMode(e.target.value)}
+                value={qrTargetSource}
+                onChange={e => {
+                  const val = e.target.value
+                  setQrTargetSource(val)
+                  // Reset generation type if source is anonymous or single branch
+                  if (val === 'anonymous' || val === 'single_branch') {
+                    setQrGenerationType('single_qr')
+                  }
+                }}
                 style={{ width: '100%', padding: '8px 12px', height: 38 }}
               >
                 <option value="anonymous">Anonim Mod (Şube ve Müşteri Bilinmez)</option>
-                <option value="branch">Şube Modu (Tek Bir Şubeye Bağlı)</option>
-                <option value="multi_branch">Çoklu Şube Modu (Ziyaretçi Şubesini Seçer)</option>
-                <option value="all_branches_individual">Tüm Şubeler için Ayrı Ayrı QR Kod Üret</option>
+                <option value="single_branch">Tek Şube (Seçilen Şubeye Özel)</option>
+                <option value="multi_branch">Çoklu Şube (Belirli Şubeler Arasından Seçim)</option>
+                <option value="branch_template">Şube Şablonu (Şablon İçindeki Şubeler)</option>
+                <option value="all_branches">Tüm Şubeler (Sistemdeki Tüm Şubeler)</option>
               </select>
             </div>
 
-            {qrMode === 'branch' && (
+            {qrTargetSource === 'single_branch' && (
               <div>
                 <label className="f-label">Bağlı Şube Seçimi *</label>
                 <select
@@ -751,7 +843,24 @@ export default function FormTemplates() {
               </div>
             )}
 
-            {qrMode === 'multi_branch' && (
+            {qrTargetSource === 'branch_template' && (
+              <div>
+                <label className="f-label">Şube Şablonu Seçimi *</label>
+                <select
+                  className="f-input"
+                  value={selectedTemplateId}
+                  onChange={e => setSelectedTemplateId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', height: 38 }}
+                >
+                  <option value="">Şablon Seçin...</option>
+                  {branchTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {qrTargetSource === 'multi_branch' && (
               <div>
                 <label className="f-label">İzin Verilen Şubeler (En az bir tane seçin) *</label>
                 <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--surface-2)' }}>
@@ -776,6 +885,21 @@ export default function FormTemplates() {
                     )
                   })}
                 </div>
+              </div>
+            )}
+
+            {canGenerateIndividual && (
+              <div>
+                <label className="f-label">Üretim Tipi</label>
+                <select
+                  className="f-input"
+                  value={qrGenerationType}
+                  onChange={e => setQrGenerationType(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', height: 38 }}
+                >
+                  <option value="single_qr">Tek Bir QR Kod / Link (Seçim Şubesiyle Birlikte)</option>
+                  <option value="individual_qrs">Her Şube İçin Ayrı Ayrı Link ve QR Kod Üret</option>
+                </select>
               </div>
             )}
           </div>
