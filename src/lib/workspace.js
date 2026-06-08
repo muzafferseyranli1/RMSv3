@@ -1,6 +1,7 @@
 export const WORKSPACE_SCOPE = {
   center: 'center',
-  warehouse: 'warehouse',
+  anadepo: 'anadepo',
+  merkezmutfak: 'merkezmutfak',
   branch: 'branch',
   admin: 'admin',
 }
@@ -15,12 +16,20 @@ export const WORKSPACE_SCOPE_OPTIONS = [
     bg: 'rgba(96,165,250,.14)',
   },
   {
-    value: WORKSPACE_SCOPE.warehouse,
-    label: 'Ana Depo / Merkez Mutfak',
-    description: 'Ana depo ve uretim akislarinda calisin.',
+    value: WORKSPACE_SCOPE.anadepo,
+    label: 'Ana Depo (WMS)',
+    description: 'Lojistik, lokasyon ve palet yonetimi operasyonlari.',
     icon: 'fa-warehouse',
     accent: '#34d399',
     bg: 'rgba(52,211,153,.14)',
+  },
+  {
+    value: WORKSPACE_SCOPE.merkezmutfak,
+    label: 'Merkez Mutfak',
+    description: 'Uretim receteleri ve is emirleri akislarinda calisin.',
+    icon: 'fa-industry',
+    accent: '#f43f5e',
+    bg: 'rgba(244,63,94,.14)',
   },
   {
     value: WORKSPACE_SCOPE.branch,
@@ -46,7 +55,8 @@ export const WORKSPACE_BRANCH_NAME_STORAGE_KEY = 'suitable_workspace_branch_name
 
 export const DEFAULT_PATH_BY_SCOPE = {
   [WORKSPACE_SCOPE.center]: '/dashboard',
-  [WORKSPACE_SCOPE.warehouse]: '/merkez-orders',
+  [WORKSPACE_SCOPE.anadepo]: '/merkez-orders',
+  [WORKSPACE_SCOPE.merkezmutfak]: '/merkez-uretim',
   [WORKSPACE_SCOPE.branch]: '/forecast',
   [WORKSPACE_SCOPE.admin]: '/dashboard',
 }
@@ -55,7 +65,8 @@ const SECTION_ACCESS = {
   'Merkez': [WORKSPACE_SCOPE.center, WORKSPACE_SCOPE.admin],
   'Şube': [WORKSPACE_SCOPE.branch, WORKSPACE_SCOPE.admin],
   'POS ve Ekranlar': [WORKSPACE_SCOPE.branch, WORKSPACE_SCOPE.admin],
-  'Merkez Depo/Mutfak': [WORKSPACE_SCOPE.warehouse, WORKSPACE_SCOPE.admin],
+  'Ana Depo / WMS': [WORKSPACE_SCOPE.anadepo, WORKSPACE_SCOPE.admin],
+  'Merkez Mutfak': [WORKSPACE_SCOPE.merkezmutfak, WORKSPACE_SCOPE.admin],
   Ayarlar: [WORKSPACE_SCOPE.center, WORKSPACE_SCOPE.admin],
 }
 
@@ -170,20 +181,25 @@ const BRANCH_PATHS = new Set([
   '/sube-formlar',
 ])
 
-const WAREHOUSE_PATHS = new Set([
+const ANADEPO_PATHS = new Set([
   '/merkez-orders',
-  '/merkez-uretim',
-  '/merkez-documents',
   '/merkez-count',
   '/merkez-transfer',
   '/merkez-zayi-kaydi',
   '/merkez-serbest-kullanim-kaydi',
+  '/merkez-depo-formlar',
+  '/merkez-documents',
+  '/wms-locations',
+  '/wms-lpns',
+])
+
+const MERKEZMUTFAK_PATHS = new Set([
+  '/merkez-uretim',
   '/merkez-time-tracking/timers',
   '/merkez-time-tracking/timers/presets',
   '/merkez-tasks',
   '/merkez-geribildirimler',
   '/merkez-kalite-raporlari',
-  '/merkez-depo-formlar',
 ])
 
 export function normalizeWorkspaceScope(value) {
@@ -207,7 +223,8 @@ export function getRequiredScopeForPath(path) {
   if (pathMatchesSet(path, SHARED_PATHS)) return ''
   if (pathMatchesSet(path, CENTER_PATHS)) return WORKSPACE_SCOPE.center
   if (pathMatchesSet(path, BRANCH_PATHS)) return WORKSPACE_SCOPE.branch
-  if (pathMatchesSet(path, WAREHOUSE_PATHS)) return WORKSPACE_SCOPE.warehouse
+  if (pathMatchesSet(path, ANADEPO_PATHS)) return WORKSPACE_SCOPE.anadepo
+  if (pathMatchesSet(path, MERKEZMUTFAK_PATHS)) return WORKSPACE_SCOPE.merkezmutfak
   return ''
 }
 
@@ -226,6 +243,7 @@ export function canAccessPath(scope, path) {
   if (pathMatchesSet(path, SHARED_PATHS)) return true
   if (pathMatchesSet(path, CENTER_PATHS)) return normalizedScope === WORKSPACE_SCOPE.center
   if (pathMatchesSet(path, BRANCH_PATHS)) return normalizedScope === WORKSPACE_SCOPE.branch
-  if (pathMatchesSet(path, WAREHOUSE_PATHS)) return normalizedScope === WORKSPACE_SCOPE.warehouse
+  if (pathMatchesSet(path, ANADEPO_PATHS)) return normalizedScope === WORKSPACE_SCOPE.anadepo
+  if (pathMatchesSet(path, MERKEZMUTFAK_PATHS)) return normalizedScope === WORKSPACE_SCOPE.merkezmutfak
   return false
 }

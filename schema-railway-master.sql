@@ -448,6 +448,10 @@ CREATE TABLE IF NOT EXISTS public.inventory_movements (
   cancelled_at TIMESTAMPTZ,
   cancelled_reason TEXT,
   reversal_of_movement_id UUID,
+  location_id UUID,
+  lpn_id UUID,
+  lot_number TEXT,
+  expiration_date DATE,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   created_by UUID,
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -1902,6 +1906,57 @@ CREATE TABLE IF NOT EXISTS public.units (
   sort_order INTEGER DEFAULT 0 NOT NULL,
   CONSTRAINT units_pkey PRIMARY KEY (id),
   CONSTRAINT units_name_key UNIQUE (name)
+);
+
+CREATE TABLE IF NOT EXISTS public.warehouse_locations (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  branch_id UUID NOT NULL,
+  zone_code TEXT,
+  aisle TEXT,
+  rack TEXT,
+  level TEXT,
+  bin TEXT,
+  temperature_class TEXT,
+  usage_type TEXT DEFAULT 'RESERVE'::text,
+  is_active BOOLEAN DEFAULT true NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT warehouse_locations_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.warehouse_lpns (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  lpn_code TEXT NOT NULL,
+  branch_id UUID NOT NULL,
+  status TEXT DEFAULT 'active'::text NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT warehouse_lpns_pkey PRIMARY KEY (id),
+  CONSTRAINT warehouse_lpns_lpn_code_key UNIQUE (lpn_code)
+);
+
+CREATE TABLE IF NOT EXISTS public.product_external_barcodes (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  gtin_barcode TEXT NOT NULL,
+  stock_item_id UUID NOT NULL,
+  is_approved BOOLEAN DEFAULT false NOT NULL,
+  created_by_terminal TEXT,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT product_external_barcodes_pkey PRIMARY KEY (id),
+  CONSTRAINT product_external_barcodes_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS public.stock_item_warehouse_settings (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  stock_item_id UUID NOT NULL,
+  branch_id UUID NOT NULL,
+  order_unit TEXT DEFAULT 'ana'::text,
+  min_order NUMERIC(10,3),
+  max_order NUMERIC(10,3),
+  min_stock NUMERIC(10,3),
+  safety_stock NUMERIC(10,3),
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT stock_item_warehouse_settings_pkey PRIMARY KEY (id),
+  CONSTRAINT stock_item_warehouse_settings_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE,
+  CONSTRAINT stock_item_warehouse_settings_unique_stock_branch UNIQUE (stock_item_id, branch_id)
 );
 
 -- ------------------------------------------------------------

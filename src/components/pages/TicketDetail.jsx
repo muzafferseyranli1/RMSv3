@@ -220,7 +220,7 @@ export default function TicketDetail({ mode }) {
   const { branchId: workspaceBranchId, scope, branches } = useWorkspace()
 
   // Resolve active mode
-  const activeMode = mode || (scope === 'branch' ? 'branch' : (scope === 'warehouse' ? 'warehouse' : 'center'))
+  const activeMode = mode || (scope === 'branch' ? 'branch' : (['anadepo', 'merkezmutfak'].includes(scope) ? 'warehouse' : 'center'))
 
   const listPath = activeMode === 'branch' ? '/sube-geribildirimler' : (activeMode === 'warehouse' ? '/merkez-geribildirimler' : '/geribildirimler')
 

@@ -9032,3 +9032,24 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - `Çalışmayı tamamla ve kullanıcıyı bilgilendir.`
 - `Handoff Contract`:
   - `Bilet rotalarının görev sayfalarına Navigate yönlendirmesi için App.jsx, sol menü değişiklikleri için Sidebar.jsx, bildirim yönlendirmeleri için NotificationBell.jsx ve şablon filtreleme mantığı için FormSubmissions.jsx üzerindeki değişiklikleri inceleyin.`
+
+## Entry 053
+
+- `Timestamp`: `2026-06-08T13:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Çağrı Merkezi Geri Bildirim Aç Butonu ve Modal Entegrasyonunun Doğrulanması`
+- `Intent`: `Bilet sistemi yerine sol menüden kaldırılan geribildirim girişinin CallCenter.jsx ekranına entegre edilmesi ve geribildirim şablon listesinin yüklenememesine sebep olan posTablesResult ReferenceError hatasının giderilerek doğrulanması.`
+- `Files Changed`:
+  - `src/components/pages/CallCenter.jsx` (Dinamik modal tasarımı, şablon listesi entegrasyonu ve posTablesResult/openTicketSettingsResult ReferenceError hatasının düzeltilmesi)
+- `Findings`:
+  - `CallCenter.jsx içerisinde loadBase fonksiyonunda Promise.all destructuring array sırasında posTablesResult değişkeninin yanlış yazılması/eksik kalması nedeniyle ReferenceError alınmaktaydı. Bu hata giderilerek veritabanı yüklemesinin sorunsuz tamamlanması sağlandı.`
+  - `Veritabanında 3 adet aktif 'notification_form' şablonu (Standart dışı ürün bildirim formu, ekipman arıza bildirim formu, Müşteri şikayeti Bidirim formux) başarıyla çekilmektedir. Hata giderildiği için modal açıldığında bu şablonlar artık boş gelmeyip listelenecektir.`
+  - `Üretim derlemesi (production build) npm run build:web komutu ile sorunsuz şekilde tamamlanmış ve Vite derleme hatası olmadığı teyit edilmiştir.`
+- `Decisions`:
+  - `Çağrı merkezindeki feedback girişi modalı üzerinden girilen müşteri bilgileri (ad soyad, telefon) şablon alanları ile otomatik eşleştirilerek autofill kolaylığı sağlanmıştır.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Değişiklikleri Git üzerinde commit edip yayına hazır hale getirin.`
+- `Handoff Contract`:
+  - `CallCenter.jsx üzerindeki loadBase veri yükleme akışını ve showFeedbackModal modalının şablon listesi ile dinamik alan render mantığını inceleyin.`
+

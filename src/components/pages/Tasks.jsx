@@ -427,7 +427,7 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
     let path = '/formlar'
     if (scope === 'branch') {
       path = '/sube-formlar'
-    } else if (scope === 'warehouse') {
+    } else if (scope === 'anadepo' || scope === 'merkezmutfak') {
       path = '/merkez-depo-formlar'
     }
     window.open(`${path}?fillTemplateId=${templateId}`, '_blank')

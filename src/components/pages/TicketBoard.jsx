@@ -37,7 +37,7 @@ export default function TicketBoard({ mode }) {
   const { branchId, branchName, branches, scope } = useWorkspace()
 
   // Resolve active mode
-  const activeMode = mode || (scope === 'branch' ? 'branch' : (scope === 'warehouse' ? 'warehouse' : 'center'))
+  const activeMode = mode || (scope === 'branch' ? 'branch' : (['anadepo', 'merkezmutfak'].includes(scope) ? 'warehouse' : 'center'))
 
   const [tickets, setTickets] = useState([])
   const [categories, setCategories] = useState([])
