@@ -167,7 +167,7 @@ export function collectBranchContexts(tree) {
         nextCtx.legalEntity = { id: node.id, name: node.name }
       } else if (node.type === 'org') {
         nextCtx.orgUnit = { id: node.id, name: node.name }
-      } else if (node.type === 'sube') {
+      } else if (node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak') {
         result.push({
           branchId: node.id,
           branchName: node.name,

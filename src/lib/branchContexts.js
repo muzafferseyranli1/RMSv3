@@ -1,4 +1,4 @@
-﻿import { db } from '@/lib/db'
+import { db } from '@/lib/db'
 
 const DEFAULT_BRANCH_NAME = 'Kadikoy Subesi'
 const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v1'
@@ -98,6 +98,7 @@ export function mapBranchContextsToWorkspaceBranches(branchContexts = []) {
   return (branchContexts || []).map(branch => ({
     id: String(branch.branchId),
     name: branch.branchName,
+    workspaceScope: branch.workspaceScope || null,
   }))
 }
 
@@ -133,6 +134,7 @@ export function buildBranchContextsFromCompanyNodes(nodes = []) {
         legalEntityName: legalEntity?.name || null,
         orgUnitId: orgUnit?.id ? String(orgUnit.id) : null,
         orgUnitName: orgUnit?.name || null,
+        workspaceScope: branchNode.workspace_scope || null,
       }
     })
 }
@@ -163,7 +165,7 @@ export function buildBranchContextsFromCompanyTree(treeValue) {
       if (node.type === 'tuzel') nextCtx.legalEntity = { id: node.id, name: node.name }
       if (node.type === 'org') nextCtx.orgUnit = { id: node.id, name: node.name }
 
-      if (node.type === 'sube' && node.id && node.name) {
+      if ((node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak') && node.id && node.name) {
         result.push({
           branchId: String(node.id),
           branchName: String(node.name),
@@ -173,6 +175,7 @@ export function buildBranchContextsFromCompanyTree(treeValue) {
           legalEntityName: nextCtx.legalEntity?.name || null,
           orgUnitId: nextCtx.orgUnit?.id ? String(nextCtx.orgUnit.id) : null,
           orgUnitName: nextCtx.orgUnit?.name || null,
+          workspaceScope: node.workspace_scope || (node.type === 'anadepo' ? 'anadepo' : (node.type === 'mutfak' ? 'merkezmutfak' : null)),
         })
       }
 

@@ -198,7 +198,7 @@ function getAllBranches(tree) {
   const result = []
   function walk(nodes) {
     for (const node of nodes || []) {
-      if (node.type === 'sube') result.push({ id: node.id, name: node.name })
+      if (node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak') result.push({ id: node.id, name: node.name })
       walk(node.children || [])
     }
   }

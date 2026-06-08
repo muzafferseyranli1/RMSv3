@@ -4104,4 +4104,44 @@ CREATE INDEX IF NOT EXISTS idx_survey_tokens_active   ON public.survey_tokens(ac
 -- END OF SCHEMA
 -- ============================================================
 
+-- ============================================================
+-- WMS TAMAMLAMA: Eksik kolonlar ve index'ler
+-- ============================================================
 
+-- warehouse_locations: updated_at kolonu
+ALTER TABLE public.warehouse_locations
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_warehouse_locations_branch ON public.warehouse_locations(branch_id);
+
+-- warehouse_lpns: lokasyon, notlar ve zaman damgaları
+ALTER TABLE public.warehouse_lpns
+  ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS notes TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_warehouse_lpns_branch   ON public.warehouse_lpns(branch_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_lpns_location ON public.warehouse_lpns(location_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_lpns_status   ON public.warehouse_lpns(status);
+
+-- stock_item_warehouse_settings: varsayılan lokasyon bağlantısı ve updated_at
+ALTER TABLE public.stock_item_warehouse_settings
+  ADD COLUMN IF NOT EXISTS default_location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_stock_item_wh_settings_item   ON public.stock_item_warehouse_settings(stock_item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_item_wh_settings_branch ON public.stock_item_warehouse_settings(branch_id);
+
+-- inventory_movements: WMS lokasyon, LPN, lot ve son kullanma tarihi
+ALTER TABLE public.inventory_movements
+  ADD COLUMN IF NOT EXISTS location_id     UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS lpn_id          UUID REFERENCES public.warehouse_lpns(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS lot_number      TEXT,
+  ADD COLUMN IF NOT EXISTS expiration_date DATE;
+CREATE INDEX IF NOT EXISTS idx_inv_movements_location ON public.inventory_movements(location_id);
+CREATE INDEX IF NOT EXISTS idx_inv_movements_lpn      ON public.inventory_movements(lpn_id);
+
+-- product_external_barcodes: ek indeksler ve updated_at
+ALTER TABLE public.product_external_barcodes
+  ADD COLUMN IF NOT EXISTS notes      TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_barcodes_gtin ON public.product_external_barcodes(gtin_barcode);
+CREATE INDEX IF NOT EXISTS idx_product_barcodes_item        ON public.product_external_barcodes(stock_item_id);
+CREATE INDEX IF NOT EXISTS idx_product_barcodes_approved    ON public.product_external_barcodes(is_approved);

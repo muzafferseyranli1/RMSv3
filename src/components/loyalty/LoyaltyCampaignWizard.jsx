@@ -138,7 +138,7 @@ async function loadLoyaltyWorkspaceWithRetry(workspacePayload, attempts = 3) {
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { for (const x of n||[]) { if(x.type==='sube') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
   walk(tree); return r
 }
 

@@ -638,9 +638,17 @@ export function WorkspaceProvider({
     if (!normalizedScope) return
     if (!normalizedAllowedScopes.includes(normalizedScope)) return
 
-    const resolvedBranchId = normalizedScope === WORKSPACE_SCOPE.branch
-      ? (nextBranchId || branchId || findPreferredBranchContext(branches, branchId)?.branchId || '')
-      : (nextBranchId || branchId || '')
+    let resolvedBranchId = nextBranchId || branchId || ''
+    
+    if (normalizedScope === WORKSPACE_SCOPE.branch) {
+      resolvedBranchId = nextBranchId || branchId || findPreferredBranchContext(branches, branchId)?.branchId || ''
+    } else if (normalizedScope === WORKSPACE_SCOPE.anadepo) {
+      const adBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.anadepo)
+      if (adBranch) resolvedBranchId = adBranch.id
+    } else if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) {
+      const mmBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.merkezmutfak)
+      if (mmBranch) resolvedBranchId = mmBranch.id
+    }
 
     if (normalizedScope === WORKSPACE_SCOPE.branch && !resolvedBranchId) return
 

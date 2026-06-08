@@ -15,7 +15,7 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { for (const x of n||[]) { if(x.type==='sube') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
   walk(tree); return r
 }
 

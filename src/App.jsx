@@ -102,6 +102,9 @@ const EquipmentManagement = lazy(() => import('@/components/pages/EquipmentManag
 const PublicSurvey = lazy(() => import('@/components/pages/PublicSurvey'))
 const TaskManager = lazy(() => import('@/components/pages/TaskManager'))
 const Workflows = lazy(() => import('@/components/pages/Workflows'))
+const WmsLocations = lazy(() => import('@/components/pages/WmsLocations'))
+const WmsLpns = lazy(() => import('@/components/pages/WmsLpns'))
+const WmsStockParams = lazy(() => import('@/components/pages/WmsStockParams'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -455,9 +458,12 @@ function AppShell() {
               <Route path="/sube-formlar" element={<WorkspaceBranchScope><FormSubmissions /></WorkspaceBranchScope>} />
 
               {/* Merkez Depo / Üretim Geri Bildirim ve Kalite */}
-              <Route path="/merkez-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkez-tasks" replace /></WarehouseBranchRoute>} />
-              <Route path="/merkez-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkez-tasks" replace /></WarehouseBranchRoute>} />
-              <Route path="/merkez-depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions /></WarehouseBranchRoute>} />
+              <Route path="/depo-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/depo-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/depo-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/depo-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions scopeVariant="anadepo" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/form-sablonlari" element={<FormTemplates />} />
               <Route path="/formlar" element={<FormSubmissions />} />
               <Route path="/manual-yonetimi" element={<ManualManagement />} />
@@ -465,16 +471,31 @@ function AppShell() {
               <Route path="/ekipman-yonetimi" element={<EquipmentManagement />} />
               <Route path="/geribildirim-kategorileri" element={<TicketCategories />} />
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
-              <Route path="/merkez-orders" element={<Placeholder title="Siparişler" icon="fa-receipt" />} />
-              <Route path="/merkez-uretim" element={<Production />} />
-              <Route path="/merkez-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="branch" /></WarehouseBranchRoute>} />
-              <Route path="/merkez-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="warehouse" /></WarehouseBranchRoute>} />
-              <Route path="/merkez-count" element={<WarehouseBranchRoute title="Sayim"><Count /></WarehouseBranchRoute>} />
-              <Route path="/merkez-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="warehouse" />} />
-              <Route path="/merkez-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="warehouse" />} />
-              <Route path="/merkez-transfer" element={<InventoryTransfer scopeVariant="warehouse" />} />
-              <Route path="/merkez-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
-              <Route path="/merkez-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
+              {/* Ana Depo İşlemleri */}
+              <Route path="/depo-orders" element={<WarehouseBranchRoute title="Siparişler"><Orders /></WarehouseBranchRoute>} />
+              <Route path="/depo-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="anadepo" /></WarehouseBranchRoute>} />
+              <Route path="/depo-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="anadepo" /></WarehouseBranchRoute>} />
+              <Route path="/depo-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="anadepo" /></WarehouseBranchRoute>} />
+              <Route path="/depo-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="anadepo" />} />
+              <Route path="/depo-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="anadepo" />} />
+              <Route path="/depo-transfer" element={<InventoryTransfer scopeVariant="anadepo" />} />
+              <Route path="/depo-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
+              <Route path="/depo-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
+              <Route path="/wms-locations" element={<WarehouseBranchRoute title="Lokasyonlar"><WmsLocations /></WarehouseBranchRoute>} />
+              <Route path="/wms-lpns" element={<WarehouseBranchRoute title="LPN / Paletler"><WmsLpns /></WarehouseBranchRoute>} />
+              <Route path="/wms-stock-params" element={<WarehouseBranchRoute title="Stok Parametreleri"><WmsStockParams /></WarehouseBranchRoute>} />
+              <Route path="/depo-mal-kabul" element={<WarehouseBranchRoute title="Mal Kabul"><MalKabul /></WarehouseBranchRoute>} />
+
+              {/* Merkez Mutfak İşlemleri */}
+              <Route path="/merkezmutfak-uretim" element={<Production />} />
+              <Route path="/merkezmutfak-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="merkezmutfak" />} />
+              <Route path="/merkezmutfak-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="merkezmutfak" />} />
+              <Route path="/merkezmutfak-transfer" element={<InventoryTransfer scopeVariant="merkezmutfak" />} />
+              <Route path="/merkezmutfak-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
               <Route path="/gorev-yoneticisi" element={<TaskManager />} />
               <Route path="/is-akisleri" element={<Workflows />} />
               <Route path="*" element={<Navigate to={defaultPath} replace />} />

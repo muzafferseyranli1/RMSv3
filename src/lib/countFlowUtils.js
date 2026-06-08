@@ -18,7 +18,7 @@ export function getAllBranchesFromTree(tree) {
   const result = []
   function walk(nodes) {
     for (const node of nodes || []) {
-      if (node?.type === 'sube') result.push({ id: String(node.id), name: String(node.name || '') })
+      if (node?.type === 'sube' || node?.type === 'anadepo' || node?.type === 'mutfak') result.push({ id: String(node.id), name: String(node.name || '') })
       walk(node?.children || [])
     }
   }

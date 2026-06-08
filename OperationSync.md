@@ -9053,3 +9053,23 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
 - `Handoff Contract`:
   - `CallCenter.jsx üzerindeki loadBase veri yükleme akışını ve showFeedbackModal modalının şablon listesi ile dinamik alan render mantığını inceleyin.`
 
+
+## Entry 054
+
+- `Timestamp`: `2026-06-08T18:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Merkez/Ana Depo (WMS) Mal Kabul ve Siparişler Modüllerinin Entegrasyonu`
+- `Intent`: `Ana Depo (anadepo) çalışma alanı bağlamında Mal Kabul ve Siparişler özelliklerinin kullanılamaması sorununu çözmek amacıyla; daha önce placeholder olan /depo-mal-kabul ve /depo-orders rotalarının sırasıyla MalKabul.jsx ve Orders.jsx bileşenlerine bağlanması ve Sidebar.jsx üzerinde ilgili linklerin aktifleştirilmesi/düzenlenmesi.`
+- `Files Changed`:
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+- `Findings`:
+  - `Mal Kabul ve Siparişler bileşenleri (MalKabul.jsx ve Orders.jsx), isBranchScopedScope(scope) ve useWorkspace() bağlamından branchId'yi alarak seçilen depo context'ine göre verileri otomatik olarak filtrelemektedir. Bu sayede her iki sayfa da WMS bağlamında hatasız çalışmaktadır.`
+  - `Vite production build (npm run build) başarıyla çalıştırılmış ve değişikliklerin derleme hatasına yol açmadığı doğrulanmıştır.`
+- `Decisions`:
+  - `Ana Depo bağlamında (anadepo) her iki rotanın da yetkisiz erişim veya tanımsız yönlendirmelere takılmaması için workspace.js içerisindeki ANADEPO_PATHS izinli yol kümesi korunmuş ve App.jsx rotaları WarehouseBranchRoute ile sarmalanarak aktif depo seçimi zorunlu kılınmıştır.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Kullanıcı onayına sunulması ve git status doğrulaması yapılması.`
+- `Handoff Contract`:
+  - `App.jsx üzerindeki rota değişikliklerini ve Sidebar.jsx içerisindeki Ana Depo menü grubu yapısını inceleyin.`

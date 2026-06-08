@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import {
@@ -171,7 +171,12 @@ function createDocumentNo(mode) {
     String(now.getHours()).padStart(2, '0'),
     String(now.getMinutes()).padStart(2, '0'),
   ]
-  return `${mode === 'center' ? 'MRK' : 'SUB'}-${parts.join('')}`
+  let prefix = 'SUB'
+  if (mode === 'center') prefix = 'MRK'
+  else if (mode === 'anadepo') prefix = 'AND'
+  else if (mode === 'merkezmutfak') prefix = 'MMT'
+  
+  return `${prefix}-${parts.join('')}`
 }
 
 function toDateInputValue(value) {
@@ -225,7 +230,7 @@ function createInitialForm(mode, branchId = '') {
     distributionMode: 'equal',
     allBranches: false,
     branchSelections: mode === 'center' ? [{ id: 'center', type: 'branch', name: 'Merkez', branchIds: [] }] : [],
-    selectedBranchIds: mode === 'branch' && branchId ? [branchId] : ['center'],
+    selectedBranchIds: mode !== 'center' && branchId ? [branchId] : ['center'],
     note: '',
     unregisteredReason: '',
   }
@@ -480,8 +485,9 @@ function DraftTable({ drafts, branchNamesById, onLoad }) {
   )
 }
 
-export default function Documents({ mode = 'center' }) {
-  const { branchId, branchName, branches, loadingBranches } = useWorkspace()
+export default function Documents({ mode: overrideMode }) {
+  const { branchId, branchName, branches, loadingBranches, scope } = useWorkspace()
+  const mode = overrideMode || scope || 'branch'
   const [suppliers, setSuppliers] = useState([])
   const [branchTemplates, setBranchTemplates] = useState([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(true)
@@ -592,7 +598,7 @@ export default function Documents({ mode = 'center' }) {
   }, [])
 
   useEffect(() => {
-    if (mode !== 'branch' || !branchId) return
+    if (mode === 'center' || !branchId) return
     setForm(current => ({ ...current, allBranches: false, branchSelections: [], selectedBranchIds: [branchId] }))
   }, [mode, branchId])
 
@@ -681,7 +687,7 @@ export default function Documents({ mode = 'center' }) {
   }
 
   function resolveSelectedDocumentBranches() {
-    if (mode === 'branch') {
+    if (mode !== 'center') {
       return branchOptions.filter(item => (form.selectedBranchIds || []).includes(String(item.id)))
     }
 
@@ -754,7 +760,7 @@ export default function Documents({ mode = 'center' }) {
       return
     }
 
-    if (mode === 'branch' && !branchId) {
+    if (mode !== 'center' && !branchId) {
       setSaveState({ message: 'Şube bağlamı olmadan belge taslağı kaydedilemez.', tone: 'error' })
       return
     }
@@ -792,7 +798,7 @@ export default function Documents({ mode = 'center' }) {
       return
     }
 
-    if (mode === 'branch' && !branchId) {
+    if (mode !== 'center' && !branchId) {
       setSaveState({ message: 'Sube baglami olmadan belge kaydi yapilamaz.', tone: 'error' })
       return
     }
@@ -888,7 +894,7 @@ export default function Documents({ mode = 'center' }) {
   return (
     <div className="page-enter">
       <Header
-        title="Belge Girişi"
+        title={`Belge Girişi ${mode === 'center' ? '(Merkez)' : mode === 'anadepo' ? '(Ana Depo)' : mode === 'merkezmutfak' ? '(Merkez Mutfak)' : '(Şube)'}`}
         actions={(
           <>
             <button className="btn-o" type="button" onClick={resetForm}>
@@ -905,8 +911,8 @@ export default function Documents({ mode = 'center' }) {
         <SummaryCard label="Belge No" value={form.documentNo} hint="Sistem tarafinda otomatik on taslak no verilir." bg="#eff6ff" color="#1d4ed8" />
         <SummaryCard label="Belge Tipi" value={DOCUMENT_TYPE_OPTIONS.find(item => item.value === form.documentType)?.label || '—'} bg="#f8fafc" color="#334155" />
         <SummaryCard
-          label={mode === 'center' ? 'Seçilen Şubeler' : 'Bağlı Şube'}
-          value={mode === 'branch' ? (branchName || 'Seçili şube bekleniyor') : (form.allBranches ? 'Tüm şubeler' : String(selectedBranches.length))}
+          label={mode === 'center' ? 'Seçilen Şubeler' : (mode === 'anadepo' ? 'Ana Depo' : (mode === 'merkezmutfak' ? 'Merkez Mutfak' : 'Bağlı Şube'))}
+          value={mode !== 'center' ? (branchName || 'Seçili bağlam bekleniyor') : (form.allBranches ? 'Tüm şubeler' : String(selectedBranches.length))}
           hint={mode === 'center' ? (selectedBranches.map(item => item.name).join(', ') || 'Şube seçimi bekleniyor') : 'Şube bağlamı workspace seçiminden gelir.'}
           bg="#fff7ed"
           color="#c2410c"

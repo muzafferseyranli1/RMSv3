@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
@@ -12,7 +12,15 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { for (const x of n||[]) { if(x.type==='sube') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  function walk(n) { 
+    for (const x of n||[]) { 
+      if(x.type==='sube' || x.type==='anadepo' || x.type==='mutfak') {
+        const scope = x.workspace_scope || (x.type === 'anadepo' ? 'anadepo' : (x.type === 'mutfak' ? 'merkezmutfak' : null))
+        r.push({id:x.id, name:x.name, workspace_scope:scope})
+      }
+      walk(x.children||[]) 
+    } 
+  }
   walk(tree); return r
 }
 
@@ -347,6 +355,7 @@ const EMPTY = {
   recipe_linked:false, daily_usage:'', auto_usage:false,
   supp_id:'', purchase_price:'', suppliers_list:[],
   saleable:false, sale_name:'', sale_group:'',
+  warehouse_settings: {}
 }
 
 // ── Main component ────────────────────────────────────────────
@@ -358,6 +367,7 @@ export default function StockItems() {
   const [suppliers, setSuppliers] = useState([])
   const [branches, setBranches] = useState([])
   const [branchTpls, setBranchTpls] = useState([])
+  const [wmsLocs, setWmsLocs]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [showDeleted, setShowDeleted] = useState(false)
@@ -371,11 +381,13 @@ export default function StockItems() {
   const [recipeLinkedIds, setRecipeLinkedIds] = useState(new Set())
   const locationDefaultAppliedRef = useRef(false)
 
+  const [whSettings, setWhSettings] = useState([])
+
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: si }, { data: ca }, { data: un }, { data: su },
            { data: ct }, { data: bt }, { data: saleItems },
-           { data: saleOptions }, { data: semiItems }] = await Promise.all([
+           { data: saleOptions }, { data: semiItems }, { data: whSet }, { data: wmsLocData }] = await Promise.all([
       db.from('stock_items').select('*').order('name'),
       db.from('categories').select('*').order('name'),
       db.from('units').select('*').order('is_system',{ascending:false}).order('sort_order').order('label'),
@@ -385,6 +397,8 @@ export default function StockItems() {
       db.from('sale_items').select('id,recipe_rows').is('deleted_at', null),
       db.from('sale_options').select('id,recipe_rows').is('deleted_at', null),
       db.from('semi_items').select('id,recipe_rows').is('deleted_at', null),
+      db.from('stock_item_warehouse_settings').select('*'),
+      db.from('warehouse_locations').select('id,branch_id,zone_code,aisle,rack,level,bin').eq('is_active',true).order('zone_code'),
     ])
     setItems(si||[])
     setCats(ca||[])
@@ -392,6 +406,8 @@ export default function StockItems() {
     setSuppliers(su||[])
     setBranches(getAllBranches(ct?.value||[]))
     setBranchTpls(bt||[])
+    setWmsLocs(wmsLocData||[])
+    setWhSettings(whSet||[])
     setExistingSkus(new Set((si||[]).map(x=>x.sku).filter(Boolean)))
     setRecipeLinkedIds(buildRecipeLinkedStockIdSet([...(saleItems||[]), ...(saleOptions||[]), ...(semiItems||[])]))
     setLoading(false)
@@ -496,6 +512,21 @@ export default function StockItems() {
   function openAdd() { setForm(withDefaultLocationSelection(EMPTY, branchTpls)); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
   function openEdit(item) {
     const derivedRecipeLinked = recipeLinkedIds.has(item.id)
+    
+    // Build warehouse settings map for this item
+    const wset = {}
+    const myWhSet = whSettings.filter(w => w.stock_item_id === item.id)
+    for (const w of myWhSet) {
+      wset[w.branch_id] = {
+        order_unit: w.order_unit || 'ana',
+        min_order: w.min_order || '',
+        max_order: w.max_order || '',
+        min_stock: w.min_stock || '',
+        safety_stock: w.safety_stock || '',
+        default_location_id: w.default_location_id || '',
+      }
+    }
+
     setForm({
       sku: item.sku||'', auto_sku: item.auto_sku||false,
       name: item.name||'', short_name: item.short_name||'',
@@ -511,6 +542,7 @@ export default function StockItems() {
       supp_id: item.supp_id||'', purchase_price: item.purchase_price||'',
       suppliers_list: item.suppliers_list||[],
       saleable: item.saleable||false, sale_name: item.sale_name||'', sale_group: item.sale_group||'',
+      warehouse_settings: wset,
     })
     setEditId(item.id); setTab(0)
     setSkuStatus(item.auto_sku ? {type:'auto',msg:'Otomatik üretildi.'} : {type:'idle',msg:''})
@@ -567,15 +599,47 @@ export default function StockItems() {
       sale_group: form.saleable ? form.sale_group||null : null,
     }
 
+    let finalId = editId
     if (editId) {
       const { error } = await db.from('stock_items').update(payload).eq('id', editId)
       if (error) { toast('Hata: '+error.message,'error'); return }
       toast(`"${payload.name}" güncellendi`,'success')
     } else {
-      const { error } = await db.from('stock_items').insert(payload)
+      const { error, data } = await db.from('stock_items').insert(payload).select('id').single()
       if (error) { toast('Hata: '+error.message,'error'); return }
+      finalId = data.id
       toast(`"${payload.name}" eklendi`,'success')
     }
+
+    // Save warehouse settings
+    if (finalId) {
+      const whBranches = branches.filter(b => b.workspace_scope === 'anadepo')
+      const whPayloads = []
+      for (const branch of whBranches) {
+        const setg = form.warehouse_settings?.[branch.id]
+        if (setg) {
+          whPayloads.push({
+            stock_item_id: finalId,
+            branch_id: branch.id,
+            order_unit: setg.order_unit || 'ana',
+            min_order: parseFloat(setg.min_order) || null,
+            max_order: parseFloat(setg.max_order) || null,
+            min_stock: parseFloat(setg.min_stock) || null,
+            safety_stock: parseFloat(setg.safety_stock) || null,
+            default_location_id: setg.default_location_id || null,
+            updated_at: new Date().toISOString(),
+          })
+        }
+      }
+      
+      // Upsert
+      if (whPayloads.length > 0) {
+        await db.from('stock_item_warehouse_settings').upsert(whPayloads, { onConflict: 'stock_item_id,branch_id' })
+      } else {
+        await db.from('stock_item_warehouse_settings').delete().eq('stock_item_id', finalId)
+      }
+    }
+
     closeModal(); load()
   }
 
@@ -598,6 +662,7 @@ export default function StockItems() {
     { label:'Temel Bilgiler',   icon:'fa-circle-info' },
     { label:'Ölçüm & Stok',    icon:'fa-ruler' },
     { label:'Tedarikçi & Satış', icon:'fa-handshake' },
+    { label:'Depo Ayarları', icon:'fa-warehouse' },
   ]
 
   // Find deepest cat for display in table
@@ -1029,6 +1094,73 @@ export default function StockItems() {
                 )}
               </div>}
 
+              {/* ── Tab 3: Depo (WMS) Ayarları ── */}
+              {tab===3 && <div>
+                <div style={{padding:'10px 14px',background:'rgba(99,102,241,.06)',borderRadius:10,border:'1px solid rgba(99,102,241,.15)',marginBottom:18,display:'flex',gap:10,alignItems:'flex-start'}}>
+                  <i className="fa-solid fa-circle-info" style={{color:'#6366f1',marginTop:2,flexShrink:0}}/>
+                  <div style={{fontSize:'.8rem',color:'#334155',lineHeight:1.6}}>
+                    <strong>Bu sekmedeki değerler, her Ana Depo için ayrı ayrı tanımlanabilir.</strong>{' '}
+                    Boş bırakılan alanlar için Ölçüm &amp; Stok sekmesindeki global değerler geçerli olur.
+                    <br/>Varsayılan Lokasyon ataması için Ana Depo &gt; Depo Ayarları &gt; <strong>Stok Parametreleri</strong> sayfasını kullanın.
+                  </div>
+                </div>
+                <SectionHead label="Ana Depo Parametreleri"/>
+                {branches.filter(b=>b.workspace_scope==='anadepo').length === 0 ? (
+                  <div style={{padding:16,background:'#f8fafc',borderRadius:8,color:'#64748b',fontSize:'.83rem',textAlign:'center'}}>
+                    Sistemde tanımlı hiçbir "Ana Depo" türünde şube bulunmuyor.
+                  </div>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                    {branches.filter(b=>b.workspace_scope==='anadepo').map(branch => {
+                      const wset = form.warehouse_settings?.[branch.id] || { order_unit:'ana', min_order:'', max_order:'', min_stock:'', safety_stock:'' }
+                      const setW = (k,v) => {
+                        const newWs = { ...form.warehouse_settings, [branch.id]: { ...wset, [k]: v } }
+                        set('warehouse_settings', newWs)
+                      }
+                      
+                      return (
+                        <div key={branch.id} style={{border:'1px solid #e2e8f0',borderRadius:10,padding:14,background:'#f8fafc'}}>
+                          <div style={{fontWeight:700,color:'#0f172a',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
+                            <i className="fa-solid fa-warehouse" style={{color:'#34d399'}}/> {branch.name}
+                          </div>
+                          
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+                            <div>
+                              <label className="f-label">Minimum Stok</label>
+                              <input className="f-input" type="number" min="0" value={wset.min_stock} onChange={e=>setW('min_stock',e.target.value)} placeholder="(global default)"/>
+                            </div>
+                            <div>
+                              <label className="f-label">Güvenlik Stoğu</label>
+                              <input className="f-input" type="number" min="0" value={wset.safety_stock} onChange={e=>setW('safety_stock',e.target.value)} placeholder="(global default)"/>
+                            </div>
+                          </div>
+                          
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
+                            <div>
+                              <label className="f-label">Sipariş Birimi</label>
+                              <SearchableSelect
+                                value={wset.order_unit}
+                                onChange={v=>setW('order_unit',v)}
+                                options={[{value:'ana',label:'Ana birim'},...units.map(u=>({value:u.name,label:u.label}))]}
+                                allowClear={false}
+                              />
+                            </div>
+                            <div>
+                              <label className="f-label">Min. Sipariş Miktarı</label>
+                              <input className="f-input" type="number" min="0" value={wset.min_order} onChange={e=>setW('min_order',e.target.value)} placeholder="(global default)"/>
+                            </div>
+                            <div>
+                              <label className="f-label">Max. Sipariş Miktarı</label>
+                              <input className="f-input" type="number" min="0" value={wset.max_order} onChange={e=>setW('max_order',e.target.value)} placeholder="(global default)"/>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>}
+
             </div>
 
             {/* Footer */}
@@ -1038,7 +1170,7 @@ export default function StockItems() {
                 {tab>0 && <button className="btn-o" onClick={()=>setTab(t=>t-1)} style={{fontSize:'.83rem'}}>
                   <i className="fa-solid fa-chevron-left"/> Geri
                 </button>}
-                {tab<2 && <button className="btn-o" onClick={()=>setTab(t=>t+1)} style={{fontSize:'.83rem'}}>
+                {tab<3 && <button className="btn-o" onClick={()=>setTab(t=>t+1)} style={{fontSize:'.83rem'}}>
                   <i className="fa-solid fa-chevron-right"/> İleri
                 </button>}
               </div>

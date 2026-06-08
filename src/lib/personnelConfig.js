@@ -311,7 +311,7 @@ export function flattenCompanyNodes(nodes, parentChain = []) {
 
 export function extractBranchNodes(nodes) {
   return flattenCompanyNodes(nodes)
-    .filter(node => node.type === 'sube')
+    .filter(node => node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak')
     .map(node => ({
       id: String(node.id),
       name: node.name,

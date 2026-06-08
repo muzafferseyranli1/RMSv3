@@ -203,33 +203,62 @@ const NAV = [
     ],
   },
   {
-    section: 'Merkez Depo/Mutfak',
+    section: 'Ana Depo / WMS',
     icon: 'fa-warehouse',
     items: [
-      { label: 'SipariÅŸler', path: '/merkez-orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-      { label: 'Ãœretim', path: '/merkez-uretim', icon: 'fa-industry', color: '#4ade80', bg: 'rgba(74,222,128,.18)' },
+      { label: 'Siparişler', path: '/depo-orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+      { label: 'Mal Kabul', path: '/depo-mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
       {
-        label: 'Ä°ÅŸlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
-        group: 'merkez-depo-islemler',
+        label: 'İşlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
+        group: 'anadepo-islemler',
         children: [
-          { label: 'Belge GiriÅŸi', path: '/merkez-documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-          { label: 'GÃ¶revler', path: '/merkez-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
-          { label: 'SayÄ±m', path: '/merkez-count', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
-          { label: 'Transfer', path: '/merkez-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
-          { label: 'Zayi KaydÄ±', path: '/merkez-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
-          { label: 'Serbest KullanÄ±m KaydÄ±', path: '/merkez-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-          { label: 'Formlar', path: '/merkez-depo-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
+          { label: 'Belge Girişi', path: '/depo-documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'Sayım', path: '/depo-count', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
+          { label: 'Transfer', path: '/depo-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
+          { label: 'Zayi Kaydı', path: '/depo-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Serbest Kullanım Kaydı', path: '/depo-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'Formlar', path: '/depo-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
         ],
       },
+      { label: 'GÃ¶revler', path: '/depo-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+      {
+        label: 'Depo Ayarları', icon: 'fa-gear', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
+        group: 'anadepo-ayarlar',
+        children: [
+          { label: 'Lokasyonlar', path: '/wms-locations', icon: 'fa-map-location-dot', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
+          { label: 'LPN / Paletler', path: '/wms-lpns', icon: 'fa-pallet', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
+          { label: 'Stok Parametreleri', path: '/wms-stock-params', icon: 'fa-sliders', color: '#6366f1', bg: 'rgba(99,102,241,.18)' },
+        ],
+      },
+    ],
+  },
+  {
+    section: 'Merkez Mutfak',
+    icon: 'fa-industry',
+    items: [
+      { label: 'Ãœretim', path: '/merkezmutfak-uretim', icon: 'fa-industry', color: '#4ade80', bg: 'rgba(74,222,128,.18)' },
+      {
+        label: 'Ä°ÅŸlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
+        group: 'merkez-mutfak-islemler',
+        children: [
+          { label: 'Belge GiriÅŸi', path: '/merkezmutfak-documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'SayÄ±m', path: '/merkezmutfak-count', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
+          { label: 'Transfer', path: '/merkezmutfak-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
+          { label: 'Zayi KaydÄ±', path: '/merkezmutfak-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
+          { label: 'Serbest KullanÄ±m KaydÄ±', path: '/merkezmutfak-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
+          { label: 'Formlar', path: '/merkezmutfak-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
+        ],
+      },
+      { label: 'GÃ¶revler', path: '/merkezmutfak-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
       {
         label: 'Zaman Takibi', icon: 'fa-stopwatch', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
-        group: 'merkez-zaman-takibi',
+        group: 'merkez-mutfak-zaman-takibi',
         children: [
           {
-            label: 'Zaman SayaÃ§larÄ±', path: '/merkez-time-tracking/timers', icon: 'fa-stopwatch', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
-            subGroup: 'merkez-zaman-sayaclari',
+            label: 'Zaman Sayaçları', path: '/merkezmutfak-time-tracking/timers', icon: 'fa-stopwatch', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
+            subGroup: 'merkez-mutfak-zaman-sayaclari',
             subChildren: [
-              { label: 'Ã–n Ayarlar', path: '/merkez-time-tracking/timers/presets', icon: 'fa-sliders', color: '#fb923c', bg: 'rgba(251,146,60,.18)' },
+              { label: 'Ön Ayarlar', path: '/merkezmutfak-time-tracking/timers/presets', icon: 'fa-sliders', color: '#fb923c', bg: 'rgba(251,146,60,.18)' },
             ],
           },
         ],
@@ -346,7 +375,8 @@ const SECTION_COLORS = {
   'Merkez': '#60a5fa',         // Blue
   'Şube': '#ef4444',           // Red
   'POS ve Ekranlar': '#c084fc', // Purple
-  'Merkez Depo/Mutfak': '#34d399', // Green
+  'Ana Depo / WMS': '#34d399',  // Green
+  'Merkez Mutfak': '#f97316',   // Orange
   'Ayarlar': '#f59e0b',         // Yellow/Orange
 }
 

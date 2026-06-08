@@ -28,8 +28,8 @@ export const WORKSPACE_SCOPE_OPTIONS = [
     label: 'Merkez Mutfak',
     description: 'Uretim receteleri ve is emirleri akislarinda calisin.',
     icon: 'fa-industry',
-    accent: '#f43f5e',
-    bg: 'rgba(244,63,94,.14)',
+    accent: '#f97316',
+    bg: 'rgba(249,115,22,.14)',
   },
   {
     value: WORKSPACE_SCOPE.branch,
@@ -55,8 +55,8 @@ export const WORKSPACE_BRANCH_NAME_STORAGE_KEY = 'suitable_workspace_branch_name
 
 export const DEFAULT_PATH_BY_SCOPE = {
   [WORKSPACE_SCOPE.center]: '/dashboard',
-  [WORKSPACE_SCOPE.anadepo]: '/merkez-orders',
-  [WORKSPACE_SCOPE.merkezmutfak]: '/merkez-uretim',
+  [WORKSPACE_SCOPE.anadepo]: '/depo-orders',
+  [WORKSPACE_SCOPE.merkezmutfak]: '/merkezmutfak-uretim',
   [WORKSPACE_SCOPE.branch]: '/forecast',
   [WORKSPACE_SCOPE.admin]: '/dashboard',
 }
@@ -182,24 +182,33 @@ const BRANCH_PATHS = new Set([
 ])
 
 const ANADEPO_PATHS = new Set([
-  '/merkez-orders',
-  '/merkez-count',
-  '/merkez-transfer',
-  '/merkez-zayi-kaydi',
-  '/merkez-serbest-kullanim-kaydi',
-  '/merkez-depo-formlar',
-  '/merkez-documents',
+  '/depo-orders',
+  '/depo-documents',
+  '/depo-count',
+  '/depo-transfer',
+  '/depo-zayi-kaydi',
+  '/depo-serbest-kullanim-kaydi',
+  '/depo-formlar',
+  '/depo-tasks',
+  '/depo-time-tracking',
+  '/depo-geribildirimler',
   '/wms-locations',
   '/wms-lpns',
+  '/wms-stock-params',
+  '/depo-mal-kabul',
 ])
 
 const MERKEZMUTFAK_PATHS = new Set([
-  '/merkez-uretim',
-  '/merkez-time-tracking/timers',
-  '/merkez-time-tracking/timers/presets',
-  '/merkez-tasks',
-  '/merkez-geribildirimler',
-  '/merkez-kalite-raporlari',
+  '/merkezmutfak-uretim',
+  '/merkezmutfak-documents',
+  '/merkezmutfak-count',
+  '/merkezmutfak-transfer',
+  '/merkezmutfak-zayi-kaydi',
+  '/merkezmutfak-serbest-kullanim-kaydi',
+  '/merkezmutfak-formlar',
+  '/merkezmutfak-tasks',
+  '/merkezmutfak-time-tracking',
+  '/merkezmutfak-geribildirimler',
 ])
 
 export function normalizeWorkspaceScope(value) {
