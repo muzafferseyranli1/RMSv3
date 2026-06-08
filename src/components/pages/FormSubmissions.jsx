@@ -766,6 +766,9 @@ export default function FormSubmissions() {
     if (template.form_type === 'inspection' && !metaBranchId) {
       return toast('Lütfen denetim noktasını (şubeyi) seçin', 'warning')
     }
+    if (template.form_type === 'notification_form' && template.linked_entity_table !== 'maintenance_tickets' && !metaBranchId) {
+      return toast('Lütfen bildirim noktasını (şubeyi) seçin', 'warning')
+    }
     if (template.form_type === 'checklist' && (scope === 'center' || scope === 'admin') && template.schema_json?.require_branch_selection && !metaBranchId) {
       return toast('Lütfen şubeyi seçin', 'warning')
     }
@@ -773,6 +776,12 @@ export default function FormSubmissions() {
     let submitBranchId = branchId
     if (template.form_type === 'inspection') {
       submitBranchId = metaBranchId || branchId
+    } else if (template.form_type === 'notification_form') {
+      if (template.linked_entity_table === 'maintenance_tickets') {
+        submitBranchId = null
+      } else {
+        submitBranchId = metaBranchId || branchId
+      }
     } else if (template.form_type === 'checklist') {
       if (scope === 'center' || scope === 'admin') {
         if (template.schema_json?.require_branch_selection) {
@@ -804,26 +813,28 @@ export default function FormSubmissions() {
       form_date: finalFormDate,
       start_time: metaStartTime,
       end_time: finalEndTime,
-      ...(template.form_type === 'inspection' ? {
+      ...((template.form_type === 'inspection' || template.form_type === 'notification_form') ? {
         inspector_name: inspectorName,
-        branch_id: metaBranchId,
-        branch_authorized_id: metaAuthorizedId,
-        branch_authorized_name: (() => {
-          const emp = employees.find(e => e.id === metaAuthorizedId)
-          return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
-        })(),
-        send_to_authorized: !!metaAuthorizedId,  // Şube yetkilisi seçildiyse sonuç daima gönderilir
-        shift_officer_id: metaShiftOfficerId,
-        shift_officer_name: (() => {
-          const emp = employees.find(e => e.id === metaShiftOfficerId)
-          return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
-        })(),
-        send_to_shift_officer: metaSendToShiftOfficer,
-        branch_responsibles: metaResponsibles.map(r => ({
-          id: r.id,
-          name: r.name,
-          send_result: r.sendResult
-        })),
+        branch_id: template.linked_entity_table === 'maintenance_tickets' ? null : (metaBranchId || null),
+        ...(template.form_type === 'inspection' ? {
+          branch_authorized_id: metaAuthorizedId,
+          branch_authorized_name: (() => {
+            const emp = employees.find(e => e.id === metaAuthorizedId)
+            return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+          })(),
+          send_to_authorized: !!metaAuthorizedId,  // Şube yetkilisi seçildiyse sonuç daima gönderilir
+          shift_officer_id: metaShiftOfficerId,
+          shift_officer_name: (() => {
+            const emp = employees.find(e => e.id === metaShiftOfficerId)
+            return emp ? `${emp.firstName} ${emp.lastName}`.trim() : ''
+          })(),
+          send_to_shift_officer: metaSendToShiftOfficer,
+          branch_responsibles: metaResponsibles.map(r => ({
+            id: r.id,
+            name: r.name,
+            send_result: r.sendResult
+          })),
+        } : {})
       } : {})
     }
 
@@ -1721,6 +1732,102 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           </div>
         )}
 
+        {template.form_type === 'notification_form' && (
+          <div className="card" style={{ padding: 18, marginBottom: 16, borderLeft: '4px solid #f59e0b', background: 'var(--surface)' }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#f59e0b', marginBottom: 14 }}>
+              <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Bildirim Formu Bilgileri
+            </div>
+
+            {/* Otomatik Sistem Tarih Saat Checkbox */}
+            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoDateTime}
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setAutoDateTime(checked)
+                    if (checked) {
+                      const todayStr = new Date().toLocaleDateString('en-CA')
+                      setMetaFormDate(todayStr)
+                      const now = new Date()
+                      const pad = (n) => String(n).padStart(2, '0')
+                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
+                    }
+                  }}
+                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
+                />
+                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
+              </label>
+            </div>
+
+            <div className="form-info-grid">
+              {/* Bildirimi Yapan */}
+              <div>
+                <label className="f-label">Bildirimi Yapan</label>
+                <input
+                  type="text"
+                  className="f-input"
+                  value={
+                    (() => {
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                      const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+                      return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
+                    })()
+                  }
+                  disabled
+                  style={{ background: 'var(--surface-2)' }}
+                />
+              </div>
+
+              {/* Bildirim Noktası (Şube) */}
+              {template.linked_entity_table !== 'maintenance_tickets' && (
+                <div>
+                  <label className="f-label">Bildirim Noktası</label>
+                  <div className="sel-wrap">
+                    <select
+                      value={metaBranchId}
+                      onChange={e => handleMetaBranchChange(e.target.value)}
+                      className="f-input"
+                    >
+                      <option value="">Şube Seçiniz</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Bildirim Tarihi */}
+              <div>
+                <label className="f-label">Bildirim Tarihi</label>
+                <input
+                  type="date"
+                  className="f-input"
+                  value={metaFormDate}
+                  onChange={e => setMetaFormDate(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                />
+              </div>
+
+              {/* Bildirim Saati */}
+              <div>
+                <label className="f-label">Bildirim Saati</label>
+                <input
+                  type="time"
+                  className="f-input"
+                  value={metaStartTime}
+                  onChange={e => setMetaStartTime(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {(template.schema_json?.sections || []).map((section, sIdx) => {
           let sectionScoredPoints = 0
           let sectionMaxPoints = 0
@@ -2359,8 +2466,10 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
 
       {/* Quick Fill Searchable Select */}
       {(() => {
+        const queryFormType = searchParams.get('type')
         const activeTemplates = templates.filter(t => {
           if (!t.active || t.deleted_at) return false
+          if (queryFormType && t.form_type !== queryFormType) return false
           if (scope === 'admin') return true
           const allowed = t.allowed_contexts || ['center', 'branch', 'warehouse']
           return allowed.includes(scope)
@@ -2646,7 +2755,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           {getTemplateName(selectedSub.template_id)}
                         </div>
                         <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', lineHeight: 1.2, marginBottom: 10 }}>
-                          {selectedSub.metadata?.branch_name || selectedSub.metadata?.inspector_name || 'Denetim Detayı'}
+                          {selectedSub.metadata?.branch_name || selectedSub.metadata?.inspector_name || selectedSub.metadata?.creator_name || 'Detay Görünümü'}
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {/* Status badge */}
@@ -2667,7 +2776,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           {selectedSub.metadata?.start_time && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 99, fontSize: '.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
                               <i className="fa-regular fa-clock" />
-                              {selectedSub.metadata.start_time} – {selectedSub.metadata.end_time || '?'}
+                              {template?.form_type === 'notification_form' ? selectedSub.metadata.start_time : `${selectedSub.metadata.start_time} – ${selectedSub.metadata.end_time || '?'}`}
                             </span>
                           )}
                           {/* Duration */}
@@ -2721,27 +2830,39 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                     )}
 
                     {/* Metadata Grid */}
-                    {selectedSub.metadata?.inspector_name && (
+                    {(selectedSub.metadata?.inspector_name || selectedSub.metadata?.creator_name) && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                         {[
-                          { icon: 'fa-user-shield', label: 'Denetleyen', value: selectedSub.metadata.inspector_name, color: '#8b5cf6' },
-                          { icon: 'fa-building', label: 'Denetim Noktası', value: selectedSub.metadata.branch_name || '—', color: '#22d3ee' },
                           { 
-                            icon: 'fa-user-tie', 
-                            label: 'Denetim Sırasındaki Yetkili', 
-                            value: selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name || '—', 
-                            color: '#10b981', 
-                            extra: (selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name) 
-                              ? (
-                                (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized)
-                                  ? '✓ Gönderildi' 
-                                  : '✗ Gönderilmedi'
-                              ) 
-                              : null, 
-                            extraColor: (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized) 
-                              ? '#10b981' 
-                              : '#ef4444' 
+                            icon: 'fa-user-shield', 
+                            label: template?.form_type === 'notification_form' ? 'Bildiren' : (template?.form_type === 'checklist' ? 'Formu Dolduran' : 'Denetleyen'), 
+                            value: selectedSub.metadata.inspector_name || selectedSub.metadata.creator_name, 
+                            color: template?.form_type === 'notification_form' ? '#f59e0b' : '#8b5cf6' 
                           },
+                          { 
+                            icon: 'fa-building', 
+                            label: template?.form_type === 'notification_form' ? 'Bildirim Noktası' : 'Denetim Noktası', 
+                            value: selectedSub.metadata.branch_name || '—', 
+                            color: '#22d3ee' 
+                          },
+                          ...(template?.form_type === 'inspection' ? [
+                            { 
+                              icon: 'fa-user-tie', 
+                              label: 'Denetim Sırasındaki Yetkili', 
+                              value: selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name || '—', 
+                              color: '#10b981', 
+                              extra: (selectedSub.metadata.shift_officer_name || selectedSub.metadata.branch_authorized_name) 
+                                ? (
+                                  (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized)
+                                    ? '✓ Gönderildi' 
+                                    : '✗ Gönderilmedi'
+                                ) 
+                                : null, 
+                              extraColor: (selectedSub.metadata.shift_officer_name ? selectedSub.metadata.send_to_shift_officer : selectedSub.metadata.send_to_authorized) 
+                                ? '#10b981' 
+                                : '#ef4444' 
+                            }
+                          ] : []),
                           { icon: 'fa-user', label: 'Gönderen (ID)', value: selectedSub.submitted_by, color: '#94a3b8' },
                           ...(selectedSub.repair_cost !== null && selectedSub.repair_cost !== undefined ? [
                             { 
@@ -3229,48 +3350,58 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
         {/* Inspection Details Metadata Grid */}
         <div style={{ marginBottom: '32px' }}>
           <h3 style={{ fontSize: '.9rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', marginBottom: '12px' }}>
-            DENETİM BİLGİLERİ
+            {template?.form_type === 'notification_form' ? 'BİLDİRİM BİLGİLERİ' : (template?.form_type === 'checklist' ? 'CHECKLIST BİLGİLERİ' : 'DENETİM BİLGİLERİ')}
           </h3>
           
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
             <tbody>
               <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Denetim Noktası:</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>
+                  {template?.form_type === 'notification_form' ? 'Bildirim Noktası:' : 'Denetim Noktası:'}
+                </td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.branch_name || '—'}</td>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>Denetleyen:</td>
-                <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.inspector_name || submission.submitted_by}</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569', width: '25%' }}>
+                  {template?.form_type === 'notification_form' ? 'Bildiren:' : (template?.form_type === 'checklist' ? 'Formu Dolduran:' : 'Denetleyen:')}
+                </td>
+                <td style={{ padding: '8px 0', color: '#0f172a' }}>{submission.metadata?.creator_name || submission.metadata?.inspector_name || submission.submitted_by}</td>
               </tr>
               <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Denetim Tarihi:</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>
+                  {template?.form_type === 'notification_form' ? 'Bildirim Tarihi:' : 'Denetim Tarihi:'}
+                </td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>
                   {submission.metadata?.form_date ? new Date(submission.metadata.form_date).toLocaleDateString('tr-TR') : '—'}
                 </td>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Süre / Saat:</td>
+                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>
+                  {template?.form_type === 'notification_form' ? 'Bildirim Saati:' : 'Süre / Saat:'}
+                </td>
                 <td style={{ padding: '8px 0', color: '#0f172a' }}>
-                  {submission.metadata?.start_time || '—'} - {submission.metadata?.end_time || '—'}
-                  {submission.completion_time_seconds && ` (${Math.round(submission.completion_time_seconds / 60)} dk)`}
+                  {template?.form_type === 'notification_form' ? (submission.metadata?.start_time || '—') : `${submission.metadata?.start_time || '—'} - ${submission.metadata?.end_time || '—'}`}
+                  {template?.form_type !== 'notification_form' && submission.completion_time_seconds && ` (${Math.round(submission.completion_time_seconds / 60)} dk)`}
                 </td>
               </tr>
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Denetim Sırasındaki Yetkili:</td>
-                <td style={{ padding: '8px 0', color: '#0f172a' }}>
-                  {submission.metadata?.branch_authorized_name || '—'}
-                  {submission.metadata?.branch_authorized_name && (
-                    <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_authorized ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
-                      ({submission.metadata.send_to_authorized ? 'Sonuç Gönder' : 'Gönderilmedi'})
-                    </span>
-                  )}
-                </td>
-                <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Vardiya Görevlisi:</td>
-                <td style={{ padding: '8px 0', color: '#0f172a' }}>
-                  {submission.metadata?.shift_officer_name || '—'}
-                  {submission.metadata?.shift_officer_name && (
-                    <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_shift_officer ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
-                      ({submission.metadata.send_to_shift_officer ? 'Sonuç Gönder' : 'Gönderilmedi'})
-                    </span>
-                  )}
-                </td>
-              </tr>
+              {template?.form_type === 'inspection' && (
+                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Denetim Sırasındaki Yetkili:</td>
+                  <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                    {submission.metadata?.branch_authorized_name || '—'}
+                    {submission.metadata?.branch_authorized_name && (
+                      <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_authorized ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
+                        ({submission.metadata.send_to_authorized ? 'Sonuç Gönder' : 'Gönderilmedi'})
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Vardiya Görevlisi:</td>
+                  <td style={{ padding: '8px 0', color: '#0f172a' }}>
+                    {submission.metadata?.shift_officer_name || '—'}
+                    {submission.metadata?.shift_officer_name && (
+                      <span style={{ fontSize: '.7rem', color: submission.metadata.send_to_shift_officer ? '#10b981' : '#64748b', fontWeight: 700, marginLeft: '6px' }}>
+                        ({submission.metadata.send_to_shift_officer ? 'Sonuç Gönder' : 'Gönderilmedi'})
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )}
               {submission.repair_cost !== null && submission.repair_cost !== undefined && (
                 <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>Kapatma Maliyeti:</td>
@@ -3524,20 +3655,24 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
 
         {/* Signature Blocks */}
         <div style={{ marginTop: '56px', borderTop: '2px solid #e2e8f0', paddingTop: '24px', pageBreakInside: 'avoid' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '60px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: template?.form_type === 'inspection' ? '1fr 1fr' : '1fr', gap: '60px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>DENETLEYEN</div>
-              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.inspector_name || submission.submitted_by}</div>
+              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>
+                {template?.form_type === 'notification_form' ? 'BİLDİREN' : (template?.form_type === 'checklist' ? 'FORMU DOLDURAN' : 'DENETLEYEN')}
+              </div>
+              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.creator_name || submission.metadata?.inspector_name || submission.submitted_by}</div>
               <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
               <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
             </div>
             
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>DENETİM SIRASINDAKİ YETKİLİ</div>
-              <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.shift_officer_name || submission.metadata?.branch_authorized_name || 'Denetim Sırasındaki Yetkili'}</div>
-              <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
-              <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
-            </div>
+            {template?.form_type === 'inspection' && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '.85rem', fontWeight: 800, color: '#0f172a' }}>DENETİM SIRASINDAKİ YETKİLİ</div>
+                <div style={{ fontSize: '.75rem', color: '#64748b', marginTop: '2px' }}>{submission.metadata?.shift_officer_name || submission.metadata?.branch_authorized_name || 'Denetim Sırasındaki Yetkili'}</div>
+                <div style={{ borderBottom: '1px dashed #cbd5e1', height: '60px', width: '200px', margin: '10px auto' }}></div>
+                <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>İmza / Tarih</div>
+              </div>
+            )}
           </div>
         </div>
 

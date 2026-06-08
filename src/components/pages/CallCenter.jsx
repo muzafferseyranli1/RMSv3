@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Header from '@/components/layout/Header'
-import { db } from '@/lib/db'
+import { db, uploadApiFile } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import { useAuth } from '@/context/AuthContext'
-import { createManualTicket } from '@/lib/ticketService'
-import { fetchTicketCategories, createManualFeedback } from '@/lib/feedbackService'
+import { fetchFormTemplates, submitFormResponse } from '@/lib/formService'
 import {
   attachLoyaltyToSaleHeader,
   attachLoyaltyToSaleLines,
@@ -419,6 +418,157 @@ function CallCenterLoyaltyCampaignCard({
   )
 }
 
+const parseDynamicValue = (val) => {
+  if (Array.isArray(val)) return val.filter(Boolean)
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val)
+      if (Array.isArray(parsed)) return parsed.filter(Boolean)
+      return [parsed].filter(Boolean)
+    } catch (e) {
+      if (val.trim()) {
+        return val.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ id: s, name: s }))
+      }
+      return []
+    }
+  }
+  if (val && typeof val === 'object') return [val]
+  return []
+}
+
+const getDynamicFieldItems = (val) => {
+  const arr = parseDynamicValue(val)
+  return arr.map(item => {
+    if (typeof item === 'object' && item !== null) {
+      return { id: item.id || item.name || '', name: item.name || item.id || '' }
+    }
+    return { id: String(item), name: String(item) }
+  }).filter(item => item.id || item.name)
+}
+
+const SearchableMultiSelect = ({ items, selectedList, onChange, placeholder }) => {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const safeSelectedList = getDynamicFieldItems(selectedList)
+  const selectedIds = safeSelectedList.map(item => String(item.id))
+
+  const filtered = (items || []).filter(item => {
+    if (!item) return false
+    const nameMatch = String(item.name || '').toLowerCase().includes(search.toLowerCase())
+    const skuMatch = item.sku ? String(item.sku).toLowerCase().includes(search.toLowerCase()) : false
+    return nameMatch || skuMatch
+  })
+
+  const handleToggle = (item) => {
+    if (!item) return
+    const list = [...safeSelectedList]
+    const idx = list.findIndex(x => x && String(x.id) === String(item.id))
+    if (idx > -1) {
+      list.splice(idx, 1)
+    } else {
+      list.push({ id: item.id, name: item.name })
+    }
+    onChange(list)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', minWidth: 220, maxWidth: 300 }}>
+      <div 
+        onClick={() => setOpen(prev => !prev)}
+        style={{ 
+          minHeight: 36, border: '1px solid #cbd5e1', borderRadius: 8, padding: '5px 8px',
+          display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff',
+          cursor: 'pointer', fontSize: '.8rem', justifyContent: 'space-between', color: '#1e293b'
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+          {safeSelectedList.length === 0 && <span style={{ color: '#94a3b8' }}>{placeholder}</span>}
+          {safeSelectedList.map((item) => (
+            <span 
+              key={item.id || item} 
+              style={{ 
+                background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 6px', 
+                borderRadius: 6, fontSize: '.72rem', display: 'inline-flex', alignItems: 'center', gap: 4,
+                border: '1px solid rgba(139,92,246,0.2)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.name || item}
+              <i 
+                className="fa-solid fa-xmark" 
+                style={{ cursor: 'pointer', opacity: 0.6 }}
+                onClick={() => handleToggle(item)}
+              />
+            </span>
+          ))}
+        </div>
+        <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ color: '#64748b', fontSize: '.75rem', marginLeft: 6 }} />
+      </div>
+
+      {open && (
+        <div style={{ 
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, 
+          background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, 
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', zIndex: 1000 
+        }}>
+          <div style={{ padding: 6, position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #cbd5e1', zIndex: 10 }}>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Ara..."
+              className="f-input"
+              style={{ padding: '4px 8px', fontSize: '.75rem', width: '100%', background: '#f8fafc' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ padding: 4 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '8px 10px', fontSize: '.78rem', color: '#94a3b8', textAlign: 'center' }}>Sonuç bulunamadı</div>
+            ) : (
+              filtered.map(item => {
+                const isSelected = selectedIds.includes(String(item.id))
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleToggle(item)}
+                    style={{ 
+                      padding: '6px 10px', cursor: 'pointer', borderRadius: 4, fontSize: '.78rem', 
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      background: isSelected ? 'rgba(139,92,246,0.05)' : 'transparent',
+                      color: isSelected ? '#8b5cf6' : '#1e293b'
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.background = '#f8fafc'
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    {item.name}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function OrderHub() {
   const toast = useToast()
   const { user } = useAuth()
@@ -427,13 +577,20 @@ export default function OrderHub() {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [step, setStep] = useState('customer')
   
-  // Ticket creation states
-  const [showTicketModal, setShowTicketModal] = useState(false)
-  const [ticketCategories, setTicketCategories] = useState([])
-  const [ticketForm, setTicketForm] = useState({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', customerId: null, description: '' })
-  const [ticketSubmitting, setTicketSubmitting] = useState(false)
-  const [ticketPhoneSuggestions, setTicketPhoneSuggestions] = useState([])
-  const [ticketNameSuggestions, setTicketNameSuggestions] = useState([])
+  // Feedback form modal states
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [feedbackTemplates, setFeedbackTemplates] = useState([])
+  const [selectedFeedbackTemplate, setSelectedFeedbackTemplate] = useState(null)
+  const [feedbackAnswers, setFeedbackAnswers] = useState([])
+  const [feedbackMetaBranchId, setFeedbackMetaBranchId] = useState('')
+  const [feedbackMetaFormDate, setFeedbackMetaFormDate] = useState('')
+  const [feedbackMetaStartTime, setFeedbackMetaStartTime] = useState('')
+  const [feedbackAutoDateTime, setFeedbackAutoDateTime] = useState(true)
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
+  const [feedbackUploadingFields, setFeedbackUploadingFields] = useState({})
+  const [feedbackActiveNotes, setFeedbackActiveNotes] = useState({})
+  const [feedbackFormStartTime, setFeedbackFormStartTime] = useState(null)
+  const [feedbackCustomerContext, setFeedbackCustomerContext] = useState(null)
   const [orderTab, setOrderTab] = useState('menu')
   const [fulfillmentType, setFulfillmentType] = useState('delivery')
   const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM)
@@ -878,7 +1035,7 @@ export default function OrderHub() {
         citiesResult,
         posTablesResult,
         openTicketSettingsResult,
-        ticketCategoriesResult,
+        formTemplatesResult,
       ] = await Promise.all([
         db.from('company_nodes').select('id,name,type,parent_id,can_sell').order('sort_order'),
         db.from('branch_addresses').select('branch_id,branch_name,city_id,city_name,district_id,district_name,neighborhood_id,neighborhood_name,street,line_1,active').is('deleted_at', null).order('branch_name'),
@@ -895,7 +1052,7 @@ export default function OrderHub() {
         db.from('tr_iller').select('id,ad').order('ad').limit(100),
         db.from('pos_tables').select('id,branch_id,table_name,table_number').is('deleted_at', null).eq('is_active', true),
         db.from('settings').select('value').eq('key', OPEN_TABLE_TICKETS_SETTING_KEY).maybeSingle(),
-        fetchTicketCategories(),
+        db.from('form_templates').select('*').eq('form_type', 'notification_form').is('deleted_at', null).eq('active', true).order('title'),
       ])
       if (branchesResult.error) throw branchesResult.error
       if (branchAddressesResult.error) throw branchAddressesResult.error
@@ -967,7 +1124,7 @@ export default function OrderHub() {
           .sort((left, right) => new Date(right.updatedAt || right.sale_datetime || 0) - new Date(left.updatedAt || left.sale_datetime || 0))
       )
       setCities(citiesResult.data || [])
-      setTicketCategories(ticketCategoriesResult.data || [])
+      setFeedbackTemplates(formTemplatesResult.data || [])
     } catch (error) {
       toast(`Siparis merkezi verileri yuklenemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
@@ -1423,52 +1580,9 @@ export default function OrderHub() {
       .filter(row => row.qty > 0))
   }
 
-  const handleTicketPhoneChange = async (val) => {
-    setTicketForm(p => ({ ...p, customerPhone: val, customerId: null }))
-    const phone = normalizePhone(val)
-    if (phone.length >= 3) {
-      const { data, error } = await db.from('musteriler')
-        .select('id,ad_soyad,telefon,telefon_ulke')
-        .is('deleted_at', null)
-        .ilike('normalized_phone', `%${phone}%`)
-        .limit(5)
-      if (!error) {
-        setTicketPhoneSuggestions(data || [])
-      }
-    } else {
-      setTicketPhoneSuggestions([])
-    }
-  }
-
-  const handleTicketNameChange = async (val) => {
-    setTicketForm(p => ({ ...p, customerName: val, customerId: null }))
-    const text = val.trim()
-    if (text.length >= 3) {
-      const { data, error } = await db.from('musteriler')
-        .select('id,ad_soyad,telefon,telefon_ulke')
-        .is('deleted_at', null)
-        .ilike('ad_soyad', `%${text}%`)
-        .limit(5)
-      if (!error) {
-        setTicketNameSuggestions(data || [])
-      }
-    } else {
-      setTicketNameSuggestions([])
-    }
-  }
-
-  const selectTicketCustomer = (cust) => {
-    setTicketForm(p => ({
-      ...p,
-      customerPhone: cust.telefon ? `+90 ${cust.telefon}` : '',
-      customerName: cust.ad_soyad || '',
-      customerId: cust.id
-    }))
-    setTicketPhoneSuggestions([])
-    setTicketNameSuggestions([])
-  }
-
-  const handleOpenTicketModal = (customer = null) => {
+  const handleOpenFeedbackModal = (customer = null) => {
+    const initialBranchId = selectedBranchId || branches[0]?.id || ''
+    
     let initialPhone = ''
     let initialName = ''
     let initialCustomerId = null
@@ -1485,130 +1599,182 @@ export default function OrderHub() {
       initialName = [customerForm.firstName, customerForm.lastName].filter(Boolean).join(' ')
     }
 
-    setTicketPhoneSuggestions([])
-    setTicketNameSuggestions([])
-    setTicketForm({
-      categoryId: ticketCategories[0]?.id || '',
-      priority: 'normal',
-      branchId: selectedBranchId || branches[0]?.id || '',
-      customerPhone: initialPhone,
-      customerName: initialName,
-      customerId: initialCustomerId,
-      description: '',
+    const todayStr = new Date().toLocaleDateString('en-CA')
+    const now = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+
+    setFeedbackMetaBranchId(initialBranchId)
+    setFeedbackMetaFormDate(todayStr)
+    setFeedbackMetaStartTime(timeStr)
+    setFeedbackAutoDateTime(true)
+    setSelectedFeedbackTemplate(null)
+    setFeedbackAnswers([])
+    setFeedbackActiveNotes({})
+    setFeedbackUploadingFields({})
+    
+    setFeedbackCustomerContext({
+      id: initialCustomerId,
+      name: initialName,
+      phone: initialPhone
     })
-    setShowTicketModal(true)
+
+    setShowFeedbackModal(true)
   }
 
-  const handleCreateTicket = async () => {
-    if (!ticketForm.description.trim()) {
-      return toast('Açıklama alanı zorunlu.', 'warning')
+  const handleSelectFeedbackTemplate = (template) => {
+    setSelectedFeedbackTemplate(template)
+    
+    const initialAnswers = []
+    for (const section of (template.schema_json?.sections || [])) {
+      for (const field of (section.fields || [])) {
+        let defaultValue = null
+        
+        if (feedbackCustomerContext) {
+          const labelLower = String(field.label || '').toLowerCase()
+          if (labelLower.includes('müşteri adı') || labelLower.includes('ad soyad') || labelLower.includes('adınız soyadınız')) {
+            defaultValue = feedbackCustomerContext.name
+          } else if (labelLower.includes('telefon') || labelLower.includes('irtibat no') || labelLower.includes('gsm')) {
+            defaultValue = feedbackCustomerContext.phone
+          }
+        }
+        
+        initialAnswers.push({ field_id: field.id, value: defaultValue, section_id: section.id })
+      }
     }
-    if (!ticketForm.branchId) {
-      return toast('Lütfen bir şube seçin.', 'warning')
-    }
+    setFeedbackAnswers(initialAnswers)
+    setFeedbackFormStartTime(Date.now())
+  }
 
-    setTicketSubmitting(true)
+  const updateFeedbackAnswer = (fieldId, value) => {
+    setFeedbackAnswers(prev => prev.map(a => a.field_id === fieldId ? { ...a, value } : a))
+  }
+
+  const handleFeedbackPhotoUpload = async (fieldId, file) => {
+    if (!file) return
+    setFeedbackUploadingFields(prev => ({ ...prev, [fieldId]: true }))
     try {
-      let customerId = ticketForm.customerId
-      const cleanPhone = normalizePhone(ticketForm.customerPhone)
-
-      // Search by normalized phone first if no customerId is linked yet
-      if (!customerId && cleanPhone) {
-        const { data: existingCust, error: lookupErr } = await db.from('musteriler')
-          .select('id')
-          .is('deleted_at', null)
-          .eq('normalized_phone', cleanPhone)
-          .maybeSingle()
-        if (!lookupErr && existingCust) {
-          customerId = existingCust.id
-        }
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploaded = await uploadApiFile(formData)
+      const url = uploaded?.url || uploaded?.publicUrl || uploaded?.public_url || uploaded?.path || uploaded?.fileUrl || uploaded?.file_url || ''
+      if (url) {
+        updateFeedbackAnswer(fieldId, url)
+        toast('Fotoğraf başarıyla yüklendi', 'success')
+      } else {
+        toast('Görsel adresi alınamadı', 'error')
       }
+    } catch (err) {
+      console.error('Failed to upload photo:', err)
+      toast('Fotoğraf yükleme başarısız: ' + (err.message || ''), 'error')
+    } finally {
+      setFeedbackUploadingFields(prev => ({ ...prev, [fieldId]: false }))
+    }
+  }
 
-      // Auto-register new customer if not found/selected
-      if (!customerId && (cleanPhone || ticketForm.customerName.trim())) {
-        await ensureFeedbackSourceCategory()
+  const handleSubmitFeedbackForm = async () => {
+    if (!selectedFeedbackTemplate) return
 
-        const adSoyad = ticketForm.customerName.trim() || 'Geri Bildirim Müşterisi'
-        let phoneDigits = cleanPhone
-        if (phoneDigits) {
-          if (phoneDigits.startsWith('900')) {
-            phoneDigits = '90' + phoneDigits.slice(3)
-          } else if (phoneDigits.startsWith('0')) {
-            phoneDigits = phoneDigits.slice(1)
-          }
-          if (phoneDigits.length === 10 && phoneDigits.startsWith('5')) {
-            phoneDigits = '90' + phoneDigits
-          }
-        }
+    if (!feedbackMetaBranchId) {
+      return toast('Lütfen bildirim noktasını (şubeyi) seçin', 'warning')
+    }
 
-        const { data: newCust, error: insertErr } = await db.from('musteriler').insert({
-          ad_soyad: adSoyad,
-          telefon: phoneDigits ? phoneDigits.slice(-10) : null,
-          telefon_ulke: '+90',
-          normalized_phone: phoneDigits || null,
-          signup_channel: 'feedback_source',
-          acquisition_source: 'feedback_source',
-          metadata: { source: 'feedback_source' },
-        }).select('id').single()
-
-        if (insertErr) throw insertErr
-
-        if (newCust) {
-          customerId = newCust.id
-          try {
-            await saveLoyaltyCustomerCategoryAssignments({}, customerId, ['feedback_source'])
-          } catch (assignErr) {
-            console.error("Loyalty category assignment failed:", assignErr)
+    const missingFields = []
+    for (const section of (selectedFeedbackTemplate.schema_json?.sections || [])) {
+      for (const field of (section.fields || [])) {
+        if (field.required) {
+          const ans = feedbackAnswers.find(a => a.field_id === field.id)
+          if (!ans || ans.value === null || ans.value === undefined || String(ans.value).trim() === '') {
+            missingFields.push(field.label)
           }
         }
       }
+    }
 
-      let feedbackId = null
+    if (missingFields.length > 0) {
+      return toast(`Lütfen zorunlu alanları doldurun: ${missingFields.join(', ')}`, 'warning')
+    }
 
-      // If customer details are resolved or provided, create a table_feedback entry first to maintain the connection
-      if (customerId || cleanPhone || ticketForm.customerName.trim()) {
-        const feedbackRes = await createManualFeedback({
-          branchId: ticketForm.branchId,
-          source: 'call_center',
-          rating: 3, // neutral rating
-          comment: `[Çağrı Merkezi Manuel Geribildirim] ${ticketForm.description}`,
-          customerPhone: cleanPhone || null,
-          customerId: customerId || null,
-          staffId: user?.id || null,
-          metadata: {
-            customer_name: ticketForm.customerName.trim(),
-            channel: 'call_center'
+    setFeedbackSubmitting(true)
+    try {
+      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+      const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+      const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
+
+      const completionTimeSeconds = feedbackFormStartTime ? Math.round((Date.now() - feedbackFormStartTime) / 1000) : null
+
+      let finalFormDate = feedbackMetaFormDate
+      let finalEndTime = ''
+      if (feedbackAutoDateTime) {
+        finalFormDate = new Date().toLocaleDateString('en-CA')
+        const now = new Date()
+        const pad = (n) => String(n).padStart(2, '0')
+        finalEndTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+      }
+
+      const metadata = {
+        creator_name: inspectorName,
+        branch_name: branches.find(b => b.id === feedbackMetaBranchId)?.name || '',
+        form_date: finalFormDate,
+        start_time: feedbackMetaStartTime,
+        end_time: finalEndTime,
+        inspector_name: inspectorName,
+        branch_id: feedbackMetaBranchId || null,
+        creator_scope: 'center',
+        customer_name: feedbackCustomerContext?.name || '',
+        customer_phone: feedbackCustomerContext?.phone || '',
+        customer_id: feedbackCustomerContext?.id || null
+      }
+
+      const submissionPhotos = []
+      if (selectedFeedbackTemplate?.schema_json?.sections) {
+        for (const section of selectedFeedbackTemplate.schema_json.sections) {
+          for (const field of (section.fields || [])) {
+            if (field.type === 'photo') {
+              const ans = feedbackAnswers.find(a => a.field_id === field.id)
+              if (ans && ans.value) {
+                submissionPhotos.push({
+                  field_id: field.id,
+                  file_url: ans.value,
+                  file_name: ans.value.split('/').pop() || 'photo.jpg',
+                  captured_at: new Date().toISOString(),
+                  is_live_capture: true,
+                })
+              }
+            }
           }
-        })
-        if (feedbackRes.error) {
-          console.error("Feedback creation failed:", feedbackRes.error)
-        } else {
-          feedbackId = feedbackRes.data?.id
         }
       }
 
-      // Create the ticket
-      const { data: ticket, error } = await createManualTicket({
-        branchId: ticketForm.branchId,
-        categoryId: ticketForm.categoryId || null,
-        feedbackId: feedbackId,
-        priority: ticketForm.priority,
-        description: ticketForm.description.trim(),
-        actorId: user?.id || null,
+      const { data, error } = await submitFormResponse({
+        templateId: selectedFeedbackTemplate.id,
+        branchId: feedbackMetaBranchId,
+        submittedBy: activeUser?.id || 'anonymous',
+        answersJson: feedbackAnswers,
+        completionTimeSeconds,
+        metadata,
+        photos: submissionPhotos,
+        repairCost: null,
+        repairCurrency: null,
+        repairExchangeRate: null,
+        linkedEntityId: null,
       })
 
-      if (error) throw error
+      if (error) {
+        return toast('Gönderme başarısız: ' + (error.message || ''), 'error')
+      }
 
-      toast('Geribildirim başarıyla oluşturuldu.', 'success')
-      setShowTicketModal(false)
-      // Reset form
-      setTicketForm({ categoryId: '', priority: 'normal', branchId: '', customerPhone: '', customerName: '', customerId: null, description: '' })
-      setTicketPhoneSuggestions([])
-      setTicketNameSuggestions([])
+      toast('Geribildirim başarıyla kaydedildi.', 'success')
+
+      setShowFeedbackModal(false)
+      setSelectedFeedbackTemplate(null)
+      setFeedbackAnswers([])
+      setFeedbackActiveNotes({})
     } catch (err) {
-      toast(`Geribildirim oluşturulamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
+      console.error('Failed to submit feedback form:', err)
+      toast('Hata oluştu: ' + (err.message || ''), 'error')
     } finally {
-      setTicketSubmitting(false)
+      setFeedbackSubmitting(false)
     }
   }
 
@@ -2226,7 +2392,7 @@ export default function OrderHub() {
             <button className="btn-o" onClick={loadBase} title="Yenile">
               <i className="fa-solid fa-rotate-right" />
             </button>
-            <button className="btn-o" onClick={() => handleOpenTicketModal(null)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button className="btn-o" onClick={() => handleOpenFeedbackModal(null)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <i className="fa-solid fa-comments" style={{ color: '#ef4444' }} /> Geribildirim Aç
             </button>
             <button className="btn-p" onClick={() => {
@@ -2864,7 +3030,7 @@ export default function OrderHub() {
               <button
                 type="button"
                 className="btn-o"
-                onClick={() => handleOpenTicketModal(selectedCustomer)}
+                onClick={() => handleOpenFeedbackModal(selectedCustomer)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.76rem', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', marginTop: 4 }}
               >
                 <i className="fa-solid fa-comments" /> Müşteri İçin Geribildirim Aç
@@ -3164,190 +3330,369 @@ export default function OrderHub() {
           </div>
         </div>
       )}
-      {showTicketModal && (
+      {showFeedbackModal && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(4px)',
           zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
           <div className="card" style={{
-            width: 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', padding: 22,
-            background: '#ffffff',
+            width: 680, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', padding: 22,
+            background: '#ffffff', color: '#1e293b',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)', borderLeft: '4px solid #ef4444'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="fa-solid fa-comments" style={{ color: '#ef4444' }} /> Yeni Destek / Şikayet Geribildirimi
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-headset" style={{ color: '#ef4444' }} /> Geri Bildirim Formu Girişi
               </div>
-              <button className="btn-g" onClick={() => setShowTicketModal(false)} style={{ padding: '4px 8px' }}>
+              <button className="btn-g" onClick={() => setShowFeedbackModal(false)} style={{ padding: '4px 8px' }}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
 
-            <div style={{ display: 'grid', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="f-label">Geribildirim Kategorisi *</label>
-                  <div className="sel-wrap">
-                    <select
-                      value={ticketForm.categoryId}
-                      onChange={e => setTicketForm(p => ({ ...p, categoryId: e.target.value }))}
-                      className="f-input"
-                    >
-                      {ticketCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="f-label">Öncelik Seviyesi</label>
-                  <div className="sel-wrap">
-                    <select
-                      value={ticketForm.priority}
-                      onChange={e => setTicketForm(p => ({ ...p, priority: e.target.value }))}
-                      className="f-input"
-                    >
-                      <option value="low">Düşük</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">Yüksek</option>
-                      <option value="critical">Kritik</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
+            {!selectedFeedbackTemplate ? (
               <div>
-                <label className="f-label">İlgili Şube *</label>
-                <div className="sel-wrap">
-                  <select
-                    value={ticketForm.branchId}
-                    onChange={e => setTicketForm(p => ({ ...p, branchId: e.target.value }))}
-                    className="f-input"
-                  >
-                    <option value="">Şube Seçin</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
+                <div style={{ marginBottom: 14, fontSize: '.9rem', color: '#64748b' }}>
+                  Lütfen doldurmak istediğiniz geri bildirim formu şablonunu seçin:
                 </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ position: 'relative' }}>
-                  <label className="f-label">Müşteri Telefon</label>
-                  <input
-                    type="text"
-                    value={ticketForm.customerPhone}
-                    onChange={e => handleTicketPhoneChange(e.target.value)}
-                    onBlur={() => setTimeout(() => setTicketPhoneSuggestions([]), 200)}
-                    className="f-input"
-                    placeholder="+90 5xx xxx xx xx"
-                  />
-                  {ticketPhoneSuggestions.length > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                      zIndex: 50,
-                      maxHeight: '160px',
-                      overflowY: 'auto',
-                      marginTop: '4px',
-                    }}>
-                      {ticketPhoneSuggestions.map(cust => (
-                        <div
-                          key={cust.id}
-                          onClick={() => selectTicketCustomer(cust)}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #e2e8f0',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{cust.ad_soyad}</span>
-                          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                            {cust.telefon ? `+90 ${cust.telefon}` : ''}
-                          </span>
-                        </div>
-                      ))}
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {feedbackTemplates.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>
+                      Kayıtlı aktif bildirim formu bulunamadı.
                     </div>
-                  )}
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <label className="f-label">Müşteri Ad Soyad</label>
-                  <input
-                    type="text"
-                    value={ticketForm.customerName}
-                    onChange={e => handleTicketNameChange(e.target.value)}
-                    onBlur={() => setTimeout(() => setTicketNameSuggestions([]), 200)}
-                    className="f-input"
-                    placeholder="Müşteri Adı Soyadı"
-                  />
-                  {ticketNameSuggestions.length > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                      zIndex: 50,
-                      maxHeight: '160px',
-                      overflowY: 'auto',
-                      marginTop: '4px',
-                    }}>
-                      {ticketNameSuggestions.map(cust => (
-                        <div
-                          key={cust.id}
-                          onClick={() => selectTicketCustomer(cust)}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #e2e8f0',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{cust.ad_soyad}</span>
-                          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                            {cust.telefon ? `+90 ${cust.telefon}` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  ) : (
+                    feedbackTemplates.map(tpl => (
+                      <button
+                        key={tpl.id}
+                        onClick={() => handleSelectFeedbackTemplate(tpl)}
+                        className="btn-o"
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                          padding: '12px 16px', borderRadius: 10, width: '100%', textAlign: 'left',
+                          border: '1.5px solid #e2e8f0', background: '#f8fafc', transition: 'all 0.2s',
+                          cursor: 'pointer', gap: 4
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.borderColor = '#8b5cf6'
+                          e.currentTarget.style.background = '#f5f3ff'
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.borderColor = '#e2e8f0'
+                          e.currentTarget.style.background = '#f8fafc'
+                        }}
+                      >
+                        <span style={{ fontWeight: 800, fontSize: '.95rem', color: '#1e293b' }}>{tpl.title}</span>
+                        {tpl.description && (
+                          <span style={{ fontSize: '.8rem', color: '#64748b' }}>{tpl.description}</span>
+                        )}
+                      </button>
+                    ))
                   )}
                 </div>
               </div>
-
+            ) : (
               <div>
-                <label className="f-label">Açıklama / Şikayet Detayı *</label>
-                <textarea
-                  value={ticketForm.description}
-                  onChange={e => setTicketForm(p => ({ ...p, description: e.target.value }))}
-                  rows={4}
-                  placeholder="Şikayet veya destek talebi detaylarını buraya yazın..."
-                  className="f-input"
-                  style={{ resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-                <button className="btn-o" onClick={() => setShowTicketModal(false)} disabled={ticketSubmitting}>İptal</button>
-                <button className="btn-p" onClick={handleCreateTicket} disabled={ticketSubmitting} style={{ background: '#ef4444', color: '#fff', border: 'none' }}>
-                  {ticketSubmitting ? 'Oluşturuluyor...' : 'Geribildirim Oluştur'}
+                <button
+                  onClick={() => setSelectedFeedbackTemplate(null)}
+                  style={{
+                    background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6, fontSize: '.84rem', fontWeight: 700,
+                    marginBottom: 16, padding: 0
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-left" /> Şablon Listesine Dön
                 </button>
+
+                <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '4px solid #f59e0b', background: '#fffbeb', border: '1px solid #fef3c7' }}>
+                  <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#d97706', marginBottom: 12 }}>
+                    <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Bildirim Bilgileri
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label className="f-label" style={{ color: '#78350f' }}>Bildirimi Yapan</label>
+                      <input
+                        type="text"
+                        className="f-input"
+                        value={(() => {
+                          const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                          const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+                          return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
+                        })()}
+                        disabled
+                        style={{ background: '#fef3c7', opacity: 0.8, color: '#78350f' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="f-label" style={{ color: '#78350f' }}>Bildirim Noktası (Şube) *</label>
+                      <div className="sel-wrap">
+                        <select
+                          value={feedbackMetaBranchId}
+                          onChange={e => setFeedbackMetaBranchId(e.target.value)}
+                          className="f-input"
+                          style={{ background: '#fff', borderColor: '#fcd34d' }}
+                        >
+                          <option value="">Şube Seçiniz</option>
+                          {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="f-label" style={{ color: '#78350f' }}>Bildirim Tarihi</label>
+                      <input
+                        type="date"
+                        className="f-input"
+                        value={feedbackMetaFormDate}
+                        onChange={e => setFeedbackMetaFormDate(e.target.value)}
+                        disabled={feedbackAutoDateTime}
+                        style={feedbackAutoDateTime ? { background: '#fef3c7', opacity: 0.8, color: '#78350f', cursor: 'not-allowed' } : {}}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="f-label" style={{ color: '#78350f' }}>Bildirim Saati</label>
+                      <input
+                        type="time"
+                        className="f-input"
+                        value={feedbackMetaStartTime}
+                        onChange={e => setFeedbackMetaStartTime(e.target.value)}
+                        disabled={feedbackAutoDateTime}
+                        style={feedbackAutoDateTime ? { background: '#fef3c7', opacity: 0.8, color: '#78350f', cursor: 'not-allowed' } : {}}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', fontWeight: 600, color: '#78350f', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={feedbackAutoDateTime}
+                        onChange={e => {
+                          const checked = e.target.checked
+                          setFeedbackAutoDateTime(checked)
+                          if (checked) {
+                            setFeedbackMetaFormDate(new Date().toLocaleDateString('en-CA'))
+                            const now = new Date()
+                            const pad = (n) => String(n).padStart(2, '0')
+                            setFeedbackMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
+                          }
+                        }}
+                        style={{ accentColor: '#d97706' }}
+                      />
+                      <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
+                    </label>
+                  </div>
+                </div>
+
+                {(selectedFeedbackTemplate.schema_json?.sections || []).map((section, sIdx) => (
+                  <div key={section.id} style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, background: '#f8fafc' }}>
+                    <div style={{ fontWeight: 800, fontSize: '.9rem', color: '#1e293b', marginBottom: 12 }}>
+                      {sIdx + 1}. {section.title}
+                    </div>
+                    
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {(section.fields || []).map(field => {
+                        const answer = feedbackAnswers.find(a => a.field_id === field.id)
+                        
+                        return (
+                          <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                            <div style={{ fontSize: '.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {field.label}
+                              {field.required && <span style={{ color: '#ef4444' }}>*</span>}
+                            </div>
+
+                            <div style={{ marginTop: 4 }}>
+                              {field.type === 'yes_no' && (
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  {[true, false].map(v => (
+                                    <button
+                                      key={String(v)}
+                                      type="button"
+                                      className={answer?.value === v ? 'btn-p' : 'btn-o'}
+                                      onClick={() => updateFeedbackAnswer(field.id, v)}
+                                      style={{
+                                        padding: '6px 14px', fontSize: '.8rem',
+                                        background: answer?.value === v ? '#8b5cf6' : '#fff',
+                                        color: answer?.value === v ? '#fff' : '#475569',
+                                        borderColor: answer?.value === v ? '#8b5cf6' : '#cbd5e1'
+                                      }}
+                                    >
+                                      {v ? '✓ Evet' : '✗ Hayır'}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {field.type === 'checkbox' && (
+                                <input
+                                  type="checkbox"
+                                  checked={!!answer?.value}
+                                  onChange={e => updateFeedbackAnswer(field.id, e.target.checked)}
+                                  style={{ accentColor: '#8b5cf6', width: 20, height: 20, cursor: 'pointer' }}
+                                />
+                              )}
+
+                              {field.type === 'rating' && (
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  {[1, 2, 3, 4, 5].map(r => (
+                                    <button
+                                      key={r}
+                                      type="button"
+                                      onClick={() => updateFeedbackAnswer(field.id, r)}
+                                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px' }}
+                                    >
+                                      <i
+                                        className={(answer?.value || 0) >= r ? "fa-solid fa-star" : "fa-regular fa-star"}
+                                        style={{ color: (answer?.value || 0) >= r ? '#ffb300' : '#cbd5e1', fontSize: '1.25rem' }}
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {field.type === 'text' && (
+                                <textarea
+                                  value={answer?.value || ''}
+                                  onChange={e => updateFeedbackAnswer(field.id, e.target.value)}
+                                  placeholder="Açıklama girin..."
+                                  rows={3}
+                                  className="f-input"
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: '.8rem', resize: 'vertical' }}
+                                />
+                              )}
+
+                              {(field.type === 'number' || field.type === 'temperature') && (
+                                <input
+                                  type="number"
+                                  value={answer?.value ?? ''}
+                                  onChange={e => updateFeedbackAnswer(field.id, e.target.value === '' ? '' : Number(e.target.value))}
+                                  placeholder={field.type === 'temperature' ? 'Sıcaklık' : 'Sayı'}
+                                  className="f-input"
+                                  style={{ width: 120, padding: '6px 10px', fontSize: '.8rem' }}
+                                />
+                              )}
+
+                              {field.type === 'select' && (
+                                <div className="sel-wrap" style={{ width: 200 }}>
+                                  <select
+                                    value={answer?.value || ''}
+                                    onChange={e => updateFeedbackAnswer(field.id, e.target.value)}
+                                    className="f-input"
+                                    style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                                  >
+                                    <option value="">Seçiniz</option>
+                                    {(field.options || []).map((opt, i) => {
+                                      const val = typeof opt === 'object' ? opt.label : opt
+                                      return <option key={i} value={val}>{val}</option>
+                                    })}
+                                  </select>
+                                </div>
+                              )}
+
+                              {field.type === 'date' && (
+                                <input
+                                  type="date"
+                                  value={answer?.value || ''}
+                                  onChange={e => updateFeedbackAnswer(field.id, e.target.value)}
+                                  className="f-input"
+                                  style={{ width: 160, padding: '6px 10px', fontSize: '.8rem' }}
+                                />
+                              )}
+
+                              {field.type === 'photo' && (() => {
+                                const isUploading = !!feedbackUploadingFields[field.id]
+                                const photoUrl = answer?.value
+
+                                if (isUploading) {
+                                  return (
+                                    <div style={{ padding: '6px 12px', border: '1px dashed #cbd5e1', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', color: '#64748b' }}>
+                                      <i className="fa-solid fa-spinner fa-spin" style={{ color: '#8b5cf6' }} />
+                                      <span style={{ fontSize: '.75rem' }}>Yükleniyor...</span>
+                                    </div>
+                                  )
+                                }
+
+                                if (photoUrl) {
+                                  return (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
+                                      <div style={{ width: 40, height: 40, borderRadius: 4, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                                        <img src={buildApiUrl(photoUrl)} alt="Yüklenen" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="btn-danger"
+                                        onClick={() => updateFeedbackAnswer(field.id, '')}
+                                        style={{ padding: '4px 8px', fontSize: '.72rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                                      >
+                                        Sil
+                                      </button>
+                                    </div>
+                                  )
+                                }
+
+                                return (
+                                  <label style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    padding: '6px 12px', 
+                                    border: '1px dashed #cbd5e1', 
+                                    borderRadius: 8, 
+                                    color: '#64748b', 
+                                    cursor: 'pointer',
+                                    background: '#f8fafc',
+                                    fontSize: '.75rem',
+                                    fontWeight: 600
+                                  }}>
+                                    <i className="fa-solid fa-camera" style={{ color: '#8b5cf6' }} />
+                                    <span>Fotoğraf Yükle</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      onChange={e => handleFeedbackPhotoUpload(field.id, e.target.files?.[0])}
+                                      style={{ display: 'none' }}
+                                    />
+                                  </label>
+                                )
+                              })()}
+
+                              {field.type === 'sale_item_select' && (
+                                <SearchableMultiSelect 
+                                  items={products}
+                                  selectedList={answer?.value || []}
+                                  onChange={val => updateFeedbackAnswer(field.id, val)}
+                                  placeholder="Ürün Seçin..."
+                                />
+                              )}
+
+                              {field.type === 'branch_select' && (
+                                <SearchableMultiSelect 
+                                  items={branches}
+                                  selectedList={answer?.value || []}
+                                  onChange={val => updateFeedbackAnswer(field.id, val)}
+                                  placeholder="Şube Seçin..."
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+                  <button className="btn-o" onClick={() => setShowFeedbackModal(false)} disabled={feedbackSubmitting}>İptal</button>
+                  <button className="btn-p" onClick={handleSubmitFeedbackForm} disabled={feedbackSubmitting} style={{ background: '#ef4444', color: '#fff', border: 'none' }}>
+                    {feedbackSubmitting ? 'Kaydediliyor...' : 'Geribildirim Kaydet'}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

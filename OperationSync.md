@@ -8967,3 +8967,68 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - Kullaniciya degisiklikleri ilet ve calismayi sonlandir.
 - Handoff Contract:
   - FormTemplates.jsx uzerindeki sadelestirme adimlarini oku.
+
+## Entry 050
+
+- `Timestamp`: `2026-06-08T10:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bildirim Formu (notification_form) Standart Başlık Bloklarının Eklenmesi`
+- `Intent`: `Bildirim Formu doldurma ekranına "Bildirimi Yapan", "Bildirim Noktası", "Bildirim Tarihi" ve "Bildirim Saati" alanlarından oluşan standart başlık kartının eklenmesi, "Bitiş Saati" alanının gizlenmesi; gönderimde şube seçim doğrulamasının yapılması; detay panelinde ve yazdırma/raporlama ekranlarında başlıkların, etiketlerin ve imza alanlarının bildirim formu yapısına göre uyarlanması.`
+- `Files Changed`:
+  - `src/components/pages/FormSubmissions.jsx`
+- `Findings`:
+  - `Bildirim formlarında bitiş saati ve yetkili/vardiya görevlisi alanları istenmediğinden, detay panelinde ve yazdırma şablonlarında bu alanlar gizlenmiştir.`
+  - `Ayrıca bildirim formlarında imza bloğu tekil olarak merkezlenmiş, "DENETLEYEN" yerine "BİLDİREN", "Denetim Noktası" yerine "Bildirim Noktası" etiketleri kullanılmıştır.`
+  - `Derleme (production build) herhangi bir Vite hatası olmadan başarıyla tamamlanmıştır.`
+- `Decisions`:
+  - `Bildirim formları için turuncu/amber (#f59e0b) rengi sol kenar vurgusu olarak tercih edilmiştir.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Kullanıcıya bilgi ver ve çalışmayı sonlandır.`
+- `Handoff Contract`:
+  - `notification_form tipi formlar için FormSubmissions.jsx üzerindeki yeni başlık bloğu, doğrulama kuralları ve detay/yazdırma formatlama mantığını inceleyin.`
+
+## Entry 051
+
+- `Timestamp`: `2026-06-08T11:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bakım/Tamirat Bildirim Formları Özel İş Akışı Kontrolleri ve Otomatik Gözlemci Ekleme Özelliğinin Geliştirilmesi`
+- `Intent`: `Bakım/Tamirat (linked_entity_table === 'maintenance_tickets') bildirim formlarında şube seçiminin kaldırılması, şube doğrulamasının bypass edilmesi ve otomatik görev oluştururken submitBranchId değerinin null olarak set edilmesi; form şablonu oluşturma sayfasında pozisyon seçim alanlarının gizlenerek sadece merkez çalışanlarının listelenmesi; "Şube Sorumlularını Otomatik Gözlemci Ekle" seçeneği aktifken hem bildirime konu olan şubenin hem de bildirimi yapan personelin default şubesinin yöneticilerinin (responsibles) otomatik olarak göreve gözlemci eklenmesi ve çift kayıt eklenmesinin (deduplication) önlenmesi.`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+  - `src/lib/formService.js`
+- `Findings`:
+  - `Bakım/Tamirat formlarında "Bildirim Noktası" (şube) seçimi kaldırıldığı için submitBranchId = null atanır ve görev merkez seviyesinde oluşturulur.`
+  - `Otomatik gözlemci ekleme kuralı, bildirimi yapan personelin çalıştığı şubenin yöneticilerini de kapsayacak şekilde genişletilmiş ve bu mantık hem notification_form hem de customer_survey form tiplerinde uygulanmıştır.`
+  - `Duyarlı filtreleme ve Set kullanımı sayesinde aynı personelin birden fazla rolde (assignee/collaborator/watcher) veya iki şubenin de yöneticisi olması sebebiyle mükerrer eklenmesi engellenmiştir.`
+- `Decisions`:
+  - `Kullanıcı dostu olması açısından bakım/tamirat şablonlarının hedef seçim bileşenlerinde pozisyonlar gizlenmiş, sadece isim bazlı personel seçimine izin verilmiştir.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Çalışmayı tamamla ve kullanıcıyı bilgilendir.`
+- `Handoff Contract`:
+  - `Bakım/Tamirat formlarında şube gizleme mantığı için FormSubmissions.jsx, pozisyon gizleme mantığı için FormTemplates.jsx ve çift yönlü şube yöneticisi atama mantığı için formService.js üzerindeki değişiklikleri inceleyin.`
+
+## Entry 052
+
+- `Timestamp`: `2026-06-08T12:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Bilet Sisteminin (Geri Bildirim Yönetimi) Kaldırılması ve Form/Görev Sistemine Geçiş`
+- `Intent`: `TicketBoard.jsx ve TicketDetail.jsx bilet takip ekranlarının sistemden tamamen kaldırılması; /geribildirimler, /sube-geribildirimler ve /merkez-geribildirimler rota hedeflerinin sırasıyla /gorev-yoneticisi, /sube-tasks ve /merkez-tasks sayfalarına Navigate bileşeniyle yönlendirilmesi; çağrı merkezi için Genel Merkez (center) sol menüsüne /formlar?type=notification_form adresine yönlenen "Geri Bildirim Girişi" kısayolunun eklenmesi ve FormSubmissions.jsx üzerinde type parametresine göre şablon listesinin filtrelenmesi.`
+- `Files Changed`:
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/common/NotificationBell.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+- `Findings`:
+  - `Eski bilet tabanlı geribildirim takibinden, form doldurarak görev oluşturma ve bunları görev yöneticisi/görevler ekranından takip etme modeline tam geçiş sağlanmıştır.`
+  - `Eski bilet bildirimlerinin (NotificationBell) tıklanması durumunda kırık link oluşmasını önlemek amacıyla yönlendirme hedefleri ilgili görev sayfalarına bağlanmıştır.`
+  - `Çağrı merkezinin sadece bildirim/şikayet formlarını görerek hızlı veri girişi yapabilmesi için Sidebar'a yerleştirilen type=notification_form filtresi FormSubmissions içinde sorunsuz çalışmaktadır.`
+- `Decisions`:
+  - `TicketBoard ve TicketDetail bileşenlerinin lazy import tanımları ve rotaları temizlenerek bilet yapısı tamamen bypass edilmiştir.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Çalışmayı tamamla ve kullanıcıyı bilgilendir.`
+- `Handoff Contract`:
+  - `Bilet rotalarının görev sayfalarına Navigate yönlendirmesi için App.jsx, sol menü değişiklikleri için Sidebar.jsx, bildirim yönlendirmeleri için NotificationBell.jsx ve şablon filtreleme mantığı için FormSubmissions.jsx üzerindeki değişiklikleri inceleyin.`

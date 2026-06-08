@@ -1274,6 +1274,7 @@ export default function FormTemplates() {
 
   // ─── EDITOR VIEW ───
   const isAnonSurvey = editing?.form_type === 'customer_survey' && schemaJson?.survey_config?.allow_anonymous !== false
+  const isMaintenanceNotification = editing?.form_type === 'notification_form' && editing?.linked_entity_table === 'maintenance_tickets'
 
   return (
     <div style={{ maxWidth: 1000 }}>
@@ -1509,7 +1510,7 @@ export default function FormTemplates() {
                           onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
                           positions={positions}
                           personnelList={personnelList}
-                          hidePositions={isAnonSurvey}
+                          hidePositions={isAnonSurvey || isMaintenanceNotification}
                         />
                       )}
 
@@ -1520,7 +1521,7 @@ export default function FormTemplates() {
                         onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
                         positions={positions}
                         personnelList={personnelList}
-                        hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
+                        hidePositions={isAnonSurvey || editing.form_type === 'checklist' || isMaintenanceNotification}
                       />
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1531,7 +1532,7 @@ export default function FormTemplates() {
                           onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
                           positions={positions}
                           personnelList={personnelList}
-                          hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
+                          hidePositions={isAnonSurvey || editing.form_type === 'checklist' || isMaintenanceNotification}
                         />
                         {editing.form_type !== 'checklist' && !isAnonSurvey && (
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>

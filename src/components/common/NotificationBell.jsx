@@ -124,8 +124,7 @@ export default function NotificationBell() {
 
     switch (notif.reference_type) {
       case 'ticket':
-        const ticketBase = isBranch ? '/sube-geribildirimler' : (isWarehouse ? '/merkez-geribildirimler' : '/geribildirimler')
-        return notif.reference_id ? `${ticketBase}/${notif.reference_id}` : ticketBase
+        return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
       case 'task':
       case 'announcement':
         return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
@@ -137,7 +136,7 @@ export default function NotificationBell() {
         if (notif.type === 'announcement') {
           return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
         }
-        return isBranch ? '/sube-geribildirimler' : (isWarehouse ? '/merkez-geribildirimler' : '/geribildirimler')
+        return isBranch ? '/sube-tasks' : (isWarehouse ? '/merkez-tasks' : '/tasks')
     }
   }
 

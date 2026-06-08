@@ -93,8 +93,7 @@ const ScreenFrame = lazy(() => import('@/components/pos/ScreenFrame'))
 const DesignDemo = lazy(() => import('@/components/pages/DesignDemo'))
 const TicketCategories = lazy(() => import('@/components/pages/TicketCategories'))
 const FeedbackManagement = lazy(() => import('@/components/pages/FeedbackManagement'))
-const TicketBoard = lazy(() => import('@/components/pages/TicketBoard'))
-const TicketDetail = lazy(() => import('@/components/pages/TicketDetail'))
+
 const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
 const ManualManagement = lazy(() => import('@/components/pages/ManualManagement'))
@@ -447,17 +446,17 @@ function AppShell() {
               <Route path="/mal-kabul" element={<WorkspaceBranchScope><MalKabul /></WorkspaceBranchScope>} />
               <Route path="/kiosk-management" element={<KioskManagementDesktop />} />
               <Route path="/musteri-yorumlari" element={<FeedbackManagement />} />
-              <Route path="/geribildirimler" element={<TicketBoard mode="center" />} />
-              <Route path="/geribildirimler/:ticketId" element={<TicketDetail mode="center" />} />
+              <Route path="/geribildirimler" element={<Navigate to="/gorev-yoneticisi" replace />} />
+              <Route path="/geribildirimler/:ticketId" element={<Navigate to="/gorev-yoneticisi" replace />} />
 
               {/* Şube Geri Bildirim ve Kalite */}
-              <Route path="/sube-geribildirimler" element={<WorkspaceBranchScope><TicketBoard mode="branch" /></WorkspaceBranchScope>} />
-              <Route path="/sube-geribildirimler/:ticketId" element={<WorkspaceBranchScope><TicketDetail mode="branch" /></WorkspaceBranchScope>} />
+              <Route path="/sube-geribildirimler" element={<WorkspaceBranchScope><Navigate to="/sube-tasks" replace /></WorkspaceBranchScope>} />
+              <Route path="/sube-geribildirimler/:ticketId" element={<WorkspaceBranchScope><Navigate to="/sube-tasks" replace /></WorkspaceBranchScope>} />
               <Route path="/sube-formlar" element={<WorkspaceBranchScope><FormSubmissions /></WorkspaceBranchScope>} />
 
               {/* Merkez Depo / Üretim Geri Bildirim ve Kalite */}
-              <Route path="/merkez-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><TicketBoard mode="warehouse" /></WarehouseBranchRoute>} />
-              <Route path="/merkez-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><TicketDetail mode="warehouse" /></WarehouseBranchRoute>} />
+              <Route path="/merkez-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkez-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/merkez-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkez-tasks" replace /></WarehouseBranchRoute>} />
               <Route path="/merkez-depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions /></WarehouseBranchRoute>} />
               <Route path="/form-sablonlari" element={<FormTemplates />} />
               <Route path="/formlar" element={<FormSubmissions />} />

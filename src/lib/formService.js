@@ -833,11 +833,18 @@ async function createTaskFromNotification(template, submission, answersJson, met
     const persIds = taskConfig.watchers.personnel || []
     persIds.forEach(id => watcherIds.add(String(id)))
     if (taskConfig.watchers.responsibles) {
+      const targetBranchIds = new Set()
+      if (branchNodeId) targetBranchIds.add(String(branchNodeId))
+      const submittingUser = allEmployees.find(e => String(e.id) === String(submission.submitted_by))
+      if (submittingUser?.defaultBranchId) {
+        targetBranchIds.add(String(submittingUser.defaultBranchId))
+      }
+
       const branchManagers = allEmployees.filter(e => 
         !e.deletedAt && 
         !e.terminationDate && 
         Array.isArray(e.managedBranchIds) && 
-        e.managedBranchIds.map(String).includes(String(branchNodeId))
+        e.managedBranchIds.some(bid => targetBranchIds.has(String(bid)))
       )
       branchManagers.forEach(e => watcherIds.add(String(e.id)))
     }
@@ -859,11 +866,18 @@ async function createTaskFromNotification(template, submission, answersJson, met
           empsInPosition.forEach(e => watcherIds.add(String(e.id)))
         })
       } else if (type === 'responsibles') {
+        const targetBranchIds = new Set()
+        if (branchNodeId) targetBranchIds.add(String(branchNodeId))
+        const submittingUser = allEmployees.find(e => String(e.id) === String(submission.submitted_by))
+        if (submittingUser?.defaultBranchId) {
+          targetBranchIds.add(String(submittingUser.defaultBranchId))
+        }
+
         const branchManagers = allEmployees.filter(e => 
           !e.deletedAt && 
           !e.terminationDate && 
           Array.isArray(e.managedBranchIds) && 
-          e.managedBranchIds.map(String).includes(String(branchNodeId))
+          e.managedBranchIds.some(bid => targetBranchIds.has(String(bid)))
         )
         branchManagers.forEach(e => watcherIds.add(String(e.id)))
       }
@@ -1165,12 +1179,21 @@ async function createTaskFromCustomerSurvey(template, submission, answersJson, m
         )
         empsInPosition.forEach(e => watcherIds.add(String(e.id)))
       })
-      if (taskConfig.watchers.responsibles) {
+    }
+    if (taskConfig.watchers.responsibles) {
+      const targetBranchIds = new Set()
+      if (branchNodeId) targetBranchIds.add(String(branchNodeId))
+      const submittingUser = allEmployees.find(e => String(e.id) === String(submission.submitted_by))
+      if (submittingUser?.defaultBranchId) {
+        targetBranchIds.add(String(submittingUser.defaultBranchId))
+      }
+
+      if (targetBranchIds.size > 0) {
         const branchManagers = allEmployees.filter(e => 
           !e.deletedAt && 
           !e.terminationDate && 
           Array.isArray(e.managedBranchIds) && 
-          e.managedBranchIds.map(String).includes(String(branchNodeId))
+          e.managedBranchIds.some(bid => targetBranchIds.has(String(bid)))
         )
         branchManagers.forEach(e => watcherIds.add(String(e.id)))
       }
