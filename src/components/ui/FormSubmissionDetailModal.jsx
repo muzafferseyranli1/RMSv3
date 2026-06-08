@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { fetchFormSubmissionDetail, fetchFormTemplates } from '@/lib/formService'
 import { buildApiUrl, db } from '@/lib/db'
+import { readSettingArray } from '@/lib/personnelConfig'
+import { ACCOUNT_CHART_KEY, normalizeAccount, buildExpenseAccountOptions } from '@/lib/accountChart'
 
 const FORM_TYPE_MAP = {
   inspection: { label: 'Denetim Formu', icon: 'fa-file-shield' },
@@ -84,6 +86,7 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
   const [submission, setSubmission] = useState(initialSubmission || null)
   const [templates, setTemplates] = useState(initialTemplates || [])
   const [equipments, setEquipments] = useState([])
+  const [expenseAccountOptions, setExpenseAccountOptions] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -112,12 +115,18 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
           )
         }
         promises.push(
-          db.from('equipments')
-            .select('id,name,code')
-            .order('name')
+          fetch(buildApiUrl('/api/equipment/instances'))
+            .then(r => r.json())
             .then(res => {
               setEquipments(res.data || [])
             })
+        )
+        promises.push(
+          readSettingArray(ACCOUNT_CHART_KEY, normalizeAccount)
+            .then(rawAccounts => {
+              setExpenseAccountOptions(buildExpenseAccountOptions(rawAccounts || []))
+            })
+            .catch(() => [])
         )
         await Promise.all(promises)
       } catch (err) {
@@ -433,7 +442,12 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
                             }
                             if (field.type === 'equipment_select') {
                               const eq = equipments.find(e => String(e.id) === String(ans.value))
-                              displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                              if (eq) {
+                                const name = eq.name || eq.definition_name || 'İsimsiz Ekipman'
+                                displayValue = eq.serial_number ? `${name} (${eq.serial_number})` : name
+                              } else {
+                                displayValue = ans.value || '—'
+                              }
                             }
                             if (field.type === 'financial_input') {
                               try {
@@ -478,6 +492,14 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
                                         style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)', display: 'block' }}>
                                         <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                       </a>
+                                    ) : field.type === 'file' && ans.value ? (
+                                      <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" className="btn-o" style={{ padding: '4px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <i className="fa-solid fa-file-pdf" /> Dosya İndir
+                                      </a>
+                                    ) : field.type === 'expense_account_select' && ans.value ? (
+                                      <span style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+                                        {expenseAccountOptions.find(opt => opt.value === ans.value)?.label || ans.value}
+                                      </span>
                                     ) : field.type === 'rating' && ans.value ? (
                                       <div style={{ display: 'flex', gap: 2, fontSize: '.9rem' }}>
                                         {[1, 2, 3, 4, 5].map(r => (
@@ -582,7 +604,12 @@ export default function FormSubmissionDetailModal({ submissionId, submission: in
                     }
                     if (field && field.type === 'equipment_select') {
                       const eq = equipments.find(e => String(e.id) === String(ans.value))
-                      displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                      if (eq) {
+                        const name = eq.name || eq.definition_name || 'İsimsiz Ekipman'
+                        displayValue = eq.serial_number ? `${name} (${eq.serial_number})` : name
+                      } else {
+                        displayValue = ans.value || '—'
+                      }
                     }
                     if (field && field.type === 'financial_input') {
                       try {

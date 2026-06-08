@@ -1,12 +1,19 @@
-# Görev Listesi - Müşteri Anketi QR ve Link Yönetimi UX İyileştirmesi
+# İş Akışı Modülü Geliştirme Checklist
 
-- `[x]` 1. FormTemplates.jsx handleSave Mantığı Revizyonu
-  - `[x]` `handleSave` fonksiyonuna `stayAndOpenQr` parametresinin eklenmesi.
-  - `[x]` `createFormTemplate` ve `updateFormTemplate` Supabase dönüşlerinden `data` (kaydedilen şablon) nesnesinin yakalanması.
-  - `[x]` Kayıttan sonra listenin `loadTemplates()` ile yenilenmesi ve `stayAndOpenQr` parametresine bağlı olarak editör modunda kalınması (`startEdit(savedTemplate)` + `setQrModalOpen(true)`).
-- `[x]` 2. FormTemplates.jsx renderQrManagementPanel Arayüz Revizyonu
-  - `[x]` `!editing.id` (yeni şablon) durumundaki uyarı kartına "Şablonu Kaydet ve QR Koda Geç" butonunun eklenmesi.
-  - `[x]` Butonun `handleSave(true)` fonksiyonunu tetikleyecek şekilde bağlanması.
-- `[x]` 3. Derleme ve Entegrasyon Doğrulama
-  - `[x]` Projeyi `npm run build` ile derleyerek derleme hatası olmadığını doğrulama.
-  - `[x]` `OperationSync.md` dosyasına yeni girdi (Entry 045) eklenmesi.
+- [x] Veritabanı ve Şema Kurulumu (Migration)
+  - [x] `migrations/030_add_workflow_schema.sql` dosyasının oluşturulması (definitions, instances, history tabloları ve `request` form tipi kısıtlamasının güncellenmesi)
+  - [x] Migration'ı veritabanına uygulayacak bir script yazılması ve çalıştırılması
+- [x] Servis Katmanı
+  - [x] `src/lib/workflowService.js` dosyasının oluşturulması (akış başlatma, onaylama/reddetme, adım ilerletme ve koşullu kontrol fonksiyonları)
+- [x] Arayüz Geliştirmeleri (Frontend UI)
+  - [x] `FormTemplates.jsx` güncellenmesi (Form tiplerine `request` eklenmesi, alan tiplerine `file`, `time` ve `expense_account_select` eklenmesi)
+  - [x] `FormTemplates.jsx` sadeleştirilmesi (Talep formlarında kullanım bağlamı ve otomatik görev ayarlarının gizlenmesi ve kaydetmede temizlenmesi)
+  - [x] `FormSubmissions.jsx` güncellenmesi (Yeni alan tiplerinin render edilmesi, dosya yükleme arayüzü)
+  - [x] `src/components/pages/workflows/WorkflowDesigner.jsx` (Sıralı Adım Sihirbazı akış oluşturucu ekranı)
+  - [x] `src/components/pages/workflows/WorkflowInstancesList.jsx` (Personel talepleri ve yöneticinin onay bekleyen talepler listesi ekranı)
+- [x] Görevler (Tasks) Modülü Entegrasyonu
+  - [x] `taskService.js` güncellenmesi (İş akışından gelen görevlerin bypass edilmesi, durum güncellemeleri)
+  - [x] `TaskDrawer.jsx` güncellenmesi (İş akışı ile ilişkili görevlerde onaylama/reddetme butonlarının ve form detayının render edilmesi)
+- [x] Doğrulama ve Test
+  - [x] Test amaçlı "Masraf Talebi" akışı tasarlanması (Tutar bütçe kontrolü, dosya yükleme, hesap planı seçimi)
+  - [x] Akışın test kullanıcılarıyla başlatılıp onaycılar tarafından onaylanarak tamamlanması ve DB geçmişinin kontrol edilmesi

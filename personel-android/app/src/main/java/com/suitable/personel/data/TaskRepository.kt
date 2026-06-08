@@ -961,7 +961,7 @@ class TaskRepository {
         return withContext(Dispatchers.IO) {
             try {
                 // 1) Hiyerarşi kontrolü (Requires Approval?)
-                val requiresApproval = canReject(creatorPositionId ?: "", assigneePositionId ?: "", positions)
+                val requiresApproval = formTemplateId.isNullOrBlank() && canReject(creatorPositionId ?: "", assigneePositionId ?: "", positions)
                 val status = if (requiresApproval) "pending_approval" else "open"
 
                 val taskId = java.util.UUID.randomUUID().toString()
@@ -1717,6 +1717,105 @@ class TaskRepository {
                 } else false
             } catch (e: Exception) {
                 Log.e("TaskRepository", "restoreTask error", e)
+                false
+            }
+        }
+    }
+
+    suspend fun fetchEquipmentInstances(): List<Map<String, Any>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val res = ApiClient.apiService.getEquipmentInstances()
+                (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchEquipmentInstances error", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun uploadTaskFile(fileUri: android.net.Uri, context: android.content.Context): Map<String, Any>? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val contentResolver = context.contentResolver
+                val inputStream = contentResolver.openInputStream(fileUri) ?: return@withContext null
+                val tempFile = java.io.File.createTempFile("upload_", "_tmp", context.cacheDir)
+                tempFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+
+                val mimeType = contentResolver.getType(fileUri) ?: "application/octet-stream"
+                val name = getFileName(fileUri, context) ?: "file"
+
+                val requestFile = okhttp3.RequestBody.create(okhttp3.MediaType.parse(mimeType), tempFile)
+                val body = okhttp3.MultipartBody.Part.createFormData("file", name, requestFile)
+
+                val res = ApiClient.apiService.uploadFile(body)
+                tempFile.delete()
+
+                res.data as? Map<String, Any>
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "uploadTaskFile error", e)
+                null
+            }
+        }
+    }
+
+    private fun getFileName(uri: android.net.Uri, context: android.content.Context): String? {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) {
+                        result = cursor.getString(idx)
+                    }
+                }
+            } finally {
+                cursor?.close()
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1 && result != null) {
+                result = result.substring(cut + 1)
+            }
+        }
+        return result
+    }
+
+    suspend fun addTaskAttachment(
+        taskId: String,
+        attachmentType: String,
+        fileName: String,
+        fileUrl: String,
+        fileSize: Int,
+        mimeType: String,
+        uploadedBy: String
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "task_attachments",
+                    operation = "insert",
+                    data = mapOf(
+                        "id" to java.util.UUID.randomUUID().toString(),
+                        "task_id" to taskId,
+                        "attachment_type" to attachmentType,
+                        "file_name" to fileName,
+                        "file_url" to fileUrl,
+                        "file_size" to fileSize,
+                        "mime_type" to mimeType,
+                        "uploaded_by" to uploadedBy,
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                res.error == null
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "addTaskAttachment error", e)
                 false
             }
         }

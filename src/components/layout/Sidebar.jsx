@@ -107,6 +107,7 @@ const NAV = [
           { label: 'Belge Girişi', path: '/documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
           { label: 'Görevler', path: '/tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
           { label: 'Görev Yöneticisi', path: '/gorev-yoneticisi', icon: 'fa-shield-halved', color: '#4f46e5', bg: 'rgba(79,70,229,.18)' },
+          { label: 'Talepler ve İş Akışları', path: '/is-akisleri', icon: 'fa-route', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
           { label: 'Müşteri Yorumları', path: '/musteri-yorumlari', icon: 'fa-comment-dots', color: '#f472b6', bg: 'rgba(244,114,182,.18)' },
           { label: 'Geribildirimler', path: '/geribildirimler', icon: 'fa-ticket', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
           { label: 'Form Şablonları', path: '/form-sablonlari', icon: 'fa-clipboard-list', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
@@ -162,6 +163,7 @@ const NAV = [
         children: [
           { label: 'Belge GiriÅŸi', path: '/sube-documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
           { label: 'GÃ¶revler', path: '/sube-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+          { label: 'Talepler ve İş Akışları', path: '/is-akisleri', icon: 'fa-route', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
           { label: 'SayÄ±m', path: '/count', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
           { label: 'Transfer', path: '/sube-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Zayi KaydÄ±', path: '/sube-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },

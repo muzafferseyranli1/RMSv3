@@ -21,6 +21,7 @@ export default function ManualManagement() {
   const [equipments, setEquipments] = useState([])
   const [systemItems, setSystemItems] = useState([])
   const [loading, setLoading] = useState(false)
+  const [eqSearch, setEqSearch] = useState('')
 
   // Category Form State
   const [editingCategory, setEditingCategory] = useState(null) // null or { id, name, description, display_order }
@@ -228,6 +229,11 @@ export default function ManualManagement() {
   }
 
   const handleEditPage = async (page) => {
+    if (!page) {
+      handleCancelPageEdit()
+      return
+    }
+    setEqSearch('')
     setLoading(true)
     try {
       // Fetch details with joined equipments to pre-populate equipment links
@@ -278,6 +284,7 @@ export default function ManualManagement() {
 
   const handleCancelPageEdit = () => {
     setEditingPage(null)
+    setEqSearch('')
     setPageForm({
       category_id: '',
       title: '',
@@ -1153,6 +1160,32 @@ export default function ManualManagement() {
               {/* Equipment Linking */}
               <div>
                 <label className="f-label">Kullanılan Ekipmanları İlişkilendir</label>
+                
+                {equipments.length > 0 && (
+                  <div style={{ marginBottom: 8, display: 'flex', gap: 6 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <input
+                        type="text"
+                        placeholder="Ekipman veya seri no ara..."
+                        className="f-input"
+                        style={{ padding: '6px 12px 6px 32px', fontSize: '.8rem' }}
+                        value={eqSearch}
+                        onChange={e => setEqSearch(e.target.value)}
+                      />
+                      <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.75rem' }} />
+                      {eqSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setEqSearch('')}
+                          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.8rem' }}
+                        >
+                          <i className="fa-solid fa-xmark" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{
                   border: '1.5px solid #cbd5e1',
                   borderRadius: 10,
@@ -1166,8 +1199,14 @@ export default function ManualManagement() {
                 }}>
                   {equipments.length === 0 ? (
                     <span style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Sistemde kayıtlı ekipman bulunmamaktadır.</span>
-                  ) : (
-                    equipments.map(eq => (
+                  ) : (() => {
+                    const filtered = equipments.filter(eq => 
+                      !eqSearch || String(eq.name || '').toLowerCase().includes(eqSearch.toLowerCase())
+                    )
+                    if (filtered.length === 0) {
+                      return <span style={{ fontSize: '.78rem', color: 'var(--text-muted)', padding: '4px 0' }}>Eşleşen ekipman bulunamadı.</span>
+                    }
+                    return filtered.map(eq => (
                       <label key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.8rem', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -1177,7 +1216,7 @@ export default function ManualManagement() {
                         <span>{eq.name}</span>
                       </label>
                     ))
-                  )}
+                  })()}
                 </div>
                 <p className="f-hint">Sayfada bahsi geçen global ekipman türlerini işaretleyin.</p>
               </div>

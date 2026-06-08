@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/useToast'
 import { readSettingArray, normalizeEmployeeRecord, normalizePositionRecord, PERSONNEL_SETTINGS_KEYS } from '@/lib/personnelConfig'
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { ACCOUNT_CHART_KEY, normalizeAccount, buildExpenseAccountOptions } from '@/lib/accountChart'
 import { useSearchParams } from 'react-router-dom'
 
 const STATUS_MAP = {
@@ -243,19 +244,23 @@ export default function FormSubmissions() {
   const [metaEndTime, setMetaEndTime] = useState('')
   const [autoDateTime, setAutoDateTime] = useState(true)
 
+  const [expenseAccountOptions, setExpenseAccountOptions] = useState([])
+
   useEffect(() => {
     async function loadEmployeesAndPositions() {
       try {
-        const [empRecords, posRecords, eqResult] = await Promise.all([
+        const [empRecords, posRecords, eqResult, rawAccounts] = await Promise.all([
           readSettingArray(PERSONNEL_SETTINGS_KEYS.employees, normalizeEmployeeRecord),
           readSettingArray(PERSONNEL_SETTINGS_KEYS.positions, normalizePositionRecord),
-          db.from('equipments').select('id,name,code,active').order('name')
+          fetch(buildApiUrl('/api/equipment/instances')).then(r => r.json()),
+          readSettingArray(ACCOUNT_CHART_KEY, normalizeAccount).catch(() => [])
         ])
         setEmployees(empRecords || [])
         setPositions(posRecords || [])
         setEquipments(eqResult.data || [])
+        setExpenseAccountOptions(buildExpenseAccountOptions(rawAccounts || []))
       } catch (err) {
-        console.error('Failed to load employees, positions or equipments:', err)
+        console.error('Failed to load employees, positions, equipments or accounts:', err)
       }
     }
     loadEmployeesAndPositions()
@@ -588,10 +593,8 @@ export default function FormSubmissions() {
       }
       if (hasEquipment) {
         promises.push(
-          db.from('equipments')
-            .select('id,name,code')
-            .eq('active', true)
-            .order('name')
+          fetch(buildApiUrl('/api/equipment/instances'))
+            .then(r => r.json())
             .then(res => setEquipments(res.data || []))
         )
       }
@@ -2105,21 +2108,31 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                           />
                         )}
 
-                        {field.type === 'equipment_select' && (
-                          <div className="sel-wrap" style={{ width: 200 }}>
-                            <select
-                              value={answer?.value || ''}
-                              onChange={e => updateAnswer(field.id, e.target.value)}
-                              className="f-input"
-                              style={{ padding: '6px 10px', fontSize: '.8rem' }}
-                            >
-                              <option value="">Ekipman Seçiniz...</option>
-                              {equipments.map(eq => (
-                                <option key={eq.id} value={eq.id}>{eq.name} ({eq.code})</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        {field.type === 'equipment_select' && (() => {
+                          const targetBranch = metaBranchId || branchId
+                          const filtered = (equipments || []).filter(eq => {
+                            if (!targetBranch) return true
+                            return String(eq.current_location_id) === String(targetBranch)
+                          })
+                          const options = filtered.map(eq => {
+                            const name = eq.name || eq.definition_name || 'İsimsiz Ekipman'
+                            const label = eq.serial_number ? `${name} (${eq.serial_number})` : name
+                            return { value: eq.id, label }
+                          })
+                          return (
+                            <div style={{ minWidth: 200, maxWidth: 300 }}>
+                              <SearchableSelect
+                                value={answer?.value || ''}
+                                onChange={val => updateAnswer(field.id, val)}
+                                options={options}
+                                placeholder="Ekipman Seçiniz..."
+                                searchPlaceholder="Ekipman ara..."
+                                noResultsLabel="Bu şubede ekipman bulunamadı"
+                                allowClear={true}
+                              />
+                            </div>
+                          )
+                        })()}
 
                         {field.type === 'financial_input' && (() => {
                           const valObj = answer?.value ? (typeof answer.value === 'object' ? answer.value : JSON.parse(answer.value)) : { amount: '', currency: 'TRY' }
@@ -2211,6 +2224,87 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                             </label>
                           )
                         })()}
+
+                        {field.type === 'file' && (() => {
+                          const isUploading = !!uploadingFields[field.id]
+                          const fileUrl = answer?.value
+
+                          if (isUploading) {
+                            return (
+                              <div style={{ padding: '6px 12px', border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                                <i className="fa-solid fa-spinner fa-spin" style={{ color: '#8b5cf6' }} />
+                                <span style={{ fontSize: '.75rem' }}>Yükleniyor...</span>
+                              </div>
+                            )
+                          }
+
+                          if (fileUrl) {
+                            const parts = String(fileUrl).split('/')
+                            const dispName = parts[parts.length - 1] || 'Dosya'
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
+                                <i className="fa-solid fa-file-pdf" style={{ color: '#ef4444', fontSize: '1.2rem' }} />
+                                <span style={{ fontSize: '.75rem', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dispName}</span>
+                                <button
+                                  type="button"
+                                  className="btn-danger"
+                                  onClick={() => updateAnswer(field.id, '')}
+                                  style={{ padding: '4px 8px', fontSize: '.72rem' }}
+                                >
+                                  Sil
+                                </button>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <label style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '6px 12px', 
+                              border: '1px dashed var(--border)', 
+                              borderRadius: 8, 
+                              color: 'var(--text-muted)', 
+                              cursor: 'pointer',
+                              background: 'var(--surface-2)',
+                              fontSize: '.75rem',
+                              fontWeight: 600
+                            }}>
+                              <i className="fa-solid fa-paperclip" style={{ color: '#8b5cf6' }} />
+                              <span>Dosya Yükle</span>
+                              <input
+                                type="file"
+                                onChange={e => handlePhotoUpload(field.id, e.target.files?.[0])}
+                                style={{ display: 'none' }}
+                              />
+                            </label>
+                          )
+                        })()}
+
+                        {field.type === 'time' && (
+                          <input
+                            type="time"
+                            value={answer?.value || ''}
+                            onChange={e => updateAnswer(field.id, e.target.value)}
+                            className="f-input"
+                            style={{ width: 120, padding: '6px 10px', fontSize: '.8rem' }}
+                          />
+                        )}
+
+                        {field.type === 'expense_account_select' && (
+                          <div style={{ minWidth: 200, maxWidth: 300 }}>
+                            <SearchableSelect
+                              value={answer?.value || ''}
+                              onChange={val => updateAnswer(field.id, val)}
+                              options={expenseAccountOptions}
+                              placeholder="Gider Hesabı Seçiniz..."
+                              searchPlaceholder="Hesap ara..."
+                              noResultsLabel="Gider hesabı bulunamadı"
+                              allowClear={true}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2753,7 +2847,8 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                         }
                                         if (field.type === 'equipment_select') {
                                           const eq = equipments.find(e => String(e.id) === String(ans.value))
-                                          displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                                          const name = eq ? (eq.name || eq.definition_name || 'İsimsiz Ekipman') : ''
+                                          displayValue = eq ? `${name} (${eq.serial_number || 'Seri No Yok'})` : (ans.value || '—')
                                         }
                                         if (field.type === 'financial_input') {
                                           try {
@@ -2798,6 +2893,14 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                                                     style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)', display: 'block' }}>
                                                     <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                   </a>
+                                                ) : field.type === 'file' && ans.value ? (
+                                                  <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" className="btn-o" style={{ padding: '4px 10px', fontSize: '.75rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <i className="fa-solid fa-file-pdf" /> Dosya İndir
+                                                  </a>
+                                                ) : field.type === 'expense_account_select' && ans.value ? (
+                                                  <span style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+                                                    {expenseAccountOptions.find(opt => opt.value === ans.value)?.label || ans.value}
+                                                  </span>
                                                 ) : field.type === 'rating' && ans.value ? (
                                                   <div style={{ display: 'flex', gap: 2, fontSize: '.9rem' }}>
                                                     {[1, 2, 3, 4, 5].map(r => (
@@ -3290,7 +3393,8 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                       }
                       if (field.type === 'equipment_select') {
                         const eq = (equipments || []).find(e => String(e.id) === String(ans.value))
-                        displayValue = eq ? `${eq.name} (${eq.code})` : (ans.value || '—')
+                        const name = eq ? (eq.name || eq.definition_name || 'İsimsiz Ekipman') : ''
+                        displayValue = eq ? `${name} (${eq.serial_number || 'Seri No Yok'})` : (ans.value || '—')
                       }
                       if (field.type === 'financial_input') {
                         try {
@@ -3361,6 +3465,14 @@ function PrintReportOverlay({ submissionId, templates, employees, onClose }) {
                               <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', width: 60, height: 60, borderRadius: 6, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
                                 <img src={buildApiUrl(ans.value)} alt="Fotoğraf" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               </a>
+                            ) : field.type === 'file' && ans.value ? (
+                              <a href={buildApiUrl(ans.value)} target="_blank" rel="noopener noreferrer" style={{ fontSize: '.75rem', color: '#4f46e5', textDecoration: 'underline' }}>
+                                Belgeyi Aç
+                              </a>
+                            ) : field.type === 'expense_account_select' && ans.value ? (
+                              <span>
+                                {expenseAccountOptions.find(opt => opt.value === ans.value)?.label || ans.value}
+                              </span>
                             ) : field.type === 'rating' && ans.value ? (
                               <span style={{ color: '#ffb300' }}>{'★'.repeat(Number(ans.value)) + '☆'.repeat(5 - Number(ans.value))}</span>
                             ) : field.type === 'rating_10' && ans.value ? (

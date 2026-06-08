@@ -638,6 +638,8 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
 
   const canRejectCreator = useMemo(() => {
     if (!selectedTask || !actor || selectedTask.form_template_id) return false
+    const desc = selectedTask.description || ''
+    if (desc.includes('[Form ID:')) return false
     return canReject(selectedTask.created_by_position_id, actor.positionId, positionRecords)
   }, [selectedTask, actor, positionRecords])
 
@@ -1579,6 +1581,10 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
           return runTaskAction(() => rejectCompletion(approvalId, actor.id, reason))
         }}
         onSendMessage={body => runTaskAction(() => appendChatMessage(selectedTask.id, actor.id, body))}
+        onWorkflowAction={async (action, notes) => {
+          const { advanceWorkflow } = await import('@/lib/workflowService')
+          return runTaskAction(() => advanceWorkflow(selectedTask.linked_entity_id, action, actor, notes, {}))
+        }}
       />
 
       <TaskClosureModal

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 Adisyon ve POS Programları Karşılaştırması</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .table-container { scrollbar-width: thin; }
+        th { position: sticky; top: 0; z-index: 10; }
+        td:first-child, th:first-child { position: sticky; left: 0; z-index: 20; background: inherit; }
+        th:first-child { z-index: 30; background-color: #1f2937; }
+        tr:nth-child(even) td:first-child { background-color: #f9fafb; }
+        tr:nth-child(odd) td:first-child { background-color: #ffffff; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 md:p-8 font-sans">
+    <div class="max-w-7xl mx-auto">
+        <div class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4">2026 Türkiye Restoran Adisyon ve POS Sistemleri Matrisi</h1>
+            <p class="text-gray-600 max-w-2xl mx-auto">Piyasadaki önde gelen bulut, hibrit ve yerel ağ tabanlı restoran yönetim sistemlerinin teknik, operasyonel ve finansal yeteneklerine göre karşılaştırması.</p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 table-container overflow-x-auto">
+            <table class="w-full text-sm text-left whitespace-nowrap">
+                <thead class="text-xs text-white uppercase bg-gray-800">
+                    <tr>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider">Özellik / Yetenek</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">E-POS</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">Adisyo</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">SambaPOS</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">Akınsoft Wolvox</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">Menulux</th>
+                        <th scope="col" class="px-6 py-4 font-semibold tracking-wider text-center border-l border-gray-700">Simpra</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    <tr class="hover:bg-blue-50 transition-colors bg-white">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Mimari Altyapı</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">%100 Bulut Tabanlı</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">%100 Bulut Tabanlı</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Yerel Kurulum (Offline)</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">ERP Bütünleşik (Hibrit)</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Hibrit (Bulut+Yerel)</td>
+                        <td class="px-6 py-4 text-center">Bulut Tabanlı</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-gray-50">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Çevrimdışı (Offline) Çalışma</td>
+                        <td class="px-6 py-4 text-center text-orange-600 font-medium border-r border-gray-100">Sınırlı (Sadece Form)</td>
+                        <td class="px-6 py-4 text-center text-red-600 font-bold border-r border-gray-100">Hayır</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Kesintisiz</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Senkronize</td>
+                        <td class="px-6 py-4 text-center text-orange-600 font-medium">Kısmi</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-white">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">QR Menü & Masadan Sipariş</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Entegre</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Jetrik QR</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Çok Dilli Entegre</td>
+                        <td class="px-6 py-4 text-center">Evet</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-gray-50">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Stok ve Reçete Yönetimi</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Bileşen Bazlı</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Gramaj Bazlı</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Gelişmiş</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">ERP Düzeyinde</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Porsiyon Bazlı</td>
+                        <td class="px-6 py-4 text-center">Gelişmiş</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-white">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Yemek Platformları Entegresi</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Global + Yerel</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Paketle Ağı</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold">Evet</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-gray-50">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Muhasebe & E-Dönüşüm</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">E-Fatura / Cari</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">E-Fatura / E-Arşiv</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Global Vergi Uyum</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">VUK 507 Tam Uyum</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center">Evet</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-white">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Kiosk / Robot / Self-Servis</td>
+                        <td class="px-6 py-4 text-center text-orange-600 font-medium border-r border-gray-100">Geliştiriliyor</td>
+                        <td class="px-6 py-4 text-center text-red-600 font-bold border-r border-gray-100">Hayır</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">GO Kiosk</td>
+                        <td class="px-6 py-4 text-center text-orange-600 font-medium border-r border-gray-100">Sınırlı</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Yapay Zeka + Robot</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold">Kiosk</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-gray-50">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Çoklu Şube / Franchise</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Merkezi Yönetim</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Evet</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">MyFranchise Merkezi</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Boss App</td>
+                        <td class="px-6 py-4 text-center">SimpraHQ</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-white">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Özelleştirilebilirlik</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Kullanıcı Dostu / Orta</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Hazır Paket</td>
+                        <td class="px-6 py-4 text-center text-green-600 font-bold border-r border-gray-100">Çok Yüksek (Entity)</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Yüksek (ERP)</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Yüksek</td>
+                        <td class="px-6 py-4 text-center">Orta</td>
+                    </tr>
+                    <tr class="hover:bg-blue-50 transition-colors bg-gray-50">
+                        <td class="px-6 py-4 font-bold text-gray-900 border-r border-gray-200">Fiyatlandırma Modeli</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">SaaS (Abonelik)</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">SaaS (Abonelik)</td>
+                        <td class="px-6 py-4 text-center font-bold border-r border-gray-100">Ömür Boyu Lisans</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Modüler Lisans</td>
+                        <td class="px-6 py-4 text-center border-r border-gray-100">Hibrit Lisans</td>
+                        <td class="px-6 py-4 text-center">SaaS (Abonelik)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <p>Bu tablo <a href="https://www.eprompos.com/blog/en-iyi-adisyon-pos-programlari-2026" target="_blank" class="text-blue-500 hover:underline">EpromPOS 2026 Değerlendirme Raporu</a>, E-POS, Adisyo, SambaPOS, Akınsoft, Menulux ve Simpra gibi markaların sağladığı piyasa verileri referans alınarak tarafsız olarak oluşturulmuştur.</p>
+        </div>
+    </div>
+</body>
+</html>

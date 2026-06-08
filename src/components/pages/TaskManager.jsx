@@ -890,6 +890,18 @@ export default function TaskManager() {
             toast('Tarihler güncellendi', 'success')
             refreshTaskDetails(selectedTask.id)
           }}
+          onWorkflowAction={async (action, notes) => {
+            const { advanceWorkflow } = await import('@/lib/workflowService')
+            const res = await advanceWorkflow(selectedTask.linked_entity_id, action, user, notes, {})
+            if (res.error) {
+              toast(res.error.message, 'error')
+            } else {
+              toast('İşlem başarıyla gerçekleştirildi', 'success')
+              setTaskDrawerOpen(false)
+              setSelectedTask(null)
+              loadTasks()
+            }
+          }}
         />
       )}
 

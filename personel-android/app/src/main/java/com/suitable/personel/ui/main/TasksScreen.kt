@@ -1,3475 +1,3653 @@
-package com.suitable.personel.ui.main
-
-import android.app.DatePickerDialog
-import android.content.Context
-import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
-import com.suitable.personel.data.*
-import kotlinx.coroutines.launch
-import java.util.Calendar
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
-
-private val TaskBg = Color(0xFF0F172A)
-private val CardBg = Color(0xFF1E293B)
-private val CardBorder = Color(0xFF334155)
-private val TextPrimary = Color(0xFFF8FAFC)
-private val TextSecondary = Color(0xFF94A3B8)
-private val AccentGreen = Color(0xFF10B981)
-private val AccentRed = Color(0xFFEF4444)
-private val AccentBlue = Color(0xFF3B82F6)
-private val AccentOrange = Color(0xFFF59E0B)
-private val AccentPurple = Color(0xFF8B5CF6)
-
-// Modal renk ayrımı için
-private val DetailDialogBg = Color(0xFF0F2847)   // Mavi tonu → Detay modalı
-private val CreateDialogBg = Color(0xFF1A0F2E)   // Mor tonu → Oluşturma modalı
-private val SelectDialogBg = Color(0xFF0D1F12)   // Yeşil tonu → Seçim modalı
-
-private fun parseFormIdAndCleanDescription(description: String?): Pair<String?, String?> {
-    if (description.isNullOrBlank()) return Pair(null, null)
-    val pattern = java.util.regex.Pattern.compile("\\[Form ID:\\s*([^\\]]+)\\]")
-    val matcher = pattern.matcher(description)
-    return if (matcher.find()) {
-        val formId = matcher.group(1)?.trim()
-        val cleaned = matcher.replaceAll("").replace(Regex("\n{2,}$"), "").trim()
-        Pair(formId, cleaned)
-    } else {
-        Pair(null, description)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TasksScreen(
-    config: AppConfig?,
-    staffSession: StaffSession?,
-    onNavigate: (String) -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val repo = remember { TaskRepository() }
-
-    val actorId = staffSession?.id ?: ""
-    val authorityLevel = staffSession?.authorityLevel ?: "şube"
-    val branchId = staffSession?.activeBranchId ?: ""
-
-    var tasks by remember { mutableStateOf<List<TaskItem>>(emptyList()) }
-    var employees by remember { mutableStateOf<List<EmployeeInfo>>(emptyList()) }
-    var positions by remember { mutableStateOf<List<PositionInfo>>(emptyList()) }
-    var branches by remember { mutableStateOf<List<BranchInfo>>(emptyList()) }
-    var formTemplates by remember { mutableStateOf<List<FormTemplateInfo>>(emptyList()) }
-
-    var isLoading by remember { mutableStateOf(true) }
-    var refreshTrigger by remember { mutableStateOf(0) }
-
-    // Tab state: "mine" (Bana Atananlar), "assigned_by_me" (Oluşturduklarım), "watching" (Gözlemci Olduklarım)
-    var selectedTab by remember { mutableStateOf("mine") }
-    // Status Filter: "active" (Devam Edenler), "completed" (Tamamlananlar), "overdue" (Gecikenler), "all" (Tümü)
-    var statusFilter by remember { mutableStateOf("active") }
-
-    // Dialog & Detail states
-    var selectedTaskForDetail by remember { mutableStateOf<TaskItem?>(null) }
-    var showCreateDialog by remember { mutableStateOf(false) }
-
-    // 1) Verileri Yükle
-    LaunchedEffect(actorId, refreshTrigger) {
-        if (actorId.isBlank()) return@LaunchedEffect
-        isLoading = true
-        scope.launch {
-            try {
-                // Pozisyonlar, Personeller, Şubeler
-                val meta = repo.fetchEmployeesAndPositionsAndBranches()
-                employees = meta.first
-                positions = meta.second
-                branches = meta.third
-
-                // Şablonlar
-                formTemplates = repo.fetchFormTemplates()
-
-                // Görevler
-                tasks = repo.fetchTasksForActor(actorId, authorityLevel, branchId)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Görevler yüklenirken hata oluştu", Toast.LENGTH_SHORT).show()
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    // 2) Filtrelenmiş Görev Listesi
-    val filteredTasks = remember(tasks, selectedTab, statusFilter) {
-        tasks.filter { task ->
-            val myParticipant = task.participants.find { it.participantType == "assignee" && it.personnelId == actorId }
-            val isMyPartCompleted = myParticipant?.isCompleted ?: false
-
-            // Tab filtresi
-            val passTab = when (selectedTab) {
-                "mine" -> myParticipant != null
-                "assigned_by_me" -> task.createdByPersonnelId == actorId
-                "watching" -> task.participants.any { it.participantType == "watcher" && it.personnelId == actorId }
-                else -> true
-            }
-
-            // Durum filtresi
-            val passStatus = when (statusFilter) {
-                "active" -> {
-                    val baseActive = (task.status == "open" || task.status == "in_progress" || task.status == "pending_approval" || task.status == "pending_completion_approval") && task.status != "rejected"
-                    if (selectedTab == "mine" && isMyPartCompleted) {
-                        false
-                    } else {
-                        baseActive
-                    }
-                }
-                "completed" -> {
-                    val baseCompleted = task.status == "completed" || task.status == "rejected"
-                    if (selectedTab == "mine" && isMyPartCompleted) {
-                        true
-                    } else {
-                        baseCompleted
-                    }
-                }
-                "overdue" -> {
-                    // dueAt geçmişte kalmış ve completed değilse
-                    val isLate = task.dueAt?.let {
-                        try {
-                            val due = java.time.Instant.parse(it)
-                            due.isBefore(java.time.Instant.now())
-                        } catch (_: Exception) { false }
-                    } ?: false
-                    val notDone = if (selectedTab == "mine") !isMyPartCompleted else (task.status != "completed" && task.status != "rejected")
-                    isLate && notDone && task.status != "completed" && task.status != "rejected"
-                }
-                else -> true // "all"
-            }
-
-            passTab && passStatus
-        }
-    }
-
-    AppScaffold(
-        config = config,
-        staffSession = staffSession,
-        onNavigate = onNavigate,
-        showMenu = true
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(TaskBg)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(16.dp)
-            ) {
-                // Başlık Alanı
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Görev Yönetimi",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 22.sp
-                        )
-                        Text(
-                            text = "İş atamaları ve durum takibi",
-                            color = TextSecondary,
-                            fontSize = 13.sp
-                        )
-                    }
-
-                    // Yeni Görev FAB/Button
-                    Button(
-                        onClick = { showCreateDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Yeni Görev", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
-                    }
-                }
-
-                // 1. Düzey Sekmeler (Bana Atananlar, Oluşturduklarım, İzlediklerim)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val tabs = listOf(
-                        "mine" to "Atananlar",
-                        "assigned_by_me" to "Verdiklerim",
-                        "watching" to "Gözlemci"
-                    )
-                    tabs.forEach { (key, label) ->
-                        val isSelected = selectedTab == key
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { selectedTab = key },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) AccentBlue.copy(alpha = 0.2f) else CardBg
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) AccentBlue else CardBorder
-                            )
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (isSelected) Color.White else TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(vertical = 10.dp).align(Alignment.CenterHorizontally)
-                            )
-                        }
-                    }
-                }
-
-                // 2. Düzey Durum Filtreleri (Devam Edenler, Tamamlananlar, Gecikenler, Hepsi)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val filters = listOf(
-                        "active" to "Aktif",
-                        "completed" to "Biten",
-                        "overdue" to "Geciken",
-                        "all" to "Tümü"
-                    )
-                    filters.forEach { (key, label) ->
-                        val isSelected = statusFilter == key
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { statusFilter = key },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) AccentOrange else CardBorder
-                            )
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (isSelected) Color.White else TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(vertical = 10.dp).align(Alignment.CenterHorizontally)
-                            )
-                        }
-                    }
-                }
-
-                // Tasks List
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(top = 12.dp)
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            color = AccentOrange,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    } else if (filteredTasks.isEmpty()) {
-                        Text(
-                            text = "Herhangi bir görev bulunamadı.",
-                            color = TextSecondary,
-                            modifier = Modifier.align(Alignment.Center),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-} else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(filteredTasks, key = { it.id }) { task ->
-                                TaskItemCard(
-                                    task = task,
-                                    employees = employees,
-                                    onClick = { selectedTaskForDetail = task }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ─── Detay Modalı / Sayfası ──────────────────────────────────────────────
-    if (selectedTaskForDetail != null) {
-        val task = selectedTaskForDetail!!
-        TaskDetailDialog(
-            task = task,
-            employees = employees,
-            positions = positions,
-            branches = branches,
-            formTemplates = formTemplates,
-            repo = repo,
-            currentUserId = actorId,
-            onDismiss = {
-                selectedTaskForDetail = null
-                refreshTrigger++
-            }
-        )
-    }
-
-    // ─── Yeni Görev Oluşturma Modalı ─────────────────────────────────────────
-    if (showCreateDialog) {
-        CreateTaskDialog(
-            employees = employees,
-            positions = positions,
-            branches = branches,
-            formTemplates = formTemplates,
-            repo = repo,
-            currentUserId = actorId,
-            currentUserPositionId = remember(actorId, employees) {
-                employees.find { it.id == actorId }?.positionId
-            },
-            currentBranchId = branchId,
-            onDismiss = {
-                showCreateDialog = false
-                refreshTrigger++
-            }
-        )
-    }
-}
-
-// ─── Yardımcı Composable Kart Bileşeni ────────────────────────────────────────
-
-@Composable
-private fun TaskItemCard(
-    task: TaskItem,
-    employees: List<EmployeeInfo>,
-    onClick: () -> Unit
-) {
-    val (priorityLabel, priorityColor) = remember(task.priority) {
-        when (task.priority) {
-            "urgent" -> "Kritik" to AccentRed
-            "high" -> "Yüksek" to AccentOrange
-            "low" -> "Düşük" to TextSecondary
-            else -> "Normal" to AccentBlue
-        }
-    }
-
-    val (statusLabel, statusColor) = remember(task.status) {
-        when (task.status) {
-            "completed" -> "Tamamlandı" to AccentGreen
-            "in_progress" -> "Devam Ediyor" to AccentBlue
-            "pending_approval" -> "Onay Bekliyor" to AccentOrange
-            "pending_completion_approval" -> "Kapanış Onayında" to AccentOrange
-            "not_completed" -> "Tamamlanmadı" to AccentRed
-            "rejected" -> "Reddedildi" to AccentRed
-            else -> "Açık" to TextSecondary
-        }
-    }
-
-    val formattedDate = remember(task.dueAt) {
-        if (task.dueAt.isNullOrBlank()) "—"
-        else {
-            try {
-                // ISO formatını daha kısa bir gösterime dönüştür: "YYYY-MM-DD"
-                task.dueAt.substring(0, 10)
-            } catch (_: Exception) { task.dueAt }
-        }
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        border = BorderStroke(1.dp, CardBorder)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Başlık Satırı (Öncelik + Başlık + Durum)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Öncelik Rozeti
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(priorityColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = priorityLabel,
-                        color = priorityColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Durum Göstergesi
-                Text(
-                    text = statusLabel,
-                    color = statusColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Görev Başlığı
-            Text(
-                text = task.title,
-                color = Color.White,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // Açıklama Özeti
-            val cleanedDesc = remember(task.description) {
-                parseFormIdAndCleanDescription(task.description).second
-            }
-            if (!cleanedDesc.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = cleanedDesc,
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = CardBorder)
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Alt Detay Satırı (Sorumlu/Görevliler + Bitiş Tarihi + Checklist)
-            val assignees = remember(task) { task.participants.filter { it.participantType == "assignee" } }
-            val completedCount = remember(assignees) { assignees.count { it.isCompleted } }
-            val totalCount = assignees.size
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Görevliler", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        if (totalCount > 1) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(AccentBlue.copy(alpha = 0.15f))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = "$completedCount/$totalCount Tamamlandı",
-                                    color = AccentBlue,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (totalCount > 0) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            assignees.forEach { a ->
-                                val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
-                                val badgeBg = if (a.isCompleted) AccentGreen.copy(alpha = 0.15f) else AccentOrange.copy(alpha = 0.15f)
-                                val badgeBorder = if (a.isCompleted) AccentGreen else AccentOrange
-                                val badgeText = if (a.isCompleted) AccentGreen else AccentOrange
-                                val statusSuffix = if (a.isCompleted) " ✓" else " ⏱"
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(badgeBg)
-                                        .border(1.dp, badgeBorder, RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "$name$statusSuffix",
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text("Belirtilmedi", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Bitiş Tarihi", color = TextSecondary, fontSize = 10.sp)
-                        Text(formattedDate, color = if (statusLabel == "Geciken") AccentRed else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    if (task.checklistCount > 0) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Kontrol Listesi", color = TextSecondary, fontSize = 10.sp)
-                            Text("${task.checklistDoneCount}/${task.checklistCount}", color = AccentGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            // Tekrarlayan görev rozeti
-            if (task.isRecurring) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        tint = AccentPurple,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Tekrarlayan Görev",
-                        color = AccentPurple,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Detay Penceresi Modülü (Dialog) ──────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TaskDetailDialog(
-    task: TaskItem,
-    employees: List<EmployeeInfo>,
-    positions: List<PositionInfo>,
-    branches: List<BranchInfo>,
-    formTemplates: List<FormTemplateInfo>,
-    repo: TaskRepository,
-    currentUserId: String,
-    onDismiss: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    val showDatePicker = { initialDateTimeString: String?, onDateSelected: (String) -> Unit ->
-        val calendar = java.util.Calendar.getInstance()
-        initialDateTimeString?.let {
-            try {
-                val instant = java.time.Instant.parse(it)
-                calendar.time = java.util.Date.from(instant)
-            } catch (_: Exception) {}
-        }
-        android.app.DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                android.app.TimePickerDialog(
-                    context,
-                    { _, hourOfDay, minute ->
-                        val selectedCal = java.util.Calendar.getInstance()
-                        selectedCal.set(year, month, dayOfMonth, hourOfDay, minute)
-                        val formatted = selectedCal.toInstant().toString()
-                        onDateSelected(formatted)
-                    },
-                    calendar.get(java.util.Calendar.HOUR_OF_DAY),
-                    calendar.get(java.util.Calendar.MINUTE),
-                    true
-                ).show()
-            },
-            calendar.get(java.util.Calendar.YEAR),
-            calendar.get(java.util.Calendar.MONTH),
-            calendar.get(java.util.Calendar.DAY_OF_MONTH)
-        ).show()
-    }
-
-    // Local states
-    var taskStatus by remember { mutableStateOf(task.status) }
-    var checklist by remember { mutableStateOf<List<TaskChecklistItem>>(emptyList()) }
-    var chatMessages by remember { mutableStateOf<List<TaskChatMessage>>(emptyList()) }
-    var approvals by remember { mutableStateOf<List<TaskApprovalRequest>>(emptyList()) }
-    var attachments by remember { mutableStateOf<List<TaskAttachment>>(emptyList()) }
-
-    // Form detail states
-    var showFormDetailDialog by remember { mutableStateOf(false) }
-    var formSubmissionDetail by remember { mutableStateOf<FormSubmissionDetail?>(null) }
-    var isFormDetailLoading by remember { mutableStateOf(false) }
-
-    // Dialog action visibility states
-    var showSendBackDialog by remember { mutableStateOf(false) }
-    var showDelegateDialog by remember { mutableStateOf(false) }
-    var showPasifeAlConfirmation by remember { mutableStateOf(false) }
-
-    var isSubmittingAction by remember { mutableStateOf(false) }
-
-    // Chat states
-    var chatInput by remember { mutableStateOf("") }
-    var isSendingMsg by remember { mutableStateOf(false) }
-
-    val isAssignee = remember(task, currentUserId) {
-        task.participants.any { it.personnelId == currentUserId && it.participantType == "assignee" }
-    }
-    val isWatcher = remember(task, currentUserId) {
-        task.participants.any { it.personnelId == currentUserId && it.participantType == "watcher" }
-    }
-    var taskStartAt by remember { mutableStateOf(task.startAt) }
-    var taskDueAt by remember { mutableStateOf(task.dueAt) }
-    var showClosureSummaryDialog by remember { mutableStateOf(false) }
-
-    // Verileri yükle
-    LaunchedEffect(task.id) {
-        checklist = repo.fetchTaskChecklist(task.id)
-        chatMessages = repo.fetchTaskChatMessages(task.id)
-        approvals = repo.fetchTaskApprovals(task.id)
-        attachments = repo.fetchTaskAttachments(task.id)
-    }
-
-    val creatorName = remember(task, employees) {
-        employees.find { it.id == task.createdByPersonnelId }?.getDisplayName() ?: "Sistem"
-    }
-
-    val branchName = remember(task, branches) {
-        branches.find { it.id == task.branchNodeId }?.name ?: "Genel Merkez"
-    }
-
-    val parsedDesc = remember(task.description) {
-        parseFormIdAndCleanDescription(task.description)
-    }
-    val formId = parsedDesc.first
-    val cleanedDescription = parsedDesc.second
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = task.title,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f)
-                    )
-                    // Mavi şerit — detay diyalogu göstergesi
-                    Box(
-                        modifier = Modifier
-                            .width(4.dp)
-                            .height(28.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(AccentBlue)
-                    )
-                }
-                Text(
-                    text = "📋 Görev Detayı  •  $branchName  •  $creatorName",
-                    color = AccentBlue.copy(alpha = 0.7f),
-                    fontSize = 11.sp
-                )
-            }
-        },
-        text = {
-            Surface(
-                color = Color.Transparent,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    // 1) Açıklama
-                    if (!cleanedDescription.isNullOrBlank()) {
-                        item {
-                            Column {
-                                Text("Açıklama", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                    border = BorderStroke(1.dp, CardBorder)
-                                ) {
-                                    Text(
-                                        text = cleanedDescription,
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        modifier = Modifier.padding(10.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 1.2) İlişkili Form Yanıtı Butonu
-                    if (!formId.isNullOrBlank()) {
-                        item {
-                            Button(
-                                onClick = {
-                                    isFormDetailLoading = true
-                                    scope.launch {
-                                        val detail = repo.fetchFormSubmissionDetail(formId)
-                                        formSubmissionDetail = detail
-                                        isFormDetailLoading = false
-                                        if (detail != null) {
-                                            showFormDetailDialog = true
-                                        } else {
-                                            Toast.makeText(context, "Form detayları yüklenemedi", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentPurple),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = !isFormDetailLoading
-                            ) {
-                                if (isFormDetailLoading) {
-                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("İlişkili Form Yanıtını Göster", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    // 1.3) Ekler Listesi
-                    if (attachments.isNotEmpty()) {
-                        item {
-                            Column {
-                                Text("Ekler (${attachments.size})", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                    border = BorderStroke(1.dp, CardBorder)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        attachments.forEach { att ->
-                                            val isImage = att.attachmentType == "image" || att.attachmentType == "closure_image" || att.mimeType?.startsWith("image/") == true
-                                            if (isImage) {
-                                                val imageUrl = ApiClient.resolveImageUrl(att.fileUrl)
-                                                Column(modifier = Modifier.fillMaxWidth()) {
-                                                    Text(
-                                                        text = att.fileName ?: "Görsel Ek",
-                                                        color = TextSecondary,
-                                                        fontSize = 11.sp,
-                                                        modifier = Modifier.padding(bottom = 4.dp)
-                                                    )
-                                                    AsyncImage(
-                                                        model = imageUrl,
-                                                        contentDescription = att.fileName,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(140.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
-                                                            .clickable {
-                                                                try {
-                                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(imageUrl))
-                                                                    context.startActivity(intent)
-                                                                } catch (e: Exception) {
-                                                                    Toast.makeText(context, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show()
-                                                                }
-                                                            }
-                                                    )
-                                                }
-                                            } else {
-                                                val fileUrl = ApiClient.resolveImageUrl(att.fileUrl)
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(CardBg)
-                                                        .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
-                                                        .clickable {
-                                                            try {
-                                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
-                                                                context.startActivity(intent)
-                                                            } catch (e: Exception) {
-                                                                Toast.makeText(context, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        }
-                                                        .padding(10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Attachment,
-                                                        contentDescription = null,
-                                                        tint = AccentBlue,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = att.fileName ?: "Dosya Eki",
-                                                        color = Color.White,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 1.4) Katılımcılar (Sorumlu & İzleyenler)
-                    item {
-                        Column {
-                            Text("Katılımcılar", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                border = BorderStroke(1.dp, CardBorder)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    val assignees = task.participants.filter { it.participantType == "assignee" }
-                                    val watchers = task.participants.filter { it.participantType == "watcher" }
-                                    
-                                    if (assignees.isNotEmpty()) {
-                                        Text("Atananlar:", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        assignees.forEach { a ->
-                                            val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
-                                            val badgeBg = if (a.isCompleted) AccentGreen.copy(alpha = 0.15f) else AccentOrange.copy(alpha = 0.15f)
-                                            val badgeBorder = if (a.isCompleted) AccentGreen else AccentOrange
-                                            val badgeText = if (a.isCompleted) AccentGreen else AccentOrange
-                                            val statusIcon = if (a.isCompleted) "✓ Tamamladı" else "⏱ Devam Ediyor"
-                                            
-                                            Row(
-                                                modifier = Modifier
-                                                    .padding(vertical = 2.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(badgeBg)
-                                                    .border(1.dp, badgeBorder, RoundedCornerShape(8.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = name,
-                                                    color = Color.White,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = statusIcon,
-                                                    color = badgeText,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (watchers.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text("Gözlemciler:", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        watchers.forEach { w ->
-                                            val name = employees.find { it.id == w.personnelId }?.getDisplayName() ?: "Personel"
-                                            Text(
-                                                text = "• $name",
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                modifier = Modifier.padding(vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 1.5) Görev Meta Bilgileri (Tekrarlama, Kurallar)
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1628)),
-                            border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f))
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Görev Bilgileri", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                // Başlangıç Tarihi
-                                val startClickable = task.editScheduleAllowed && !isWatcher
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(enabled = startClickable) {
-                                            showDatePicker(taskStartAt) { selectedIso ->
-                                                scope.launch {
-                                                    val success = repo.updateTaskDates(task.id, selectedIso, taskDueAt, taskStartAt, taskDueAt, currentUserId)
-                                                    if (success) {
-                                                        taskStartAt = selectedIso
-                                                        Toast.makeText(context, "Başlangıç tarihi güncellendi", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Başlangıç", color = TextSecondary, fontSize = 11.sp)
-                                        if (startClickable) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
-                                        }
-                                    }
-                                    Text(taskStartAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                }
-
-                                // Bitiş Tarihi
-                                val dueClickable = task.editDueDateAllowed && !isWatcher
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(enabled = dueClickable) {
-                                            showDatePicker(taskDueAt) { selectedIso ->
-                                                scope.launch {
-                                                    val success = repo.updateTaskDates(task.id, taskStartAt, selectedIso, taskStartAt, taskDueAt, currentUserId)
-                                                    if (success) {
-                                                        taskDueAt = selectedIso
-                                                        Toast.makeText(context, "Vade tarihi güncellendi", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Bitiş", color = TextSecondary, fontSize = 11.sp)
-                                        if (dueClickable) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
-                                        }
-                                    }
-                                    Text(taskDueAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                }
-
-                                val rows = buildList {
-                                    add("Öncelik" to when (task.priority) {
-                                        "urgent" -> "🔴 Kritik"
-                                        "high" -> "🟠 Yüksek"
-                                        "low" -> "⬇️ Düşük"
-                                        else -> "🔵 Normal"
-                                    })
-                                    if (task.isRecurring) add("Tekrar" to "✅ Tekrarlayan Görev")
-                                    if (task.approvalRequired) add("Onay" to "✅ Kapanış Onayı Gerekli")
-                                    if (task.closureSummaryRequired) add("Özet" to "✅ Kapanışta Özet Zorunlu")
-                                    if (task.closureImageRequired) add("Görsel" to "✅ Kapanışta Görsel Zorunlu")
-                                    if (task.closureFileRequired) add("Dosya" to "✅ Kapanışta Dosya Zorunlu")
-                                }
-                                rows.forEach { (label, value) ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(label, color = TextSecondary, fontSize = 11.sp)
-                                        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2) Görev Formu Şablonu
-                    if (!task.formTemplateId.isNullOrBlank()) {
-                        val tName = formTemplates.find { it.id == task.formTemplateId }?.name ?: "Şablon"
-                        item {
-                            Column {
-                                Text("Görev Formu", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                    border = BorderStroke(1.dp, CardBorder)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(tName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                        Button(
-                                            onClick = {
-                                                Toast.makeText(context, "$tName Formu açılıyor...", Toast.LENGTH_SHORT).show()
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                        ) {
-                                            Text("Doldur", fontSize = 11.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2) Onay Durumları (Varsa listele)
-                    if (approvals.isNotEmpty()) {
-                        item {
-                            Column {
-                                Text("Onay Geçmişi", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                    border = BorderStroke(1.dp, CardBorder)
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        approvals.forEach { app ->
-                                            val from = employees.find { it.id == app.fromPersonnel }?.getDisplayName() ?: app.fromPersonnel
-                                            val to = employees.find { it.id == app.toPersonnel }?.getDisplayName() ?: app.toPersonnel
-                                            val stateText = when (app.status) {
-                                                "accepted" -> "Kabul Edildi"
-                                                "rejected" -> "Reddedildi"
-                                                else -> "Bekliyor"
-                                            }
-                                            Text(
-                                                text = "• $from → $to ($stateText)",
-                                                color = if (app.status == "accepted") AccentGreen else if (app.status == "rejected") AccentRed else AccentOrange,
-                                                fontSize = 11.sp
-                                            )
-                                            if (!app.reason.isNullOrBlank()) {
-                                                Text(text = "  Neden: ${app.reason}", color = TextSecondary, fontSize = 11.sp)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 3) Kontrol Listesi
-                    if (checklist.isNotEmpty()) {
-                        item {
-                            Text("Kontrol Listesi", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        items(checklist, key = { it.id }) { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !isWatcher) {
-                                        scope.launch {
-                                            val success = repo.updateChecklistItem(item.id, !item.isDone)
-                                            if (success) {
-                                                checklist = checklist.map {
-                                                    if (it.id == item.id) it.copy(isDone = !item.isDone) else it
-                                                }
-                                            }
-                                        }
-                                    },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = item.isDone,
-                                    enabled = !isWatcher,
-                                    onCheckedChange = { checked ->
-                                        scope.launch {
-                                            val success = repo.updateChecklistItem(item.id, checked)
-                                            if (success) {
-                                                checklist = checklist.map {
-                                                    if (it.id == item.id) it.copy(isDone = checked) else it
-                                                }
-                                            }
-                                        }
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = AccentGreen,
-                                        uncheckedColor = CardBorder
-                                    )
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = item.text,
-                                    color = if (item.isDone) TextSecondary else Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-
-                    // 4) Durum Eylemleri (FAB/Butonlar)
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Görev Durum Eylemleri", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
-                            val hasPrimaryAction = !isWatcher && (taskStatus == "open" || taskStatus == "rejected" || taskStatus == "in_progress" || (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId))
-                            if (hasPrimaryAction) {
-                                Row(modifier = Modifier.fillMaxWidth()) {
-                                    // Görevi Başlat
-                                    if (taskStatus == "open" || taskStatus == "rejected") {
-                                        Button(
-                                            onClick = {
-                                                isSubmittingAction = true
-                                                scope.launch {
-                                                    val success = repo.updateTaskStatus(task.id, "in_progress", currentUserId)
-                                                    if (success) {
-                                                        taskStatus = "in_progress"
-                                                        Toast.makeText(context, "Göreve başlandı", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                    isSubmittingAction = false
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                                            enabled = !isSubmittingAction,
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Text("Görevi Başlat", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    // Görevi Tamamla
-                                    if (taskStatus == "in_progress") {
-                                        Button(
-                                            onClick = {
-                                                if (task.closureFileRequired || task.closureImageRequired) {
-                                                    Toast.makeText(context, "Dosya veya görsel yükleme zorunlu olduğundan bu görevi lütfen Web arayüzünden tamamlayın.", Toast.LENGTH_LONG).show()
-                                                    return@Button
-                                                }
-                                                if (task.closureSummaryRequired || task.requiresCostInput) {
-                                                    showClosureSummaryDialog = true
-                                                } else {
-                                                    isSubmittingAction = true
-                                                    scope.launch {
-                                                        val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
-                                                        val success = repo.updateTaskStatus(
-                                                            taskId = task.id,
-                                                            newStatus = nextState,
-                                                            personnelId = currentUserId,
-                                                            linkedEntityTable = task.linkedEntityTable,
-                                                            linkedEntityId = task.linkedEntityId
-                                                        )
-                                                        if (success) {
-                                                            taskStatus = nextState
-                                                            Toast.makeText(
-                                                                context, 
-                                                                if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
-                                                                Toast.LENGTH_SHORT
-                                                            ).show()
-                                                        }
-                                                        isSubmittingAction = false
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
-                                            enabled = !isSubmittingAction,
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Text("Tamamlandı Olarak İşaretle", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    // Görevi Kapat (Tümü İçin) - Creator force closure
-                                    val isCreator = remember(task, currentUserId) { task.createdByPersonnelId == currentUserId }
-                                    val showForceClose = isCreator && (taskStatus == "open" || taskStatus == "in_progress" || taskStatus == "pending_approval" || taskStatus == "pending_completion_approval" || taskStatus == "rejected")
-                                    if (showForceClose) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(
-                                            onClick = {
-                                                if (task.closureFileRequired || task.closureImageRequired) {
-                                                    Toast.makeText(context, "Dosya veya görsel yükleme zorunlu olduğundan bu görevi lütfen Web arayüzünden tamamlayın.", Toast.LENGTH_LONG).show()
-                                                    return@Button
-                                                }
-                                                if (task.closureSummaryRequired || task.requiresCostInput) {
-                                                    showClosureSummaryDialog = true
-                                                } else {
-                                                    isSubmittingAction = true
-                                                    scope.launch {
-                                                        val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
-                                                        val success = repo.updateTaskStatus(
-                                                            taskId = task.id,
-                                                            newStatus = nextState,
-                                                            personnelId = currentUserId,
-                                                            linkedEntityTable = task.linkedEntityTable,
-                                                            linkedEntityId = task.linkedEntityId
-                                                        )
-                                                        if (success) {
-                                                            taskStatus = nextState
-                                                            Toast.makeText(
-                                                                context, 
-                                                                if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamen kapatıldı", 
-                                                                Toast.LENGTH_SHORT
-                                                            ).show()
-                                                        }
-                                                        isSubmittingAction = false
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
-                                            enabled = !isSubmittingAction,
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Text("Görevi Kapat (Tümü İçin)", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    // Görevi Aktifleştir
-                                    if (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId) {
-                                        Button(
-                                            onClick = {
-                                                isSubmittingAction = true
-                                                scope.launch {
-                                                    val success = repo.restoreTask(task.id, currentUserId)
-                                                    if (success) {
-                                                        taskStatus = "open"
-                                                        Toast.makeText(context, "Görev aktif hale getirildi", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                    isSubmittingAction = false
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
-                                            enabled = !isSubmittingAction,
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Text("Görevi Aktifleştir", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Secondary Actions Row: Geri Gönder, Delege Et, Pasife Al
-                            val showSecondaryActions = !isWatcher && taskStatus != "completed" && taskStatus != "cancelled" && taskStatus != "soft_deleted"
-                            if (showSecondaryActions) {
-                                val showSendBack = isAssignee && task.formTemplateId.isNullOrBlank() && repo.canReject(
-                                    task.createdByPositionId ?: "",
-                                    employees.find { it.id == currentUserId }?.positionId ?: "",
-                                    positions
-                                )
-                                val showDelegate = task.delegationAllowed && isAssignee
-                                val showPasifeAl = task.createdByPersonnelId == currentUserId
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    if (showSendBack) {
-                                        OutlinedButton(
-                                            onClick = { showSendBackDialog = true },
-                                            modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                            border = BorderStroke(1.dp, AccentOrange),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(vertical = 8.dp)
-                                        ) {
-                                            Text("Geri Gönder", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                        }
-                                    }
-                                    if (showDelegate) {
-                                        OutlinedButton(
-                                            onClick = { showDelegateDialog = true },
-                                            modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                            border = BorderStroke(1.dp, AccentPurple),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(vertical = 8.dp)
-                                        ) {
-                                            Text("Delege Et", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                        }
-                                    }
-                                    if (showPasifeAl) {
-                                        OutlinedButton(
-                                            onClick = { showPasifeAlConfirmation = true },
-                                            modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                            border = BorderStroke(1.dp, AccentRed),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(vertical = 8.dp)
-                                        ) {
-                                            Text("Pasife Al", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 5) Sohhet & Notlar (Chat)
-                    item {
-                        Text("Notlar & Tartışma", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    if (chatMessages.isEmpty()) {
-                        item {
-                            Text(
-                                "Henüz eklenmiş bir not bulunmamaktadır.",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                            )
-                        }
-                    } else {
-                        items(chatMessages, key = { it.id }) { msg ->
-                            val isSystem = msg.messageType == "system"
-                            val isMe = msg.senderId == currentUserId
-
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = if (isSystem) Alignment.CenterHorizontally else if (isMe) Alignment.End else Alignment.Start
-                            ) {
-                                if (isSystem) {
-                                    // Sistem Mesajı
-                                    Card(
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF334155).copy(alpha = 0.4f)),
-                                        shape = RoundedCornerShape(6.dp),
-                                        modifier = Modifier.padding(vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = msg.body ?: "",
-                                            color = TextSecondary,
-                                            fontSize = 11.sp,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                } else {
-                                    // Kullanıcı Mesajı
-                                    val sender = employees.find { it.id == msg.senderId }?.getDisplayName() ?: "Bilinmeyen Personel"
-                                    if (!isMe) {
-                                        Text(sender, color = TextSecondary, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
-                                    }
-                                    Card(
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isMe) AccentBlue else Color(0xFF1E293B)
-                                        ),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = if (isMe) null else BorderStroke(1.dp, CardBorder),
-                                        modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 240.dp)
-                                    ) {
-                                        Text(
-                                            text = msg.body ?: "",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            modifier = Modifier.padding(10.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Mesaj Yazma Alanı
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = chatInput,
-                                onValueChange = { chatInput = it },
-                                placeholder = { Text("Bir mesaj veya not yazın...", fontSize = 12.sp) },
-                                modifier = Modifier.weight(1f),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentBlue,
-                                    unfocusedBorderColor = CardBorder,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                maxLines = 3
-                            )
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            IconButton(
-                                onClick = {
-                                    if (chatInput.isBlank() || isSendingMsg) return@IconButton
-                                    isSendingMsg = true
-                                    scope.launch {
-                                        val success = repo.addChatMessage(task.id, currentUserId, chatInput)
-                                        if (success) {
-                                            chatInput = ""
-                                            // Mesajları yenile
-                                            chatMessages = repo.fetchTaskChatMessages(task.id)
-                                        }
-                                        isSendingMsg = false
-                                    }
-                                },
-                            ) {
-                                Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        containerColor = DetailDialogBg
-    )
-
-    if (showFormDetailDialog) {
-        formSubmissionDetail?.let { detail ->
-            FormDetailDialog(
-                detail = detail,
-                onDismiss = { showFormDetailDialog = false }
-            )
-        }
-    }
-
-    if (showSendBackDialog) {
-        var reasonText by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showSendBackDialog = false },
-            title = { Text("Geri Gönderme Gerekçesi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-            text = {
-                OutlinedTextField(
-                    value = reasonText,
-                    onValueChange = { reasonText = it },
-                    placeholder = { Text("Lütfen iade gerekçesini buraya yazın...", fontSize = 12.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = AccentOrange,
-                        unfocusedBorderColor = CardBorder
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    maxLines = 4
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (reasonText.trim().isBlank()) {
-                            Toast.makeText(context, "Gerekçe alanı boş olamaz", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        isSubmittingAction = true
-                        scope.launch {
-                            val success = repo.sendBackTask(task.id, currentUserId, reasonText, task.createdByPersonnelId)
-                            if (success) {
-                                taskStatus = "rejected"
-                                showSendBackDialog = false
-                                Toast.makeText(context, "Görev iade edildi", Toast.LENGTH_SHORT).show()
-                                chatMessages = repo.fetchTaskChatMessages(task.id)
-                            }
-                            isSubmittingAction = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                    shape = RoundedCornerShape(10.dp),
-                    enabled = !isSubmittingAction
-                ) {
-                    Text("Geri Gönder", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSendBackDialog = false }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DetailDialogBg
-        )
-    }
-
-    if (showPasifeAlConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showPasifeAlConfirmation = false },
-            title = { Text("Görevi Pasife Al", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-            text = { Text("Bu görevi pasife almak istediğinize emin misiniz?", color = Color.White, fontSize = 13.sp) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        isSubmittingAction = true
-                        scope.launch {
-                            val success = repo.softDeleteTask(task.id, currentUserId)
-                            if (success) {
-                                taskStatus = "soft_deleted"
-                                showPasifeAlConfirmation = false
-                                Toast.makeText(context, "Görev pasife alındı", Toast.LENGTH_SHORT).show()
-                                chatMessages = repo.fetchTaskChatMessages(task.id)
-                            }
-                            isSubmittingAction = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
-                    shape = RoundedCornerShape(10.dp),
-                    enabled = !isSubmittingAction
-                ) {
-                    Text("Evet, Pasife Al", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasifeAlConfirmation = false }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DetailDialogBg
-        )
-    }
-
-    if (showDelegateDialog) {
-        var delegateSearchQuery by remember { mutableStateOf("") }
-        val assignablePeople = remember(employees, delegateSearchQuery) {
-            employees.filter { emp ->
-                emp.id != currentUserId &&
-                emp.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true &&
-                emp.deletedAt == null &&
-                emp.getDisplayName().contains(delegateSearchQuery, ignoreCase = true)
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { showDelegateDialog = false },
-            title = { Text("Görevi Delege Et", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-            text = {
-                Surface(
-                    color = Color.Transparent,
-                    modifier = Modifier.fillMaxWidth().height(350.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = delegateSearchQuery,
-                            onValueChange = { delegateSearchQuery = it },
-                            placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = AccentPurple,
-                                unfocusedBorderColor = CardBorder
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (assignablePeople.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
-                                }
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(assignablePeople, key = { it.id }) { emp ->
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = CardBg),
-                                            border = BorderStroke(1.dp, CardBorder),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    isSubmittingAction = true
-                                                    scope.launch {
-                                                        val fromEmployee = employees.find { it.id == currentUserId }
-                                                        val success = repo.delegateTask(
-                                                            taskId = task.id,
-                                                            fromPersonnelId = currentUserId,
-                                                            toPersonnelId = emp.id,
-                                                            fromPositionId = fromEmployee?.positionId,
-                                                            toPositionId = emp.positionId,
-                                                            positions = positions,
-                                                            isFormTask = !task.formTemplateId.isNullOrBlank()
-                                                        )
-                                                        if (success) {
-                                                            showDelegateDialog = false
-                                                            Toast.makeText(context, "Delege işlemi yapıldı", Toast.LENGTH_SHORT).show()
-                                                            chatMessages = repo.fetchTaskChatMessages(task.id)
-                                                        }
-                                                        isSubmittingAction = false
-                                                    }
-                                                }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Person, contentDescription = null, tint = AccentPurple)
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(
-                                                    text = emp.getDisplayName(),
-                                                    color = Color.White,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showDelegateDialog = false }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DetailDialogBg
-        )
-    }
-
-    if (showClosureSummaryDialog) {
-        var summaryText by remember { mutableStateOf("") }
-        var costText by remember { mutableStateOf("") }
-        var selectedCurrency by remember { mutableStateOf("TRY") }
-        var currencyExpanded by remember { mutableStateOf(false) }
-        var exchangeRateText by remember { mutableStateOf("1.0") }
-        var exchangeRateLoading by remember { mutableStateOf(false) }
-
-        LaunchedEffect(selectedCurrency) {
-            if (selectedCurrency == "TRY") {
-                exchangeRateText = "1.0"
-            } else {
-                exchangeRateLoading = true
-                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-                val rate = repo.fetchExchangeRate(selectedCurrency, todayStr)
-                if (rate != null) {
-                    exchangeRateText = rate.toString()
-                }
-                exchangeRateLoading = false
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = { showClosureSummaryDialog = false },
-            title = { Text("Görev Kapanış Özeti", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = if (task.approvalRequired) "Bu görev kapanış onayına düşecek." else "Bu görev doğrudan tamamlanacak.",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
-
-                    OutlinedTextField(
-                        value = summaryText,
-                        onValueChange = { summaryText = it },
-                        label = {
-                            Text(
-                                if (task.closureSummaryRequired) "Kapanış Özeti * (Zorunlu)" else "Kapanış Özeti"
-                            )
-                        },
-                        placeholder = { Text("Yapılan işi kısaca yaz...", fontSize = 12.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = AccentGreen,
-                            unfocusedBorderColor = CardBorder
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        maxLines = 4
-                    )
-
-                    if (task.requiresCostInput) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.05f)),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "💰 Bakım / Onarım Maliyeti * (Zorunlu)",
-                                    color = Color(0xFFF59E0B),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                                Text(
-                                    text = "Bu görev bir bakım bildiriminden oluşturulmuşsa, girilen tutar ekipman geçmişine otomatik kaydedilir.",
-                                    color = Color(0xFFF59E0B).copy(alpha = 0.8f),
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.sp
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedTextField(
-                                        value = costText,
-                                        onValueChange = { costText = it },
-                                        placeholder = { Text("0.00", fontSize = 12.sp) },
-                                        label = { Text("Tutar") },
-                                        modifier = Modifier.weight(1f),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedTextColor = Color.White,
-                                            unfocusedTextColor = Color.White,
-                                            focusedBorderColor = Color(0xFFF59E0B),
-                                            unfocusedBorderColor = CardBorder
-                                        ),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-
-                                    Box(modifier = Modifier.width(90.dp)) {
-                                        OutlinedTextField(
-                                            value = selectedCurrency,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Döviz") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { currencyExpanded = !currencyExpanded }) {
-                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { currencyExpanded = !currencyExpanded },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = Color(0xFFF59E0B),
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-                                        DropdownMenu(
-                                            expanded = currencyExpanded,
-                                            onDismissRequest = { currencyExpanded = false }
-                                        ) {
-                                            listOf("TRY", "USD", "EUR").forEach { curr ->
-                                                DropdownMenuItem(
-                                                    text = { Text(curr) },
-                                                    onClick = {
-                                                        selectedCurrency = curr
-                                                        currencyExpanded = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (selectedCurrency != "TRY") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = exchangeRateText,
-                                            onValueChange = { exchangeRateText = it },
-                                            label = { Text("Döviz Kuru") },
-                                            placeholder = { Text("1.0000", fontSize = 12.sp) },
-                                            modifier = Modifier.weight(1f),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = Color(0xFFF59E0B),
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        if (exchangeRateLoading) {
-                                            CircularProgressIndicator(
-                                                color = Color(0xFFF59E0B),
-                                                modifier = Modifier.size(20.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        }
-                                    }
-                                }
-
-                                val costVal = costText.toDoubleOrNull()
-                                val rateVal = exchangeRateText.toDoubleOrNull()
-                                if (selectedCurrency != "TRY" && costVal != null && rateVal != null && costVal >= 0.0 && rateVal > 0.0) {
-                                    val approxTotal = costVal * rateVal
-                                    Text(
-                                        text = String.format(java.util.Locale.US, "Yaklaşık Toplam: %.2f TL", approxTotal),
-                                        color = Color(0xFFF59E0B),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        modifier = Modifier
-                                            .background(Color(0xFFF59E0B).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                val isSummaryMissing = task.closureSummaryRequired && summaryText.trim().isBlank()
-                val isCostMissing = task.requiresCostInput && (
-                    costText.trim().isBlank() ||
-                    costText.toDoubleOrNull() == null ||
-                    costText.toDouble() < 0.0 ||
-                    (selectedCurrency != "TRY" && (exchangeRateText.trim().isBlank() || exchangeRateText.toDoubleOrNull() == null || exchangeRateText.toDouble() <= 0.0))
-                )
-                val confirmEnabled = !isSummaryMissing && !isCostMissing && !isSubmittingAction
-
-                Button(
-                    onClick = {
-                        if (task.closureSummaryRequired && summaryText.trim().isBlank()) {
-                            Toast.makeText(context, "Özet alanı boş olamaz", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        if (task.requiresCostInput) {
-                            val costVal = costText.toDoubleOrNull()
-                            if (costVal == null || costVal < 0.0) {
-                                Toast.makeText(context, "Geçerli bir maliyet girilmelidir", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (selectedCurrency != "TRY") {
-                                val rateVal = exchangeRateText.toDoubleOrNull()
-                                if (rateVal == null || rateVal <= 0.0) {
-                                    Toast.makeText(context, "Geçerli bir döviz kuru girilmelidir", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                            }
-                        }
-                        isSubmittingAction = true
-                        scope.launch {
-                            val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
-                            val success = repo.updateTaskStatus(
-                                taskId = task.id,
-                                newStatus = nextState,
-                                personnelId = currentUserId,
-                                closureSummary = summaryText,
-                                cost = if (task.requiresCostInput) costText.toDoubleOrNull() else null,
-                                costCurrency = if (task.requiresCostInput) selectedCurrency else null,
-                                costExchangeRate = if (task.requiresCostInput) exchangeRateText.toDoubleOrNull() else null,
-                                linkedEntityTable = task.linkedEntityTable,
-                                linkedEntityId = task.linkedEntityId
-                            )
-                            if (success) {
-                                taskStatus = nextState
-                                showClosureSummaryDialog = false
-                                Toast.makeText(
-                                    context, 
-                                    if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                            isSubmittingAction = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
-                    shape = RoundedCornerShape(10.dp),
-                    enabled = confirmEnabled
-                ) {
-                    Text("Gönder ve Tamamla", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClosureSummaryDialog = false }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DetailDialogBg
-        )
-    }
-}
-
-@Composable
-private fun PillBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(99.dp))
-            .background(Color.White.copy(alpha = 0.06f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(99.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(11.dp))
-        Text(text, color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FormDetailDialog(
-    detail: FormSubmissionDetail,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-
-    val metadataMap = remember(detail.metadata) {
-        try {
-            ApiClient.gson.fromJson(detail.metadata ?: "{}", Map::class.java) as? Map<String, Any>
-        } catch (e: Exception) { null }
-    }
-    val branchName = metadataMap?.get("branch_name")?.toString() ?: "İlgili Şube"
-    val formDate = metadataMap?.get("form_date")?.toString()
-    val startTime = metadataMap?.get("start_time")?.toString()
-    val endTime = metadataMap?.get("end_time")?.toString()
-
-    val answers = remember(detail.answersJson) {
-        try {
-            val list = ApiClient.gson.fromJson(detail.answersJson, List::class.java) as? List<Map<String, Any?>>
-            list ?: emptyList()
-        } catch (e: Exception) { emptyList() }
-    }
-    val schemaMap = remember(detail.templateSchemaJson) {
-        try {
-            ApiClient.gson.fromJson(detail.templateSchemaJson ?: "{}", Map::class.java) as? Map<String, Any>
-        } catch (e: Exception) { null }
-    }
-    val sections = remember(schemaMap) {
-        val rawSections = schemaMap?.get("sections") as? List<Map<String, Any?>>
-        rawSections ?: emptyList()
-    }
-    val failedCriticalFields = remember(metadataMap) {
-        val list = metadataMap?.get("failed_critical_fields") as? List<Map<String, Any?>>
-        list?.map { it["id"]?.toString() ?: "" }?.toSet() ?: emptySet()
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 24.dp, horizontal = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = DetailDialogBg),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, CardBorder)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Header (Sadeleştirilmiş ve optimize edilmiş mobil başlık)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1E1E38), Color(0xFF0F0F1E))))
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Description,
-                        contentDescription = null,
-                        tint = AccentPurple,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = detail.templateTitle ?: "Form Detayı",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = branchName,
-                            color = TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Kapat",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = CardBorder)
-
-                // Content
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .heightIn(max = 440.dp)
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // Date & Time Tags
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                val dateStr = formDate ?: detail.createdAt.take(10)
-                                PillBadge(icon = Icons.Default.CalendarToday, text = dateStr)
-                                if (!startTime.isNullOrBlank()) {
-                                    val timeText = if (!endTime.isNullOrBlank()) "$startTime – $endTime" else startTime
-                                    PillBadge(icon = Icons.Default.Schedule, text = timeText)
-                                }
-                                if (detail.completionTimeSeconds != null) {
-                                    PillBadge(icon = Icons.Default.HourglassEmpty, text = "${detail.completionTimeSeconds / 60} dk")
-                                }
-                            }
-                        }
-
-                        // Kanıt Fotoğrafları
-                        if (detail.photos.isNotEmpty()) {
-                            item {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Text(
-                                        text = "📷 FOTOĞRAFLAR (${detail.photos.size})",
-                                        color = TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(bottom = 6.dp)
-                                    )
-                                    androidx.compose.foundation.lazy.LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        items(detail.photos) { photo ->
-                                            val imageUrl = ApiClient.resolveImageUrl(photo.fileUrl)
-                                            AsyncImage(
-                                                model = imageUrl,
-                                                contentDescription = "Kanıt Görseli",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(80.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        try {
-                                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(imageUrl))
-                                                            context.startActivity(intent)
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "Görsel açılamadı", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Soru & Yanıt Listesi (Mobile Özel Dikey Düzen)
-                        if (sections.isNotEmpty()) {
-                            sections.forEachIndexed { sIdx, section ->
-                                val sectionTitle = section["title"]?.toString() ?: "Bölüm"
-                                val fields = section["fields"] as? List<Map<String, Any?>> ?: emptyList()
-                                if (fields.isNotEmpty()) {
-                                    item {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            Text(
-                                                text = "${sIdx + 1}. $sectionTitle",
-                                                color = AccentPurple,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(bottom = 8.dp)
-                                            )
-                                            Column(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                fields.forEach { field ->
-                                                    val fieldId = field["id"]?.toString() ?: ""
-                                                    val fieldLabel = field["label"]?.toString() ?: ""
-                                                    val fieldType = field["type"]?.toString() ?: ""
-                                                    val isCritical = field["is_critical"] == true
-
-                                                    val ans = answers.find { it["field_id"]?.toString() == fieldId }
-                                                    val ansVal = ans?.get("value")
-                                                    val ansNote = ans?.get("note")?.toString()
-                                                    val isAnsNegative = failedCriticalFields.contains(fieldId)
-
-                                                    val displayValue = when (ansVal) {
-                                                        null -> "—"
-                                                        true -> "Evet"
-                                                        false -> "Hayır"
-                                                        else -> {
-                                                            if (fieldType == "stock_item_select" || fieldType == "sale_item_select" || fieldType == "semi_product_select") {
-                                                                val itemsList = try {
-                                                                    if (ansVal is String) {
-                                                                        ApiClient.gson.fromJson(ansVal, List::class.java) as? List<*>
-                                                                    } else ansVal as? List<*>
-                                                                } catch (e: Exception) { null }
-
-                                                                itemsList?.mapNotNull { item ->
-                                                                    when (item) {
-                                                                        is Map<*, *> -> item["name"]?.toString() ?: item["id"]?.toString()
-                                                                        else -> item?.toString()
-                                                                    }
-                                                                }?.joinToString(", ") ?: ansVal.toString()
-                                                            } else {
-                                                                ansVal.toString()
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // Soru & Cevap Kartı (Dikey Hizalanmış ve Taşmaları Önleyici Tasarım)
-                                                    Card(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        colors = CardDefaults.cardColors(
-                                                            containerColor = if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.05f) else Color(0xFF0F172A)
-                                                        ),
-                                                        border = BorderStroke(1.dp, if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.3f) else CardBorder),
-                                                        shape = RoundedCornerShape(10.dp)
-                                                    ) {
-                                                        Column(modifier = Modifier.padding(12.dp)) {
-                                                            // Üst satır: Soru etiketi + Kritik rozeti
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                verticalAlignment = Alignment.Top,
-                                                                horizontalArrangement = Arrangement.SpaceBetween
-                                                            ) {
-                                                                Text(
-                                                                    text = fieldLabel,
-                                                                    color = TextSecondary,
-                                                                    fontSize = 11.sp,
-                                                                    fontWeight = FontWeight.Medium,
-                                                                    modifier = Modifier.weight(1f)
-                                                                )
-                                                                if (isCritical) {
-                                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .clip(RoundedCornerShape(4.dp))
-                                                                            .background(Color(0xFFEF4444).copy(alpha = 0.15f))
-                                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                                    ) {
-                                                                        Text("KRİTİK", color = Color(0xFFEF4444), fontSize = 7.sp, fontWeight = FontWeight.Bold)
-                                                                    }
-                                                                }
-                                                            }
-                                                            Spacer(modifier = Modifier.height(6.dp))
-                                                            // Alt satır: Yanıt değeri
-                                                            Text(
-                                                                text = displayValue,
-                                                                color = if (isAnsNegative) Color(0xFFEF4444) else Color.White,
-                                                                fontSize = 13.sp,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                            if (!ansNote.isNullOrBlank()) {
-                                                                Spacer(modifier = Modifier.height(4.dp))
-                                                                Text(
-                                                                    text = "Not: $ansNote",
-                                                                    color = TextSecondary,
-                                                                    fontSize = 11.sp
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = CardBorder)
-
-                // Kapat Butonu
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Kapat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CreateTaskDialog(
-    employees: List<EmployeeInfo>,
-    positions: List<PositionInfo>,
-    branches: List<BranchInfo>,
-    formTemplates: List<FormTemplateInfo>,
-    repo: TaskRepository,
-    currentUserId: String,
-    currentUserPositionId: String?,
-    currentBranchId: String,
-    onDismiss: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    // Form inputs
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var responsibleId by remember { mutableStateOf("") }
-    var collaboratorIds by remember { mutableStateOf(emptyList<String>()) }
-    var observerIds by remember { mutableStateOf(emptyList<String>()) }
-    var priority by remember { mutableStateOf("normal") }
-    var locationId by remember { mutableStateOf(currentBranchId) }
-    
-    var startDate by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf("") }
-    var hasSpecificTime by remember { mutableStateOf(false) }
-    var startTime by remember { mutableStateOf("09:00") }
-    var dueTime by remember { mutableStateOf("18:00") }
-    
-    var recurrence by remember { mutableStateOf("") }
-    var recurrenceExpanded by remember { mutableStateOf(false) }
-    var recurrenceInterval by remember { mutableStateOf(1) }
-    var recurrenceWeekdays by remember { mutableStateOf(emptyList<String>()) }
-    var monthlyPattern by remember { mutableStateOf("day_of_month") }
-    var monthlyDayOfMonth by remember { mutableStateOf(1) }
-    var monthlyNth by remember { mutableStateOf(1) }
-    var monthlyWeekday by remember { mutableStateOf("monday") }
-    var yearlyPattern by remember { mutableStateOf("specific_dates") }
-    var yearlyDates by remember { mutableStateOf("") }
-
-    // Rules
-    var delegationAllowed by remember { mutableStateOf(false) }
-    var approvalRequired by remember { mutableStateOf(false) }
-    var closureSummaryRequired by remember { mutableStateOf(false) }
-    var closureFileRequired by remember { mutableStateOf(false) }
-    var closureImageRequired by remember { mutableStateOf(false) }
-    var editDueDateAllowed by remember { mutableStateOf(false) }
-    var editScheduleAllowed by remember { mutableStateOf(false) }
-    var incompleteIfLate by remember { mutableStateOf(false) }
-
-    // Form Template selection
-    var selectedTemplateId by remember { mutableStateOf("") }
-
-    // Checklist creation
-    var checklistInputs by remember { mutableStateOf(listOf("")) }
-
-    // Dialog section states (Collapsible)
-    var isBasicInfoExpanded by remember { mutableStateOf(true) }
-    var isParticipantsExpanded by remember { mutableStateOf(false) }
-    var isTimingExpanded by remember { mutableStateOf(false) }
-    var isRulesExpanded by remember { mutableStateOf(false) }
-    var isChecklistExpanded by remember { mutableStateOf(false) }
-
-    // Selection Dialog triggers
-    var showRespSelectDialog by remember { mutableStateOf(false) }
-    var branchExpanded by remember { mutableStateOf(false) }
-    var priorityExpanded by remember { mutableStateOf(false) }
-    var templateExpanded by remember { mutableStateOf(false) }
-    var showCollabSelectDialog by remember { mutableStateOf(false) }
-    var showObserverSelectDialog by remember { mutableStateOf(false) }
-
-    var isCreating by remember { mutableStateOf(false) }
-
-    // Date & Time pickers setup
-    val calendar = Calendar.getInstance()
-    
-    val startDatePickerDialog = DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            startDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
-    )
-
-    val dueDatePickerDialog = DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            dueDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
-    )
-
-    val startTimePickerDialog = android.app.TimePickerDialog(
-        context,
-        { _, hour, minute ->
-            startTime = String.format("%02d:%02d", hour, minute)
-        },
-        9, 0, true
-    )
-
-    val dueTimePickerDialog = android.app.TimePickerDialog(
-        context,
-        { _, hour, minute ->
-            dueTime = String.format("%02d:%02d", hour, minute)
-        },
-        18, 0, true
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Mor şerit — oluşturma diyalogu göstergesi
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(AccentPurple)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text("Yeni Görev Oluştur", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
-                    Text("✏️ Görev tanımı", color = AccentPurple.copy(alpha = 0.7f), fontSize = 11.sp)
-                }
-            }
-        },
-        text = {
-            Surface(
-                color = Color.Transparent,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // SECTION 1: Temel Bilgiler
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            border = BorderStroke(1.dp, CardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isBasicInfoExpanded = !isBasicInfoExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("📝  Temel Bilgiler", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Icon(
-                                        imageVector = if (isBasicInfoExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                }
-                                if (isBasicInfoExpanded) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        OutlinedTextField(
-                                            value = title,
-                                            onValueChange = { title = it },
-                                            label = { Text("Görev Başlığı *") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        OutlinedTextField(
-                                            value = description,
-                                            onValueChange = { description = it },
-                                            label = { Text("Açıklama (İsteğe Bağlı)") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp),
-                                            maxLines = 4
-                                        )
-
-                                        // Lokasyon
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            val branchName = branches.find { it.id == locationId }?.name ?: "Şube Seçiniz..."
-                                            OutlinedTextField(
-                                                value = branchName,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = { Text("Görev Lokasyonu *") },
-                                                trailingIcon = {
-                                                    IconButton(onClick = { branchExpanded = !branchExpanded }) {
-                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth().clickable { branchExpanded = !branchExpanded },
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White,
-                                                    focusedBorderColor = AccentOrange,
-                                                    unfocusedBorderColor = CardBorder
-                                                ),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            DropdownMenu(expanded = branchExpanded, onDismissRequest = { branchExpanded = false }) {
-                                                branches.forEach { br ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(br.name) },
-                                                        onClick = {
-                                                            locationId = br.id
-                                                            branchExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Öncelik
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            val priorityLabel = when (priority) {
-                                                "urgent" -> "Kritik"
-                                                "high" -> "Yüksek"
-                                                "low" -> "Düşük"
-                                                else -> "Normal"
-                                            }
-                                            OutlinedTextField(
-                                                value = priorityLabel,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = { Text("Öncelik") },
-                                                trailingIcon = {
-                                                    IconButton(onClick = { priorityExpanded = !priorityExpanded }) {
-                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth().clickable { priorityExpanded = !priorityExpanded },
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White,
-                                                    focusedBorderColor = AccentOrange,
-                                                    unfocusedBorderColor = CardBorder
-                                                ),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            DropdownMenu(expanded = priorityExpanded, onDismissRequest = { priorityExpanded = false }) {
-                                                val opts = listOf("low" to "Düşük", "normal" to "Normal", "high" to "Yüksek", "urgent" to "Kritik")
-                                                opts.forEach { (valKey, valLabel) ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(valLabel) },
-                                                        onClick = {
-                                                            priority = valKey
-                                                            priorityExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 2: Katılımcılar
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            border = BorderStroke(1.dp, CardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isParticipantsExpanded = !isParticipantsExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("👥  Katılımcılar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Icon(
-                                        imageVector = if (isParticipantsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                }
-                                if (isParticipantsExpanded) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        // Sorumlu Personel (Main Assignee)
-                                        val responsibleName = employees.find { it.id == responsibleId }?.getDisplayName() ?: "Seçiniz..."
-                                        OutlinedTextField(
-                                            value = responsibleName,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Sorumlu Personel *") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { showRespSelectDialog = true }) {
-                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { showRespSelectDialog = true },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        // Ortak Çalışanlar (Collaborators)
-                                        val collabNames = collaboratorIds.mapNotNull { id -> employees.find { it.id == id }?.getDisplayName() }
-                                            .joinToString(", ").ifBlank { "Seçiniz (İsteğe Bağlı)..." }
-                                        OutlinedTextField(
-                                            value = collabNames,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Ortak Çalışanlar") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { showCollabSelectDialog = true }) {
-                                                    Icon(Icons.Default.AddCircle, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { showCollabSelectDialog = true },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        // Gözlemciler (Observers)
-                                        val observerNames = observerIds.mapNotNull { id -> employees.find { it.id == id }?.getDisplayName() }
-                                            .joinToString(", ").ifBlank { "Seçiniz (İsteğe Bağlı)..." }
-                                        OutlinedTextField(
-                                            value = observerNames,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Gözlemciler") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { showObserverSelectDialog = true }) {
-                                                    Icon(Icons.Default.AddCircle, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { showObserverSelectDialog = true },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 3: Zamanlama & Planlama
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            border = BorderStroke(1.dp, CardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isTimingExpanded = !isTimingExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("📅  Planlama ve Zaman", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Icon(
-                                        imageVector = if (isTimingExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                }
-                                if (isTimingExpanded) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        // Başlangıç Tarihi
-                                        OutlinedTextField(
-                                            value = startDate,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Başlangıç Tarihi") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { startDatePickerDialog.show() }) {
-                                                    Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { startDatePickerDialog.show() },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        // Bitiş Tarihi
-                                        OutlinedTextField(
-                                            value = dueDate,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Bitiş Tarihi *") },
-                                            trailingIcon = {
-                                                IconButton(onClick = { dueDatePickerDialog.show() }) {
-                                                    Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth().clickable { dueDatePickerDialog.show() },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.White,
-                                                focusedBorderColor = AccentOrange,
-                                                unfocusedBorderColor = CardBorder
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-
-                                        // Tekrar (Recurrence)
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            val recurrenceLabel = when (recurrence) {
-                                                "daily" -> "Günlük"
-                                                "weekly" -> "Haftalık"
-                                                "monthly" -> "Aylık"
-                                                "yearly" -> "Yıllık"
-                                                else -> "Tek seferlik"
-                                            }
-                                            OutlinedTextField(
-                                                value = recurrenceLabel,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = { Text("Tekrar") },
-                                                trailingIcon = {
-                                                    IconButton(onClick = { recurrenceExpanded = !recurrenceExpanded }) {
-                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth().clickable { recurrenceExpanded = !recurrenceExpanded },
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White,
-                                                    focusedBorderColor = AccentOrange,
-                                                    unfocusedBorderColor = CardBorder
-                                                ),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            DropdownMenu(
-                                                expanded = recurrenceExpanded,
-                                                onDismissRequest = { recurrenceExpanded = false }
-                                            ) {
-                                                val opts = listOf(
-                                                    "" to "Tek seferlik",
-                                                    "daily" to "Günlük",
-                                                    "weekly" to "Haftalık",
-                                                    "monthly" to "Aylık",
-                                                    "yearly" to "Yıllık"
-                                                )
-                                                opts.forEach { (valKey, valLabel) ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(valLabel) },
-                                                        onClick = {
-                                                            recurrence = valKey
-                                                            recurrenceExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Recurrence Details UI
-                                        if (recurrence == "daily") {
-                                            OutlinedTextField(
-                                                value = recurrenceInterval.toString(),
-                                                onValueChange = { recurrenceInterval = it.toIntOrNull() ?: 1 },
-                                                label = { Text("Tekrarlama Sıklığı (Gün)") },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                        }
-
-                                        if (recurrence == "weekly") {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("Tekrarlanacak Günler", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                            val days = listOf(
-                                                "monday" to "Pzt",
-                                                "tuesday" to "Sal",
-                                                "wednesday" to "Çar",
-                                                "thursday" to "Per",
-                                                "friday" to "Cum",
-                                                "saturday" to "Cmt",
-                                                "sunday" to "Paz"
-                                            )
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                days.forEach { (key, label) ->
-                                                    val isSelected = recurrenceWeekdays.contains(key)
-                                                    Card(
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .clickable {
-                                                                recurrenceWeekdays = if (isSelected) {
-                                                                    recurrenceWeekdays.filter { it != key }
-                                                                } else {
-                                                                    recurrenceWeekdays + key
-                                                                }
-                                                            },
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        colors = CardDefaults.cardColors(
-                                                            containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
-                                                        ),
-                                                        border = BorderStroke(1.dp, if (isSelected) AccentOrange else CardBorder)
-                                                    ) {
-                                                        Text(
-                                                            text = label,
-                                                            color = if (isSelected) Color.White else TextSecondary,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(vertical = 8.dp).align(Alignment.CenterHorizontally)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if (recurrence == "monthly") {
-                                            var patternExpanded by remember { mutableStateOf(false) }
-                                            Box(modifier = Modifier.fillMaxWidth()) {
-                                                val patternLabel = when (monthlyPattern) {
-                                                    "last_day" -> "Ayın Son Günü"
-                                                    "nth_weekday" -> "N. Hafta Günü (Örn. 2. Pazartesi)"
-                                                    else -> "Belirli Bir Gün"
-                                                }
-                                                OutlinedTextField(
-                                                    value = patternLabel,
-                                                    onValueChange = {},
-                                                    readOnly = true,
-                                                    label = { Text("Aylık Tekrarlama Şekli") },
-                                                    trailingIcon = {
-                                                        IconButton(onClick = { patternExpanded = !patternExpanded }) {
-                                                            Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                        }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth().clickable { patternExpanded = !patternExpanded },
-                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                    shape = RoundedCornerShape(10.dp)
-                                                )
-                                                DropdownMenu(expanded = patternExpanded, onDismissRequest = { patternExpanded = false }) {
-                                                    DropdownMenuItem(text = { Text("Belirli Bir Gün") }, onClick = { monthlyPattern = "day_of_month"; patternExpanded = false })
-                                                    DropdownMenuItem(text = { Text("Ayın Son Günü") }, onClick = { monthlyPattern = "last_day"; patternExpanded = false })
-                                                    DropdownMenuItem(text = { Text("N. Hafta Günü (Örn. 2. Pazartesi)") }, onClick = { monthlyPattern = "nth_weekday"; patternExpanded = false })
-                                                }
-                                            }
-
-                                            if (monthlyPattern == "day_of_month") {
-                                                OutlinedTextField(
-                                                    value = monthlyDayOfMonth.toString(),
-                                                    onValueChange = { monthlyDayOfMonth = it.toIntOrNull() ?: 1 },
-                                                    label = { Text("Ayın Günü (1-31)") },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                    shape = RoundedCornerShape(10.dp)
-                                                )
-                                            }
-
-                                            if (monthlyPattern == "nth_weekday") {
-                                                var nthExpanded by remember { mutableStateOf(false) }
-                                                var weekdayExpanded by remember { mutableStateOf(false) }
-
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                    Box(modifier = Modifier.weight(1f)) {
-                                                        val nthLabel = when (monthlyNth) {
-                                                            1 -> "1. (İlk)"
-                                                            2 -> "2."
-                                                            3 -> "3."
-                                                            4 -> "4."
-                                                            else -> "5. (Son)"
-                                                        }
-                                                        OutlinedTextField(
-                                                            value = nthLabel,
-                                                            onValueChange = {},
-                                                            readOnly = true,
-                                                            label = { Text("Kaçıncı") },
-                                                            trailingIcon = {
-                                                                IconButton(onClick = { nthExpanded = !nthExpanded }) {
-                                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                                }
-                                                            },
-                                                            modifier = Modifier.fillMaxWidth().clickable { nthExpanded = !nthExpanded },
-                                                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                            shape = RoundedCornerShape(10.dp)
-                                                        )
-                                                        DropdownMenu(expanded = nthExpanded, onDismissRequest = { nthExpanded = false }) {
-                                                            listOf(1 to "1. (İlk)", 2 to "2.", 3 to "3.", 4 to "4.", 5 to "5. (Son)").forEach { (v, lbl) ->
-                                                                DropdownMenuItem(text = { Text(lbl) }, onClick = { monthlyNth = v; nthExpanded = false })
-                                                            }
-                                                        }
-                                                    }
-
-                                                    Box(modifier = Modifier.weight(1f)) {
-                                                        val dayLabel = when (monthlyWeekday) {
-                                                            "monday" -> "Pazartesi"
-                                                            "tuesday" -> "Salı"
-                                                            "wednesday" -> "Çarşamba"
-                                                            "thursday" -> "Perşembe"
-                                                            "friday" -> "Cuma"
-                                                            "saturday" -> "Cumartesi"
-                                                            else -> "Pazar"
-                                                        }
-                                                        OutlinedTextField(
-                                                            value = dayLabel,
-                                                            onValueChange = {},
-                                                            readOnly = true,
-                                                            label = { Text("Gün") },
-                                                            trailingIcon = {
-                                                                IconButton(onClick = { weekdayExpanded = !weekdayExpanded }) {
-                                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                                }
-                                                            },
-                                                            modifier = Modifier.fillMaxWidth().clickable { weekdayExpanded = !weekdayExpanded },
-                                                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                            shape = RoundedCornerShape(10.dp)
-                                                        )
-                                                        DropdownMenu(expanded = weekdayExpanded, onDismissRequest = { weekdayExpanded = false }) {
-                                                            listOf(
-                                                                "monday" to "Pazartesi",
-                                                                "tuesday" to "Salı",
-                                                                "wednesday" to "Çarşamba",
-                                                                "thursday" to "Perşembe",
-                                                                "friday" to "Cuma",
-                                                                "saturday" to "Cumartesi",
-                                                                "sunday" to "Pazar"
-                                                            ).forEach { (v, lbl) ->
-                                                                DropdownMenuItem(text = { Text(lbl) }, onClick = { monthlyWeekday = v; weekdayExpanded = false })
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if (recurrence == "yearly") {
-                                            OutlinedTextField(
-                                                value = yearlyDates,
-                                                onValueChange = { yearlyDates = it },
-                                                label = { Text("Tarihler (Örn. 01-01, 10-29)") },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                        }
-
-                                        // Belirli Saat Switch
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("Belirli Bir Saat Var mı?", color = Color.White, fontSize = 13.sp)
-                                            Switch(
-                                                checked = hasSpecificTime,
-                                                onCheckedChange = { hasSpecificTime = it },
-                                                colors = SwitchDefaults.colors(checkedThumbColor = AccentOrange)
-                                            )
-                                        }
-
-                                        if (hasSpecificTime) {
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                OutlinedTextField(
-                                                    value = startTime,
-                                                    onValueChange = {},
-                                                    readOnly = true,
-                                                    label = { Text("Başl. Saati") },
-                                                    modifier = Modifier.weight(1f).clickable { startTimePickerDialog.show() },
-                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                    shape = RoundedCornerShape(10.dp)
-                                                )
-                                                OutlinedTextField(
-                                                    value = dueTime,
-                                                    onValueChange = {},
-                                                    readOnly = true,
-                                                    label = { Text("Bitiş Saati") },
-                                                    modifier = Modifier.weight(1f).clickable { dueTimePickerDialog.show() },
-                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
-                                                    shape = RoundedCornerShape(10.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 4: İş Kuralları & Kısıtlar
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            border = BorderStroke(1.dp, CardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isRulesExpanded = !isRulesExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("⚙️  İş Kuralları ve Onaylar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Icon(
-                                        imageVector = if (isRulesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                }
-                                if (isRulesExpanded) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        SwitchRow("Başka Personele Delege Edilebilir", delegationAllowed) { delegationAllowed = it }
-                                        SwitchRow("Kapanışta Yönetici Onayı Gerekli", approvalRequired) { approvalRequired = it }
-                                        SwitchRow("Kapanışta Açıklama/Özet Metin Zorunlu", closureSummaryRequired) { closureSummaryRequired = it }
-                                        SwitchRow("Kapanışta Görsel Yüklemek Zorunlu", closureImageRequired) { closureImageRequired = it }
-                                        SwitchRow("Kapanışta Dosya Yüklemek Zorunlu", closureFileRequired) { closureFileRequired = it }
-                                        SwitchRow("Bitiş Tarihi Değiştirilebilir", editDueDateAllowed) { editDueDateAllowed = it }
-                                        SwitchRow("Zaman Planı Güncellenebilir", editScheduleAllowed) { editScheduleAllowed = it }
-                                        SwitchRow("Gecikirse Yapılmadı Olarak İşaretle", incompleteIfLate) { incompleteIfLate = it }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        // Görev Şablonu Dropdown
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            val tName = formTemplates.find { it.id == selectedTemplateId }?.name ?: "Şablon Yok"
-                                            OutlinedTextField(
-                                                value = tName,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = { Text("Görev Form Şablonu") },
-                                                trailingIcon = {
-                                                    IconButton(onClick = { templateExpanded = !templateExpanded }) {
-                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth().clickable { templateExpanded = !templateExpanded },
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White,
-                                                    focusedBorderColor = AccentOrange,
-                                                    unfocusedBorderColor = CardBorder
-                                                ),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            DropdownMenu(expanded = templateExpanded, onDismissRequest = { templateExpanded = false }) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Şablon Yok") },
-                                                    onClick = {
-                                                        selectedTemplateId = ""
-                                                        templateExpanded = false
-                                                    }
-                                                )
-                                                formTemplates.forEach { tpl ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(tpl.name) },
-                                                        onClick = {
-                                                            selectedTemplateId = tpl.id
-                                                            templateExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 5: Kontrol Listesi
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            border = BorderStroke(1.dp, CardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isChecklistExpanded = !isChecklistExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("📋  Kontrol Listesi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        IconButton(
-                                            onClick = { checklistInputs = checklistInputs + "" },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(Icons.Default.AddCircle, null, tint = AccentGreen, modifier = Modifier.size(20.dp))
-                                        }
-                                    }
-                                    Icon(
-                                        imageVector = if (isChecklistExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                }
-                                if (isChecklistExpanded) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        checklistInputs.forEachIndexed { index, value ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                OutlinedTextField(
-                                                    value = value,
-                                                    onValueChange = { newVal ->
-                                                        checklistInputs = checklistInputs.toMutableList().apply { set(index, newVal) }
-                                                    },
-                                                    placeholder = { Text("Maddeleri yazın...", fontSize = 12.sp) },
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = OutlinedTextFieldDefaults.colors(
-                                                        focusedTextColor = Color.White,
-                                                        unfocusedTextColor = Color.White,
-                                                        focusedBorderColor = AccentOrange,
-                                                        unfocusedBorderColor = CardBorder
-                                                    ),
-                                                    shape = RoundedCornerShape(8.dp)
-                                                )
-                                                if (checklistInputs.size > 1) {
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    IconButton(
-                                                        onClick = {
-                                                            checklistInputs = checklistInputs.toMutableList().apply { removeAt(index) }
-                                                        },
-                                                        modifier = Modifier.size(28.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.Delete, null, tint = AccentRed, modifier = Modifier.size(20.dp))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isBlank() || responsibleId.isBlank() || locationId.isBlank() || dueDate.isBlank()) {
-                        Toast.makeText(context, "Lütfen gerekli alanları (Başlık, Lokasyon, Sorumlu ve Bitiş Tarihi) doldurun", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-
-                    isCreating = true
-                    scope.launch {
-                        val resp = employees.find { it.id == responsibleId }
-                        val assigneePositionId = resp?.positionId
-
-                        val startAtIso = if (startDate.isNotBlank()) {
-                            if (hasSpecificTime) "${startDate}T${startTime}:00.000Z" else "${startDate}T00:00:00.000Z"
-                        } else null
-
-                        val dueAtIso = if (dueDate.isNotBlank()) {
-                            if (hasSpecificTime) "${dueDate}T${dueTime}:00.000Z" else "${dueDate}T23:59:59.000Z"
-                        } else null
-
-                        val success = repo.createTask(
-                            title = title,
-                            description = description,
-                            responsibleId = responsibleId,
-                            collaboratorIds = collaboratorIds,
-                            observerIds = observerIds,
-                            priority = priority,
-                            dueAt = dueAtIso,
-                            startAt = startAtIso,
-                            hasSpecificTime = hasSpecificTime,
-                            delegationAllowed = delegationAllowed,
-                            approvalRequired = approvalRequired,
-                            closureSummaryRequired = closureSummaryRequired,
-                            closureFileRequired = closureFileRequired,
-                            closureImageRequired = closureImageRequired,
-                            editDueDateAllowed = editDueDateAllowed,
-                            editScheduleAllowed = editScheduleAllowed,
-                            incompleteIfLate = incompleteIfLate,
-                            recurrence = recurrence.ifBlank { null },
-                            recurrenceInterval = recurrenceInterval,
-                            recurrenceWeekdays = recurrenceWeekdays,
-                            monthlyPattern = monthlyPattern,
-                            monthlyDayOfMonth = monthlyDayOfMonth,
-                            monthlyNth = monthlyNth,
-                            monthlyWeekday = monthlyWeekday,
-                            specificDates = if (yearlyDates.isNotBlank()) yearlyDates.split(",").map { it.trim() }.filter { it.isNotBlank() } else null,
-                            timeOfDay = if (hasSpecificTime) startTime else null,
-                            formTemplateId = selectedTemplateId.ifBlank { null },
-                            branchNodeId = locationId,
-                            creatorId = currentUserId,
-                            creatorPositionId = currentUserPositionId,
-                            assigneePositionId = assigneePositionId,
-                            positions = positions,
-                            employees = employees,
-                            checklistItems = checklistInputs
-                        )
-
-                        if (success) {
-                            Toast.makeText(context, "Görev başarıyla oluşturuldu", Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        } else {
-                            Toast.makeText(context, "Görev oluşturulamadı", Toast.LENGTH_SHORT).show()
-                        }
-                        isCreating = false
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                enabled = !isCreating,
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                if (isCreating) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                } else {
-                    Text("Görev Oluştur", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isCreating) {
-                Text("Vazgeç", color = TextSecondary)
-            }
-        },
-        containerColor = CreateDialogBg
-    )
-
-    // Multi select dialog for Collaborators
-    if (showCollabSelectDialog) {
-        MultiPersonnelSelectDialog(
-            title = "Ortak Çalışanları Seçin",
-            employees = employees.filter { it.id != responsibleId && it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null }, // main assignee is already assigned
-            selectedIds = collaboratorIds,
-            onDismiss = { showCollabSelectDialog = false },
-            onConfirm = { selected ->
-                collaboratorIds = selected
-                showCollabSelectDialog = false
-            }
-        )
-    }
-
-    // Multi select dialog for Observers
-    if (showObserverSelectDialog) {
-        MultiPersonnelSelectDialog(
-            title = "Gözlemcileri Seçin",
-            employees = employees.filter { it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null },
-            selectedIds = observerIds,
-            onDismiss = { showObserverSelectDialog = false },
-            onConfirm = { selected ->
-                observerIds = selected
-                showObserverSelectDialog = false
-            }
-        )
-    }
-
-    // Single select dialog for Sorumlu (Main Assignee)
-    if (showRespSelectDialog) {
-        SinglePersonnelSelectDialog(
-            title = "Sorumlu Personeli Seçin",
-            employees = employees.filter { it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null },
-            selectedId = responsibleId,
-            onDismiss = { showRespSelectDialog = false },
-            onConfirm = { selected ->
-                responsibleId = selected
-                showRespSelectDialog = false
-            }
-        )
-    }
-}
-
-@Composable
-private fun SwitchRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f).padding(end = 8.dp)
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = AccentOrange,
-                checkedTrackColor = AccentOrange.copy(alpha = 0.4f)
-            )
-        )
-    }
-}
-
-@Composable
-private fun MultiPersonnelSelectDialog(
-    title: String,
-    employees: List<EmployeeInfo>,
-    selectedIds: List<String>,
-    onDismiss: () -> Unit,
-    onConfirm: (List<String>) -> Unit
-) {
-    var tempSelected by remember { mutableStateOf(selectedIds) }
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredEmployees = remember(employees, searchQuery) {
-        employees.filter { emp ->
-            emp.getDisplayName().contains(searchQuery, ignoreCase = true)
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = Color.White) },
-        text = {
-            Surface(
-                color = Color.Transparent,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(350.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = AccentOrange,
-                            unfocusedBorderColor = CardBorder
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (filteredEmployees.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
-                            }
-                        } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(filteredEmployees, key = { it.id }) { emp ->
-                                    val isChecked = tempSelected.contains(emp.id)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                tempSelected = if (isChecked) {
-                                                    tempSelected.filter { it != emp.id }
-                                                } else {
-                                                    tempSelected + emp.id
-                                                }
-                                            }
-                                            .padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = isChecked,
-                                            onCheckedChange = { checked ->
-                                                tempSelected = if (checked == true) {
-                                                    tempSelected + emp.id
-                                                } else {
-                                                    tempSelected.filter { it != emp.id }
-                                                }
-                                            },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = AccentOrange,
-                                                uncheckedColor = CardBorder
-                                            )
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(emp.getDisplayName(), color = Color.White, fontSize = 14.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(tempSelected) },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
-            ) {
-                Text("Tamam")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("İptal", color = TextSecondary)
-            }
-        },
-        containerColor = SelectDialogBg
-    )
-}
-
-@Composable
-private fun SinglePersonnelSelectDialog(
-    title: String,
-    employees: List<EmployeeInfo>,
-    selectedId: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredEmployees = remember(employees, searchQuery) {
-        employees.filter { emp ->
-            emp.getDisplayName().contains(searchQuery, ignoreCase = true)
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = Color.White) },
-        text = {
-            Surface(
-                color = Color.Transparent,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(350.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = AccentOrange,
-                            unfocusedBorderColor = CardBorder
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (filteredEmployees.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
-                            }
-                        } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(filteredEmployees, key = { it.id }) { emp ->
-                                    val isSelected = emp.id == selectedId
-                                    Card(
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
-                                        ),
-                                        border = BorderStroke(1.dp, if (isSelected) AccentOrange else CardBorder),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                onConfirm(emp.id)
-                                            }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Person,
-                                                contentDescription = null,
-                                                tint = if (isSelected) AccentOrange else TextSecondary
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = emp.getDisplayName(),
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("İptal", color = TextSecondary)
-            }
-        },
-        containerColor = SelectDialogBg
-    )
-}
+package com.suitable.personel.ui.main
+
+import android.app.DatePickerDialog
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.suitable.personel.data.*
+import kotlinx.coroutines.launch
+import java.util.Calendar
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+
+private val TaskBg = Color(0xFF0F172A)
+private val CardBg = Color(0xFF1E293B)
+private val CardBorder = Color(0xFF334155)
+private val TextPrimary = Color(0xFFF8FAFC)
+private val TextSecondary = Color(0xFF94A3B8)
+private val AccentGreen = Color(0xFF10B981)
+private val AccentRed = Color(0xFFEF4444)
+private val AccentBlue = Color(0xFF3B82F6)
+private val AccentOrange = Color(0xFFF59E0B)
+private val AccentPurple = Color(0xFF8B5CF6)
+
+// Modal renk ayrımı için
+private val DetailDialogBg = Color(0xFF0F2847)   // Mavi tonu → Detay modalı
+private val CreateDialogBg = Color(0xFF1A0F2E)   // Mor tonu → Oluşturma modalı
+private val SelectDialogBg = Color(0xFF0D1F12)   // Yeşil tonu → Seçim modalı
+
+private fun parseFormIdAndCleanDescription(description: String?): Pair<String?, String?> {
+    if (description.isNullOrBlank()) return Pair(null, null)
+    val pattern = java.util.regex.Pattern.compile("\\[Form ID:\\s*([^\\]]+)\\]")
+    val matcher = pattern.matcher(description)
+    return if (matcher.find()) {
+        val formId = matcher.group(1)?.trim()
+        val cleaned = matcher.replaceAll("").replace(Regex("\n{2,}$"), "").trim()
+        Pair(formId, cleaned)
+    } else {
+        Pair(null, description)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TasksScreen(
+    config: AppConfig?,
+    staffSession: StaffSession?,
+    onNavigate: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repo = remember { TaskRepository() }
+
+    val actorId = staffSession?.id ?: ""
+    val authorityLevel = staffSession?.authorityLevel ?: "şube"
+    val branchId = staffSession?.activeBranchId ?: ""
+
+    var tasks by remember { mutableStateOf<List<TaskItem>>(emptyList()) }
+    var employees by remember { mutableStateOf<List<EmployeeInfo>>(emptyList()) }
+    var positions by remember { mutableStateOf<List<PositionInfo>>(emptyList()) }
+    var branches by remember { mutableStateOf<List<BranchInfo>>(emptyList()) }
+    var formTemplates by remember { mutableStateOf<List<FormTemplateInfo>>(emptyList()) }
+
+    var isLoading by remember { mutableStateOf(true) }
+    var refreshTrigger by remember { mutableStateOf(0) }
+
+    // Tab state: "mine" (Bana Atananlar), "assigned_by_me" (Oluşturduklarım), "watching" (Gözlemci Olduklarım)
+    var selectedTab by remember { mutableStateOf("mine") }
+    // Status Filter: "active" (Devam Edenler), "completed" (Tamamlananlar), "overdue" (Gecikenler), "all" (Tümü)
+    var statusFilter by remember { mutableStateOf("active") }
+
+    // Dialog & Detail states
+    var selectedTaskForDetail by remember { mutableStateOf<TaskItem?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+
+    // 1) Verileri Yükle
+    LaunchedEffect(actorId, refreshTrigger) {
+        if (actorId.isBlank()) return@LaunchedEffect
+        isLoading = true
+        scope.launch {
+            try {
+                // Pozisyonlar, Personeller, Şubeler
+                val meta = repo.fetchEmployeesAndPositionsAndBranches()
+                employees = meta.first
+                positions = meta.second
+                branches = meta.third
+
+                // Şablonlar
+                formTemplates = repo.fetchFormTemplates()
+
+                // Görevler
+                tasks = repo.fetchTasksForActor(actorId, authorityLevel, branchId)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Görevler yüklenirken hata oluştu", Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    // 2) Filtrelenmiş Görev Listesi
+    val filteredTasks = remember(tasks, selectedTab, statusFilter) {
+        tasks.filter { task ->
+            val myParticipant = task.participants.find { it.participantType == "assignee" && it.personnelId == actorId }
+            val isMyPartCompleted = myParticipant?.isCompleted ?: false
+
+            // Tab filtresi
+            val passTab = when (selectedTab) {
+                "mine" -> myParticipant != null
+                "assigned_by_me" -> task.createdByPersonnelId == actorId
+                "watching" -> task.participants.any { it.participantType == "watcher" && it.personnelId == actorId }
+                else -> true
+            }
+
+            // Durum filtresi
+            val passStatus = when (statusFilter) {
+                "active" -> {
+                    val baseActive = (task.status == "open" || task.status == "in_progress" || task.status == "pending_approval" || task.status == "pending_completion_approval") && task.status != "rejected"
+                    if (selectedTab == "mine" && isMyPartCompleted) {
+                        false
+                    } else {
+                        baseActive
+                    }
+                }
+                "completed" -> {
+                    val baseCompleted = task.status == "completed" || task.status == "rejected"
+                    if (selectedTab == "mine" && isMyPartCompleted) {
+                        true
+                    } else {
+                        baseCompleted
+                    }
+                }
+                "overdue" -> {
+                    // dueAt geçmişte kalmış ve completed değilse
+                    val isLate = task.dueAt?.let {
+                        try {
+                            val due = java.time.Instant.parse(it)
+                            due.isBefore(java.time.Instant.now())
+                        } catch (_: Exception) { false }
+                    } ?: false
+                    val notDone = if (selectedTab == "mine") !isMyPartCompleted else (task.status != "completed" && task.status != "rejected")
+                    isLate && notDone && task.status != "completed" && task.status != "rejected"
+                }
+                else -> true // "all"
+            }
+
+            passTab && passStatus
+        }
+    }
+
+    AppScaffold(
+        config = config,
+        staffSession = staffSession,
+        onNavigate = onNavigate,
+        showMenu = true
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(TaskBg)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(16.dp)
+            ) {
+                // Başlık Alanı
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Görev Yönetimi",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 22.sp
+                        )
+                        Text(
+                            text = "İş atamaları ve durum takibi",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    // Yeni Görev FAB/Button
+                    Button(
+                        onClick = { showCreateDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Yeni Görev", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                    }
+                }
+
+                // 1. Düzey Sekmeler (Bana Atananlar, Oluşturduklarım, İzlediklerim)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val tabs = listOf(
+                        "mine" to "Atananlar",
+                        "assigned_by_me" to "Verdiklerim",
+                        "watching" to "Gözlemci"
+                    )
+                    tabs.forEach { (key, label) ->
+                        val isSelected = selectedTab == key
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedTab = key },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) AccentBlue.copy(alpha = 0.2f) else CardBg
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) AccentBlue else CardBorder
+                            )
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) Color.White else TextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 10.dp).align(Alignment.CenterHorizontally)
+                            )
+                        }
+                    }
+                }
+
+                // 2. Düzey Durum Filtreleri (Devam Edenler, Tamamlananlar, Gecikenler, Hepsi)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val filters = listOf(
+                        "active" to "Aktif",
+                        "completed" to "Biten",
+                        "overdue" to "Geciken",
+                        "all" to "Tümü"
+                    )
+                    filters.forEach { (key, label) ->
+                        val isSelected = statusFilter == key
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { statusFilter = key },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) AccentOrange else CardBorder
+                            )
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) Color.White else TextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 10.dp).align(Alignment.CenterHorizontally)
+                            )
+                        }
+                    }
+                }
+
+                // Tasks List
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 12.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = AccentOrange,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else if (filteredTasks.isEmpty()) {
+                        Text(
+                            text = "Herhangi bir görev bulunamadı.",
+                            color = TextSecondary,
+                            modifier = Modifier.align(Alignment.Center),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+} else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(filteredTasks, key = { it.id }) { task ->
+                                TaskItemCard(
+                                    task = task,
+                                    employees = employees,
+                                    onClick = { selectedTaskForDetail = task }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ─── Detay Modalı / Sayfası ──────────────────────────────────────────────
+    if (selectedTaskForDetail != null) {
+        val task = selectedTaskForDetail!!
+        TaskDetailDialog(
+            task = task,
+            employees = employees,
+            positions = positions,
+            branches = branches,
+            formTemplates = formTemplates,
+            repo = repo,
+            currentUserId = actorId,
+            onDismiss = {
+                selectedTaskForDetail = null
+                refreshTrigger++
+            }
+        )
+    }
+
+    // ─── Yeni Görev Oluşturma Modalı ─────────────────────────────────────────
+    if (showCreateDialog) {
+        CreateTaskDialog(
+            employees = employees,
+            positions = positions,
+            branches = branches,
+            formTemplates = formTemplates,
+            repo = repo,
+            currentUserId = actorId,
+            currentUserPositionId = remember(actorId, employees) {
+                employees.find { it.id == actorId }?.positionId
+            },
+            currentBranchId = branchId,
+            onDismiss = {
+                showCreateDialog = false
+                refreshTrigger++
+            }
+        )
+    }
+}
+
+// ─── Yardımcı Composable Kart Bileşeni ────────────────────────────────────────
+
+@Composable
+private fun TaskItemCard(
+    task: TaskItem,
+    employees: List<EmployeeInfo>,
+    onClick: () -> Unit
+) {
+    val (priorityLabel, priorityColor) = remember(task.priority) {
+        when (task.priority) {
+            "urgent" -> "Kritik" to AccentRed
+            "high" -> "Yüksek" to AccentOrange
+            "low" -> "Düşük" to TextSecondary
+            else -> "Normal" to AccentBlue
+        }
+    }
+
+    val (statusLabel, statusColor) = remember(task.status) {
+        when (task.status) {
+            "completed" -> "Tamamlandı" to AccentGreen
+            "in_progress" -> "Devam Ediyor" to AccentBlue
+            "pending_approval" -> "Onay Bekliyor" to AccentOrange
+            "pending_completion_approval" -> "Kapanış Onayında" to AccentOrange
+            "not_completed" -> "Tamamlanmadı" to AccentRed
+            "rejected" -> "Reddedildi" to AccentRed
+            else -> "Açık" to TextSecondary
+        }
+    }
+
+    val formattedDate = remember(task.dueAt) {
+        if (task.dueAt.isNullOrBlank()) "—"
+        else {
+            try {
+                // ISO formatını daha kısa bir gösterime dönüştür: "YYYY-MM-DD"
+                task.dueAt.substring(0, 10)
+            } catch (_: Exception) { task.dueAt }
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Başlık Satırı (Öncelik + Başlık + Durum)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Öncelik Rozeti
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(priorityColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = priorityLabel,
+                        color = priorityColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Durum Göstergesi
+                Text(
+                    text = statusLabel,
+                    color = statusColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Görev Başlığı
+            Text(
+                text = task.title,
+                color = Color.White,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            // Açıklama Özeti
+            val cleanedDesc = remember(task.description) {
+                parseFormIdAndCleanDescription(task.description).second
+            }
+            if (!cleanedDesc.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = cleanedDesc,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = CardBorder)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Alt Detay Satırı (Sorumlu/Görevliler + Bitiş Tarihi + Checklist)
+            val assignees = remember(task) { task.participants.filter { it.participantType == "assignee" } }
+            val completedCount = remember(assignees) { assignees.count { it.isCompleted } }
+            val totalCount = assignees.size
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Görevliler", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        if (totalCount > 1) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(AccentBlue.copy(alpha = 0.15f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "$completedCount/$totalCount Tamamlandı",
+                                    color = AccentBlue,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (totalCount > 0) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            assignees.forEach { a ->
+                                val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
+                                val badgeBg = if (a.isCompleted) AccentGreen.copy(alpha = 0.15f) else AccentOrange.copy(alpha = 0.15f)
+                                val badgeBorder = if (a.isCompleted) AccentGreen else AccentOrange
+                                val badgeText = if (a.isCompleted) AccentGreen else AccentOrange
+                                val statusSuffix = if (a.isCompleted) " ✓" else " ⏱"
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(badgeBg)
+                                        .border(1.dp, badgeBorder, RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = "$name$statusSuffix",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text("Belirtilmedi", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Bitiş Tarihi", color = TextSecondary, fontSize = 10.sp)
+                        Text(formattedDate, color = if (statusLabel == "Geciken") AccentRed else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (task.checklistCount > 0) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Kontrol Listesi", color = TextSecondary, fontSize = 10.sp)
+                            Text("${task.checklistDoneCount}/${task.checklistCount}", color = AccentGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Tekrarlayan görev rozeti
+            if (task.isRecurring) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = AccentPurple,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Tekrarlayan Görev",
+                        color = AccentPurple,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── Detay Penceresi Modülü (Dialog) ──────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskDetailDialog(
+    task: TaskItem,
+    employees: List<EmployeeInfo>,
+    positions: List<PositionInfo>,
+    branches: List<BranchInfo>,
+    formTemplates: List<FormTemplateInfo>,
+    repo: TaskRepository,
+    currentUserId: String,
+    onDismiss: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val showDatePicker = { initialDateTimeString: String?, onDateSelected: (String) -> Unit ->
+        val calendar = java.util.Calendar.getInstance()
+        initialDateTimeString?.let {
+            try {
+                val instant = java.time.Instant.parse(it)
+                calendar.time = java.util.Date.from(instant)
+            } catch (_: Exception) {}
+        }
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                android.app.TimePickerDialog(
+                    context,
+                    { _, hourOfDay, minute ->
+                        val selectedCal = java.util.Calendar.getInstance()
+                        selectedCal.set(year, month, dayOfMonth, hourOfDay, minute)
+                        val formatted = selectedCal.toInstant().toString()
+                        onDateSelected(formatted)
+                    },
+                    calendar.get(java.util.Calendar.HOUR_OF_DAY),
+                    calendar.get(java.util.Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH),
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    // Local states
+    var taskStatus by remember { mutableStateOf(task.status) }
+    var checklist by remember { mutableStateOf<List<TaskChecklistItem>>(emptyList()) }
+    var chatMessages by remember { mutableStateOf<List<TaskChatMessage>>(emptyList()) }
+    var approvals by remember { mutableStateOf<List<TaskApprovalRequest>>(emptyList()) }
+    var attachments by remember { mutableStateOf<List<TaskAttachment>>(emptyList()) }
+
+    // Form detail states
+    var showFormDetailDialog by remember { mutableStateOf(false) }
+    var formSubmissionDetail by remember { mutableStateOf<FormSubmissionDetail?>(null) }
+    var isFormDetailLoading by remember { mutableStateOf(false) }
+
+    // Dialog action visibility states
+    var showSendBackDialog by remember { mutableStateOf(false) }
+    var showDelegateDialog by remember { mutableStateOf(false) }
+    var showPasifeAlConfirmation by remember { mutableStateOf(false) }
+
+    var isSubmittingAction by remember { mutableStateOf(false) }
+
+    // Chat states
+    var chatInput by remember { mutableStateOf("") }
+    var isSendingMsg by remember { mutableStateOf(false) }
+
+    val isAssignee = remember(task, currentUserId) {
+        task.participants.any { it.personnelId == currentUserId && it.participantType == "assignee" }
+    }
+    val isWatcher = remember(task, currentUserId) {
+        task.participants.any { it.personnelId == currentUserId && it.participantType == "watcher" }
+    }
+    var taskStartAt by remember { mutableStateOf(task.startAt) }
+    var taskDueAt by remember { mutableStateOf(task.dueAt) }
+    var showClosureSummaryDialog by remember { mutableStateOf(false) }
+
+    // Verileri yükle
+    LaunchedEffect(task.id) {
+        checklist = repo.fetchTaskChecklist(task.id)
+        chatMessages = repo.fetchTaskChatMessages(task.id)
+        approvals = repo.fetchTaskApprovals(task.id)
+        attachments = repo.fetchTaskAttachments(task.id)
+    }
+
+    val creatorName = remember(task, employees) {
+        employees.find { it.id == task.createdByPersonnelId }?.getDisplayName() ?: "Sistem"
+    }
+
+    val branchName = remember(task, branches) {
+        branches.find { it.id == task.branchNodeId }?.name ?: "Genel Merkez"
+    }
+
+    val parsedDesc = remember(task.description) {
+        parseFormIdAndCleanDescription(task.description)
+    }
+    val formId = parsedDesc.first
+    val cleanedDescription = parsedDesc.second
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        title = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = task.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Mavi şerit — detay diyalogu göstergesi
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(AccentBlue)
+                    )
+                }
+                Text(
+                    text = "📋 Görev Detayı  •  $branchName  •  $creatorName",
+                    color = AccentBlue.copy(alpha = 0.7f),
+                    fontSize = 11.sp
+                )
+            }
+        },
+        text = {
+            Surface(
+                color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // 1) Açıklama
+                    if (!cleanedDescription.isNullOrBlank()) {
+                        item {
+                            Column {
+                                Text("Açıklama", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                    border = BorderStroke(1.dp, CardBorder)
+                                ) {
+                                    Text(
+                                        text = cleanedDescription,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 1.2) İlişkili Form Yanıtı Butonu
+                    if (!formId.isNullOrBlank()) {
+                        item {
+                            Button(
+                                onClick = {
+                                    isFormDetailLoading = true
+                                    scope.launch {
+                                        val detail = repo.fetchFormSubmissionDetail(formId)
+                                        formSubmissionDetail = detail
+                                        isFormDetailLoading = false
+                                        if (detail != null) {
+                                            showFormDetailDialog = true
+                                        } else {
+                                            Toast.makeText(context, "Form detayları yüklenemedi", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentPurple),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !isFormDetailLoading
+                            ) {
+                                if (isFormDetailLoading) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("İlişkili Form Yanıtını Göster", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // 1.3) Ekler Listesi
+                    if (attachments.isNotEmpty()) {
+                        item {
+                            Column {
+                                Text("Ekler (${attachments.size})", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                    border = BorderStroke(1.dp, CardBorder)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        attachments.forEach { att ->
+                                            val isImage = att.attachmentType == "image" || att.attachmentType == "closure_image" || att.mimeType?.startsWith("image/") == true
+                                            if (isImage) {
+                                                val imageUrl = ApiClient.resolveImageUrl(att.fileUrl)
+                                                Column(modifier = Modifier.fillMaxWidth()) {
+                                                    Text(
+                                                        text = att.fileName ?: "Görsel Ek",
+                                                        color = TextSecondary,
+                                                        fontSize = 11.sp,
+                                                        modifier = Modifier.padding(bottom = 4.dp)
+                                                    )
+                                                    AsyncImage(
+                                                        model = imageUrl,
+                                                        contentDescription = att.fileName,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(140.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                                                            .clickable {
+                                                                try {
+                                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(imageUrl))
+                                                                    context.startActivity(intent)
+                                                                } catch (e: Exception) {
+                                                                    Toast.makeText(context, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                    )
+                                                }
+                                            } else {
+                                                val fileUrl = ApiClient.resolveImageUrl(att.fileUrl)
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(CardBg)
+                                                        .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                                                        .clickable {
+                                                            try {
+                                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
+                                                                context.startActivity(intent)
+                                                            } catch (e: Exception) {
+                                                                Toast.makeText(context, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                        .padding(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Attachment,
+                                                        contentDescription = null,
+                                                        tint = AccentBlue,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = att.fileName ?: "Dosya Eki",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 1.4) Katılımcılar (Sorumlu & İzleyenler)
+                    item {
+                        Column {
+                            Text("Katılımcılar", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                border = BorderStroke(1.dp, CardBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val assignees = task.participants.filter { it.participantType == "assignee" }
+                                    val watchers = task.participants.filter { it.participantType == "watcher" }
+                                    
+                                    if (assignees.isNotEmpty()) {
+                                        Text("Atananlar:", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        assignees.forEach { a ->
+                                            val name = employees.find { it.id == a.personnelId }?.getDisplayName() ?: "Personel"
+                                            val badgeBg = if (a.isCompleted) AccentGreen.copy(alpha = 0.15f) else AccentOrange.copy(alpha = 0.15f)
+                                            val badgeBorder = if (a.isCompleted) AccentGreen else AccentOrange
+                                            val badgeText = if (a.isCompleted) AccentGreen else AccentOrange
+                                            val statusIcon = if (a.isCompleted) "✓ Tamamladı" else "⏱ Devam Ediyor"
+                                            
+                                            Row(
+                                                modifier = Modifier
+                                                    .padding(vertical = 2.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(badgeBg)
+                                                    .border(1.dp, badgeBorder, RoundedCornerShape(8.dp))
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = name,
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = statusIcon,
+                                                    color = badgeText,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (watchers.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text("Gözlemciler:", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        watchers.forEach { w ->
+                                            val name = employees.find { it.id == w.personnelId }?.getDisplayName() ?: "Personel"
+                                            Text(
+                                                text = "• $name",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.padding(vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 1.5) Görev Meta Bilgileri (Tekrarlama, Kurallar)
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1628)),
+                            border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Görev Bilgileri", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                // Başlangıç Tarihi
+                                val startClickable = task.editScheduleAllowed && !isWatcher
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = startClickable) {
+                                            showDatePicker(taskStartAt) { selectedIso ->
+                                                scope.launch {
+                                                    val success = repo.updateTaskDates(task.id, selectedIso, taskDueAt, taskStartAt, taskDueAt, currentUserId)
+                                                    if (success) {
+                                                        taskStartAt = selectedIso
+                                                        Toast.makeText(context, "Başlangıç tarihi güncellendi", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Başlangıç", color = TextSecondary, fontSize = 11.sp)
+                                        if (startClickable) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
+                                        }
+                                    }
+                                    Text(taskStartAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+
+                                // Bitiş Tarihi
+                                val dueClickable = task.editDueDateAllowed && !isWatcher
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = dueClickable) {
+                                            showDatePicker(taskDueAt) { selectedIso ->
+                                                scope.launch {
+                                                    val success = repo.updateTaskDates(task.id, taskStartAt, selectedIso, taskStartAt, taskDueAt, currentUserId)
+                                                    if (success) {
+                                                        taskDueAt = selectedIso
+                                                        Toast.makeText(context, "Vade tarihi güncellendi", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Bitiş", color = TextSecondary, fontSize = 11.sp)
+                                        if (dueClickable) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AccentBlue, modifier = Modifier.size(12.dp))
+                                        }
+                                    }
+                                    Text(taskDueAt?.take(16)?.replace("T", " ") ?: "Belirtilmedi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+
+                                val rows = buildList {
+                                    add("Öncelik" to when (task.priority) {
+                                        "urgent" -> "🔴 Kritik"
+                                        "high" -> "🟠 Yüksek"
+                                        "low" -> "⬇️ Düşük"
+                                        else -> "🔵 Normal"
+                                    })
+                                    if (task.isRecurring) add("Tekrar" to "✅ Tekrarlayan Görev")
+                                    if (task.approvalRequired) add("Onay" to "✅ Kapanış Onayı Gerekli")
+                                    if (task.closureSummaryRequired) add("Özet" to "✅ Kapanışta Özet Zorunlu")
+                                    if (task.closureImageRequired) add("Görsel" to "✅ Kapanışta Görsel Zorunlu")
+                                    if (task.closureFileRequired) add("Dosya" to "✅ Kapanışta Dosya Zorunlu")
+                                    if (task.requiresCostInput) add("Maliyet" to "✅ Maliyet Girişi Zorunlu")
+                                }
+                                rows.forEach { (label, value) ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(label, color = TextSecondary, fontSize = 11.sp)
+                                        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2) Görev Formu Şablonu
+                    if (!task.formTemplateId.isNullOrBlank()) {
+                        val tName = formTemplates.find { it.id == task.formTemplateId }?.name ?: "Şablon"
+                        item {
+                            Column {
+                                Text("Görev Formu", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                    border = BorderStroke(1.dp, CardBorder)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(tName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Button(
+                                            onClick = {
+                                                Toast.makeText(context, "$tName Formu açılıyor...", Toast.LENGTH_SHORT).show()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Doldur", fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2) Onay Durumları (Varsa listele)
+                    if (approvals.isNotEmpty()) {
+                        item {
+                            Column {
+                                Text("Onay Geçmişi", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                    border = BorderStroke(1.dp, CardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        approvals.forEach { app ->
+                                            val from = employees.find { it.id == app.fromPersonnel }?.getDisplayName() ?: app.fromPersonnel
+                                            val to = employees.find { it.id == app.toPersonnel }?.getDisplayName() ?: app.toPersonnel
+                                            val stateText = when (app.status) {
+                                                "accepted" -> "Kabul Edildi"
+                                                "rejected" -> "Reddedildi"
+                                                else -> "Bekliyor"
+                                            }
+                                            Text(
+                                                text = "• $from → $to ($stateText)",
+                                                color = if (app.status == "accepted") AccentGreen else if (app.status == "rejected") AccentRed else AccentOrange,
+                                                fontSize = 11.sp
+                                            )
+                                            if (!app.reason.isNullOrBlank()) {
+                                                Text(text = "  Neden: ${app.reason}", color = TextSecondary, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3) Kontrol Listesi
+                    if (checklist.isNotEmpty()) {
+                        item {
+                            Text("Kontrol Listesi", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        items(checklist, key = { it.id }) { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isWatcher) {
+                                        scope.launch {
+                                            val success = repo.updateChecklistItem(item.id, !item.isDone)
+                                            if (success) {
+                                                checklist = checklist.map {
+                                                    if (it.id == item.id) it.copy(isDone = !item.isDone) else it
+                                                }
+                                            }
+                                        }
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = item.isDone,
+                                    enabled = !isWatcher,
+                                    onCheckedChange = { checked ->
+                                        scope.launch {
+                                            val success = repo.updateChecklistItem(item.id, checked)
+                                            if (success) {
+                                                checklist = checklist.map {
+                                                    if (it.id == item.id) it.copy(isDone = checked) else it
+                                                }
+                                            }
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = AccentGreen,
+                                        uncheckedColor = CardBorder
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = item.text,
+                                    color = if (item.isDone) TextSecondary else Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // 4) Durum Eylemleri (FAB/Butonlar)
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Görev Durum Eylemleri", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                            val hasPrimaryAction = !isWatcher && (taskStatus == "open" || taskStatus == "rejected" || taskStatus == "in_progress" || (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId))
+                            if (hasPrimaryAction) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    // Görevi Başlat
+                                    if (taskStatus == "open" || taskStatus == "rejected") {
+                                        Button(
+                                            onClick = {
+                                                isSubmittingAction = true
+                                                scope.launch {
+                                                    val success = repo.updateTaskStatus(task.id, "in_progress", currentUserId)
+                                                    if (success) {
+                                                        taskStatus = "in_progress"
+                                                        Toast.makeText(context, "Göreve başlandı", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    isSubmittingAction = false
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                                            enabled = !isSubmittingAction,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Görevi Başlat", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    // Görevi Tamamla
+                                    if (taskStatus == "in_progress") {
+                                        Button(
+                                            onClick = {
+                                                if (task.closureSummaryRequired || task.requiresCostInput || task.closureFileRequired || task.closureImageRequired) {
+                                                    showClosureSummaryDialog = true
+                                                } else {
+                                                    isSubmittingAction = true
+                                                    scope.launch {
+                                                        val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
+                                                        val success = repo.updateTaskStatus(
+                                                            taskId = task.id,
+                                                            newStatus = nextState,
+                                                            personnelId = currentUserId,
+                                                            linkedEntityTable = task.linkedEntityTable,
+                                                            linkedEntityId = task.linkedEntityId
+                                                        )
+                                                        if (success) {
+                                                            taskStatus = nextState
+                                                            Toast.makeText(
+                                                                context, 
+                                                                if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                        isSubmittingAction = false
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                                            enabled = !isSubmittingAction,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Tamamlandı Olarak İşaretle", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    // Görevi Kapat (Tümü İçin) - Creator force closure
+                                    val isCreator = remember(task, currentUserId) { task.createdByPersonnelId == currentUserId }
+                                    val showForceClose = isCreator && (taskStatus == "open" || taskStatus == "in_progress" || taskStatus == "pending_approval" || taskStatus == "pending_completion_approval" || taskStatus == "rejected")
+                                    if (showForceClose) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                if (task.closureSummaryRequired || task.requiresCostInput || task.closureFileRequired || task.closureImageRequired) {
+                                                    showClosureSummaryDialog = true
+                                                } else {
+                                                    isSubmittingAction = true
+                                                    scope.launch {
+                                                        val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
+                                                        val success = repo.updateTaskStatus(
+                                                            taskId = task.id,
+                                                            newStatus = nextState,
+                                                            personnelId = currentUserId,
+                                                            linkedEntityTable = task.linkedEntityTable,
+                                                            linkedEntityId = task.linkedEntityId
+                                                        )
+                                                        if (success) {
+                                                            taskStatus = nextState
+                                                            Toast.makeText(
+                                                                context, 
+                                                                if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamen kapatıldı", 
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                        isSubmittingAction = false
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
+                                            enabled = !isSubmittingAction,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Görevi Kapat (Tümü İçin)", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    // Görevi Aktifleştir
+                                    if (taskStatus == "soft_deleted" && task.createdByPersonnelId == currentUserId) {
+                                        Button(
+                                            onClick = {
+                                                isSubmittingAction = true
+                                                scope.launch {
+                                                    val success = repo.restoreTask(task.id, currentUserId)
+                                                    if (success) {
+                                                        taskStatus = "open"
+                                                        Toast.makeText(context, "Görev aktif hale getirildi", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    isSubmittingAction = false
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                                            enabled = !isSubmittingAction,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Görevi Aktifleştir", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Secondary Actions Row: Geri Gönder, Delege Et, Pasife Al
+                            val showSecondaryActions = !isWatcher && taskStatus != "completed" && taskStatus != "cancelled" && taskStatus != "soft_deleted"
+                            if (showSecondaryActions) {
+                                val hasFormId = task.description?.contains("[Form ID:") == true
+                                val showSendBack = isAssignee && task.formTemplateId.isNullOrBlank() && !hasFormId && repo.canReject(
+                                    task.createdByPositionId ?: "",
+                                    employees.find { it.id == currentUserId }?.positionId ?: "",
+                                    positions
+                                )
+                                val showDelegate = task.delegationAllowed && isAssignee
+                                val showPasifeAl = task.createdByPersonnelId == currentUserId
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (showSendBack) {
+                                        OutlinedButton(
+                                            onClick = { showSendBackDialog = true },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                            border = BorderStroke(1.dp, AccentOrange),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(vertical = 8.dp)
+                                        ) {
+                                            Text("Geri Gönder", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        }
+                                    }
+                                    if (showDelegate) {
+                                        OutlinedButton(
+                                            onClick = { showDelegateDialog = true },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                            border = BorderStroke(1.dp, AccentPurple),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(vertical = 8.dp)
+                                        ) {
+                                            Text("Delege Et", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        }
+                                    }
+                                    if (showPasifeAl) {
+                                        OutlinedButton(
+                                            onClick = { showPasifeAlConfirmation = true },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                            border = BorderStroke(1.dp, AccentRed),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(vertical = 8.dp)
+                                        ) {
+                                            Text("Pasife Al", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 5) Sohhet & Notlar (Chat)
+                    item {
+                        Text("Notlar & Tartışma", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (chatMessages.isEmpty()) {
+                        item {
+                            Text(
+                                "Henüz eklenmiş bir not bulunmamaktadır.",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            )
+                        }
+                    } else {
+                        items(chatMessages, key = { it.id }) { msg ->
+                            val isSystem = msg.messageType == "system"
+                            val isMe = msg.senderId == currentUserId
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = if (isSystem) Alignment.CenterHorizontally else if (isMe) Alignment.End else Alignment.Start
+                            ) {
+                                if (isSystem) {
+                                    // Sistem Mesajı
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF334155).copy(alpha = 0.4f)),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = msg.body ?: "",
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                } else {
+                                    // Kullanıcı Mesajı
+                                    val sender = employees.find { it.id == msg.senderId }?.getDisplayName() ?: "Bilinmeyen Personel"
+                                    if (!isMe) {
+                                        Text(sender, color = TextSecondary, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
+                                    }
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isMe) AccentBlue else Color(0xFF1E293B)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = if (isMe) null else BorderStroke(1.dp, CardBorder),
+                                        modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 240.dp)
+                                    ) {
+                                        Text(
+                                            text = msg.body ?: "",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Mesaj Yazma Alanı
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = chatInput,
+                                onValueChange = { chatInput = it },
+                                placeholder = { Text("Bir mesaj veya not yazın...", fontSize = 12.sp) },
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = AccentBlue,
+                                    unfocusedBorderColor = CardBorder,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                maxLines = 3
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            IconButton(
+                                onClick = {
+                                    if (chatInput.isBlank() || isSendingMsg) return@IconButton
+                                    isSendingMsg = true
+                                    scope.launch {
+                                        val success = repo.addChatMessage(task.id, currentUserId, chatInput)
+                                        if (success) {
+                                            chatInput = ""
+                                            // Mesajları yenile
+                                            chatMessages = repo.fetchTaskChatMessages(task.id)
+                                        }
+                                        isSendingMsg = false
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        containerColor = DetailDialogBg
+    )
+
+    if (showFormDetailDialog) {
+        formSubmissionDetail?.let { detail ->
+            FormDetailDialog(
+                detail = detail,
+                repo = repo,
+                onDismiss = { showFormDetailDialog = false }
+            )
+        }
+    }
+
+    if (showSendBackDialog) {
+        var reasonText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showSendBackDialog = false },
+            title = { Text("Geri Gönderme Gerekçesi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                OutlinedTextField(
+                    value = reasonText,
+                    onValueChange = { reasonText = it },
+                    placeholder = { Text("Lütfen iade gerekçesini buraya yazın...", fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = CardBorder
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    maxLines = 4
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (reasonText.trim().isBlank()) {
+                            Toast.makeText(context, "Gerekçe alanı boş olamaz", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isSubmittingAction = true
+                        scope.launch {
+                            val success = repo.sendBackTask(task.id, currentUserId, reasonText, task.createdByPersonnelId)
+                            if (success) {
+                                taskStatus = "rejected"
+                                showSendBackDialog = false
+                                Toast.makeText(context, "Görev iade edildi", Toast.LENGTH_SHORT).show()
+                                chatMessages = repo.fetchTaskChatMessages(task.id)
+                            }
+                            isSubmittingAction = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isSubmittingAction
+                ) {
+                    Text("Geri Gönder", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSendBackDialog = false }) {
+                    Text("İptal", color = TextSecondary)
+                }
+            },
+            containerColor = DetailDialogBg
+        )
+    }
+
+    if (showPasifeAlConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showPasifeAlConfirmation = false },
+            title = { Text("Görevi Pasife Al", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = { Text("Bu görevi pasife almak istediğinize emin misiniz?", color = Color.White, fontSize = 13.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isSubmittingAction = true
+                        scope.launch {
+                            val success = repo.softDeleteTask(task.id, currentUserId)
+                            if (success) {
+                                taskStatus = "soft_deleted"
+                                showPasifeAlConfirmation = false
+                                Toast.makeText(context, "Görev pasife alındı", Toast.LENGTH_SHORT).show()
+                                chatMessages = repo.fetchTaskChatMessages(task.id)
+                            }
+                            isSubmittingAction = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isSubmittingAction
+                ) {
+                    Text("Evet, Pasife Al", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasifeAlConfirmation = false }) {
+                    Text("İptal", color = TextSecondary)
+                }
+            },
+            containerColor = DetailDialogBg
+        )
+    }
+
+    if (showDelegateDialog) {
+        var delegateSearchQuery by remember { mutableStateOf("") }
+        val assignablePeople = remember(employees, delegateSearchQuery) {
+            employees.filter { emp ->
+                emp.id != currentUserId &&
+                emp.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true &&
+                emp.deletedAt == null &&
+                emp.getDisplayName().contains(delegateSearchQuery, ignoreCase = true)
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showDelegateDialog = false },
+            title = { Text("Görevi Delege Et", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Surface(
+                    color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth().height(350.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = delegateSearchQuery,
+                            onValueChange = { delegateSearchQuery = it },
+                            placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AccentPurple,
+                                unfocusedBorderColor = CardBorder
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (assignablePeople.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
+                                }
+                            } else {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(assignablePeople, key = { it.id }) { emp ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = CardBg),
+                                            border = BorderStroke(1.dp, CardBorder),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    isSubmittingAction = true
+                                                    scope.launch {
+                                                        val fromEmployee = employees.find { it.id == currentUserId }
+                                                        val success = repo.delegateTask(
+                                                            taskId = task.id,
+                                                            fromPersonnelId = currentUserId,
+                                                            toPersonnelId = emp.id,
+                                                            fromPositionId = fromEmployee?.positionId,
+                                                            toPositionId = emp.positionId,
+                                                            positions = positions,
+                                                            isFormTask = !task.formTemplateId.isNullOrBlank() || task.description?.contains("[Form ID:") == true
+                                                        )
+                                                        if (success) {
+                                                            showDelegateDialog = false
+                                                            Toast.makeText(context, "Delege işlemi yapıldı", Toast.LENGTH_SHORT).show()
+                                                            chatMessages = repo.fetchTaskChatMessages(task.id)
+                                                        }
+                                                        isSubmittingAction = false
+                                                    }
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Person, contentDescription = null, tint = AccentPurple)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = emp.getDisplayName(),
+                                                    color = Color.White,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDelegateDialog = false }) {
+                    Text("İptal", color = TextSecondary)
+                }
+            },
+            containerColor = DetailDialogBg
+        )
+    }
+
+    if (showClosureSummaryDialog) {
+        var summaryText by remember { mutableStateOf("") }
+        var costText by remember { mutableStateOf("") }
+        var selectedCurrency by remember { mutableStateOf("TRY") }
+        var currencyExpanded by remember { mutableStateOf(false) }
+        var exchangeRateText by remember { mutableStateOf("1.0") }
+        var exchangeRateLoading by remember { mutableStateOf(false) }
+
+        var selectedImageUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+        var selectedFileUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+
+        val imagePickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetMultipleContents()
+        ) { uris ->
+            selectedImageUris = selectedImageUris + uris
+        }
+
+        val filePickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetMultipleContents()
+        ) { uris ->
+            selectedFileUris = selectedFileUris + uris
+        }
+
+        LaunchedEffect(selectedCurrency) {
+            if (selectedCurrency == "TRY") {
+                exchangeRateText = "1.0"
+            } else {
+                exchangeRateLoading = true
+                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                val rate = repo.fetchExchangeRate(selectedCurrency, todayStr)
+                if (rate != null) {
+                    exchangeRateText = rate.toString()
+                }
+                exchangeRateLoading = false
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { if (!isSubmittingAction) showClosureSummaryDialog = false },
+            title = { Text("Görev Kapanış Özeti", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                if (isSubmittingAction) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator(color = AccentGreen)
+                            Text("Dosyalar yükleniyor ve görev kapatılıyor...", color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = if (task.approvalRequired) "Bu görev kapanış onayına düşecek." else "Bu görev doğrudan tamamlanacak.",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        OutlinedTextField(
+                            value = summaryText,
+                            onValueChange = { summaryText = it },
+                            label = {
+                                Text(
+                                    if (task.closureSummaryRequired) "Kapanış Özeti * (Zorunlu)" else "Kapanış Özeti"
+                                )
+                            },
+                            placeholder = { Text("Yapılan işi kısaca yaz...", fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AccentGreen,
+                                unfocusedBorderColor = CardBorder
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            maxLines = 4
+                        )
+
+                        if (task.requiresCostInput) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.05f)),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "💰 Bakım / Onarım Maliyeti * (Zorunlu)",
+                                        color = Color(0xFFF59E0B),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        text = "Bu görev bir bakım bildiriminden oluşturulmuşsa, girilen tutar ekipman geçmişine otomatik kaydedilir.",
+                                        color = Color(0xFFF59E0B).copy(alpha = 0.8f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = costText,
+                                            onValueChange = { costText = it },
+                                            placeholder = { Text("0.00", fontSize = 12.sp) },
+                                            label = { Text("Tutar") },
+                                            modifier = Modifier.weight(1f),
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = Color(0xFFF59E0B),
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        Box(modifier = Modifier.width(90.dp)) {
+                                            OutlinedTextField(
+                                                value = selectedCurrency,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Döviz") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { currencyExpanded = !currencyExpanded }) {
+                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().clickable { currencyExpanded = !currencyExpanded },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = Color(0xFFF59E0B),
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            DropdownMenu(
+                                                expanded = currencyExpanded,
+                                                onDismissRequest = { currencyExpanded = false }
+                                            ) {
+                                                listOf("TRY", "USD", "EUR").forEach { curr ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(curr) },
+                                                        onClick = {
+                                                            selectedCurrency = curr
+                                                            currencyExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (selectedCurrency != "TRY") {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = exchangeRateText,
+                                                onValueChange = { exchangeRateText = it },
+                                                label = { Text("Döviz Kuru") },
+                                                placeholder = { Text("1.0000", fontSize = 12.sp) },
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = Color(0xFFF59E0B),
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+
+                                            if (exchangeRateLoading) {
+                                                CircularProgressIndicator(
+                                                    color = Color(0xFFF59E0B),
+                                                    modifier = Modifier.size(20.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    val costVal = costText.toDoubleOrNull()
+                                    val rateVal = exchangeRateText.toDoubleOrNull()
+                                    if (selectedCurrency != "TRY" && costVal != null && rateVal != null && costVal >= 0.0 && rateVal > 0.0) {
+                                        val approxTotal = costVal * rateVal
+                                        Text(
+                                            text = String.format(java.util.Locale.US, "Yaklaşık Toplam: %.2f TL", approxTotal),
+                                            color = Color(0xFFF59E0B),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier
+                                                .background(Color(0xFFF59E0B).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Kapanış Dosyaları Yükleme Kısmı
+                        Text("Kapanış Dosyaları" + if (task.closureFileRequired) " * (Zorunlu)" else "", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            colors = ButtonDefaults.buttonColors(containerColor = CardBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.AttachFile, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Text("Dosya Seç", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                        selectedFileUris.forEach { uri ->
+                            val name = getUriFileName(uri, context) ?: "Dosya"
+                            Row(
+                                modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { selectedFileUris = selectedFileUris.filter { it != uri } }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Sil", tint = AccentRed, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+
+                        // Kapanış Fotoğrafları Yükleme Kısmı
+                        Text("Kapanış Fotoğrafları" + if (task.closureImageRequired) " * (Zorunlu)" else "", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = { imagePickerLauncher.launch("image/*") },
+                            colors = ButtonDefaults.buttonColors(containerColor = CardBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.Image, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Text("Fotoğraf Seç", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                        selectedImageUris.forEach { uri ->
+                            val name = getUriFileName(uri, context) ?: "Görsel"
+                            Row(
+                                modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { selectedImageUris = selectedImageUris.filter { it != uri } }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Sil", tint = AccentRed, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                val isSummaryMissing = task.closureSummaryRequired && summaryText.trim().isBlank()
+                val isCostMissing = task.requiresCostInput && (
+                    costText.trim().isBlank() ||
+                    costText.toDoubleOrNull() == null ||
+                    costText.toDouble() < 0.0 ||
+                    (selectedCurrency != "TRY" && (exchangeRateText.trim().isBlank() || exchangeRateText.toDoubleOrNull() == null || exchangeRateText.toDouble() <= 0.0))
+                )
+                val isFileMissing = task.closureFileRequired && selectedFileUris.isEmpty()
+                val isImageMissing = task.closureImageRequired && selectedImageUris.isEmpty()
+                val confirmEnabled = !isSummaryMissing && !isCostMissing && !isFileMissing && !isImageMissing && !isSubmittingAction
+
+                Button(
+                    onClick = {
+                        if (task.closureSummaryRequired && summaryText.trim().isBlank()) {
+                            Toast.makeText(context, "Özet alanı boş olamaz", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (task.requiresCostInput) {
+                            val costVal = costText.toDoubleOrNull()
+                            if (costVal == null || costVal < 0.0) {
+                                  Toast.makeText(context, "Geçerli bir maliyet girilmelidir", Toast.LENGTH_SHORT).show()
+                                  return@Button
+                            }
+                            if (selectedCurrency != "TRY") {
+                                val rateVal = exchangeRateText.toDoubleOrNull()
+                                if (rateVal == null || rateVal <= 0.0) {
+                                    Toast.makeText(context, "Geçerli bir döviz kuru girilmelidir", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            }
+                        }
+                        if (task.closureFileRequired && selectedFileUris.isEmpty()) {
+                            Toast.makeText(context, "Kapanış dosyası yüklenmelidir", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (task.closureImageRequired && selectedImageUris.isEmpty()) {
+                            Toast.makeText(context, "Kapanış fotoğrafı yüklenmelidir", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        isSubmittingAction = true
+                        scope.launch {
+                            val uploadedImages = mutableListOf<Map<String, Any>>()
+                            for (uri in selectedImageUris) {
+                                val uploadRes = repo.uploadTaskFile(uri, context)
+                                if (uploadRes == null) {
+                                    Toast.makeText(context, "Görsel yüklenirken hata oluştu", Toast.LENGTH_SHORT).show()
+                                    isSubmittingAction = false
+                                    return@launch
+                                }
+                                uploadedImages.add(uploadRes)
+                            }
+
+                            val uploadedFiles = mutableListOf<Map<String, Any>>()
+                            for (uri in selectedFileUris) {
+                                val uploadRes = repo.uploadTaskFile(uri, context)
+                                if (uploadRes == null) {
+                                    Toast.makeText(context, "Dosya yüklenirken hata oluştu", Toast.LENGTH_SHORT).show()
+                                    isSubmittingAction = false
+                                    return@launch
+                                }
+                                uploadedFiles.add(uploadRes)
+                            }
+
+                            val nextState = if (task.approvalRequired) "pending_completion_approval" else "completed"
+                            val success = repo.updateTaskStatus(
+                                taskId = task.id,
+                                newStatus = nextState,
+                                personnelId = currentUserId,
+                                closureSummary = summaryText,
+                                cost = if (task.requiresCostInput) costText.toDoubleOrNull() else null,
+                                costCurrency = if (task.requiresCostInput) selectedCurrency else null,
+                                costExchangeRate = if (task.requiresCostInput) exchangeRateText.toDoubleOrNull() else null,
+                                linkedEntityTable = task.linkedEntityTable,
+                                linkedEntityId = task.linkedEntityId
+                            )
+                            if (success) {
+                                for (img in uploadedImages) {
+                                    repo.addTaskAttachment(
+                                        taskId = task.id,
+                                        attachmentType = "closure_image",
+                                        fileName = img["file_name"]?.toString() ?: "image",
+                                        fileUrl = img["file_url"]?.toString() ?: "",
+                                        fileSize = (img["file_size"] as? Number)?.toInt() ?: 0,
+                                        mimeType = img["mime_type"]?.toString() ?: "image/jpeg",
+                                        uploadedBy = currentUserId
+                                    )
+                                }
+                                for (f in uploadedFiles) {
+                                    repo.addTaskAttachment(
+                                        taskId = task.id,
+                                        attachmentType = "closure_file",
+                                        fileName = f["file_name"]?.toString() ?: "file",
+                                        fileUrl = f["file_url"]?.toString() ?: "",
+                                        fileSize = (f["file_size"] as? Number)?.toInt() ?: 0,
+                                        mimeType = f["mime_type"]?.toString() ?: "application/octet-stream",
+                                        uploadedBy = currentUserId
+                                    )
+                                }
+
+                                taskStatus = nextState
+                                showClosureSummaryDialog = false
+                                Toast.makeText(
+                                    context, 
+                                    if (task.approvalRequired) "Kapanış onayına gönderildi" else "Görev tamamlandı", 
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            isSubmittingAction = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = confirmEnabled
+                ) {
+                    Text("Gönder ve Tamamla", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClosureSummaryDialog = false },
+                    enabled = !isSubmittingAction
+                ) {
+                    Text("İptal", color = TextSecondary)
+                }
+            },
+            containerColor = DetailDialogBg
+        )
+    }
+}
+
+@Composable
+private fun PillBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(99.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(99.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(11.dp))
+        Text(text, color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FormDetailDialog(
+    detail: FormSubmissionDetail,
+    repo: TaskRepository,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var equipmentList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
+    LaunchedEffect(detail.id) {
+        equipmentList = repo.fetchEquipmentInstances()
+    }
+
+    val metadataMap = remember(detail.metadata) {
+        try {
+            ApiClient.gson.fromJson(detail.metadata ?: "{}", Map::class.java) as? Map<String, Any>
+        } catch (e: Exception) { null }
+    }
+    val branchName = metadataMap?.get("branch_name")?.toString() ?: "İlgili Şube"
+    val formDate = metadataMap?.get("form_date")?.toString()
+    val startTime = metadataMap?.get("start_time")?.toString()
+    val endTime = metadataMap?.get("end_time")?.toString()
+
+    val answers = remember(detail.answersJson) {
+        try {
+            val list = ApiClient.gson.fromJson(detail.answersJson, List::class.java) as? List<Map<String, Any?>>
+            list ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+    val schemaMap = remember(detail.templateSchemaJson) {
+        try {
+            ApiClient.gson.fromJson(detail.templateSchemaJson ?: "{}", Map::class.java) as? Map<String, Any>
+        } catch (e: Exception) { null }
+    }
+    val sections = remember(schemaMap) {
+        val rawSections = schemaMap?.get("sections") as? List<Map<String, Any?>>
+        rawSections ?: emptyList()
+    }
+    val failedCriticalFields = remember(metadataMap) {
+        val list = metadataMap?.get("failed_critical_fields") as? List<Map<String, Any?>>
+        list?.map { it["id"]?.toString() ?: "" }?.toSet() ?: emptySet()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp, horizontal = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = DetailDialogBg),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header (Sadeleştirilmiş ve optimize edilmiş mobil başlık)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1E1E38), Color(0xFF0F0F1E))))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        tint = AccentPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = detail.templateTitle ?: "Form Detayı",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = branchName,
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Kapat",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = CardBorder)
+
+                // Content
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(max = 440.dp)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Date & Time Tags
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val dateStr = formDate ?: detail.createdAt.take(10)
+                                PillBadge(icon = Icons.Default.CalendarToday, text = dateStr)
+                                if (!startTime.isNullOrBlank()) {
+                                    val timeText = if (!endTime.isNullOrBlank()) "$startTime – $endTime" else startTime
+                                    PillBadge(icon = Icons.Default.Schedule, text = timeText)
+                                }
+                                if (detail.completionTimeSeconds != null) {
+                                    PillBadge(icon = Icons.Default.HourglassEmpty, text = "${detail.completionTimeSeconds / 60} dk")
+                                }
+                            }
+                        }
+
+                        // Kanıt Fotoğrafları
+                        if (detail.photos.isNotEmpty()) {
+                            item {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "📷 FOTOĞRAFLAR (${detail.photos.size})",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 6.dp)
+                                    )
+                                    androidx.compose.foundation.lazy.LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(detail.photos) { photo ->
+                                            val imageUrl = ApiClient.resolveImageUrl(photo.fileUrl)
+                                            AsyncImage(
+                                                model = imageUrl,
+                                                contentDescription = "Kanıt Görseli",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(80.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                                                    .clickable {
+                                                        try {
+                                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(imageUrl))
+                                                            context.startActivity(intent)
+                                                        } catch (e: Exception) {
+                                                            Toast.makeText(context, "Görsel açılamadı", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Soru & Yanıt Listesi (Mobile Özel Dikey Düzen)
+                        if (sections.isNotEmpty()) {
+                            sections.forEachIndexed { sIdx, section ->
+                                val sectionTitle = section["title"]?.toString() ?: "Bölüm"
+                                val fields = section["fields"] as? List<Map<String, Any?>> ?: emptyList()
+                                if (fields.isNotEmpty()) {
+                                    item {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = "${sIdx + 1}. $sectionTitle",
+                                                color = AccentPurple,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(bottom = 8.dp)
+                                            )
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                fields.forEach { field ->
+                                                    val fieldId = field["id"]?.toString() ?: ""
+                                                    val fieldLabel = field["label"]?.toString() ?: ""
+                                                    val fieldType = field["type"]?.toString() ?: ""
+                                                    val isCritical = field["is_critical"] == true
+
+                                                    val ans = answers.find { it["field_id"]?.toString() == fieldId }
+                                                    val ansVal = ans?.get("value")
+                                                    val ansNote = ans?.get("note")?.toString()
+                                                    val isAnsNegative = failedCriticalFields.contains(fieldId)
+
+                                                    val displayValue = when (ansVal) {
+                                                        null -> "—"
+                                                        true -> "Evet"
+                                                        false -> "Hayır"
+                                                        else -> {
+                                                            if (fieldType == "stock_item_select" || fieldType == "sale_item_select" || fieldType == "semi_product_select") {
+                                                                val itemsList = try {
+                                                                    if (ansVal is String) {
+                                                                        ApiClient.gson.fromJson(ansVal, List::class.java) as? List<*>
+                                                                    } else ansVal as? List<*>
+                                                                } catch (e: Exception) { null }
+
+                                                                itemsList?.mapNotNull { item ->
+                                                                    when (item) {
+                                                                        is Map<*, *> -> item["name"]?.toString() ?: item["id"]?.toString()
+                                                                        else -> item?.toString()
+                                                                    }
+                                                                }?.joinToString(", ") ?: ansVal.toString()
+                                                            } else if (fieldType == "equipment_select") {
+                                                                val eqId = ansVal.toString()
+                                                                val eq = equipmentList.find { it["id"]?.toString() == eqId }
+                                                                if (eq != null) {
+                                                                    val name = eq["name"]?.toString() ?: eq["definition_name"]?.toString() ?: "İsimsiz Ekipman"
+                                                                    val serial = eq["serial_number"]?.toString()
+                                                                    if (!serial.isNullOrBlank()) "$name ($serial)" else name
+                                                                } else {
+                                                                    eqId
+                                                                }
+                                                            } else {
+                                                                ansVal.toString()
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Soru & Cevap Kartı (Dikey Hizalanmış ve Taşmaları Önleyici Tasarım)
+                                                    Card(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.05f) else Color(0xFF0F172A)
+                                                        ),
+                                                        border = BorderStroke(1.dp, if (isAnsNegative) Color(0xFFEF4444).copy(alpha = 0.3f) else CardBorder),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(12.dp)) {
+                                                            // Üst satır: Soru etiketi + Kritik rozeti
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                verticalAlignment = Alignment.Top,
+                                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                            ) {
+                                                                Text(
+                                                                    text = fieldLabel,
+                                                                    color = TextSecondary,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    modifier = Modifier.weight(1f)
+                                                                )
+                                                                if (isCritical) {
+                                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .clip(RoundedCornerShape(4.dp))
+                                                                            .background(Color(0xFFEF4444).copy(alpha = 0.15f))
+                                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                    ) {
+                                                                        Text("KRİTİK", color = Color(0xFFEF4444), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                                                                    }
+                                                                }
+                                                            }
+                                                            Spacer(modifier = Modifier.height(6.dp))
+                                                            // Alt satır: Yanıt değeri
+                                                            Text(
+                                                                text = displayValue,
+                                                                color = if (isAnsNegative) Color(0xFFEF4444) else Color.White,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                            if (!ansNote.isNullOrBlank()) {
+                                                                Spacer(modifier = Modifier.height(4.dp))
+                                                                Text(
+                                                                    text = "Not: $ansNote",
+                                                                    color = TextSecondary,
+                                                                    fontSize = 11.sp
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = CardBorder)
+
+                // Kapat Butonu
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Kapat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreateTaskDialog(
+    employees: List<EmployeeInfo>,
+    positions: List<PositionInfo>,
+    branches: List<BranchInfo>,
+    formTemplates: List<FormTemplateInfo>,
+    repo: TaskRepository,
+    currentUserId: String,
+    currentUserPositionId: String?,
+    currentBranchId: String,
+    onDismiss: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Form inputs
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var responsibleId by remember { mutableStateOf("") }
+    var collaboratorIds by remember { mutableStateOf(emptyList<String>()) }
+    var observerIds by remember { mutableStateOf(emptyList<String>()) }
+    var priority by remember { mutableStateOf("normal") }
+    var locationId by remember { mutableStateOf(currentBranchId) }
+    
+    var startDate by remember { mutableStateOf("") }
+    var dueDate by remember { mutableStateOf("") }
+    var hasSpecificTime by remember { mutableStateOf(false) }
+    var startTime by remember { mutableStateOf("09:00") }
+    var dueTime by remember { mutableStateOf("18:00") }
+    
+    var recurrence by remember { mutableStateOf("") }
+    var recurrenceExpanded by remember { mutableStateOf(false) }
+    var recurrenceInterval by remember { mutableStateOf(1) }
+    var recurrenceWeekdays by remember { mutableStateOf(emptyList<String>()) }
+    var monthlyPattern by remember { mutableStateOf("day_of_month") }
+    var monthlyDayOfMonth by remember { mutableStateOf(1) }
+    var monthlyNth by remember { mutableStateOf(1) }
+    var monthlyWeekday by remember { mutableStateOf("monday") }
+    var yearlyPattern by remember { mutableStateOf("specific_dates") }
+    var yearlyDates by remember { mutableStateOf("") }
+
+    // Rules
+    var delegationAllowed by remember { mutableStateOf(false) }
+    var approvalRequired by remember { mutableStateOf(false) }
+    var closureSummaryRequired by remember { mutableStateOf(false) }
+    var closureFileRequired by remember { mutableStateOf(false) }
+    var closureImageRequired by remember { mutableStateOf(false) }
+    var editDueDateAllowed by remember { mutableStateOf(false) }
+    var editScheduleAllowed by remember { mutableStateOf(false) }
+    var incompleteIfLate by remember { mutableStateOf(false) }
+
+    // Form Template selection
+    var selectedTemplateId by remember { mutableStateOf("") }
+
+    // Checklist creation
+    var checklistInputs by remember { mutableStateOf(listOf("")) }
+
+    // Dialog section states (Collapsible)
+    var isBasicInfoExpanded by remember { mutableStateOf(true) }
+    var isParticipantsExpanded by remember { mutableStateOf(false) }
+    var isTimingExpanded by remember { mutableStateOf(false) }
+    var isRulesExpanded by remember { mutableStateOf(false) }
+    var isChecklistExpanded by remember { mutableStateOf(false) }
+
+    // Selection Dialog triggers
+    var showRespSelectDialog by remember { mutableStateOf(false) }
+    var branchExpanded by remember { mutableStateOf(false) }
+    var priorityExpanded by remember { mutableStateOf(false) }
+    var templateExpanded by remember { mutableStateOf(false) }
+    var showCollabSelectDialog by remember { mutableStateOf(false) }
+    var showObserverSelectDialog by remember { mutableStateOf(false) }
+
+    var isCreating by remember { mutableStateOf(false) }
+
+    // Date & Time pickers setup
+    val calendar = Calendar.getInstance()
+    
+    val startDatePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            startDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val dueDatePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            dueDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val startTimePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, hour, minute ->
+            startTime = String.format("%02d:%02d", hour, minute)
+        },
+        9, 0, true
+    )
+
+    val dueTimePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, hour, minute ->
+            dueTime = String.format("%02d:%02d", hour, minute)
+        },
+        18, 0, true
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Mor şerit — oluşturma diyalogu göstergesi
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(AccentPurple)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text("Yeni Görev Oluştur", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                    Text("✏️ Görev tanımı", color = AccentPurple.copy(alpha = 0.7f), fontSize = 11.sp)
+                }
+            }
+        },
+        text = {
+            Surface(
+                color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // SECTION 1: Temel Bilgiler
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isBasicInfoExpanded = !isBasicInfoExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("📝  Temel Bilgiler", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Icon(
+                                        imageVector = if (isBasicInfoExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                                if (isBasicInfoExpanded) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        OutlinedTextField(
+                                            value = title,
+                                            onValueChange = { title = it },
+                                            label = { Text("Görev Başlığı *") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        OutlinedTextField(
+                                            value = description,
+                                            onValueChange = { description = it },
+                                            label = { Text("Açıklama (İsteğe Bağlı)") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            maxLines = 4
+                                        )
+
+                                        // Lokasyon
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            val branchName = branches.find { it.id == locationId }?.name ?: "Şube Seçiniz..."
+                                            OutlinedTextField(
+                                                value = branchName,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Görev Lokasyonu *") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { branchExpanded = !branchExpanded }) {
+                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().clickable { branchExpanded = !branchExpanded },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = AccentOrange,
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            DropdownMenu(expanded = branchExpanded, onDismissRequest = { branchExpanded = false }) {
+                                                branches.forEach { br ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(br.name) },
+                                                        onClick = {
+                                                            locationId = br.id
+                                                            branchExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Öncelik
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            val priorityLabel = when (priority) {
+                                                "urgent" -> "Kritik"
+                                                "high" -> "Yüksek"
+                                                "low" -> "Düşük"
+                                                else -> "Normal"
+                                            }
+                                            OutlinedTextField(
+                                                value = priorityLabel,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Öncelik") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { priorityExpanded = !priorityExpanded }) {
+                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().clickable { priorityExpanded = !priorityExpanded },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = AccentOrange,
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            DropdownMenu(expanded = priorityExpanded, onDismissRequest = { priorityExpanded = false }) {
+                                                val opts = listOf("low" to "Düşük", "normal" to "Normal", "high" to "Yüksek", "urgent" to "Kritik")
+                                                opts.forEach { (valKey, valLabel) ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(valLabel) },
+                                                        onClick = {
+                                                            priority = valKey
+                                                            priorityExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 2: Katılımcılar
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isParticipantsExpanded = !isParticipantsExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("👥  Katılımcılar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Icon(
+                                        imageVector = if (isParticipantsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                                if (isParticipantsExpanded) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        // Sorumlu Personel (Main Assignee)
+                                        val responsibleName = employees.find { it.id == responsibleId }?.getDisplayName() ?: "Seçiniz..."
+                                        OutlinedTextField(
+                                            value = responsibleName,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Sorumlu Personel *") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { showRespSelectDialog = true }) {
+                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().clickable { showRespSelectDialog = true },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        // Ortak Çalışanlar (Collaborators)
+                                        val collabNames = collaboratorIds.mapNotNull { id -> employees.find { it.id == id }?.getDisplayName() }
+                                            .joinToString(", ").ifBlank { "Seçiniz (İsteğe Bağlı)..." }
+                                        OutlinedTextField(
+                                            value = collabNames,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Ortak Çalışanlar") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { showCollabSelectDialog = true }) {
+                                                    Icon(Icons.Default.AddCircle, null, tint = Color.White)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().clickable { showCollabSelectDialog = true },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        // Gözlemciler (Observers)
+                                        val observerNames = observerIds.mapNotNull { id -> employees.find { it.id == id }?.getDisplayName() }
+                                            .joinToString(", ").ifBlank { "Seçiniz (İsteğe Bağlı)..." }
+                                        OutlinedTextField(
+                                            value = observerNames,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Gözlemciler") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { showObserverSelectDialog = true }) {
+                                                    Icon(Icons.Default.AddCircle, null, tint = Color.White)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().clickable { showObserverSelectDialog = true },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 3: Zamanlama & Planlama
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isTimingExpanded = !isTimingExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("📅  Planlama ve Zaman", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Icon(
+                                        imageVector = if (isTimingExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                                if (isTimingExpanded) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        // Başlangıç Tarihi
+                                        OutlinedTextField(
+                                            value = startDate,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Başlangıç Tarihi") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { startDatePickerDialog.show() }) {
+                                                    Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().clickable { startDatePickerDialog.show() },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        // Bitiş Tarihi
+                                        OutlinedTextField(
+                                            value = dueDate,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Bitiş Tarihi *") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { dueDatePickerDialog.show() }) {
+                                                    Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().clickable { dueDatePickerDialog.show() },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = AccentOrange,
+                                                unfocusedBorderColor = CardBorder
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        // Tekrar (Recurrence)
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            val recurrenceLabel = when (recurrence) {
+                                                "daily" -> "Günlük"
+                                                "weekly" -> "Haftalık"
+                                                "monthly" -> "Aylık"
+                                                "yearly" -> "Yıllık"
+                                                else -> "Tek seferlik"
+                                            }
+                                            OutlinedTextField(
+                                                value = recurrenceLabel,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Tekrar") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { recurrenceExpanded = !recurrenceExpanded }) {
+                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().clickable { recurrenceExpanded = !recurrenceExpanded },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = AccentOrange,
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            DropdownMenu(
+                                                expanded = recurrenceExpanded,
+                                                onDismissRequest = { recurrenceExpanded = false }
+                                            ) {
+                                                val opts = listOf(
+                                                    "" to "Tek seferlik",
+                                                    "daily" to "Günlük",
+                                                    "weekly" to "Haftalık",
+                                                    "monthly" to "Aylık",
+                                                    "yearly" to "Yıllık"
+                                                )
+                                                opts.forEach { (valKey, valLabel) ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(valLabel) },
+                                                        onClick = {
+                                                            recurrence = valKey
+                                                            recurrenceExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Recurrence Details UI
+                                        if (recurrence == "daily") {
+                                            OutlinedTextField(
+                                                value = recurrenceInterval.toString(),
+                                                onValueChange = { recurrenceInterval = it.toIntOrNull() ?: 1 },
+                                                label = { Text("Tekrarlama Sıklığı (Gün)") },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                        }
+
+                                        if (recurrence == "weekly") {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Tekrarlanacak Günler", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            val days = listOf(
+                                                "monday" to "Pzt",
+                                                "tuesday" to "Sal",
+                                                "wednesday" to "Çar",
+                                                "thursday" to "Per",
+                                                "friday" to "Cum",
+                                                "saturday" to "Cmt",
+                                                "sunday" to "Paz"
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                days.forEach { (key, label) ->
+                                                    val isSelected = recurrenceWeekdays.contains(key)
+                                                    Card(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .clickable {
+                                                                recurrenceWeekdays = if (isSelected) {
+                                                                    recurrenceWeekdays.filter { it != key }
+                                                                } else {
+                                                                    recurrenceWeekdays + key
+                                                                }
+                                                            },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
+                                                        ),
+                                                        border = BorderStroke(1.dp, if (isSelected) AccentOrange else CardBorder)
+                                                    ) {
+                                                        Text(
+                                                            text = label,
+                                                            color = if (isSelected) Color.White else TextSecondary,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(vertical = 8.dp).align(Alignment.CenterHorizontally)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if (recurrence == "monthly") {
+                                            var patternExpanded by remember { mutableStateOf(false) }
+                                            Box(modifier = Modifier.fillMaxWidth()) {
+                                                val patternLabel = when (monthlyPattern) {
+                                                    "last_day" -> "Ayın Son Günü"
+                                                    "nth_weekday" -> "N. Hafta Günü (Örn. 2. Pazartesi)"
+                                                    else -> "Belirli Bir Gün"
+                                                }
+                                                OutlinedTextField(
+                                                    value = patternLabel,
+                                                    onValueChange = {},
+                                                    readOnly = true,
+                                                    label = { Text("Aylık Tekrarlama Şekli") },
+                                                    trailingIcon = {
+                                                        IconButton(onClick = { patternExpanded = !patternExpanded }) {
+                                                            Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth().clickable { patternExpanded = !patternExpanded },
+                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                DropdownMenu(expanded = patternExpanded, onDismissRequest = { patternExpanded = false }) {
+                                                    DropdownMenuItem(text = { Text("Belirli Bir Gün") }, onClick = { monthlyPattern = "day_of_month"; patternExpanded = false })
+                                                    DropdownMenuItem(text = { Text("Ayın Son Günü") }, onClick = { monthlyPattern = "last_day"; patternExpanded = false })
+                                                    DropdownMenuItem(text = { Text("N. Hafta Günü (Örn. 2. Pazartesi)") }, onClick = { monthlyPattern = "nth_weekday"; patternExpanded = false })
+                                                }
+                                            }
+
+                                            if (monthlyPattern == "day_of_month") {
+                                                OutlinedTextField(
+                                                    value = monthlyDayOfMonth.toString(),
+                                                    onValueChange = { monthlyDayOfMonth = it.toIntOrNull() ?: 1 },
+                                                    label = { Text("Ayın Günü (1-31)") },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                            }
+
+                                            if (monthlyPattern == "nth_weekday") {
+                                                var nthExpanded by remember { mutableStateOf(false) }
+                                                var weekdayExpanded by remember { mutableStateOf(false) }
+
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        val nthLabel = when (monthlyNth) {
+                                                            1 -> "1. (İlk)"
+                                                            2 -> "2."
+                                                            3 -> "3."
+                                                            4 -> "4."
+                                                            else -> "5. (Son)"
+                                                        }
+                                                        OutlinedTextField(
+                                                            value = nthLabel,
+                                                            onValueChange = {},
+                                                            readOnly = true,
+                                                            label = { Text("Kaçıncı") },
+                                                            trailingIcon = {
+                                                                IconButton(onClick = { nthExpanded = !nthExpanded }) {
+                                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                                }
+                                                            },
+                                                            modifier = Modifier.fillMaxWidth().clickable { nthExpanded = !nthExpanded },
+                                                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                            shape = RoundedCornerShape(10.dp)
+                                                        )
+                                                        DropdownMenu(expanded = nthExpanded, onDismissRequest = { nthExpanded = false }) {
+                                                            listOf(1 to "1. (İlk)", 2 to "2.", 3 to "3.", 4 to "4.", 5 to "5. (Son)").forEach { (v, lbl) ->
+                                                                DropdownMenuItem(text = { Text(lbl) }, onClick = { monthlyNth = v; nthExpanded = false })
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        val dayLabel = when (monthlyWeekday) {
+                                                            "monday" -> "Pazartesi"
+                                                            "tuesday" -> "Salı"
+                                                            "wednesday" -> "Çarşamba"
+                                                            "thursday" -> "Perşembe"
+                                                            "friday" -> "Cuma"
+                                                            "saturday" -> "Cumartesi"
+                                                            else -> "Pazar"
+                                                        }
+                                                        OutlinedTextField(
+                                                            value = dayLabel,
+                                                            onValueChange = {},
+                                                            readOnly = true,
+                                                            label = { Text("Gün") },
+                                                            trailingIcon = {
+                                                                IconButton(onClick = { weekdayExpanded = !weekdayExpanded }) {
+                                                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                                }
+                                                            },
+                                                            modifier = Modifier.fillMaxWidth().clickable { weekdayExpanded = !weekdayExpanded },
+                                                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                            shape = RoundedCornerShape(10.dp)
+                                                        )
+                                                        DropdownMenu(expanded = weekdayExpanded, onDismissRequest = { weekdayExpanded = false }) {
+                                                            listOf(
+                                                                "monday" to "Pazartesi",
+                                                                "tuesday" to "Salı",
+                                                                "wednesday" to "Çarşamba",
+                                                                "thursday" to "Perşembe",
+                                                                "friday" to "Cuma",
+                                                                "saturday" to "Cumartesi",
+                                                                "sunday" to "Pazar"
+                                                            ).forEach { (v, lbl) ->
+                                                                DropdownMenuItem(text = { Text(lbl) }, onClick = { monthlyWeekday = v; weekdayExpanded = false })
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if (recurrence == "yearly") {
+                                            OutlinedTextField(
+                                                value = yearlyDates,
+                                                onValueChange = { yearlyDates = it },
+                                                label = { Text("Tarihler (Örn. 01-01, 10-29)") },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                        }
+
+                                        // Belirli Saat Switch
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Belirli Bir Saat Var mı?", color = Color.White, fontSize = 13.sp)
+                                            Switch(
+                                                checked = hasSpecificTime,
+                                                onCheckedChange = { hasSpecificTime = it },
+                                                colors = SwitchDefaults.colors(checkedThumbColor = AccentOrange)
+                                            )
+                                        }
+
+                                        if (hasSpecificTime) {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                OutlinedTextField(
+                                                    value = startTime,
+                                                    onValueChange = {},
+                                                    readOnly = true,
+                                                    label = { Text("Başl. Saati") },
+                                                    modifier = Modifier.weight(1f).clickable { startTimePickerDialog.show() },
+                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                OutlinedTextField(
+                                                    value = dueTime,
+                                                    onValueChange = {},
+                                                    readOnly = true,
+                                                    label = { Text("Bitiş Saati") },
+                                                    modifier = Modifier.weight(1f).clickable { dueTimePickerDialog.show() },
+                                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = AccentOrange, unfocusedBorderColor = CardBorder),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 4: İş Kuralları & Kısıtlar
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isRulesExpanded = !isRulesExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("⚙️  İş Kuralları ve Onaylar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Icon(
+                                        imageVector = if (isRulesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                                if (isRulesExpanded) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SwitchRow("Başka Personele Delege Edilebilir", delegationAllowed) { delegationAllowed = it }
+                                        SwitchRow("Kapanışta Yönetici Onayı Gerekli", approvalRequired) { approvalRequired = it }
+                                        SwitchRow("Kapanışta Açıklama/Özet Metin Zorunlu", closureSummaryRequired) { closureSummaryRequired = it }
+                                        SwitchRow("Kapanışta Görsel Yüklemek Zorunlu", closureImageRequired) { closureImageRequired = it }
+                                        SwitchRow("Kapanışta Dosya Yüklemek Zorunlu", closureFileRequired) { closureFileRequired = it }
+                                        SwitchRow("Bitiş Tarihi Değiştirilebilir", editDueDateAllowed) { editDueDateAllowed = it }
+                                        SwitchRow("Zaman Planı Güncellenebilir", editScheduleAllowed) { editScheduleAllowed = it }
+                                        SwitchRow("Gecikirse Yapılmadı Olarak İşaretle", incompleteIfLate) { incompleteIfLate = it }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Görev Şablonu Dropdown
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            val tName = formTemplates.find { it.id == selectedTemplateId }?.name ?: "Şablon Yok"
+                                            OutlinedTextField(
+                                                value = tName,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Görev Form Şablonu") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { templateExpanded = !templateExpanded }) {
+                                                        Icon(Icons.Default.ArrowDropDown, null, tint = Color.White)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().clickable { templateExpanded = !templateExpanded },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White,
+                                                    focusedBorderColor = AccentOrange,
+                                                    unfocusedBorderColor = CardBorder
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            DropdownMenu(expanded = templateExpanded, onDismissRequest = { templateExpanded = false }) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Şablon Yok") },
+                                                    onClick = {
+                                                        selectedTemplateId = ""
+                                                        templateExpanded = false
+                                                    }
+                                                )
+                                                formTemplates.forEach { tpl ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(tpl.name) },
+                                                        onClick = {
+                                                            selectedTemplateId = tpl.id
+                                                            templateExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 5: Kontrol Listesi
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isChecklistExpanded = !isChecklistExpanded },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("📋  Kontrol Listesi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        IconButton(
+                                            onClick = { checklistInputs = checklistInputs + "" },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.AddCircle, null, tint = AccentGreen, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = if (isChecklistExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                }
+                                if (isChecklistExpanded) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        checklistInputs.forEachIndexed { index, value ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                OutlinedTextField(
+                                                    value = value,
+                                                    onValueChange = { newVal ->
+                                                        checklistInputs = checklistInputs.toMutableList().apply { set(index, newVal) }
+                                                    },
+                                                    placeholder = { Text("Maddeleri yazın...", fontSize = 12.sp) },
+                                                    modifier = Modifier.weight(1f),
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedTextColor = Color.White,
+                                                        unfocusedTextColor = Color.White,
+                                                        focusedBorderColor = AccentOrange,
+                                                        unfocusedBorderColor = CardBorder
+                                                    ),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                if (checklistInputs.size > 1) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    IconButton(
+                                                        onClick = {
+                                                            checklistInputs = checklistInputs.toMutableList().apply { removeAt(index) }
+                                                        },
+                                                        modifier = Modifier.size(28.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, null, tint = AccentRed, modifier = Modifier.size(20.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (title.isBlank() || responsibleId.isBlank() || locationId.isBlank() || dueDate.isBlank()) {
+                        Toast.makeText(context, "Lütfen gerekli alanları (Başlık, Lokasyon, Sorumlu ve Bitiş Tarihi) doldurun", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+
+                    isCreating = true
+                    scope.launch {
+                        val resp = employees.find { it.id == responsibleId }
+                        val assigneePositionId = resp?.positionId
+
+                        val startAtIso = if (startDate.isNotBlank()) {
+                            if (hasSpecificTime) "${startDate}T${startTime}:00.000Z" else "${startDate}T00:00:00.000Z"
+                        } else null
+
+                        val dueAtIso = if (dueDate.isNotBlank()) {
+                            if (hasSpecificTime) "${dueDate}T${dueTime}:00.000Z" else "${dueDate}T23:59:59.000Z"
+                        } else null
+
+                        val success = repo.createTask(
+                            title = title,
+                            description = description,
+                            responsibleId = responsibleId,
+                            collaboratorIds = collaboratorIds,
+                            observerIds = observerIds,
+                            priority = priority,
+                            dueAt = dueAtIso,
+                            startAt = startAtIso,
+                            hasSpecificTime = hasSpecificTime,
+                            delegationAllowed = delegationAllowed,
+                            approvalRequired = approvalRequired,
+                            closureSummaryRequired = closureSummaryRequired,
+                            closureFileRequired = closureFileRequired,
+                            closureImageRequired = closureImageRequired,
+                            editDueDateAllowed = editDueDateAllowed,
+                            editScheduleAllowed = editScheduleAllowed,
+                            incompleteIfLate = incompleteIfLate,
+                            recurrence = recurrence.ifBlank { null },
+                            recurrenceInterval = recurrenceInterval,
+                            recurrenceWeekdays = recurrenceWeekdays,
+                            monthlyPattern = monthlyPattern,
+                            monthlyDayOfMonth = monthlyDayOfMonth,
+                            monthlyNth = monthlyNth,
+                            monthlyWeekday = monthlyWeekday,
+                            specificDates = if (yearlyDates.isNotBlank()) yearlyDates.split(",").map { it.trim() }.filter { it.isNotBlank() } else null,
+                            timeOfDay = if (hasSpecificTime) startTime else null,
+                            formTemplateId = selectedTemplateId.ifBlank { null },
+                            branchNodeId = locationId,
+                            creatorId = currentUserId,
+                            creatorPositionId = currentUserPositionId,
+                            assigneePositionId = assigneePositionId,
+                            positions = positions,
+                            employees = employees,
+                            checklistItems = checklistInputs
+                        )
+
+                        if (success) {
+                            Toast.makeText(context, "Görev başarıyla oluşturuldu", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        } else {
+                            Toast.makeText(context, "Görev oluşturulamadı", Toast.LENGTH_SHORT).show()
+                        }
+                        isCreating = false
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
+                enabled = !isCreating,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                if (isCreating) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                } else {
+                    Text("Görev Oluştur", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isCreating) {
+                Text("Vazgeç", color = TextSecondary)
+            }
+        },
+        containerColor = CreateDialogBg
+    )
+
+    // Multi select dialog for Collaborators
+    if (showCollabSelectDialog) {
+        MultiPersonnelSelectDialog(
+            title = "Ortak Çalışanları Seçin",
+            employees = employees.filter { it.id != responsibleId && it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null }, // main assignee is already assigned
+            selectedIds = collaboratorIds,
+            onDismiss = { showCollabSelectDialog = false },
+            onConfirm = { selected ->
+                collaboratorIds = selected
+                showCollabSelectDialog = false
+            }
+        )
+    }
+
+    // Multi select dialog for Observers
+    if (showObserverSelectDialog) {
+        MultiPersonnelSelectDialog(
+            title = "Gözlemcileri Seçin",
+            employees = employees.filter { it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null },
+            selectedIds = observerIds,
+            onDismiss = { showObserverSelectDialog = false },
+            onConfirm = { selected ->
+                observerIds = selected
+                showObserverSelectDialog = false
+            }
+        )
+    }
+
+    // Single select dialog for Sorumlu (Main Assignee)
+    if (showRespSelectDialog) {
+        SinglePersonnelSelectDialog(
+            title = "Sorumlu Personeli Seçin",
+            employees = employees.filter { it.authorityLevel?.equals("Genel Merkez", ignoreCase = true) == true && it.deletedAt == null },
+            selectedId = responsibleId,
+            onDismiss = { showRespSelectDialog = false },
+            onConfirm = { selected ->
+                responsibleId = selected
+                showRespSelectDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AccentOrange,
+                checkedTrackColor = AccentOrange.copy(alpha = 0.4f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun MultiPersonnelSelectDialog(
+    title: String,
+    employees: List<EmployeeInfo>,
+    selectedIds: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit
+) {
+    var tempSelected by remember { mutableStateOf(selectedIds) }
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredEmployees = remember(employees, searchQuery) {
+        employees.filter { emp ->
+            emp.getDisplayName().contains(searchQuery, ignoreCase = true)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold, color = Color.White) },
+        text = {
+            Surface(
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(350.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = CardBorder
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (filteredEmployees.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
+                            }
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(filteredEmployees, key = { it.id }) { emp ->
+                                    val isChecked = tempSelected.contains(emp.id)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                tempSelected = if (isChecked) {
+                                                    tempSelected.filter { it != emp.id }
+                                                } else {
+                                                    tempSelected + emp.id
+                                                }
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = isChecked,
+                                            onCheckedChange = { checked ->
+                                                tempSelected = if (checked == true) {
+                                                    tempSelected + emp.id
+                                                } else {
+                                                    tempSelected.filter { it != emp.id }
+                                                }
+                                            },
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = AccentOrange,
+                                                uncheckedColor = CardBorder
+                                            )
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(emp.getDisplayName(), color = Color.White, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(tempSelected) },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
+            ) {
+                Text("Tamam")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("İptal", color = TextSecondary)
+            }
+        },
+        containerColor = SelectDialogBg
+    )
+}
+
+@Composable
+private fun SinglePersonnelSelectDialog(
+    title: String,
+    employees: List<EmployeeInfo>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredEmployees = remember(employees, searchQuery) {
+        employees.filter { emp ->
+            emp.getDisplayName().contains(searchQuery, ignoreCase = true)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold, color = Color.White) },
+        text = {
+            Surface(
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(350.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Personel Ara...", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = CardBorder
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (filteredEmployees.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Personel bulunamadı", color = TextSecondary, fontSize = 12.sp)
+                            }
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(filteredEmployees, key = { it.id }) { emp ->
+                                    val isSelected = emp.id == selectedId
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isSelected) AccentOrange.copy(alpha = 0.2f) else CardBg
+                                        ),
+                                        border = BorderStroke(1.dp, if (isSelected) AccentOrange else CardBorder),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onConfirm(emp.id)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = if (isSelected) AccentOrange else TextSecondary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = emp.getDisplayName(),
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("İptal", color = TextSecondary)
+            }
+        },
+        containerColor = SelectDialogBg
+    )
+}
+
+private fun getUriFileName(uri: android.net.Uri, context: android.content.Context): String? {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx != -1) {
+                    result = cursor.getString(idx)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1 && result != null) {
+            result = result.substring(cut + 1)
+        }
+    }
+    return result
+}

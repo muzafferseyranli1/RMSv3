@@ -216,7 +216,7 @@ export async function createTask(form, actor, uploadedFiles = []) {
     .map(id => context.employeesById.get(String(id)))
     .filter(Boolean)
 
-  const requiresAssignmentApproval = assignees.some(assignee => canReject(positionId, assignee.positionId, context.positions))
+  const requiresAssignmentApproval = !form.formTemplateId && assignees.some(assignee => canReject(positionId, assignee.positionId, context.positions))
   let formTemplate = null
   if (form.formTemplateId) {
     const tplRes = await db.from('form_templates').select('*').eq('id', form.formTemplateId).maybeSingle()
@@ -562,6 +562,16 @@ export async function sendBack(taskId, personnelId, reason) {
   if (!String(reason || '').trim()) return { data: null, error: { message: 'Reason is required' } }
   const taskResult = await db.from('tasks').select('*').eq('id', taskId).maybeSingle()
   if (taskResult.error) return taskResult
+  
+  const task = taskResult.data
+  if (task.linked_entity_table === 'workflow_instances') {
+    return { data: null, error: { message: 'İş akışı onay görevleri bu menüden geri gönderilemez, lütfen Onayla/Reddet butonlarını kullanın.' } }
+  }
+  const desc = task.description || ''
+  const isFormRelated = !!task.form_template_id || desc.includes('[Form ID:')
+  if (isFormRelated) {
+    return { data: null, error: { message: 'Form ilişkili görevler geri gönderilemez.' } }
+  }
   const approvalInsert = await db.from('task_approval_requests').insert({
     task_id: taskId,
     request_type: 'rejection',
@@ -583,7 +593,12 @@ export async function delegateTask(taskId, fromPersonnelId, toEmployee, position
   if (taskResult.error) return taskResult
   const task = taskResult.data
 
-  const isFormTask = !!task.form_template_id
+  if (task.linked_entity_table === 'workflow_instances') {
+    return { data: null, error: { message: 'İş akışı onay görevleri delege edilemez.' } }
+  }
+
+  const desc = task.description || ''
+  const isFormTask = !!task.form_template_id || desc.includes('[Form ID:')
   const requiresApproval = !isFormTask && canReject(positions.actorPositionId, toEmployee.positionId, positions.all)
 
   if (requiresApproval) {
@@ -686,6 +701,11 @@ export async function completeTask(taskId, personnelId, closure) {
   const detail = await fetchTaskDetail(taskId)
   if (detail.error) return detail
   const task = detail.data
+
+  if (task.linked_entity_table === 'workflow_instances') {
+    return { data: null, error: { message: 'İş akışı görevleri bu şekilde tamamlanamaz. Lütfen Onayla veya Reddet butonlarını kullanın.' } }
+  }
+
   const closureSummary = String(closure.summary || '').trim()
   const closureFiles = toArray(closure.files)
   const closureImages = toArray(closure.images)

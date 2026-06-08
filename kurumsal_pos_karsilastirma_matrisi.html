@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurumsal POS ve Restoran Yönetim Sistemleri Karşılaştırması</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            --winner-bg: rgba(16, 185, 129, 0.1);
+            --winner-border: #10b981;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            
+            --badge-full-bg: rgba(16, 185, 129, 0.2);
+            --badge-full-text: #34d399;
+            --badge-partial-bg: rgba(245, 158, 11, 0.2);
+            --badge-partial-text: #fbbf24;
+            --badge-none-bg: rgba(239, 68, 68, 0.2);
+            --badge-none-text: #f87171;
+        }
+
+        body {
+            margin: 0;
+            padding: 15px 20px;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 1px; /* gradient border trick */
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-height: 80vh;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+        }
+
+        th, td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        th {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        th:first-child, td:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 20;
+            width: 320px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        
+        th:first-child {
+            z-index: 30;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+            transition: background 0.3s ease;
+        }
+
+        .winner-col {
+            background: var(--winner-bg) !important;
+            border-left: 2px solid var(--winner-border);
+            border-right: 2px solid var(--winner-border);
+            position: relative;
+        }
+
+        th.winner-col {
+            color: #10b981;
+            font-weight: 800;
+            border-top: 2px solid var(--winner-border);
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+        
+        th.winner-col::after {
+            content: "👑";
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        td.winner-col:last-child, tr:last-child td.winner-col {
+            border-bottom: 2px solid var(--winner-border);
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+        }
+
+        .feature-title {
+            font-size: 1.0rem;
+            margin-bottom: 4px;
+            color: #fff;
+        }
+
+        .feature-desc {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            line-height: 1.3;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: transform 0.2s ease;
+        }
+
+        .badge:hover {
+            transform: scale(1.05);
+        }
+
+        .badge-full {
+            background: var(--badge-full-bg);
+            color: var(--badge-full-text);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+
+        .badge-partial {
+            background: var(--badge-partial-bg);
+            color: var(--badge-partial-text);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+        }
+
+        .badge-none {
+            background: var(--badge-none-bg);
+            color: var(--badge-none-text);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+
+        .winner-col .badge-full {
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+        }
+
+        @media (max-width: 1024px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+            th, td {
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Kurumsal Restoran Yönetim Sistemleri Karşılaştırması</h1>
+        <p class="subtitle">Büyüyen işletmelerin tüm operasyonunu tek ekrandan yönetmesini sağlayan yeni nesil teknolojilerin şeffaf pazar analizi.</p>
+    </header>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Gelişmiş Özellikler</th>
+                    <th class="winner-col">SuitableRMS (E-POS)</th>
+                    <th>Syrve</th>
+                    <th>Simpra</th>
+                    <th>SambaPOS</th>
+                    <th>Menulux</th>
+                    <th>Denge POS (Omni)</th>
+                    <th>KERZZ POS</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Çok Kanallı Fiyatlandırma -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Çok Kanallı Fiyatlandırma</div>
+                        <div class="feature-desc">Farklı satış kanallarında (Paket, Salon, Pazar Yeri) farklı fiyat politikaları uygulayın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+                <!-- Çok Kanallı Reçetelendirme -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Çok Kanallı Reçetelendirme</div>
+                        <div class="feature-desc">Paket servis veya salona özel ambalaj ve malzeme sarfiyatını (reçeteyi) otomatik ayırın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Ücretsiz Pazar Yeri -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Ücretsiz Pazar Yeri Entegrasyonları</div>
+                        <div class="feature-desc">Yemeksepeti, Getir, Trendyol... Tüm pazar yeri entegrasyonlarına hiçbir ek ücret ödemeden sahip olun.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                </tr>
+
+                <!-- Ücretsiz ÖKC -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Ücretsiz ÖKC Entegrasyonları</div>
+                        <div class="feature-desc">Yazar kasa ve mali yazıcı entegrasyonları için ekstra modül parası veya lisans ücreti ödemeyin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                    <td><span class="badge badge-none">Ücretli</span></td>
+                </tr>
+                
+                <!-- Tahminleme -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Satış Tahminleme (Forecasting)</div>
+                        <div class="feature-desc">Satışları sizin yerinize sistem tahmin eder, siz planlarınızı ona göre yaparsınız.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+                
+                <!-- Otonom Tedarik -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Otomatikleştirilmiş Sipariş Yönetimi</div>
+                        <div class="feature-desc">Gelecek satışları tahmin edip stoğu hesaplar. Size onaylamak kalır ya da tamamen akışına bırakırsınız.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+                
+                <!-- Sözleşme Yönetimi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Sözleşme Yönetimi</div>
+                        <div class="feature-desc">Mal alım sözleşmeleri, fiyat ve alım miktarınızı tamamen kontrol altına alın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Tedarikçi Paneli -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Tedarikçi Paneli (B2B Portal)</div>
+                        <div class="feature-desc">Tedarikçiler kendi şifreleriyle girsin, siparişlerini görsün, onaylasın ve yorum yapsın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Merkez Mutfak ve Depo -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Merkez Mutfak ve Depo Yönetimi</div>
+                        <div class="feature-desc">Merkezi üretim tesisiniz ve depolarınız arasındaki stok transferi kusursuz işlesin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                </tr>
+
+                <!-- Sabit Kıymet -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Sabit Kıymet Takibi</div>
+                        <div class="feature-desc">Satın aldığınız ekipmanlar kontrol altında. Amortisman, garanti ve arıza kayıtlarını unutun.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Teknik Servis -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Teknik Servis İş Akışı</div>
+                        <div class="feature-desc">Tüm teknik ekipmanların arıza bildirimlerini ve servis durumlarını tek ekrandan yönetin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Görev Yönetimi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Görev Yönetimi</div>
+                        <div class="feature-desc">Hiçbir iş unutulmayacak! Ekiplere anlık görev atayın, operasyon tıkır tıkır işlesin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Form Yönetimi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Entegre Form Yönetimi</div>
+                        <div class="feature-desc">Operasyonu doğru yönetmek için her şey elinizin altında: Denetim, kontrol listeleri, anketler.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Personel Vardiya Planlama -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Personel Yönetimi ve Vardiya Planlama</div>
+                        <div class="feature-desc">Vardiya planları sürükle bırakla çok kolay. Kaydet, anında personelin cebinde.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                </tr>
+
+                <!-- Personel Mobil Uygulaması -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Hepsi Bir Arada Personel Uygulaması</div>
+                        <div class="feature-desc">Görevler, vardiyalar, anketler. İster sipariş al, ister hazır olanı onayla. Her şey tek uygulamada.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Eğitim Modülü -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Eğitim Modülü (LMS)</div>
+                        <div class="feature-desc">Kim hangi eğitimi aldı, yeni ürünü herkes biliyor mu? Eğitimi tekrarlama zamanı geldi mi? Her şey güvende.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- PDKS -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Lokasyon Bazlı PDKS</div>
+                        <div class="feature-desc">Personel mağazaya gelince cebindeki mobil uygulamadan tek tuşla giriş-çıkış yapsın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                </tr>
+
+                <!-- Çağrı Merkezi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Entegre Çağrı Merkezi</div>
+                        <div class="feature-desc">Bir bilgisayar ve kulaklıkla çağrı merkeziniz hazır. İster evde, ister restoranda sipariş ve şikayetleri alın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+                <!-- Şikayet Yönetimi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Geri Bildirim ve Şikayet Yönetimi</div>
+                        <div class="feature-desc">Müşteri geri bildirimlerini anında toplayıp hızla krizi fırsata çevirin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                </tr>
+
+                <!-- Firmaya Özel Uygulama -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Markanıza Özel Mobil Uygulama</div>
+                        <div class="feature-desc">1 şube ya da 100 şube fark etmez, sadakat modülüyle entegre tamamen size ait bir uygulama.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                </tr>
+
+                <!-- Sadakat ve Sihirbaz -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Sadakat Modülü ve Kampanya Sihirbazı</div>
+                        <div class="feature-desc">Sınırsız kombinasyonda kampanya oluşturun ve tek tuşla anlık devreye alın.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+                <!-- Kiosk ve Tablet -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Self Order Kiosk ve Tablet</div>
+                        <div class="feature-desc">Kullanıcı deneyimine özel tasarım, en az dokunuşla en hızlı sipariş. Yeriniz yoksa tablet çözümümüz de var.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+                <!-- Esnek Raporlama -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Esnek Raporlama Modülü</div>
+                        <div class="feature-desc">Yeni bir rapora mı ihtiyacınız var? Saniyeler içinde kendi özel raporunuzu anında oluşturun.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+                <!-- Kar Zarar Raporu -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Kar & Zarar (P&L) Raporu</div>
+                        <div class="feature-desc">Ay sonu sayımı yapsanız da yapmasanız da, sistem hesaplar. İstediğiniz an P&L raporunuzu alırsınız.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                    <td><span class="badge badge-none">Yok</span></td>
+                </tr>
+
+                <!-- Çoklu Hiyerarşi -->
+                <tr>
+                    <td>
+                        <div class="feature-title">Çoklu Organizasyon Hiyerarşisi</div>
+                        <div class="feature-desc">Holdingten tek bir alt şubeye kadar her birimi ayrı ayrı veya merkezi birleştirip yönetin.</div>
+                    </td>
+                    <td class="winner-col"><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-partial">Kısmen Var</span></td>
+                    <td><span class="badge badge-full">Tam Var</span></td>
+                </tr>
+
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>

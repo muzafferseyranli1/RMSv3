@@ -102,6 +102,7 @@ const ManualReader = lazy(() => import('@/components/pages/ManualReader'))
 const EquipmentManagement = lazy(() => import('@/components/pages/EquipmentManagement'))
 const PublicSurvey = lazy(() => import('@/components/pages/PublicSurvey'))
 const TaskManager = lazy(() => import('@/components/pages/TaskManager'))
+const Workflows = lazy(() => import('@/components/pages/Workflows'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -476,6 +477,7 @@ function AppShell() {
               <Route path="/merkez-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
               <Route path="/merkez-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
               <Route path="/gorev-yoneticisi" element={<TaskManager />} />
+              <Route path="/is-akisleri" element={<Workflows />} />
               <Route path="*" element={<Navigate to={defaultPath} replace />} />
             </Routes>
           </Suspense>

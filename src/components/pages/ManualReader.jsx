@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useToast } from '@/hooks/useToast'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db, resolveImageUrl, buildApiUrl } from '@/lib/db'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 export default function ManualReader() {
   const toast = useToast()
@@ -78,9 +79,13 @@ export default function ManualReader() {
     setShowModal(true)
     if (!branchId) { toast('Şube bağlamı bulunamadı.', 'warning'); return }
     try {
-      const res = await db.from('equipments').select('id,name,code,active').eq('branch_id', branchId).eq('active', true).order('name')
+      const res = await fetch(buildApiUrl(`/api/equipment/instances?location_id=${branchId}&status=active`)).then(r => r.json())
       if (res.error) throw new Error(res.error.message)
-      const instances = res.data || []
+      const instances = (res.data || []).map(eq => {
+        const name = eq.name || eq.definition_name || 'İsimsiz Ekipman'
+        const label = eq.serial_number ? `${name} (${eq.serial_number})` : name
+        return { id: eq.id, name: label }
+      })
       setBranchEquipments(instances)
       const matched = instances.find(inst => inst.name?.toLowerCase().includes(eqDef.name?.toLowerCase()))
       setSelectedEquipmentInstanceId(matched ? matched.id : instances[0]?.id || '')
@@ -100,7 +105,13 @@ export default function ManualReader() {
     if (!faultDescription.trim()) return toast('Arıza açıklaması zorunludur.', 'warning')
     setSubmittingFault(true)
     try {
-      const res = await db.from('maintenance_tickets').insert({ branch_id: branchId, equipment_id: selectedEquipmentInstanceId, description: faultDescription, status: 'open' })
+      const res = await db.from('maintenance_tickets').insert({
+        branch_id: branchId,
+        equipment_instance_id: selectedEquipmentInstanceId,
+        description: faultDescription,
+        issue_description: faultDescription,
+        status: 'open'
+      })
       if (res.error) throw new Error(res.error.message)
       toast('Arıza kaydı oluşturuldu.', 'success')
       handleCloseFaultModal()
@@ -587,14 +598,15 @@ export default function ManualReader() {
                       Bu şube için kayıtlı ekipman bulunamadı.
                     </div>
                   ) : (
-                    <div className="sel-wrap">
-                      <select className="f-input" value={selectedEquipmentInstanceId} onChange={e => setSelectedEquipmentInstanceId(e.target.value)}>
-                        <option value="">-- Cihaz Seçin --</option>
-                        {branchEquipments.map(inst => (
-                          <option key={inst.id} value={inst.id}>{inst.name} {inst.code ? `(${inst.code})` : ''}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <SearchableSelect
+                      value={selectedEquipmentInstanceId}
+                      onChange={setSelectedEquipmentInstanceId}
+                      options={branchEquipments.map(inst => ({ value: inst.id, label: inst.name }))}
+                      placeholder="Cihaz seçin..."
+                      searchPlaceholder="Cihaz ara..."
+                      noResultsLabel="Eşleşen cihaz bulunamadı"
+                      allowClear={true}
+                    />
                   )}
                 </div>
                 <div>

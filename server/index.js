@@ -1037,11 +1037,16 @@ app.delete('/api/manual/categories/:id', async (req, res) => {
   }
 })
 
-// --- EKİPMAN TANIMLARI LİSTELEME API ---
+// --- EKİPMAN LİSTELEME API ---
 app.get('/api/manual/equipments', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM public.equipment_definitions ORDER BY name ASC;'
+      `SELECT ei.id, 
+              COALESCE(ei.name, ed.name) || ' (' || COALESCE(ei.serial_number, 'Seri No Yok') || ')' AS name
+       FROM public.equipment_instances ei
+       JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
+       WHERE ei.status = 'active'
+       ORDER BY name ASC;`
     )
     return res.json({ data: rows, error: null })
   } catch (err) {
@@ -1081,17 +1086,17 @@ app.get('/api/manual/pages/:id', async (req, res) => {
         COALESCE(
           json_agg(
             json_build_object(
-              'id', ed.id,
-              'name', ed.name,
-              'image_url', ed.image_url,
-              'maintenance_period_days', ed.maintenance_period_days
+              'id', ei.id,
+              'name', COALESCE(ei.name, ed.name) || ' (' || COALESCE(ei.serial_number, 'Seri No Yok') || ')',
+              'image_url', COALESCE(ei.image_url, ed.image_url)
             )
-          ) FILTER (WHERE ed.id IS NOT NULL),
+          ) FILTER (WHERE ei.id IS NOT NULL),
           '[]'::json
         ) as equipments
       FROM public.manual_pages p
       LEFT JOIN public.manual_page_equipments mpe ON p.id = mpe.page_id
-      LEFT JOIN public.equipment_definitions ed ON mpe.equipment_definition_id = ed.id
+      LEFT JOIN public.equipment_instances ei ON mpe.equipment_instance_id = ei.id
+      LEFT JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
       WHERE p.id = $1
       GROUP BY p.id;
     `
@@ -1127,7 +1132,7 @@ app.post('/api/manual/pages', async (req, res) => {
     if (Array.isArray(equipment_ids) && equipment_ids.length > 0) {
       const placeholders = equipment_ids.map((_, index) => `($1, $${index + 2})`).join(', ')
       await client.query(
-        `INSERT INTO public.manual_page_equipments (page_id, equipment_definition_id) VALUES ${placeholders};`,
+        `INSERT INTO public.manual_page_equipments (page_id, equipment_instance_id) VALUES ${placeholders};`,
         [page.id, ...equipment_ids]
       )
     }
@@ -1175,7 +1180,7 @@ app.put('/api/manual/pages/:id', async (req, res) => {
     if (Array.isArray(equipment_ids) && equipment_ids.length > 0) {
       const placeholders = equipment_ids.map((_, index) => `($1, $${index + 2})`).join(', ')
       await client.query(
-        `INSERT INTO public.manual_page_equipments (page_id, equipment_definition_id) VALUES ${placeholders};`,
+        `INSERT INTO public.manual_page_equipments (page_id, equipment_instance_id) VALUES ${placeholders};`,
         [id, ...equipment_ids]
       )
     }

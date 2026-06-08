@@ -10,6 +10,9 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import okhttp3.MultipartBody
 
 data class QueryRequest(
     val table: String,
@@ -38,6 +41,15 @@ interface ApiService {
     suspend fun resolveMaintenanceTicket(
         @Path("id") id: String,
         @Body requestBody: Map<String, @kotlin.jvm.JvmSuppressWildcards Any?>
+    ): QueryResponse
+
+    @GET("api/equipment/instances")
+    suspend fun getEquipmentInstances(): QueryResponse
+
+    @Multipart
+    @POST("api/upload")
+    suspend fun uploadFile(
+        @Part file: MultipartBody.Part
     ): QueryResponse
 }
 

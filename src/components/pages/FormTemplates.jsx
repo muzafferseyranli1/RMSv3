@@ -18,6 +18,9 @@ const FIELD_TYPES = [
   { value: 'text', label: 'Metin', icon: 'fa-font' },
   { value: 'select', label: 'Seçenekler', icon: 'fa-list' },
   { value: 'photo', label: 'Fotoğraf', icon: 'fa-camera' },
+  { value: 'file', label: 'Dosya Yükleme', icon: 'fa-paperclip' },
+  { value: 'time', label: 'Saat Seçimi', icon: 'fa-clock' },
+  { value: 'expense_account_select', label: 'Gider Hesabı Seçimi', icon: 'fa-file-invoice-dollar' },
   { value: 'stock_item_select', label: 'Stok Malı Seçimi', icon: 'fa-box' },
   { value: 'sale_item_select', label: 'Satış Malı Seçimi', icon: 'fa-cart-shopping' },
   { value: 'semi_product_select', label: 'Yarı Mamul Seçimi', icon: 'fa-cubes' },
@@ -33,6 +36,7 @@ const FORM_TYPES = [
   { value: 'customer_survey', label: 'Müşteri Anketi' },
   { value: 'personnel_survey', label: 'Personel Anketi' },
   { value: 'notification_form', label: 'Bildirim Formu' },
+  { value: 'request', label: 'Talep Formu' },
 ]
 
 function generateId() {
@@ -1048,16 +1052,32 @@ export default function FormTemplates() {
 
     if (sections.length === 0) return toast('En az bir bölüm ekleyin', 'warning')
 
+    const finalSchemaJson = { ...schemaJson, sections }
+    let finalAllowedContexts = editing.allowed_contexts || ['center', 'branch', 'warehouse']
+
+    if (editing.form_type === 'request') {
+      finalAllowedContexts = ['center', 'branch', 'warehouse']
+      finalSchemaJson.task_config = {
+        enabled: false,
+        assignee: { positions: [], personnel: [] },
+        collaborators: { positions: [], personnel: [] },
+        watchers: { positions: [], personnel: [], responsibles: false },
+        completion_hours: 72,
+        priority: 'normal',
+        rules: {}
+      }
+    }
+
     const payload = {
       title: editing.title,
       description: editing.description,
       formType: editing.form_type,
-      schemaJson: { ...schemaJson, sections },
+      schemaJson: finalSchemaJson,
       scoring: editing.scoring,
       requireGeo: editing.require_geo,
       minCompletionSeconds: editing.min_completion_seconds || null,
       createdBy: user?.id,
-      allowedContexts: editing.allowed_contexts || ['center', 'branch', 'warehouse'],
+      allowedContexts: finalAllowedContexts,
       requiresCostInput: editing.requires_cost_input || false,
       linkedEntityTable: editing.linked_entity_table || null,
     }
@@ -1386,242 +1406,248 @@ export default function FormTemplates() {
           </div>
           )}
 
-          <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
-            <label className="f-label" style={{ marginBottom: 8, display: 'block' }}>Kullanım Bağlamı / Alanı</label>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {[
-                { val: 'center', label: 'Merkez' },
-                { val: 'branch', label: 'Şube' },
-                { val: 'warehouse', label: 'Merkez Mutfak / Depo' }
-              ].map(ctx => {
-                const allowedList = editing.allowed_contexts || ['center', 'branch', 'warehouse']
-                const isChecked = allowedList.includes(ctx.val)
-                return (
-                  <label key={ctx.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: 'var(--text-strong)' }}>
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={e => {
-                        let newList = [...allowedList]
-                        if (e.target.checked) {
-                          if (!newList.includes(ctx.val)) newList.push(ctx.val)
-                        } else {
-                          newList = newList.filter(item => item !== ctx.val)
-                        }
-                        setEditing(p => ({ ...p, allowed_contexts: newList }))
-                      }}
-                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#8b5cf6' }}
-                    />
-                    <span>{ctx.label}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-
-          <div style={{ gridColumn: '1 / -1', marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.9rem', fontWeight: 700, color: 'var(--text-strong)', cursor: 'pointer' }}>
-              <input 
-                type="checkbox"
-                checked={!!schemaJson.task_config?.enabled}
-                onChange={e => {
-                  const val = e.target.checked
-                  setSchemaJson(prev => {
-                    const task_config = prev.task_config || {}
-                    return {
-                      ...prev,
-                      task_config: {
-                        ...task_config,
-                        enabled: val,
-                        assignee: task_config.assignee || { positions: [], personnel: [] },
-                        collaborators: task_config.collaborators || { positions: [], personnel: [] },
-                        watchers: task_config.watchers || { positions: [], personnel: [], responsibles: false },
-                        completion_hours: task_config.completion_hours || 72,
-                        priority: task_config.priority || 'normal',
-                        rules: task_config.rules || {}
-                      }
-                    }
-                  })
-                }}
-                style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#8b5cf6' }}
-              />
-              <span>Form Gönderildiğinde Otomatik Görev Oluştur</span>
-            </label>
-          </div>
-
-          {schemaJson.task_config?.enabled && (
-            <div style={{ gridColumn: '1 / -1', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 12, color: 'var(--text-strong)' }}>
-                <i className="fa-solid fa-bullseye" style={{ marginRight: 8, color: '#3b82f6' }} />
-                Görev Kuralları ve Katılımcılar
-              </h3>
-
-              {isAnonSurvey && (
-                <div style={{ padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '.8rem', color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, gridColumn: '1 / -1' }}>
-                  <i className="fa-solid fa-info-circle" style={{ color: '#4f46e5', fontSize: '1.1rem' }} />
-                  <span>Anonim doldurmada tüm atamalar yalnızca merkez çalışanlarına yapılır. Görevi otomatik oluşturan: <strong>Görev Yöneticisi (Task Manager)</strong></span>
-                </div>
-              )}
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                {/* Sol Taraf: Sorumlular ve Süre */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {editing.form_type === 'checklist' && !schemaJson.require_branch_selection ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <label className="f-label">Birincil Sorumlu (Atanan)</label>
-                      <div style={{ minHeight: 40, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', background: 'var(--surface-2)', color: 'var(--text-main)', fontSize: '.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <i className="fa-solid fa-user-gear" style={{ color: '#8b5cf6' }} />
-                        <span>Formu Dolduran Kişi (Otomatik Sorumlu Olur)</span>
-                      </div>
-                      <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '4px 0 0 0', lineHeight: 1.3 }}>
-                        Şube seçimi gerekli olmadığı için formu dolduran kişi otomatik olarak görevin birincil sorumlusu atanır.
-                      </p>
-                    </div>
-                  ) : (
-                    <TargetSelector
-                      title="Birincil Sorumlu (Atanan)"
-                      description="Form tamamlandığında oluşturulacak görev bu hedeflere atanacaktır. Seçilen pozisyonlar denetim yapılan şube çalışanlarına göre filtrelenerek atanır. Listede sadece merkez çalışanları isimle seçilebilir."
-                      value={schemaJson.task_config?.assignee}
-                      onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
-                      positions={positions}
-                      personnelList={personnelList}
-                      hidePositions={isAnonSurvey}
-                    />
-                  )}
-
-                  <TargetSelector
-                    title="Ek Sorumlular (İşbirlikçiler)"
-                    description="Görevi birlikte yürütecek ve tamamlayabilecek ek personel veya pozisyonlar. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
-                    value={schemaJson.task_config?.collaborators}
-                    onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
-                    positions={positions}
-                    personnelList={personnelList}
-                    hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
-                  />
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <TargetSelector
-                      title="Gözlemciler (Takip Edenler)"
-                      description="Görevin durumunu izleyebilecek, ancak üzerinde işlem yapmayacak personel. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
-                      value={schemaJson.task_config?.watchers}
-                      onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
-                      positions={positions}
-                      personnelList={personnelList}
-                      hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
-                    />
-                    {editing.form_type !== 'checklist' && !isAnonSurvey && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={!!schemaJson.task_config?.watchers?.responsibles}
-                          onChange={e => {
-                            const val = e.target.checked
-                            setSchemaJson(p => {
-                              const task_config = p.task_config || {}
-                              const watchers = task_config.watchers || { positions: [], personnel: [], responsibles: false }
-                              return {
-                                ...p,
-                                task_config: {
-                                  ...task_config,
-                                  watchers: { ...watchers, responsibles: val }
-                                }
-                              }
-                            })
-                          }}
-                          style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#8b5cf6' }}
-                        />
-                        <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Şube Sorumlularını Otomatik Gözlemci Ekle</span>
-                      </label>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="f-label">Görevin Tamamlanma Süresi (Saat)</label>
-                    <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
-                      Görevin açılışından itibaren kaç saat içinde tamamlanması gerektiğini belirtin.
-                    </p>
-                    <input
-                      type="number"
-                      className="f-input"
-                      value={schemaJson.task_config?.completion_hours || 72}
-                      onChange={e => {
-                        const val = Number(e.target.value) || 72
-                        setSchemaJson(p => ({
-                          ...p,
-                          task_config: { ...p.task_config, completion_hours: val }
-                        }))
-                      }}
-                      placeholder="72"
-                      min="1"
-                      style={{ width: '100%', padding: '8px 12px' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="f-label">Görevin Önceliği</label>
-                    <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
-                      Oluşturulacak görevin öncelik derecesini seçin.
-                    </p>
-                    <select
-                      className="f-input"
-                      value={schemaJson.task_config?.priority || 'normal'}
-                      onChange={e => {
-                        const val = e.target.value
-                        setSchemaJson(p => ({
-                          ...p,
-                          task_config: { ...p.task_config, priority: val }
-                        }))
-                      }}
-                      style={{ width: '100%', padding: '8px 12px', height: 38 }}
-                    >
-                      <option value="low">Düşük</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">Yüksek</option>
-                      <option value="urgent">Kritik</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Sağ Taraf: Kurallar */}
-                <div>
-                  <label className="f-label">Görev Kuralları</label>
-                  <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
-                    Oluşturulacak görev için geçerli olacak kuralları seçin.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-                    {[
-                      { key: 'delegation_allowed', label: 'Delege Etmeye İzin Ver' },
-                      { key: 'approval_required', label: 'Kapanış Onayı Gerekli' },
-                      { key: 'closure_summary_required', label: 'Kapanış Özeti Zorunlu' },
-                      { key: 'closure_file_required', label: 'Kapanış Dosyası Zorunlu' },
-                      { key: 'closure_image_required', label: 'Kapanış Fotoğrafı Zorunlu' },
-                      { key: 'requires_cost_input', label: 'Kapatmada Maliyet Girişi Zorunlu 💰' },
-                      { key: 'edit_due_date_allowed', label: 'Atanan Vade Değiştirebilir' },
-                      { key: 'edit_schedule_allowed', label: 'Atanan Takvim Değiştirebilir' },
-                      { key: 'incomplete_if_late', label: 'Süresinde Bitmezse Tamamlanmadı Say' }
-                    ].map(rule => {
-                      const isChecked = !!schemaJson.task_config?.rules?.[rule.key]
-                      return (
-                        <label key={rule.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.8rem', cursor: 'pointer' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={isChecked}
-                            onChange={e => {
-                              const rls = schemaJson.task_config?.rules || {}
-                              setSchemaJson(p => ({ 
-                                ...p, 
-                                task_config: { ...p.task_config, rules: { ...rls, [rule.key]: e.target.checked } }
-                              }))
-                            }}
-                          />
-                          <span>{rule.label}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
+          {editing.form_type !== 'request' && (
+            <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+              <label className="f-label" style={{ marginBottom: 8, display: 'block' }}>Kullanım Bağlamı / Alanı</label>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {[
+                  { val: 'center', label: 'Merkez' },
+                  { val: 'branch', label: 'Şube' },
+                  { val: 'warehouse', label: 'Merkez Mutfak / Depo' }
+                ].map(ctx => {
+                  const allowedList = editing.allowed_contexts || ['center', 'branch', 'warehouse']
+                  const isChecked = allowedList.includes(ctx.val)
+                  return (
+                    <label key={ctx.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.82rem', fontWeight: 600, color: 'var(--text-strong)' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={e => {
+                          let newList = [...allowedList]
+                          if (e.target.checked) {
+                            if (!newList.includes(ctx.val)) newList.push(ctx.val)
+                          } else {
+                            newList = newList.filter(item => item !== ctx.val)
+                          }
+                          setEditing(p => ({ ...p, allowed_contexts: newList }))
+                        }}
+                        style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                      />
+                      <span>{ctx.label}</span>
+                    </label>
+                  )
+                })}
               </div>
             </div>
+          )}
+
+          {editing.form_type !== 'request' && (
+            <>
+              <div style={{ gridColumn: '1 / -1', marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.9rem', fontWeight: 700, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox"
+                    checked={!!schemaJson.task_config?.enabled}
+                    onChange={e => {
+                      const val = e.target.checked
+                      setSchemaJson(prev => {
+                        const task_config = prev.task_config || {}
+                        return {
+                          ...prev,
+                          task_config: {
+                            ...task_config,
+                            enabled: val,
+                            assignee: task_config.assignee || { positions: [], personnel: [] },
+                            collaborators: task_config.collaborators || { positions: [], personnel: [] },
+                            watchers: task_config.watchers || { positions: [], personnel: [], responsibles: false },
+                            completion_hours: task_config.completion_hours || 72,
+                            priority: task_config.priority || 'normal',
+                            rules: task_config.rules || {}
+                          }
+                        }
+                      })
+                    }}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                  />
+                  <span>Form Gönderildiğinde Otomatik Görev Oluştur</span>
+                </label>
+              </div>
+
+              {schemaJson.task_config?.enabled && (
+                <div style={{ gridColumn: '1 / -1', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 12, color: 'var(--text-strong)' }}>
+                    <i className="fa-solid fa-bullseye" style={{ marginRight: 8, color: '#3b82f6' }} />
+                    Görev Kuralları ve Katılımcılar
+                  </h3>
+
+                  {isAnonSurvey && (
+                    <div style={{ padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '.8rem', color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, gridColumn: '1 / -1' }}>
+                      <i className="fa-solid fa-info-circle" style={{ color: '#4f46e5', fontSize: '1.1rem' }} />
+                      <span>Anonim doldurmada tüm atamalar yalnızca merkez çalışanlarına yapılır. Görevi otomatik oluşturan: <strong>Görev Yöneticisi (Task Manager)</strong></span>
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                    {/* Sol Taraf: Sorumlular ve Süre */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {editing.form_type === 'checklist' && !schemaJson.require_branch_selection ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <label className="f-label">Birincil Sorumlu (Atanan)</label>
+                          <div style={{ minHeight: 40, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', background: 'var(--surface-2)', color: 'var(--text-main)', fontSize: '.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <i className="fa-solid fa-user-gear" style={{ color: '#8b5cf6' }} />
+                            <span>Formu Dolduran Kişi (Otomatik Sorumlu Olur)</span>
+                          </div>
+                          <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '4px 0 0 0', lineHeight: 1.3 }}>
+                            Şube seçimi gerekli olmadığı için formu dolduran kişi otomatik olarak görevin birincil sorumlusu atanır.
+                          </p>
+                        </div>
+                      ) : (
+                        <TargetSelector
+                          title="Birincil Sorumlu (Atanan)"
+                          description="Form tamamlandığında oluşturulacak görev bu hedeflere atanacaktır. Seçilen pozisyonlar denetim yapılan şube çalışanlarına göre filtrelenerek atanır. Listede sadece merkez çalışanları isimle seçilebilir."
+                          value={schemaJson.task_config?.assignee}
+                          onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, assignee: val } }))}
+                          positions={positions}
+                          personnelList={personnelList}
+                          hidePositions={isAnonSurvey}
+                        />
+                      )}
+
+                      <TargetSelector
+                        title="Ek Sorumlular (İşbirlikçiler)"
+                        description="Görevi birlikte yürütecek ve tamamlayabilecek ek personel veya pozisyonlar. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
+                        value={schemaJson.task_config?.collaborators}
+                        onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, collaborators: val } }))}
+                        positions={positions}
+                        personnelList={personnelList}
+                        hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
+                      />
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <TargetSelector
+                          title="Gözlemciler (Takip Edenler)"
+                          description="Görevin durumunu izleyebilecek, ancak üzerinde işlem yapmayacak personel. Seçilen pozisyonlar şube çalışanlarına göre filtrelenir. Listede sadece merkez çalışanları bulunur."
+                          value={schemaJson.task_config?.watchers}
+                          onChange={val => setSchemaJson(p => ({ ...p, task_config: { ...p.task_config, watchers: val } }))}
+                          positions={positions}
+                          personnelList={personnelList}
+                          hidePositions={isAnonSurvey || editing.form_type === 'checklist'}
+                        />
+                        {editing.form_type !== 'checklist' && !isAnonSurvey && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', cursor: 'pointer', marginTop: 4 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!schemaJson.task_config?.watchers?.responsibles}
+                              onChange={e => {
+                                const val = e.target.checked
+                                setSchemaJson(p => {
+                                  const task_config = p.task_config || {}
+                                  const watchers = task_config.watchers || { positions: [], personnel: [], responsibles: false }
+                                  return {
+                                    ...p,
+                                    task_config: {
+                                      ...task_config,
+                                      watchers: { ...watchers, responsibles: val }
+                                    }
+                                  }
+                                })
+                              }}
+                              style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                            />
+                            <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Şube Sorumlularını Otomatik Gözlemci Ekle</span>
+                          </label>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="f-label">Görevin Tamamlanma Süresi (Saat)</label>
+                        <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                          Görevin açılışından itibaren kaç saat içinde tamamlanması gerektiğini belirtin.
+                        </p>
+                        <input
+                          type="number"
+                          className="f-input"
+                          value={schemaJson.task_config?.completion_hours || 72}
+                          onChange={e => {
+                            const val = Number(e.target.value) || 72
+                            setSchemaJson(p => ({
+                              ...p,
+                              task_config: { ...p.task_config, completion_hours: val }
+                            }))
+                          }}
+                          placeholder="72"
+                          min="1"
+                          style={{ width: '100%', padding: '8px 12px' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="f-label">Görevin Önceliği</label>
+                        <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                          Oluşturulacak görevin öncelik derecesini seçin.
+                        </p>
+                        <select
+                          className="f-input"
+                          value={schemaJson.task_config?.priority || 'normal'}
+                          onChange={e => {
+                            const val = e.target.value
+                            setSchemaJson(p => ({
+                              ...p,
+                              task_config: { ...p.task_config, priority: val }
+                            }))
+                          }}
+                          style={{ width: '100%', padding: '8px 12px', height: 38 }}
+                        >
+                          <option value="low">Düşük</option>
+                          <option value="normal">Normal</option>
+                          <option value="high">Yüksek</option>
+                          <option value="urgent">Kritik</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Sağ Taraf: Kurallar */}
+                    <div>
+                      <label className="f-label">Görev Kuralları</label>
+                      <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.3 }}>
+                        Oluşturulacak görev için geçerli olacak kuralları seçin.
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                        {[
+                          { key: 'delegation_allowed', label: 'Delege Etmeye İzin Ver' },
+                          { key: 'approval_required', label: 'Kapanış Onayı Gerekli' },
+                          { key: 'closure_summary_required', label: 'Kapanış Özeti Zorunlu' },
+                          { key: 'closure_file_required', label: 'Kapanış Dosyası Zorunlu' },
+                          { key: 'closure_image_required', label: 'Kapanış Fotoğrafı Zorunlu' },
+                          { key: 'requires_cost_input', label: 'Kapatmada Maliyet Girişi Zorunlu 💰' },
+                          { key: 'edit_due_date_allowed', label: 'Atanan Vade Değiştirebilir' },
+                          { key: 'edit_schedule_allowed', label: 'Atanan Takvim Değiştirebilir' },
+                          { key: 'incomplete_if_late', label: 'Süresinde Bitmezse Tamamlanmadı Say' }
+                        ].map(rule => {
+                          const isChecked = !!schemaJson.task_config?.rules?.[rule.key]
+                          return (
+                            <label key={rule.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.8rem', cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked}
+                                onChange={e => {
+                                  const rls = schemaJson.task_config?.rules || {}
+                                  setSchemaJson(p => ({ 
+                                    ...p, 
+                                    task_config: { ...p.task_config, rules: { ...rls, [rule.key]: e.target.checked } }
+                                  }))
+                                }}
+                              />
+                              <span>{rule.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>
