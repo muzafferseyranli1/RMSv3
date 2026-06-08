@@ -111,6 +111,20 @@ function getAllowedChildLabels(type) {
   return children.map(key => CT[key]?.label || key).join(', ')
 }
 
+function getAnaDepoNodes(nodes) {
+  if (!Array.isArray(nodes)) return []
+  const list = []
+  for (const n of nodes) {
+    if (n.type === 'anadepo') {
+      list.push(n)
+    }
+    if (n.children && n.children.length) {
+      list.push(...getAnaDepoNodes(n.children))
+    }
+  }
+  return list
+}
+
 export default function Company() {
   const toast = useToast()
   const [tree, setTree]       = useState([])
@@ -163,6 +177,52 @@ export default function Company() {
   async function saveTree(newTree) {
     await db.from('settings').upsert({ key: 'company_tree', value: newTree }, { onConflict: 'key' })
     setTree([...newTree])
+
+    // Sync anadepo nodes to suppliers
+    try {
+      const anadepoNodes = getAnaDepoNodes(newTree)
+      const activeSyncKeys = anadepoNodes.map(n => `anadepo_${n.id}`)
+
+      // Upsert current warehouse nodes
+      for (const node of anadepoNodes) {
+        const syncKey = `anadepo_${node.id}`
+        const { error: upsertErr } = await db.from('suppliers').upsert({
+          name: node.name,
+          supplier_kind: 'internal_warehouse',
+          source_workspace_scope: 'anadepo',
+          source_branch_id: node.id,
+          is_system_generated: true,
+          sync_key: syncKey,
+          active: true,
+          deleted_at: null
+        }, { onConflict: 'sync_key' })
+        if (upsertErr) throw upsertErr
+      }
+
+      // Fetch all system-generated internal warehouses to deactivate deleted ones
+      const { data: existingSuppliers, error: selectErr } = await db.from('suppliers')
+        .select('id, sync_key')
+        .eq('supplier_kind', 'internal_warehouse')
+        .eq('is_system_generated', true)
+
+      if (selectErr) throw selectErr
+
+      if (existingSuppliers) {
+        for (const s of existingSuppliers) {
+          if (s.sync_key && !activeSyncKeys.includes(s.sync_key)) {
+            // Soft delete/deactivate this warehouse since it was removed from the tree
+            const { error: updateErr } = await db.from('suppliers').update({
+              active: false,
+              deleted_at: new Date().toISOString()
+            }).eq('id', s.id)
+            if (updateErr) throw updateErr
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Tedarikçi senkronizasyon hatası:', err)
+      toast('Tedarikçi senkronizasyonunda hata oluştu: ' + err.message, 'error')
+    }
   }
 
   // ── Open modals ─────────────────────────────────────────────

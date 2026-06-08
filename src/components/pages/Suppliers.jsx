@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
@@ -92,6 +92,7 @@ const EMPTY = {
   fatura_tipi:'e-arsiv',pay_term:30,banka:'',iban:'',
   siparis_yontemi:'email',siparis_mailleri:[],siparis_telefonlari:[],siparis_wa_no:'',
   logo_url:'',cat:'',address:'',notes:'',active:true,
+  supplier_kind:'external',
 }
 
 export default function Suppliers() {
@@ -133,6 +134,7 @@ export default function Suppliers() {
       siparis_yontemi:s.siparis_yontemi||'email',siparis_mailleri:s.siparis_mailleri||[],
       siparis_telefonlari:s.siparis_telefonlari||[],siparis_wa_no:s.siparis_wa_no||'',
       logo_url:s.logo_url||'',cat:s.cat||'',address:s.address||'',notes:s.notes||'',active:s.active!==false,
+      supplier_kind:s.supplier_kind||'external',
     })
     setEditId(s.id);setTab(0);setModal(true)
   }
@@ -155,6 +157,7 @@ export default function Suppliers() {
       siparis_wa_no:form.siparis_wa_no.trim()||null,
       logo_url:form.logo_url||null,cat:form.cat.trim()||null,
       address:form.address.trim()||null,notes:form.notes.trim()||null,active:form.active,
+      supplier_kind:form.supplier_kind||'external',
     }
     if(editId){
       const {error}=await db.from('suppliers').update(payload).eq('id',editId)
@@ -169,6 +172,10 @@ export default function Suppliers() {
   }
 
   async function remove(item){
+    if (item.supplier_kind && item.supplier_kind !== 'external') {
+      toast('İç tedarikçiler silinemez; Şirket Kuruluşu ekranından yönetilmelidir.', 'error')
+      return
+    }
     const {error}=await db.from('suppliers').update({deleted_at: new Date().toISOString()}).eq('id',item.id)
     if(error) toast('Silinemedi: '+error.message,'error')
     else{toast(`"${item.name}" silindi — geri alınabilir`,'info');load()}
@@ -176,6 +183,10 @@ export default function Suppliers() {
   }
 
   async function restoreItem(item){
+    if (item.supplier_kind && item.supplier_kind !== 'external') {
+      toast('İç tedarikçiler geri yüklenemez; Şirket Kuruluşu ekranından yönetilmelidir.', 'error')
+      return
+    }
     const {error}=await db.from('suppliers').update({deleted_at: null}).eq('id',item.id)
     if(error) toast('Geri alınamadı: '+error.message,'error')
     else{toast(`"${item.name}" geri alındı`,'success');load()}
@@ -239,7 +250,15 @@ export default function Suppliers() {
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         {item.logo_url && <img src={item.logo_url} style={{width:28,height:28,borderRadius:6,objectFit:'contain',border:'1px solid #e2e8f0'}} alt=""/>}
                         <div>
-                          <div className={`row-name ${item.deleted_at?'row-deleted':''}`} style={{fontWeight:700,color:'#0f172a'}}>{item.name}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <div className={`row-name ${item.deleted_at?'row-deleted':''}`} style={{fontWeight:700,color:'#0f172a'}}>{item.name}</div>
+                            {item.supplier_kind === 'internal_warehouse' && (
+                              <span className="badge" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontSize: '0.65rem', padding: '1px 6px' }}>İç Depo</span>
+                            )}
+                            {item.supplier_kind === 'internal_kitchen' && (
+                              <span className="badge" style={{ background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', fontSize: '0.65rem', padding: '1px 6px' }}>Merkez Mutfak</span>
+                            )}
+                          </div>
                           {item.marka_kisa_adi && <div style={{fontSize:'.74rem',color:'#94a3b8'}}>{item.marka_kisa_adi}</div>}
                         </div>
                       </div>
@@ -251,14 +270,18 @@ export default function Suppliers() {
                     <td><span className={`badge ${item.active?'bg':'br'}`}>{item.active?'Aktif':'Pasif'}</span></td>
                     <td><div style={{display:'flex',gap:3}}>
                       {item.deleted_at ? (
-                        <button className="ico-btn" title="Geri Al" onClick={()=>restoreItem(item)}
-                          style={{color:'#16a34a',background:'#d1fae5'}}>
-                          <i className="fa-solid fa-rotate-left"/>
-                        </button>
+                        !(item.supplier_kind && item.supplier_kind !== 'external') && (
+                          <button className="ico-btn" title="Geri Al" onClick={()=>restoreItem(item)}
+                            style={{color:'#16a34a',background:'#d1fae5'}}>
+                            <i className="fa-solid fa-rotate-left"/>
+                          </button>
+                        )
                       ) : (
                         <>
                           <button className="ico-btn edit" onClick={()=>openEdit(item)}><i className="fa-solid fa-pen"/></button>
-                          <button className="ico-btn del" onClick={()=>setConfirm(item)}><i className="fa-solid fa-trash"/></button>
+                          {!(item.supplier_kind && item.supplier_kind !== 'external') && (
+                            <button className="ico-btn del" onClick={()=>setConfirm(item)}><i className="fa-solid fa-trash"/></button>
+                          )}
                         </>
                       )}
                     </div></td>
@@ -299,81 +322,98 @@ export default function Suppliers() {
           </div>
         }
       >
-        {tab===0 && <div style={{display:'grid',gap:14}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
-            <div><label className="f-label">Cari Kodu</label>
-              <input className="f-input" value={form.cari_kodu} onChange={e=>set('cari_kodu',e.target.value)} placeholder="CARİ-001"/></div>
-            <div><label className="f-label">Muhasebe Kodu</label>
-              <input className="f-input" value={form.muhasebe_kodu} onChange={e=>set('muhasebe_kodu',e.target.value)} placeholder="320.001"/></div>
-            <div><label className="f-label">Karşı Taraf Cari Kodu</label>
-              <input className="f-input" value={form.karsi_taraf_kodu} onChange={e=>set('karsi_taraf_kodu',e.target.value)} placeholder="Karşı tarafın kodu"/>
-              <p className="f-hint">Sipariş ve entegrasyonlarda kullanılır</p></div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div><label className="f-label">Tedarikçi Adı (Ünvanı) <span style={{color:'#ef4444'}}>*</span></label>
-              <input className="f-input" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Şirket ünvanı"/></div>
-            <div><label className="f-label">Marka / Kısa Adı</label>
-              <input className="f-input" value={form.marka_kisa_adi} onChange={e=>set('marka_kisa_adi',e.target.value)} placeholder="Bilinen kısa isim"/></div>
-          </div>
-          <div>
-            <label className="f-label">Şirket Tipi</label>
-            <div style={{display:'flex',gap:10}}>
-              {[{value:'tuzel',label:'Tüzel Kişilik'},{value:'sahis',label:'Şahıs Şirketi'}].map(o=>(
-                <label key={o.value} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',
-                  padding:'8px 16px',borderRadius:10,border:`1.5px solid ${form.sirket_tipi===o.value?'#fbbf24':'#c4cdd9'}`,
-                  background:form.sirket_tipi===o.value?'#fffbeb':'#fff',fontWeight:600,fontSize:'.855rem'}}>
-                  <input type="radio" name="sirket_tipi" value={o.value} checked={form.sirket_tipi===o.value}
-                    onChange={()=>set('sirket_tipi',o.value)} style={{accentColor:'#fbbf24'}}/>
-                  {o.label}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
-            <div><label className="f-label">Vergi Dairesi</label>
-              <input className="f-input" value={form.vergi_dairesi} onChange={e=>set('vergi_dairesi',e.target.value)} placeholder="Vergi dairesi"/></div>
-            <div><label className="f-label">Vergi No</label>
-              <input className="f-input" value={form.vergi_no} onChange={e=>set('vergi_no',e.target.value)} placeholder="1234567890"/></div>
-            <div><label className="f-label">TC No <span style={{fontSize:'.68rem',color:'#94a3b8',fontWeight:400}}>(şahıs için)</span></label>
-              <input className="f-input" value={form.tc_no} onChange={e=>set('tc_no',e.target.value)} placeholder="11 haneli TC"
-                disabled={form.sirket_tipi==='tuzel'} style={{background:form.sirket_tipi==='tuzel'?'#f1f5f9':''}}/></div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
-            <div><label className="f-label">Fatura Tipi</label>
-              <SearchableSelect value={form.fatura_tipi} onChange={v=>set('fatura_tipi',v)} options={FATURA_OPTS} allowClear={false}/>
-            </div>
-            <div><label className="f-label">Ödeme Vadesi (gün)</label>
-              <input className="f-input" type="number" min="0" value={form.pay_term} onChange={e=>set('pay_term',e.target.value)}/></div>
-            <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
-              <label className="tog"><input type="checkbox" checked={form.active} onChange={e=>set('active',e.target.checked)}/><span className="tog-sl"/></label>
-              <span style={{fontSize:'.855rem',fontWeight:600,color:'#334155'}}>Aktif</span>
-            </div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div><label className="f-label">Banka</label>
-              <input className="f-input" value={form.banka} onChange={e=>set('banka',e.target.value)} placeholder="Banka adı"/></div>
-            <div><label className="f-label">IBAN</label>
-              <input className="f-input" value={form.iban} onChange={e=>set('iban',e.target.value)} placeholder="TR00 0000 0000..." style={{fontFamily:'monospace'}}/></div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div><label className="f-label">Adres</label>
-              <textarea className="f-input" rows={2} value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Adres…" style={{resize:'vertical'}}/></div>
-            <div><label className="f-label">Notlar</label>
-              <textarea className="f-input" rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Notlar…" style={{resize:'vertical'}}/></div>
-          </div>
-          <div><label className="f-label">Marka Logosu</label>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <label style={{cursor:'pointer'}}>
-                <span className="btn-o" style={{fontSize:'.8rem',padding:'7px 14px'}}><i className="fa-solid fa-upload"/> Yükle</span>
-                <input type="file" accept="image/*" style={{display:'none'}} onChange={handleLogo}/>
-              </label>
-              {form.logo_url && <>
-                <img src={form.logo_url} style={{height:32,borderRadius:6,border:'1px solid #e2e8f0'}} alt="logo"/>
-                <button className="btn-g" onClick={()=>set('logo_url','')} style={{fontSize:'.75rem'}}>Kaldır</button>
-              </>}
-            </div>
-          </div>
-        </div>}
+        {tab===0 && (
+          (() => {
+            const isInternal = form.supplier_kind && form.supplier_kind !== 'external';
+            return (
+              <div style={{display:'grid',gap:14}}>
+                {isInternal && (
+                  <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,
+                    padding:'8px 12px',display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                    <i className="fa-solid fa-circle-info" style={{color:'#16a34a'}}/>
+                    <span style={{fontSize:'.78rem',color:'#15803d',fontWeight:600}}>
+                      Bu tedarikçi sistem tarafından otomatik olarak yönetilmektedir. Ünvan ve durum alanı Şirket Kuruluşu sayfasıyla senkronizedir.
+                    </span>
+                  </div>
+                )}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Cari Kodu</label>
+                    <input className="f-input" value={form.cari_kodu} onChange={e=>set('cari_kodu',e.target.value)} placeholder="CARİ-001"/></div>
+                  <div><label className="f-label">Muhasebe Kodu</label>
+                    <input className="f-input" value={form.muhasebe_kodu} onChange={e=>set('muhasebe_kodu',e.target.value)} placeholder="320.001"/></div>
+                  <div><label className="f-label">Karşı Taraf Cari Kodu</label>
+                    <input className="f-input" value={form.karsi_taraf_kodu} onChange={e=>set('karsi_taraf_kodu',e.target.value)} placeholder="Karşı tarafın kodu"/>
+                    <p className="f-hint">Sipariş ve entegrasyonlarda kullanılır</p></div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Tedarikçi Adı (Ünvanı) <span style={{color:'#ef4444'}}>*</span></label>
+                    <input className="f-input" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Şirket ünvanı" disabled={isInternal} style={{background:isInternal?'#f1f5f9':''}}/></div>
+                  <div><label className="f-label">Marka / Kısa Adı</label>
+                    <input className="f-input" value={form.marka_kisa_adi} onChange={e=>set('marka_kisa_adi',e.target.value)} placeholder="Bilinen kısa isim"/></div>
+                </div>
+                <div>
+                  <label className="f-label">Şirket Tipi</label>
+                  <div style={{display:'flex',gap:10}}>
+                    {[{value:'tuzel',label:'Tüzel Kişilik'},{value:'sahis',label:'Şahıs Şirketi'}].map(o=>(
+                      <label key={o.value} style={{display:'flex',alignItems:'center',gap:6,cursor:isInternal?'not-allowed':'pointer',
+                        padding:'8px 16px',borderRadius:10,border:`1.5px solid ${form.sirket_tipi===o.value?'#fbbf24':'#c4cdd9'}`,
+                        background:form.sirket_tipi===o.value?'#fffbeb':'#fff',fontWeight:600,fontSize:'.855rem',opacity:isInternal?0.7:1}}>
+                        <input type="radio" name="sirket_tipi" value={o.value} checked={form.sirket_tipi===o.value}
+                          disabled={isInternal}
+                          onChange={()=>set('sirket_tipi',o.value)} style={{accentColor:'#fbbf24'}}/>
+                        {o.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Vergi Dairesi</label>
+                    <input className="f-input" value={form.vergi_dairesi} onChange={e=>set('vergi_dairesi',e.target.value)} placeholder="Vergi dairesi"/></div>
+                  <div><label className="f-label">Vergi No</label>
+                    <input className="f-input" value={form.vergi_no} onChange={e=>set('vergi_no',e.target.value)} placeholder="1234567890"/></div>
+                  <div><label className="f-label">TC No <span style={{fontSize:'.68rem',color:'#94a3b8',fontWeight:400}}>(şahıs için)</span></label>
+                    <input className="f-input" value={form.tc_no} onChange={e=>set('tc_no',e.target.value)} placeholder="11 haneli TC"
+                      disabled={form.sirket_tipi==='tuzel' || isInternal} style={{background:(form.sirket_tipi==='tuzel' || isInternal)?'#f1f5f9':''}}/></div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Fatura Tipi</label>
+                    <SearchableSelect value={form.fatura_tipi} onChange={v=>set('fatura_tipi',v)} options={FATURA_OPTS} allowClear={false} disabled={isInternal}/>
+                  </div>
+                  <div><label className="f-label">Ödeme Vadesi (gün)</label>
+                    <input className="f-input" type="number" min="0" value={form.pay_term} onChange={e=>set('pay_term',e.target.value)}/></div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
+                    <label className="tog" style={{cursor:isInternal?'not-allowed':'pointer'}}><input type="checkbox" checked={form.active} onChange={e=>set('active',e.target.checked)} disabled={isInternal}/><span className="tog-sl" style={{opacity:isInternal?0.5:1}}/></label>
+                    <span style={{fontSize:'.855rem',fontWeight:600,color:isInternal?'#94a3b8':'#334155'}}>Aktif</span>
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Banka</label>
+                    <input className="f-input" value={form.banka} onChange={e=>set('banka',e.target.value)} placeholder="Banka adı"/></div>
+                  <div><label className="f-label">IBAN</label>
+                    <input className="f-input" value={form.iban} onChange={e=>set('iban',e.target.value)} placeholder="TR00 0000 0000..." style={{fontFamily:'monospace'}}/></div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div><label className="f-label">Adres</label>
+                    <textarea className="f-input" rows={2} value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Adres…" style={{resize:'vertical'}}/></div>
+                  <div><label className="f-label">Notlar</label>
+                    <textarea className="f-input" rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Notlar…" style={{resize:'vertical'}}/></div>
+                </div>
+                <div><label className="f-label">Marka Logosu</label>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <label style={{cursor:'pointer'}}>
+                      <span className="btn-o" style={{fontSize:'.8rem',padding:'7px 14px'}}><i className="fa-solid fa-upload"/> Yükle</span>
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={handleLogo}/>
+                    </label>
+                    {form.logo_url && <>
+                      <img src={form.logo_url} style={{height:32,borderRadius:6,border:'1px solid #e2e8f0'}} alt="logo"/>
+                      <button className="btn-g" onClick={()=>set('logo_url','')} style={{fontSize:'.75rem'}}>Kaldır</button>
+                    </>}
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        )}
 
         {tab===1 && <div style={{display:'grid',gap:16}}>
           <YetkiliList values={form.yetkililer} onChange={v=>set('yetkililer',v)}/>

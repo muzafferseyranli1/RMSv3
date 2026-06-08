@@ -1,7 +1,11 @@
 // WMS Migration — tabloları oluşturur, eksik kolonları ekler
 const { Client } = require('pg')
 
-const DATABASE_URL = 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway'
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error("DATABASE_URL environment variable is missing.");
+  process.exit(1);
+}
 
 const STEPS = [
   {
@@ -93,6 +97,18 @@ const STEPS = [
   { desc: 'idx_inv_movements_lpn',      sql: `CREATE INDEX IF NOT EXISTS idx_inv_movements_lpn      ON public.inventory_movements(lpn_id)` },
   { desc: 'product_external_barcodes.notes',      sql: `ALTER TABLE public.product_external_barcodes ADD COLUMN IF NOT EXISTS notes TEXT` },
   { desc: 'product_external_barcodes.updated_at', sql: `ALTER TABLE public.product_external_barcodes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()` },
+  // Phase 1: Tedarikçi ve Sipariş Akış Kanal Ayrımı
+  { desc: 'suppliers.supplier_kind', sql: `ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS supplier_kind TEXT DEFAULT 'external'` },
+  { desc: 'suppliers.source_workspace_scope', sql: `ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS source_workspace_scope TEXT` },
+  { desc: 'suppliers.source_branch_id', sql: `ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS source_branch_id UUID` },
+  { desc: 'suppliers.is_system_generated', sql: `ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS is_system_generated BOOLEAN DEFAULT false` },
+  { desc: 'suppliers.sync_key', sql: `ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS sync_key TEXT` },
+  { desc: 'suppliers.sync_key UNIQUE', sql: `ALTER TABLE public.suppliers ADD CONSTRAINT suppliers_sync_key_key UNIQUE (sync_key)` },
+  { desc: 'suppliers.supplier_kind CHECK', sql: `ALTER TABLE public.suppliers ADD CONSTRAINT suppliers_supplier_kind_check CHECK (supplier_kind IN ('external', 'internal_warehouse', 'internal_kitchen'))` },
+  { desc: 'purchase_orders.flow_channel', sql: `ALTER TABLE public.purchase_orders ADD COLUMN IF NOT EXISTS flow_channel TEXT DEFAULT 'external_purchase'` },
+  { desc: 'purchase_orders.flow_channel CHECK', sql: `ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'))` },
+  { desc: 'order_flows.flow_channel', sql: `ALTER TABLE public.order_flows ADD COLUMN IF NOT EXISTS flow_channel TEXT DEFAULT 'external_purchase'` },
+  { desc: 'order_flows.flow_channel CHECK', sql: `ALTER TABLE public.order_flows ADD CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'))` },
 ]
 
 async function run() {

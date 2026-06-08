@@ -39,6 +39,7 @@ import {
   parseJsonValue,
   roundOrderQuantity,
   resolveFlowItems,
+  resolveLineSupplierId,
   summarizeLines,
   todayStr,
 } from '@/lib/branchPurchasing'
@@ -1056,19 +1057,36 @@ function buildAssumedInboundSummary({
   }
 }
 
-function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate }) {
+function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate, stockItems, suppliers, stockTemplates, contracts }) {
   return (flows || []).filter(flow => {
     if (!isFlowDueOnDate(flow, targetDate)) return false
     if (!isBranchIncluded(flow.branches, branchId)) return false
 
-    const existing = (orders || []).find(order =>
-      order.flow_id === flow.id &&
-      branchMatchesRecord(order, branch) &&
-      toDateOnly(order.order_date) === toDateOnly(targetDate) &&
-      order.status !== 'cancelled'
-    )
+    // Bu akışta olması beklenen tüm tedarikçileri tespit et
+    const expectedSupplierIds = new Set()
+    if (flow.supplier_id) expectedSupplierIds.add(String(flow.supplier_id).toLowerCase())
 
-    return !existing
+    const matchedItems = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
+
+    for (const item of matchedItems) {
+      const supId = resolveLineSupplierId(item, flow.supplier_id, suppliers)
+      if (supId) expectedSupplierIds.add(String(supId).toLowerCase())
+    }
+
+    // Her bir beklenen tedarikçi için sipariş oluşturulup oluşturulmadığını kontrol et
+    for (const supId of expectedSupplierIds) {
+      const existing = (orders || []).find(order =>
+        order.flow_id === flow.id &&
+        branchMatchesRecord(order, branch) &&
+        toDateOnly(order.order_date) === toDateOnly(targetDate) &&
+        String(order.supplier_id).toLowerCase() === String(supId).toLowerCase() &&
+        order.status !== 'cancelled'
+      )
+      // Eğer en az bir beklenen tedarikçi grubu için sipariş yoksa, bu akışı tetikle
+      if (!existing) return true
+    }
+
+    return false
   })
 }
 
@@ -1185,14 +1203,34 @@ function createDraftLines({
   saleLineRows,
   forecastLookbackWeeks,
   assumedInboundOrderIds,
+  targetSupplierId,
+  allSuppliers = [],
 }) {
   if (!flow || !branch) return []
 
-  const items = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
+  let items = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
     .filter(item => stockVisibleInBranch(item, branch.id))
+
+  if (targetSupplierId) {
+    items = items.filter(item => {
+      const resolvedSuppId = resolveLineSupplierId(item, flow.supplier_id, allSuppliers)
+      return String(resolvedSuppId).toLowerCase() === String(targetSupplierId).toLowerCase()
+    })
+  }
+
   const balanceMap = buildBalanceMap(balanceRows)
   const priceMap = buildLatestPurchasePriceMap(purchaseMovementRows, asUuidOrNull(branch.id) || '')
-  const contractPriceMap = buildContractPriceMap(contracts, flow.supplier_id, branch.id, order.order_date)
+  
+  const contractPriceMaps = new Map()
+  const getContractPrice = (supplierId, itemId) => {
+    if (!supplierId) return null
+    const key = String(supplierId).toLowerCase()
+    if (!contractPriceMaps.has(key)) {
+      contractPriceMaps.set(key, buildContractPriceMap(contracts, supplierId, branch.id, order.order_date))
+    }
+    return contractPriceMaps.get(key).get(itemId)
+  }
+
   const lastOrderMap = buildLastOrderQtyMap(allOrders, allLines, flow.id, branch, order.id)
   const coverageDays = computeCoverageDays(flow, order.order_date)
   const dates = getFlowDates(flow, order.order_date)
@@ -1262,7 +1300,8 @@ function createDraftLines({
       forecastRatio = suggestion.forecastRatio
     }
 
-    const contractPrice = contractPriceMap.get(item.id)
+    const itemSupplierId = resolveLineSupplierId(item, flow.supplier_id, allSuppliers)
+    const contractPrice = getContractPrice(itemSupplierId, item.id)
     const cardPrice = Number(item.purchase_price || 0)
     const fallbackPrice = priceMap.get(item.id)
     const unitPrice = Number(contractPrice?.price || fallbackPrice || cardPrice || 0)
@@ -1370,17 +1409,17 @@ function OrderDetailModal({
     })
   }
 
-  function getDescriptionHint(mode) {
+  function getDescriptionHint(mode, isReplenishment) {
     switch (mode) {
       case 'son':
-        return 'Son siparis tekraridir'
+        return isReplenishment ? 'Son talep tekraridir' : 'Son siparis tekraridir'
       case 'stok':
-        return 'Stoklar belirlenen seviyeye tamamlanir'
+        return isReplenishment ? 'Stoklar belirlenen seviyeye tamamlanir' : 'Stoklar belirlenen seviyeye tamamlanir'
       case 'manuel':
-        return 'Siparis miktarlari manuel girilecektir.'
+        return isReplenishment ? 'Talep miktarlari manuel girilecektir' : 'Siparis miktarlari manuel girilecektir.'
       case 'tahmin':
       default:
-        return 'Oneriler tahmini satislara gore uretilmistir'
+        return isReplenishment ? 'Oneriler tahmini taleplere gore uretilmistir' : 'Oneriler tahmini satislara gore uretilmistir'
     }
   }
 
@@ -1468,6 +1507,8 @@ function OrderDetailModal({
     }
   }
 
+  const isReplenishment = order.flow_channel === 'warehouse_replenishment' || order.flow_channel === 'kitchen_replenishment'
+
   const footer = (
     <>
       <button className="btn-o" onClick={onClose} disabled={saving}>Kapat</button>
@@ -1480,15 +1521,27 @@ function OrderDetailModal({
             {saving
               ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />Kaydediliyor...</>
               : order.status === 'awaiting_approval'
-                ? <><i className="fa-solid fa-check" style={{ marginRight: 6 }} />Onayla ve Gonder</>
+                ? <><i className="fa-solid fa-check" style={{ marginRight: 6 }} />{isReplenishment ? "Onayla ve WMS'e İlet" : "Onayla ve Gonder"}</>
                 : needsApproval
                   ? <><i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />Kaydet ve Onaya Gonder</>
-                  : <><i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />Kaydet ve Gonder</>}
+                  : <><i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />{isReplenishment ? "Kaydet ve WMS'e İlet" : "Kaydet ve Gonder"}</>}
           </button>
         </>
       )}
     </>
   )
+
+  const supplierLabel = order.flow_channel === 'warehouse_replenishment'
+    ? 'İkmal Deposu'
+    : order.flow_channel === 'kitchen_replenishment'
+      ? 'Merkez Mutfak'
+      : 'Tedarikçi'
+
+  const titleSuffix = order.flow_channel === 'warehouse_replenishment'
+    ? '(İç Depo İkmal Talebi)'
+    : order.flow_channel === 'kitchen_replenishment'
+      ? '(Merkez Mutfak İkmal Talebi)'
+      : '(Dış Satın Alma Siparişi)'
 
   return (
     <Modal
@@ -1496,8 +1549,8 @@ function OrderDetailModal({
       onClose={onClose}
       width={1180}
       flex
-      title={order.order_no}
-      subtitle={`${order.branch_name || 'Sube'} • ${supplier?.name || 'Tedarikci'} • ${flow?.name || order.flow_name || 'Siparis Akisi'}`}
+      title={`${order.order_no} ${titleSuffix}`}
+      subtitle={`${order.branch_name || 'Sube'} • ${supplierLabel}: ${supplier?.name || order.supplier_name || '—'} • ${flow?.name || order.flow_name || 'Siparis Akisi'}`}
       footer={footer}
     >
       <div style={{ display: 'grid', gap: 16 }}>
@@ -1554,10 +1607,10 @@ function OrderDetailModal({
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12 }}>
-          <SummaryCard label="Siparis Toplami" value={`₺${formatMoney(summary.subtotal)}`} hint={`${formatQty(summary.totalQty)} toplam miktar`} />
+          <SummaryCard label={isReplenishment ? "Talep Toplami" : "Siparis Toplami"} value={`₺${formatMoney(summary.subtotal)}`} hint={`${formatQty(summary.totalQty)} toplam miktar`} />
           <SummaryCard label="Teslim Tarihi" value={formatDate(details.deliveryDate)} hint={details.deliveryTime ? `${details.deliveryTime} planli` : 'Saat tanimi yok'} bg="#eff6ff" color="#1d4ed8" />
-          <SummaryCard label="Sonraki Siparis" value={details.nextOrderDate ? formatDate(details.nextOrderDate) : 'Yok'} hint={details.nextDeliveryDate ? `Sonraki teslim: ${formatDate(details.nextDeliveryDate)}` : 'Tekrarsiz akis'} bg="#f8fafc" />
-          <SummaryCard label="Aciklama" value={order.description || '—'} hint={getDescriptionHint(flow?.qty_mode || order?.qty_mode)} bg="#fffbeb" color="#92400e" />
+          <SummaryCard label={isReplenishment ? "Sonraki Talep" : "Sonraki Siparis"} value={details.nextOrderDate ? formatDate(details.nextOrderDate) : 'Yok'} hint={details.nextDeliveryDate ? `Sonraki teslim: ${formatDate(details.nextDeliveryDate)}` : 'Tekrarsiz akis'} bg="#f8fafc" />
+          <SummaryCard label="Aciklama" value={order.description || '—'} hint={getDescriptionHint(flow?.qty_mode || order?.qty_mode, isReplenishment)} bg="#fffbeb" color="#92400e" />
         </div>
 
         {supplierNotes.length > 0 && (
@@ -1943,7 +1996,7 @@ export default function Orders() {
         db.from('sale_options').select('id,name,short_name,recipe_rows,sale_status').eq('sale_status', true).is('deleted_at', null).order('name'),
         db.from('stock_templates').select('*').order('name'),
         db.from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
-        db.from('suppliers').select('id,name').eq('active', true).order('name'),
+        db.from('suppliers').select('id,name,supplier_kind').eq('active', true).order('name'),
         db.from('settings').select('value').eq('key', 'company_tree').single(),
       ])
 
@@ -2050,6 +2103,10 @@ export default function Orders() {
       branch,
       branchId: selectedBranch,
       targetDate: today,
+      stockItems,
+      suppliers,
+      stockTemplates,
+      contracts,
     })
     if (!missingFlows.length) return 0
 
@@ -2059,42 +2116,9 @@ export default function Orders() {
 
     for (const flow of missingFlows) {
       const flowDates = getFlowDates(flow, today)
-      const skeletonOrder = {
-        order_no: nextDocumentNo('SP', today, existingOrderNumbers),
-        branch_id: asUuidOrNull(branch.id),
-        branch_name: branch.name,
-        flow_id: asUuidOrNull(flow.id),
-        flow_name: flow.name,
-        supplier_id: asUuidOrNull(flow.supplier_id),
-        supplier_name: suppliers.find(row => row.id === flow.supplier_id)?.name || '',
-        description: flow.description || '',
-        order_source: 'flow',
-        status: 'pending_action',
-        order_date: today,
-        cutoff_at: flowDates.cutoffTime ? `${today}T${flowDates.cutoffTime}:00` : null,
-        delivery_date: flowDates.deliveryDate || null,
-        delivery_time: flowDates.deliveryTime || null,
-        next_order_date: flowDates.nextOrderDate || null,
-        next_delivery_date: flowDates.nextDeliveryDate || null,
-        qty_mode: flow.qty_mode || 'tahmin',
-        auto_send_mode: describeCutoffBehavior(flow),
-        branch_approval: !!flow.branch_approval,
-        hq_approval: !!flow.hq_approval,
-        needs_manager_approval: !!(flow.branch_approval || flow.hq_approval),
-        manager_approval_status: 'not_required',
-        total_qty: 0,
-        subtotal: 0,
-        total_amount: 0,
-        suggestion_refreshed_at: new Date().toISOString(),
-        submitted_at: null,
-        cancelled_at: null,
-        cancelled_reason: null,
-        notes: null,
-        meta: {},
-      }
-
-      const lines = createDraftLines({
-        order: skeletonOrder,
+      
+      const allDraftLines = createDraftLines({
+        order: { order_date: today },
         flow,
         branch,
         stockItems,
@@ -2111,46 +2135,112 @@ export default function Orders() {
         savedForecastRows: branchSnapshot.savedForecastRows,
         saleLineRows: branchSnapshot.saleLineRows,
         forecastLookbackWeeks: forecastSettings.lookbackWeeks,
+        allSuppliers: suppliers,
       })
 
-      const summary = summarizeLines(lines)
-      const orderPayload = {
-        ...skeletonOrder,
-        total_qty: summary.totalQty,
-        subtotal: summary.subtotal,
-        total_amount: summary.subtotal,
+      // Group draft lines by their resolved supplier
+      const linesBySupplier = {}
+      for (const line of allDraftLines) {
+        const item = stockItems.find(x => x.id === line.stock_item_id)
+        const resolvedSupId = resolveLineSupplierId(item, flow.supplier_id, suppliers)
+        if (!linesBySupplier[resolvedSupId]) {
+          linesBySupplier[resolvedSupId] = []
+        }
+        linesBySupplier[resolvedSupId].push(line)
       }
 
-      const { data: insertedOrder, error: insertOrderError } = await db
-        .from('purchase_orders')
-        .insert(orderPayload)
-        .select('*')
-        .single()
-      if (insertOrderError) throw insertOrderError
+      for (const [supId, supLines] of Object.entries(linesBySupplier)) {
+        if (!supLines.length) continue
 
-      if (lines.length > 0) {
+        const existingOrder = orders.find(order =>
+          order.flow_id === flow.id &&
+          branchMatchesRecord(order, branch) &&
+          toDateOnly(order.order_date) === toDateOnly(today) &&
+          String(order.supplier_id).toLowerCase() === String(supId).toLowerCase() &&
+          order.status !== 'cancelled'
+        )
+        if (existingOrder) continue
+
+        const targetSupplier = suppliers.find(row => row.id === supId)
+        const supplierKind = targetSupplier?.supplier_kind || 'external'
+        
+        let flowChannel = 'external_purchase'
+        if (supplierKind === 'internal_warehouse') flowChannel = 'warehouse_replenishment'
+        else if (supplierKind === 'internal_kitchen') flowChannel = 'kitchen_replenishment'
+
+        // Re-index lines sequentially for the split order
+        const seqLines = supLines.map((line, index) => ({
+          ...line,
+          line_no: index + 1,
+        }))
+
+        const summary = summarizeLines(seqLines)
+        const orderNo = nextDocumentNo('SP', today, existingOrderNumbers)
+        existingOrderNumbers.push(orderNo)
+
+        const orderPayload = {
+          order_no: orderNo,
+          branch_id: asUuidOrNull(branch.id),
+          branch_name: branch.name,
+          flow_id: asUuidOrNull(flow.id),
+          flow_name: flow.name,
+          flow_channel: flowChannel,
+          supplier_id: asUuidOrNull(supId),
+          supplier_name: targetSupplier?.name || '',
+          description: flow.description || '',
+          order_source: 'flow',
+          status: 'pending_action',
+          order_date: today,
+          cutoff_at: flowDates.cutoffTime ? `${today}T${flowDates.cutoffTime}:00` : null,
+          delivery_date: flowDates.deliveryDate || null,
+          delivery_time: flowDates.deliveryTime || null,
+          next_order_date: flowDates.nextOrderDate || null,
+          next_delivery_date: flowDates.nextDeliveryDate || null,
+          qty_mode: flow.qty_mode || 'tahmin',
+          auto_send_mode: describeCutoffBehavior(flow),
+          branch_approval: !!flow.branch_approval,
+          hq_approval: !!flow.hq_approval,
+          needs_manager_approval: !!(flow.branch_approval || flow.hq_approval),
+          manager_approval_status: 'not_required',
+          total_qty: summary.totalQty,
+          subtotal: summary.subtotal,
+          total_amount: summary.subtotal,
+          suggestion_refreshed_at: new Date().toISOString(),
+          submitted_at: null,
+          cancelled_at: null,
+          cancelled_reason: null,
+          notes: null,
+          meta: {},
+        }
+
+        const { data: insertedOrder, error: insertOrderError } = await db
+          .from('purchase_orders')
+          .insert(orderPayload)
+          .select('*')
+          .single()
+        if (insertOrderError) throw insertOrderError
+
         const { error: insertLinesError } = await db
           .from('purchase_order_lines')
-          .insert(lines.map(line => toPurchaseOrderLinePayload(line, insertedOrder.id)))
+          .insert(seqLines.map(line => toPurchaseOrderLinePayload(line, insertedOrder.id)))
         if (insertLinesError) throw insertLinesError
+
+        await logActivity({
+          user,
+          actionType: 'purchase_order_create',
+          route: '/orders',
+          entityType: 'purchase_order',
+          entityId: insertedOrder.id,
+          metadata: {
+            branch_id: branch.id,
+            flow_id: flow.id,
+            order_no: insertedOrder.order_no,
+            status: insertedOrder.status,
+          },
+        })
+
+        created += 1
       }
-
-      await logActivity({
-        user,
-        actionType: 'purchase_order_create',
-        route: '/orders',
-        entityType: 'purchase_order',
-        entityId: insertedOrder.id,
-        metadata: {
-          branch_id: branch.id,
-          flow_id: flow.id,
-          order_no: insertedOrder.order_no,
-          status: insertedOrder.status,
-        },
-      })
-
-      existingOrderNumbers.push(orderPayload.order_no)
-      created += 1
     }
 
     return created
@@ -2284,6 +2374,8 @@ export default function Orders() {
       saleLineRows: branchSnapshot.saleLineRows,
       forecastLookbackWeeks: forecastSettings.lookbackWeeks,
       assumedInboundOrderIds: options.assumedInboundOrderIds,
+      targetSupplierId: order.supplier_id,
+      allSuppliers: suppliers,
     })
   }
 
@@ -2385,12 +2477,15 @@ export default function Orders() {
       throw error
     }
 
+    const isRep = order.flow_channel === 'warehouse_replenishment' || order.flow_channel === 'kitchen_replenishment'
     toast(
       action === 'approve'
-        ? 'Siparis onaylandi ve gonderildi'
+        ? (isRep ? 'İkmal talebi onaylandı ve WMS\'e iletildi' : 'Siparis onaylandi ve gonderildi')
         : action === 'submit'
-          ? (order.needs_manager_approval ? 'Siparis onaya gonderildi' : 'Siparis tedarikciye gonderildi')
-          : 'Siparis taslak olarak kaydedildi',
+          ? (order.needs_manager_approval 
+              ? (isRep ? 'İkmal talebi onaya gonderildi' : 'Siparis onaya gonderildi')
+              : (isRep ? 'İkmal talebi WMS konsoluna gönderildi' : 'Siparis tedarikciye gonderildi'))
+          : (isRep ? 'İkmal talebi taslak olarak kaydedildi' : 'Siparis taslak olarak kaydedildi'),
       'success',
     )
     await logActivity({
@@ -2563,7 +2658,24 @@ export default function Orders() {
                   return (
                     <tr key={order.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{order.order_no}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 700, color: '#334155' }}>{order.flow_name || '—'}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 700, color: '#334155' }}>
+                        <div>{order.flow_name || '—'}</div>
+                        {order.flow_channel === 'warehouse_replenishment' && (
+                          <span style={{ display: 'inline-block', fontSize: '.68rem', padding: '1px 6px', borderRadius: 4, background: '#f3e8ff', color: '#6b21a8', marginTop: 4, fontWeight: 800 }}>
+                            WMS İkmal
+                          </span>
+                        )}
+                        {order.flow_channel === 'kitchen_replenishment' && (
+                          <span style={{ display: 'inline-block', fontSize: '.68rem', padding: '1px 6px', borderRadius: 4, background: '#ffedd5', color: '#c2410c', marginTop: 4, fontWeight: 800 }}>
+                            Mutfak İkmal
+                          </span>
+                        )}
+                        {order.flow_channel === 'external_purchase' && (
+                          <span style={{ display: 'inline-block', fontSize: '.68rem', padding: '1px 6px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', marginTop: 4, fontWeight: 800 }}>
+                            Dış Satın Alma
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 14px', textAlign: 'left', color: '#64748b' }}>
                         <div style={{ display: 'grid', gap: 4 }}>
                           <span>{order.description || '—'}</span>

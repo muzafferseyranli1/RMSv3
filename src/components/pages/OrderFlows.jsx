@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
@@ -81,6 +81,13 @@ const EMPTY_FORM = {
   branch_approval:false,
   hq_approval:false, hq_approval_threshold:'',
   allow_date_change:false, check_credit_limit:false,
+  flow_channel:'external_purchase',
+}
+
+const FLOW_CHANNEL_BADGE = {
+  external_purchase: { bg: '#eff6ff', color: '#1d4ed8', label: 'Dış Satın Alma' },
+  warehouse_replenishment: { bg: '#f5f3ff', color: '#6d28d9', label: 'WMS İkmal Talebi' },
+  kitchen_replenishment: { bg: '#fff7ed', color: '#c2410c', label: 'Mutfak İkmal Talebi' },
 }
 
 // ── Tedarikçi Seçici ──────────────────────────────────────────
@@ -97,8 +104,22 @@ function SupplierSelect({ value, onChange, suppliers }) {
       <div onClick={()=>setOpen(o=>!o)} style={{border:`1.5px solid ${open?'#fbbf24':'#c4cdd9'}`,borderRadius:10,
         padding:'9px 36px 9px 12px',cursor:'pointer',fontSize:'.855rem',background:'#fff',
         minHeight:40,display:'flex',alignItems:'center',userSelect:'none',boxShadow:'inset 0 2px 4px rgba(0,0,0,.06)'}}>
-        {sel?<span style={{fontWeight:600,color:'#1e293b'}}>{sel.name}</span>
-            :<span style={{color:'#94a3b8'}}>Tedarikçi seçin…</span>}
+        {sel ? (
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontWeight:600,color:'#1e293b'}}>{sel.name}</span>
+            {sel.supplier_kind === 'internal_warehouse' && (
+              <span style={{fontSize:'.68rem',padding:'2px 6px',borderRadius:6,fontWeight:600,background:'#ede9fe',color:'#5b21b6'}}>İç Depo</span>
+            )}
+            {sel.supplier_kind === 'internal_kitchen' && (
+              <span style={{fontSize:'.68rem',padding:'2px 6px',borderRadius:6,fontWeight:600,background:'#ffedd5',color:'#c2410c'}}>Merkez Mutfak</span>
+            )}
+            {(sel.supplier_kind === 'external' || !sel.supplier_kind) && (
+              <span style={{fontSize:'.68rem',padding:'2px 6px',borderRadius:6,fontWeight:600,background:'#f1f5f9',color:'#475569'}}>Dış Tedarikçi</span>
+            )}
+          </div>
+        ) : (
+          <span style={{color:'#94a3b8'}}>Tedarikçi seçin…</span>
+        )}
       </div>
       <i className="fa-solid fa-chevron-down" style={{position:'absolute',right:12,top:14,color:'#94a3b8',fontSize:'.65rem',pointerEvents:'none'}}/>
       {open&&(
@@ -123,7 +144,20 @@ function SupplierSelect({ value, onChange, suppliers }) {
                     display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                     <i className="fa-solid fa-truck-fast" style={{color:'#f87171',fontSize:'.72rem'}}/>
                   </span>
-                  <span style={{fontWeight:value===s.id?700:400}}>{s.name}</span>
+                  <div style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
+                    <span style={{fontWeight:value===s.id?700:400}}>{s.name}</span>
+                    <div style={{display:'flex',gap:4}}>
+                      {s.supplier_kind === 'internal_warehouse' && (
+                        <span style={{fontSize:'.68rem',padding:'1px 5px',borderRadius:5,fontWeight:600,background:'#ede9fe',color:'#5b21b6',alignSelf:'flex-start'}}>İç Depo</span>
+                      )}
+                      {s.supplier_kind === 'internal_kitchen' && (
+                        <span style={{fontSize:'.68rem',padding:'1px 5px',borderRadius:5,fontWeight:600,background:'#ffedd5',color:'#c2410c',alignSelf:'flex-start'}}>Merkez Mutfak</span>
+                      )}
+                      {(s.supplier_kind === 'external' || !s.supplier_kind) && (
+                        <span style={{fontSize:'.68rem',padding:'1px 5px',borderRadius:5,fontWeight:600,background:'#f1f5f9',color:'#475569',alignSelf:'flex-start'}}>Dış Tedarikçi</span>
+                      )}
+                    </div>
+                  </div>
                   {value===s.id&&<i className="fa-solid fa-check" style={{marginLeft:'auto',color:'#fbbf24',fontSize:'.75rem'}}/>}
                 </div>
               ))}
@@ -454,6 +488,23 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
 
   function set(k,v){setForm(f=>({...f,[k]:v}))}
 
+  // Terminoloji ve Akış Kanalı Yönetimi
+  const selectedSupplier = suppliers.find(s => s.id === form.supplier_id)
+  const isInternal = selectedSupplier && (selectedSupplier.supplier_kind === 'internal_warehouse' || selectedSupplier.supplier_kind === 'internal_kitchen')
+  const supplierWording = selectedSupplier?.supplier_kind === 'internal_warehouse' ? 'İkmal Deposu' : 
+                         selectedSupplier?.supplier_kind === 'internal_kitchen' ? 'Merkez Mutfak' : 'Tedarikçi'
+  const demandWording = isInternal ? 'WMS konsoluna düşen talep' : 'Tedarikçiye iletilen sipariş'
+
+  const dynamicUrunTipi = URUN_TIPI.map(t => {
+    let label = t.label
+    let hint = t.hint
+    if (isInternal) {
+      label = label.replaceAll('Tedarikçi', supplierWording).replaceAll('tedarikçi', supplierWording.toLowerCase())
+      hint = hint.replaceAll('Tedarikçi', supplierWording).replaceAll('tedarikçi', supplierWording.toLowerCase())
+    }
+    return { ...t, label, hint }
+  })
+
   // Tedarikçiye bağlı stok malları
   const supplierStocks=stockItems.filter(s=>{
     if(!form.supplier_id) return false
@@ -480,6 +531,15 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
     if(!form.name.trim()){toast('Akış adı zorunlu','error');setStep(0);return}
     if(!form.supplier_id){toast('Tedarikçi seçilmeli','error');setStep(0);return}
     if(form.branches.length===0){toast('En az bir şube seçin','error');setStep(0);return}
+    
+    const supplierKind = selectedSupplier?.supplier_kind || 'external'
+    let flowChannel = 'external_purchase'
+    if (supplierKind === 'internal_warehouse') {
+      flowChannel = 'warehouse_replenishment'
+    } else if (supplierKind === 'internal_kitchen') {
+      flowChannel = 'kitchen_replenishment'
+    }
+
     setSaving(true)
     try {
       const payload={
@@ -503,6 +563,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
         branch_approval:form.branch_approval, hq_approval:form.hq_approval,
         hq_approval_threshold:form.hq_approval&&form.hq_approval_threshold!==''?parseFloat(form.hq_approval_threshold):null,
         allow_date_change:form.allow_date_change, check_credit_limit:form.check_credit_limit,
+        flow_channel: flowChannel,
       }
 
       const query = isNew
@@ -560,7 +621,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
             value={form.description} onChange={e=>set('description',e.target.value)}/>
         </div>
         <div>
-          <label className="f-label">Tedarikçi <span style={{color:'#ef4444'}}>*</span></label>
+          <label className="f-label">{supplierWording} <span style={{color:'#ef4444'}}>*</span></label>
           <SupplierSelect value={form.supplier_id} onChange={v=>set('supplier_id',v)} suppliers={suppliers}/>
         </div>
         <div>
@@ -743,7 +804,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
         <div>
           <label className="f-label">Ürün Kapsamı</label>
           <div style={{display:'flex',flexDirection:'column',gap:7,marginTop:6}}>
-            {URUN_TIPI.map(t=>(
+            {dynamicUrunTipi.map(t=>(
               <label key={t.value} onClick={()=>set('urun_tipi',t.value)}
                 style={{display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',borderRadius:9,
                   border:`1.5px solid ${form.urun_tipi===t.value?'#6366f1':'#e2e8f0'}`,
@@ -763,9 +824,9 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
           <div>
             <label className="f-label">Stok Malı Seçimi</label>
             {!form.supplier_id
-              ?<p className="f-hint" style={{color:'#ef4444'}}>Önce 1. adımda tedarikçi seçin</p>
+              ?<p className="f-hint" style={{color:'#ef4444'}}>Önce 1. adımda {supplierWording.toLowerCase()} seçin</p>
               :supplierStocks.length===0
-                ?<p className="f-hint" style={{color:'#ef4444'}}>Bu tedarikçiye tanımlı stok malı bulunamadı</p>
+                ?<p className="f-hint" style={{color:'#ef4444'}}>Bu {supplierWording.toLowerCase()}ye tanımlı stok malı bulunamadı</p>
                 :<StockMultiSelect value={form.selected_stocks} onChange={v=>set('selected_stocks',v)} stockItems={supplierStocks}/>}
           </div>
         )}
@@ -774,9 +835,9 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
           <div style={{background:'#fafafa',borderRadius:10,padding:'12px 14px',border:'1px solid #e2e8f0'}}>
             <div style={{fontSize:'.82rem',fontWeight:600,color:'#374151',marginBottom:6}}>Aktif Sözleşme Kalemleri</div>
             {!form.supplier_id
-              ?<p style={{fontSize:'.82rem',color:'#ef4444',margin:0}}>Önce tedarikçi seçin</p>
+              ?<p style={{fontSize:'.82rem',color:'#ef4444',margin:0}}>Önce {supplierWording.toLowerCase()} seçin</p>
               :contractStocks.length===0
-                ?<p style={{fontSize:'.82rem',color:'#94a3b8',margin:0}}>Bu tedarikçinin aktif sözleşmesinde stok malı bulunamadı</p>
+                ?<p style={{fontSize:'.82rem',color:'#94a3b8',margin:0}}>Bu {supplierWording.toLowerCase()}nin aktif sözleşmesinde stok malı bulunamadı</p>
                 :<div style={{display:'flex',flexWrap:'wrap',gap:5}}>
                   {contractStocks.map(s=>(
                     <span key={s.id} style={{background:'#eff6ff',color:'#1d4ed8',borderRadius:6,padding:'2px 9px',fontSize:'.78rem',fontWeight:600}}>
@@ -870,8 +931,8 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
     if(step===duzStep) return (
       <div style={{display:'flex',flexDirection:'column',gap:4}}>
         <Toggle checked={form.allow_edit} onChange={v=>set('allow_edit',v)}
-          label="Tedarikçiye iletilen sipariş düzenlenebilir"
-          hint="Tedarikçiye 'sipariş güncellendi' maili gider; değişiklikler belirtilebilirse iyi olur"/>
+          label={`${demandWording} düzenlenebilir`}
+          hint={isInternal ? "WMS konsolunda bekleyen talep üzerinde düzenleme yapılabilir" : "Tedarikçiye 'sipariş güncellendi' maili gider; değişiklikler belirtilebilirse iyi olur"}/>
         {form.allow_edit&&(
           <div style={{marginLeft:36,marginBottom:12,display:'flex',alignItems:'center',gap:8}}>
             <label className="f-label" style={{margin:0,whiteSpace:'nowrap',flexShrink:0}}>Son düzenleme saati:</label>
@@ -881,8 +942,8 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
         )}
 
         <Toggle checked={form.allow_cancel} onChange={v=>set('allow_cancel',v)}
-          label="Tedarikçiye iletilen sipariş iptal edilebilir"
-          hint="Tedarikçiye iptal maili gider"/>
+          label={`${demandWording} iptal edilebilir`}
+          hint={isInternal ? "WMS konsolunda bekleyen talep iptal edilebilir" : "Tedarikçiye iptal maili gider"}/>
         {form.allow_cancel&&(
           <div style={{marginLeft:36,marginBottom:12,display:'flex',alignItems:'center',gap:8}}>
             <label className="f-label" style={{margin:0,whiteSpace:'nowrap',flexShrink:0}}>Son iptal saati:</label>
@@ -979,6 +1040,20 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
 // ── Detay Paneli ──────────────────────────────────────────────
 function FlowDetail({ flow, suppliers, onEdit, onClose }) {
   const supplier=suppliers.find(s=>s.id===flow.supplier_id)
+  
+  // Geriye uyumlu kanal eşleşmesi (boşsa veya tanımsızsa supplier'dan türet)
+  const flowChannel = flow.flow_channel || (
+    supplier?.supplier_kind === 'internal_warehouse' ? 'warehouse_replenishment' :
+    supplier?.supplier_kind === 'internal_kitchen' ? 'kitchen_replenishment' :
+    'external_purchase'
+  )
+  const channelBadge = FLOW_CHANNEL_BADGE[flowChannel] || FLOW_CHANNEL_BADGE.external_purchase
+
+  const isInternal = flowChannel === 'warehouse_replenishment' || flowChannel === 'kitchen_replenishment'
+  const supplierLabel = isInternal ? (flowChannel === 'warehouse_replenishment' ? 'İkmal Deposu' : 'Merkez Mutfak') : 'Tedarikçi'
+  const editLabel = isInternal ? 'WMS konsolundaki talep düzenlenebilir' : 'Tedarikçiye iletilen sipariş düzenlenebilir'
+  const cancelLabel = isInternal ? 'WMS konsolundaki talep iptal edilebilir' : 'Tedarikçiye iletilen sipariş iptal edilebilir'
+
   const parsedBranches=typeof flow.branches==='string'?JSON.parse(flow.branches||'[]'):(flow.branches||[])
   const parsedDays=typeof flow.order_days==='string'?JSON.parse(flow.order_days||'[]'):(flow.order_days||[])
   const parsedAylik=typeof flow.aylik_gunler==='string'?JSON.parse(flow.aylik_gunler||'[]'):(flow.aylik_gunler||[])
@@ -1029,6 +1104,7 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>
             <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:700,color:'#1e293b'}}>{flow.name}</h2>
             <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:ftBadge.bg,color:ftBadge.color}}>{ftBadge.label}</span>
+            <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:channelBadge.bg,color:channelBadge.color}}>{channelBadge.label}</span>
             <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
               background:flow.active?'#dcfce7':'#f1f5f9',color:flow.active?'#166534':'#64748b'}}>
               {flow.active?'Aktif':'Pasif'}
@@ -1043,7 +1119,7 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:'14px 22px'}}>
-        <Row icon="fa-truck-fast" label="Tedarikçi" value={supplier?.name||'—'} color="#f87171"/>
+        <Row icon="fa-truck-fast" label={supplierLabel} value={supplier?.name||'—'} color="#f87171"/>
         <Row icon="fa-store" label="Şubeler" value={`${parsedBranches.length} seçim · ${totalBranches} şube`} color="#3b82f6"/>
         {parsedBranches.length>0&&(
           <div style={{display:'flex',flexWrap:'wrap',gap:5,margin:'6px 0 4px 24px'}}>
@@ -1081,8 +1157,8 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
           textTransform:'uppercase',letterSpacing:'.1em',paddingBottom:4,borderBottom:'1px solid #e2e8f0'}}>
           Düzenleme / İptal
         </div>
-        <Check label={`Düzenleme${flow.allow_edit?' · son: '+flow.edit_cutoff_hour:''}`} checked={flow.allow_edit}/>
-        <Check label={`İptal${flow.allow_cancel?' · son: '+flow.cancel_cutoff_hour:''}`} checked={flow.allow_cancel}/>
+        <Check label={`${editLabel}${flow.allow_edit?' · son: '+flow.edit_cutoff_hour:''}`} checked={flow.allow_edit}/>
+        <Check label={`${cancelLabel}${flow.allow_cancel?' · son: '+flow.cancel_cutoff_hour:''}`} checked={flow.allow_cancel}/>
 
         <div style={{margin:'10px 0 6px',fontSize:'.72rem',fontWeight:800,color:'#6366f1',
           textTransform:'uppercase',letterSpacing:'.1em',paddingBottom:4,borderBottom:'1px solid #e2e8f0'}}>
@@ -1119,7 +1195,7 @@ export default function OrderFlows() {
     setLoading(true)
     const [flowsR,suppR,settR,brTplR,stockR,stTplR,contrR]=await Promise.all([
       db.from('order_flows').select('*').order('name'),
-      db.from('suppliers').select('id,name').is('deleted_at',null).order('name'),
+      db.from('suppliers').select('id,name,supplier_kind').is('deleted_at',null).order('name'),
       db.from('settings').select('value').eq('key','company_tree').single(),
       db.from('branch_templates').select('*').is('deleted_at',null).order('name'),
       db.from('stock_items').select('id,name,sku,supp_id,suppliers_list').is('deleted_at',null).order('name'),
@@ -1172,6 +1248,15 @@ export default function OrderFlows() {
   function FlowCard({flow}){
     const supplier=suppliers.find(s=>s.id===flow.supplier_id)
     const ftBadge=FLOW_TIPI_BADGE[flow.flow_type]||FLOW_TIPI_BADGE.manuel
+    
+    // Geriye uyumlu kanal eşleşmesi (boşsa veya tanımsızsa supplier'dan türet)
+    const flowChannel = flow.flow_channel || (
+      supplier?.supplier_kind === 'internal_warehouse' ? 'warehouse_replenishment' :
+      supplier?.supplier_kind === 'internal_kitchen' ? 'kitchen_replenishment' :
+      'external_purchase'
+    )
+    const channelBadge = FLOW_CHANNEL_BADGE[flowChannel] || FLOW_CHANNEL_BADGE.external_purchase
+
     const isActive=panel?.flow?.id===flow.id; const isDeleted=!!flow.deleted_at
     const parsedDays=typeof flow.order_days==='string'?JSON.parse(flow.order_days||'[]'):(flow.order_days||[])
     const parsedBranches=typeof flow.branches==='string'?JSON.parse(flow.branches||'[]'):(flow.branches||[])
@@ -1188,6 +1273,7 @@ export default function OrderFlows() {
             <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
               <span style={{fontWeight:700,fontSize:'.9rem',color:'#1e293b'}}>{flow.name}</span>
               <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:ftBadge.bg,color:ftBadge.color}}>{ftBadge.label}</span>
+              <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:channelBadge.bg,color:channelBadge.color}}>{channelBadge.label}</span>
               <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
                 background:flow.active?'#dcfce7':'#f1f5f9',color:flow.active?'#166534':'#64748b'}}>
                 {flow.active?'Aktif':'Pasif'}

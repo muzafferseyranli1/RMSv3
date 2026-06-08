@@ -1,18 +1,21 @@
-# Görev Listesi - Operasyon El Kitabı (Faz 3: Arayüz ve Entegrasyon)
+# WMS Faz 1 Görev Takibi (İç Tedarikçi Veri Modeli ve Senkron)
 
-- `[x]` 1. Rotalar ve Navigasyon Güncellemeleri
-  - `[x]` `src/components/layout/Sidebar.jsx` dosyasına menü linklerinin eklenmesi.
-  - `[x]` `src/App.jsx` dosyasına lazy import ve rota eşleştirmelerinin eklenmesi.
-- `[x]` 2. Merkez (HQ) Yönetici Paneli
-  - `[x]` `src/components/pages/ManualManagement.jsx` dosyasının premium UI ile oluşturulması.
-  - `[x]` Kategori CRUD arayüzünün yapılması.
-  - `[x]` Sayfa oluşturma/düzenleme formu, Markdown editör/textarea ve çoklu ekipman seçicinin tamamlanması.
-- `[x]` 3. Şube Okuyucu Modülü ve Arıza Modalı
-  - `[x]` `src/components/pages/ManualReader.jsx` dosyasının premium UI ile oluşturulması.
-  - `[x]` Sol menü hiyerarşisi (Accordion/Tree) ve zengin metin (Markdown to HTML) gösterim alanının yapılması.
-  - `[x]` Sayfa altı "Kullanılan Ekipmanlar" widget kartlarının tasarlanması.
-  - `[x]` Tıklanan ekipman için şubeye ait fiziksel kayıtları listeleyen ve `maintenance_tickets` oluşturan arıza bildirim modalının yapılması.
-- `[x]` 4. Derleme ve Entegrasyon Doğrulama
-  - `[x]` `npm run build` testinin sıfır hata ile tamamlanması.
-- `[x]` 5. Raporlama ve Kapanış
-  - `[x]` `walkthrough.md` ve `OperationSync.md` (Entry 031) dosyalarının güncellenmesi.
+- `[x]` Veritabanı Şeması ve Migrations Güncellemeleri
+  - `[x]` Railway Postgres'te SQL sorgularını çalıştırarak kolon ve constraint'leri eklemek
+  - `[x]` `wms-migration.sql` dosyasını güncellemek
+  - `[x]` `schema-railway-master.sql` dosyasını güncellemek
+  - `[x]` `server/wms_migration.js` script'ini güncellemek
+- `[x]` Şirket Ağacı Senkronizasyonu (Company Tree Sync Hook)
+  - `[x]` `Company (1).jsx` içinde `anadepo` düğümlerini taranması ve `suppliers` tablosuna `sync_key` ile senkron edilmesi
+  - `[x]` Silinen depolar için pasife alma (`active = false`, `deleted_at = now()`) mantığı
+- `[x]` Tedarikçiler Ekranı (Suppliers UI) Düzenlemeleri
+  - `[x]` `Suppliers.jsx` içinde iç tedarikçiler için visual badge'ler eklenmesi
+  - `[x]` İç tedarikçilerin silinmesini (`remove`) ve geri alınmasını (`restore`) engelleme kısıtları
+  - `[x]` Düzenleme modalında ünvan ve aktiflik durumunu salt-okunur yapmak ve uyarı bilgi kutusu eklemek
+- `[x]` Stok Kartları Tedarikçi Listesi Güncellemesi (`StockItems.jsx`)
+  - `[x]` Tedarikçi yükleme query'sine `supplier_kind` alanının eklenmesi
+  - `[x]` Çoklu tedarikçi listesinde ve dropdown seçeneklerinde iç depolar için `[İç Depo]` / `[Mutfak]` etiketlerinin gösterilmesi
+- `[x]` Doğrulama ve Testler
+  - `[x]` `scratch/verify_sync.js` senkron testinin çalıştırılması
+  - `[x]` Frontend derlemesinin test edilmesi (`npm run build`)
+  - `[x]` Değişikliklerin `walkthrough.md` ile belgelenmesi

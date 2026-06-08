@@ -1,33 +1,23 @@
-# Görev Listesi - Geri Bildirim Sisteminin Form ve Görev Yönetimine Dönüştürülmesi
+# WMS Faz 4: Depo Mal Kabul ve Putaway - Görev Listesi
 
-- `[x]` 1. App.jsx Rota ve İçe Aktarma Değişiklikleri
-  - `[x]` TicketBoard ve TicketDetail lazy import tanımlarının kaldırılması.
-  - `[x]` `/geribildirimler`, `/sube-geribildirimler` ve `/merkez-geribildirimler` rotalarının Navigate ile sırasıyla `/gorev-yoneticisi`, `/sube-tasks` ve `/merkez-tasks` sayfalarına yönlendirilmesi.
-- `[x]` 2. Sidebar.jsx Sol Menü Değişiklikleri
-  - `[x]` Genel Merkez (center) scope'undaki "Geribildirimler" menü satırının silinmesi ve yerine "Geri Bildirim Girişi" menüsünün eklenmesi.
-  - `[x]` Şube ve Merkez Depo bölümlerindeki "Geribildirimler" menü satırlarının tamamen kaldırılması.
-- `[x]` 3. NotificationBell.jsx Bildirim Navigasyonu Değişiklikleri
-  - `[x]` `getNavigationUrl` içindeki `ticket` navigasyon yönlendirmesinin `/tasks` sayfalarına yönlendirilmesi.
-- `[x]` 4. FormSubmissions.jsx Şablon Filtreleme Değişikliği
-  - `[x]` URL'deki `type` parametresinin (örn: `?type=notification_form`) okunup `activeTemplates` seçim listesinin filtrelenmesi.
-- `[x]` 5. Projenin Derlenmesi ve Doğrulanması
-  - `[x]` Projeyi `npm run build` ile derleyerek herhangi bir derleme hatası olmadığını doğrulama.
-- `[x]` 6. Git Takip ve Dokümantasyon Güncellemesi
-  - `[x]` Değişikliklerin Git'e stage edilmesi.
-  - `[x]` `OperationSync.md` dosyasına Entry 052 eklenmesi.
-  - `[x]` `walkthrough.md` dosyasının güncellenmesi.
-
-## Yeni İstek: Çağrı Merkezi Geri Bildirim Girişi Modalı
-
-- `[x]` 7. Sol Menü (Sidebar) Temizliği
-  - `[x]` Sidebar.jsx içindeki "Geri Bildirim Girişi" satırının tamamen kaldırılması.
-- `[x]` 8. Çağrı Merkezi Modalı ve Arayüz Entegrasyonu (CallCenter.jsx)
-  - `[x]` Kütüphane içe aktarımlarının (`useRef`, `uploadApiFile`, `fetchFormTemplates`, `submitFormResponse`) eklenmesi.
-  - `[x]` Geri bildirim modalı için durum (state) tanımlarının eklenmesi.
-  - `[x]` `loadBase` fonksiyonuna `form_templates` şablon yüklemesinin eklenmesi.
-  - `[x]` `SearchableMultiSelect` ve diğer dinamik alan yardımcılarının tanımlanması.
-  - `[x]` `handleOpenFeedbackModal` ve form gönderim/fotoğraf yükleme işleyicilerinin eklenmesi.
-  - `[x]` Eski bilet oluşturma butonu tetikleyicilerinin yeni modal işleyicisiyle değiştirilmesi.
-  - `[x]` Eski modal JSX kodunun kaldırılarak yeni dinamik form modalının yerleştirilmesi.
-- `[x]` 9. Derleme ve Doğrulama
-  - `[x]` `npm run build` ile projeyi derleyerek derleme hatası olmadığını doğrulama.
+- `[x]` 1. Veri Okuma ve State Hazırlığı (`MalKabul.jsx`)
+  - `[x]` `useWorkspace()` üzerinden `scope` değerini çekerek `isWmsMode` bayrağını tanımlamak (`scope === 'anadepo'`).
+  - `[x]` Seçilen şube/depo değiştiğinde (`selectedBranch`) eğer `isWmsMode` aktifse `warehouse_locations`, `warehouse_lpns` ve `stock_item_warehouse_settings` verilerini DB'den çekmek.
+- `[x]` 2. Taslak Çözümleme (`MalKabul.jsx`)
+  - `[x]` `buildOrderDraft` ve `buildManualDraft` içinde ürünlerin varsayılan lokasyonlarını (`default_location_id`) `stock_item_warehouse_settings` üzerinden çözüp `line.location_id` alanına atamak.
+  - `[x]` `lpn_id`, `lot_number`, `expiration_date` ve `availability_status` (varsayılan: `'available'`) alanlarını satırlarda başlatmak.
+- `[x]` 3. Modal Arayüzü ve Giriş Alanları (`MalKabul.jsx`)
+  - `[x]` `ReceiptEditorModal` bileşenine `isWmsMode`, `warehouseLocations` ve `warehouseLpns` verilerini prop olarak geçmek.
+  - `[x]` WMS modunda ürün tablosundaki her satırın hemen altına katlanabilir/açık bir WMS Detay paneli eklemek.
+  - `[x]` Bu panelde Lokasyon seçici (dropdown), LPN seçici (dropdown), Lot No (text), SKT (date) ve Durum seçici (dropdown) kontrollerini sunmak.
+- `[x]` 4. Validasyon Kontrolleri (`MalKabul.jsx`)
+  - `[x]` WMS modunda kabul edilen (`received_qty > 0`) her ürün için lokasyon (`location_id`) girildiğini doğrulamak.
+  - `[x]` Eksik varsa uyarı vererek kaydı durdurmak.
+- `[x]` 5. Veritabanı Kaydı (`MalKabul.jsx`)
+  - `[x]` `persistReceipt` fonksiyonunda `purchase_receipt_lines` meta JSONB alanına WMS detaylarını yazmak.
+  - `[x]` `inventory_movements` tablosuna `location_id`, `lpn_id`, `lot_number` ve `expiration_date` kolonlarını kaydetmek.
+  - `[x]` Stok hareketinin `meta.availability_status` alanında kalite/putaway durumunu saklamak.
+- `[x]` 6. Derleme ve Manuel Doğrulama
+  - `[x]` `npm run build` ile projeyi hatasız derlemek.
+  - `[x]` Şube mal kabulünün ve depo mal kabulünün ayrı ayrı sorunsuz çalıştığını, veritabanına doğru verilerin yazıldığını kontrol etmek (doğrulandı).
+  - `[x]` `OperationSync.md` dosyasını Faz 4 tamamlama detayları ile güncellemek.

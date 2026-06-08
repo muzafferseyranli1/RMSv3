@@ -706,3 +706,24 @@ export function summarizeLines(lines, vatRate = 0.1) {
     return acc
   }, { totalQty: 0, subtotal: 0, totalVatIncluded: 0 })
 }
+
+export function resolveLineSupplierId(item, flowSupplierId, allSuppliers = []) {
+  if (!item) return flowSupplierId
+  const list = parseJsonValue(item.suppliers_list, [])
+  const def = list.find(s => s.is_default || s.is_default === true)?.supp_id
+  if (def && allSuppliers.some(s => String(s.id).toLowerCase() === String(def).toLowerCase())) return def
+  if (item.supp_id && allSuppliers.some(s => String(s.id).toLowerCase() === String(item.supp_id).toLowerCase())) return item.supp_id
+
+  if (flowSupplierId && list.some(s => String(s.supp_id).toLowerCase() === String(flowSupplierId).toLowerCase())) {
+    if (allSuppliers.some(s => String(s.id).toLowerCase() === String(flowSupplierId).toLowerCase())) {
+      return flowSupplierId
+    }
+  }
+
+  const firstValid = list.find(s => allSuppliers.some(x => String(x.id).toLowerCase() === String(s.supp_id).toLowerCase()))?.supp_id
+  if (firstValid) return firstValid
+
+  return item.supp_id || flowSupplierId
+}
+
+

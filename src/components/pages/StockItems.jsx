@@ -391,7 +391,7 @@ export default function StockItems() {
       db.from('stock_items').select('*').order('name'),
       db.from('categories').select('*').order('name'),
       db.from('units').select('*').order('is_system',{ascending:false}).order('sort_order').order('label'),
-      db.from('suppliers').select('id,name').eq('active',true).order('name'),
+      db.from('suppliers').select('id,name,supplier_kind').eq('active',true).order('name'),
       db.from('settings').select('value').eq('key','company_tree').single(),
       db.from('branch_templates').select('*').order('name'),
       db.from('sale_items').select('id,recipe_rows').is('deleted_at', null),
@@ -714,7 +714,6 @@ export default function StockItems() {
                 <tr><td colSpan={8}><div className="empty"><i className="fa-solid fa-cube"/><p>Stok malı bulunamadı</p></div></td></tr>
               ) : filtered.map(item=>{
                   const cat  = itemCat(item)
-                  const supp = suppliers.find(s=>s.id===item.supp_id)
                   return <tr key={item.id} className={item.deleted_at?'deleted':''}>
                     <td><span style={{fontFamily:'monospace',fontSize:'.8rem',fontWeight:700,color:'#475569'}}>{item.sku||'—'}</span></td>
                     <td style={{fontWeight:600,color:'#0f172a'}}>
@@ -725,19 +724,34 @@ export default function StockItems() {
                     <td><span className="badge bgr">{item.unit||'—'}</span></td>
                     <td style={{fontSize:'.83rem',color:'#475569'}}>{item.min_stock??0}</td>
                     <td style={{fontSize:'.83rem',color:'#475569'}}>
-                    {(item.suppliers_list?.length > 0)
-                      ? item.suppliers_list.map((s,i)=>{
-                          const sp = suppliers.find(x=>x.id===s.supp_id)
-                          return sp ? <span key={i} style={{display:'inline-flex',alignItems:'center',gap:3,
-                            marginRight:4,padding:'1px 6px',borderRadius:99,fontSize:'.73rem',
-                            background:s.is_default?'#fef3c7':'#f1f5f9',
-                            color:s.is_default?'#92400e':'#475569',fontWeight:s.is_default?700:400}}>
-                            {s.is_default&&<i className="fa-solid fa-star" style={{fontSize:'.55rem'}}/>}
-                            {sp.marka_kisa_adi||sp.name}
-                          </span> : null
-                        })
-                      : (suppliers.find(s=>s.id===item.supp_id)?.name||'—')}
-                  </td>
+                     {(item.suppliers_list?.length > 0)
+                       ? item.suppliers_list.map((s,i)=>{
+                           const sp = suppliers.find(x=>x.id===s.supp_id)
+                           if (!sp) return null
+                           return (
+                             <span key={i} style={{display:'inline-flex',alignItems:'center',gap:3,
+                               marginRight:4,padding:'1px 6px',borderRadius:99,fontSize:'.73rem',
+                               background:s.is_default?'#fef3c7':'#f1f5f9',
+                               color:s.is_default?'#92400e':'#475569',fontWeight:s.is_default?700:400}}>
+                               {s.is_default&&<i className="fa-solid fa-star" style={{fontSize:'.55rem'}}/>}
+                               {sp.marka_kisa_adi||sp.name}
+                               {sp.supplier_kind === 'internal_warehouse' && ' [İç Depo]'}
+                               {sp.supplier_kind === 'internal_kitchen' && ' [Mutfak]'}
+                             </span>
+                           )
+                         })
+                       : (() => {
+                           const sp = suppliers.find(s=>s.id===item.supp_id)
+                           if (!sp) return '—'
+                           return (
+                             <span>
+                               {sp.name}
+                               {sp.supplier_kind === 'internal_warehouse' && ' [İç Depo]'}
+                               {sp.supplier_kind === 'internal_kitchen' && ' [Mutfak]'}
+                             </span>
+                           )
+                         })()}
+                    </td>
                     <td>{item.saleable?<span className="badge bg"><i className="fa-solid fa-check" style={{fontSize:'.65rem'}}/> Evet</span>:<span className="badge bgr">—</span>}</td>
                     <td><div style={{display:'flex',gap:3}}>
                       {item.deleted_at ? (
@@ -1025,7 +1039,12 @@ export default function StockItems() {
                           l[i]={...l[i],supp_id:v}
                           set('suppliers_list',l)
                         }}
-                        options={suppliers.map(sp=>({value:sp.id,label:sp.name||sp.marka_kisa_adi||String(sp.id)}))}
+                        options={suppliers.map(sp=>({
+                          value:sp.id,
+                          label: sp.supplier_kind === 'internal_warehouse'
+                            ? `${sp.name || sp.marka_kisa_adi} [İç Depo]`
+                            : (sp.supplier_kind === 'internal_kitchen' ? `${sp.name || sp.marka_kisa_adi} [Mutfak]` : (sp.name || sp.marka_kisa_adi || String(sp.id)))
+                        }))}
                         placeholder="Tedarikçi seçin…"
                       />
                       <input className="f-input" type="number" min="0" step="0.01"

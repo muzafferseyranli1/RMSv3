@@ -1,41 +1,35 @@
-# Walkthrough - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
+# WMS Faz 1: İç Tedarikçi Veri Modeli ve Senkron Doğrulama Özeti
 
-Bu çalışma kapsamında, **Operasyon El Kitabı (Operation Manual)** modülünün **Faz 3 (Kullanıcı Arayüzü)** bileşenleri ve entegrasyonu başarıyla geliştirilmiş ve doğrulanmıştır.
+Bu doküman, WMS Faz 1 adımı kapsamında yapılan geliştirmelerin, veritabanı senkronizasyonunun ve stok kartı entegrasyonunun doğrulama sonuçlarını içerir.
 
-## Gerçekleştirilen Değişiklikler
+## Yapılan Değişiklikler
 
-### 1. Navigasyon ve Rota Entegrasyonu
-* **Sidebar Menü Güncellemesi (`src/components/layout/Sidebar.jsx`):**
-  - Merkez (HQ) görünümünde "İşlemler" altına **"El Kitabı Yönetimi"** (`/manual-yonetimi`, ikon: `fa-book-open-reader`) eklendi.
-  - Şube görünümünde "İşlemler" altına **"Operasyon El Kitabı"** (`/manual`, ikon: `fa-book-open`) eklendi.
-* **Rota Haritalaması (`src/App.jsx`):**
-  - `ManualManagement` ve `ManualReader` bileşenleri lazy loading ile içe aktarıldı.
-  - İlgili yollar rota tablosuna tanımlandı (Şube okuyucusu şube bağlam koruyucusu `WorkspaceBranchScope` ile sarmalandı).
+### 1. Veritabanı Şeması ve Göçler (Migrations)
+* `suppliers`, `purchase_orders` ve `order_flows` tablolarına `supplier_kind`, `source_workspace_scope`, `source_branch_id`, `is_system_generated`, `sync_key` ve `flow_channel` alanları ve ilgili kısıtlar (check constraint / unique key) eklenmiştir.
+* `wms-migration.sql` ve `schema-railway-master.sql` güncellenmiştir.
 
-### 2. Merkez Yönetici Paneli (`src/components/pages/ManualManagement.jsx`)
-* **Kategori Yönetimi:** El kitabı başlıkları için CRUD operasyonlarını sağlayan tablo ve form arayüzü yazıldı.
-* **Prosedür Sayfa Editörü:**
-  - Sayfa oluşturma ve düzenleme formu geliştirildi.
-  - Prosedür adımlarının Markdown ile girilebileceği bir içerik düzenleme alanı sunuldu.
-  - **Ekipman Bağlantısı:** `/api/manual/equipments` yardımcı endpoint'inden gelen küresel ekipman tanımlarını sayfaya iliştirebilen çoklu seçim (checkbox) alanı eklendi.
-  - Değişikliklerin kaydedilmesi için 4 haneli Yönetici PIN kodu doğrulama alanı konuldu.
+### 2. Şirket Ağacı Senkronizasyonu (`Company (1).jsx`)
+* Şirket hiyerarşisi kaydedilirken (`saveTree`), ağaçtaki `anadepo` düğümleri recursive olarak taranıp `sync_key = 'anadepo_${id}'` ile `suppliers` tablosuna otomatik olarak iç tedarikçi olarak upsert edilmektedir.
+* Şirket ağacından kaldırılan depolar, geçmiş sipariş verilerinin bozulmaması için `active = false` ve `deleted_at = now()` yapılarak pasifleştirilir.
 
-### 3. Şube Okuyucu Arayüzü (`src/components/pages/ManualReader.jsx`)
-* **Sol Menü Ağacı:** Kategorileri ve altındaki sayfaları daraltılıp genişletilebilir (Accordion/Tree) yapıda listeler.
-* **Sağ İçerik Okuyucu:**
-  - Seçilen sayfanın başlığı, güncel versiyon numarası (`vX`), güncelleyen PIN kodu bilgisi gösterilir.
-  - **Inline Markdown Parser:** Markdown prosedür metnini (`#`, `##`, `**`, listeler ve satır sonları) HTML etiketlerine dönüştürerek stilde premium görüntü sağlar.
-  - **"Bu Prosedürde Kullanılan Ekipmanlar" Kartları:** Sayfaya LEFT JOIN ile bağlanmış ekipmanları listeler.
-* **Arıza Bildirim Modalı:**
-  - Ekipman kartındaki "Arıza Bildir" butonuna tıklandığında açılır.
-  - Şubenin aktif `branchId` bilgisine ait fiziksel cihazları (`db.from('equipments')`) yükler.
-  - Seçilen fiziksel cihaz için arıza açıklaması alarak doğrudan `maintenance_tickets` tablosuna `open` statülü yeni kayıt ekler. İşlemler toast bildirimleri ile kullanıcıya yansıtılır.
+### 3. Tedarikçiler Ekranı UI Guard'ları (`Suppliers.jsx`)
+* İç tedarikçiler "İç Depo" ve "Merkez Mutfak" badge'leri ile görselleştirilmiştir.
+* Doğrudan silme (`trash`) ve silinenleri geri yükleme işlemleri engellenmiştir.
+* Düzenleme modalında isim ve aktiflik alanları salt-okunurdur ve şirket ağacı senkronizasyonuna dair yeşil bilgi notu gösterilir.
+
+### 4. Stok Kartı Ekranı Entegrasyonu (`StockItems.jsx`)
+* Tedarikçilerin veritabanından çekildiği SELECT sorgusuna `supplier_kind` kolonu dahil edildi.
+* Stok kartı listesinde tedarikçi sütununda iç depolara ait kayıtlar `[İç Depo]` / `[Mutfak]` etiketleriyle render edildi.
+* Tedarikçi & Fiyat sekmesindeki (Tab 2) çoklu tedarikçi atama dropdown listesinde, iç depoların `[İç Depo]` ve `[Mutfak]` ibareleriyle ayırt edilebilir olması sağlandı.
 
 ---
 
-## Doğrulama ve Testler
+## Doğrulama Sonuçları
 
-* **Vite Derleme Testi:**
-  - `npm run build` komutu çalıştırılmış ve modüllerin (dist/assets içerisindeki `ManualManagement` ve `ManualReader` bundle dosyaları dahil) hatasız biçimde derlendiği teyit edilmiştir (26.33s).
-* **UI Bütünlüğü:**
-  - Bileşenlerin koyu/açık mod geçişlerine uyumlu olduğu ve mevcut premium tasarım kılavuzu (glassmorphism ve gölge efektleri) kurallarına sadık kaldığı doğrulanmıştır.
+### 1. Veritabanı Senkronizasyon Testi (`verify_sync.js`)
+* `scratch/verify_sync.js` test scripti canlı Railway veritabanı üzerinde çalıştırılmıştır.
+* Yeni ağaç ekleme, ad güncelleme ve ağaçtan silme (deaktif etme) senkronizasyon durumları test edilmiş ve hepsi başarıyla doğrulanmıştır.
+* Güvenlik nedeniyle hardcoded veritabanı parolaları script içerisinden temizlenmiş ve `process.env.DATABASE_URL` üzerinden okuma yapacak şekilde güncellenmiştir.
+
+### 2. Frontend Derleme Testi (`npm run build`)
+* Yapılan JSX ve query değişiklikleri sonrasında Vite build (`npm run build`) çalıştırılmış ve projenin 0 hata ile başarıyla derlendiği doğrulanmıştır.

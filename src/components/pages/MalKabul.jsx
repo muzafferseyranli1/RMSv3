@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
@@ -80,6 +80,10 @@ function ReceiptEditorModal({
   manualMode,
   onClose,
   onSave,
+  isWmsMode = false,
+  warehouseLocations = [],
+  warehouseLpns = [],
+  warehouseSettings = [],
 }) {
   const toast = useToast()
   const [form, setForm] = useState(null)
@@ -132,6 +136,9 @@ function ReceiptEditorModal({
     const qty = 0
     const unitPrice = Number(stock.purchase_price || 0)
     const vatRate = Number(form.vat_rate || 0.1)
+    const setting = (warehouseSettings || []).find(s => s.stock_item_id === stock.id)
+    const defaultLocId = setting?.default_location_id || ''
+
     setLines(prev => [
       ...prev,
       {
@@ -149,6 +156,11 @@ function ReceiptEditorModal({
         line_total: Number((qty * unitPrice).toFixed(4)),
         line_total_vat_inc: Number((qty * unitPrice * (1 + vatRate)).toFixed(4)),
         meta: {},
+        location_id: defaultLocId,
+        lpn_id: '',
+        lot_number: '',
+        expiration_date: '',
+        availability_status: 'available',
       },
     ])
     setAddStockId('')
@@ -181,6 +193,15 @@ function ReceiptEditorModal({
     if (!usableLines.length) {
       toast('Teslim alinan miktari sifirdan buyuk en az bir satir girin', 'error')
       return
+    }
+
+    if (isWmsMode) {
+      for (const line of usableLines) {
+        if (!line.location_id) {
+          toast(`Lütfen "${line.item_name}" ürünü için bir lokasyon seçin.`, 'error')
+          return
+        }
+      }
     }
 
     setSaving(true)
@@ -320,24 +341,118 @@ function ReceiptEditorModal({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line, index) => (
-                  <tr key={line.id || line.stock_item_id || index} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 12px', minWidth: 220, fontWeight: 700, color: '#0f172a' }}>{line.item_name}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>{line.item_sku || '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>{line.unit || '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#0f766e', fontWeight: 700 }}>{formatQty(line.suggested_qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700 }}>{formatQty(line.ordered_qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#475569', fontWeight: 700 }}>{formatQty(line.calculated_need)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <input className="f-input" type="number" step="any" min="0" value={line.received_qty} onChange={e => updateLine(line.id || line.stock_item_id || line.line_no, 'received_qty', e.target.value)} style={{ width: 120, marginLeft: 'auto', textAlign: 'right', fontWeight: 700 }} />
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <input className="f-input" type="number" step="any" min="0" value={line.unit_price} onChange={e => updateLine(line.id || line.stock_item_id || line.line_no, 'unit_price', e.target.value)} style={{ width: 120, marginLeft: 'auto', textAlign: 'right', fontWeight: 700 }} />
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>₺{formatMoney(line.line_total)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>₺{formatMoney(line.line_total_vat_inc)}</td>
-                  </tr>
-                ))}
+                {lines.map((line, index) => {
+                  const lineKey = line.id || line.stock_item_id || line.line_no || index
+                  return (
+                    <Fragment key={lineKey}>
+                      <tr style={{ borderBottom: isWmsMode ? 'none' : '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 12px', minWidth: 220, fontWeight: 700, color: '#0f172a' }}>{line.item_name}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>{line.item_sku || '—'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>{line.unit || '—'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#0f766e', fontWeight: 700 }}>{formatQty(line.suggested_qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700 }}>{formatQty(line.ordered_qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#475569', fontWeight: 700 }}>{formatQty(line.calculated_need)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          <input className="f-input" type="number" step="any" min="0" value={line.received_qty} onChange={e => updateLine(lineKey, 'received_qty', e.target.value)} style={{ width: 120, marginLeft: 'auto', textAlign: 'right', fontWeight: 700 }} />
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          <input className="f-input" type="number" step="any" min="0" value={line.unit_price} onChange={e => updateLine(lineKey, 'unit_price', e.target.value)} style={{ width: 120, marginLeft: 'auto', textAlign: 'right', fontWeight: 700 }} />
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>₺{formatMoney(line.line_total)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>₺{formatMoney(line.line_total_vat_inc)}</td>
+                      </tr>
+                      {isWmsMode && (
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                          <td colSpan={10} style={{ padding: '8px 12px' }}>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <i className="fa-solid fa-pallet" style={{ color: '#6366f1' }} /> WMS Detayları:
+                              </span>
+                              
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 600 }}>Lokasyon:</span>
+                                <select
+                                  className="f-input"
+                                  value={line.location_id || ''}
+                                  onChange={e => updateLine(lineKey, 'location_id', e.target.value)}
+                                  style={{ padding: '4px 8px', fontSize: '.75rem', width: 160 }}
+                                >
+                                  <option value="">Seçin...</option>
+                                  {warehouseLocations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>
+                                      {[loc.zone_code, loc.aisle ? `K${loc.aisle}` : null, loc.rack ? `R${loc.rack}` : null, loc.level ? `S${loc.level}` : null, loc.bin ? `G${loc.bin}` : null].filter(Boolean).join('-')} ({loc.usage_type})
+                                    </option>
+                                  ))}
+                                </select>
+                                {warehouseLocations.length === 0 && (
+                                  <span style={{ fontSize: '.72rem', color: '#ef4444', fontWeight: 600 }}>⚠️ Tanımlı lokasyon yok!</span>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 600 }}>LPN / Palet:</span>
+                                <select
+                                  className="f-input"
+                                  value={line.lpn_id || ''}
+                                  onChange={e => updateLine(lineKey, 'lpn_id', e.target.value)}
+                                  style={{ padding: '4px 8px', fontSize: '.75rem', width: 160 }}
+                                >
+                                  <option value="">LPN Yok</option>
+                                  {warehouseLpns.map(lpn => (
+                                    <option key={lpn.id} value={lpn.id}>{lpn.lpn_code} ({lpn.status})</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 600 }}>Lot No:</span>
+                                <input
+                                  className="f-input"
+                                  placeholder="Lot no"
+                                  value={line.lot_number || ''}
+                                  onChange={e => updateLine(lineKey, 'lot_number', e.target.value)}
+                                  style={{ padding: '4px 8px', fontSize: '.75rem', width: 110 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 600 }}>SKT:</span>
+                                <input
+                                  className="f-input"
+                                  type="date"
+                                  value={line.expiration_date || ''}
+                                  onChange={e => updateLine(lineKey, 'expiration_date', e.target.value)}
+                                  style={{ padding: '4px 8px', fontSize: '.75rem', width: 125 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: '.72rem', color: '#64748b', fontWeight: 600 }}>Durum:</span>
+                                <select
+                                  className="f-input"
+                                  value={line.availability_status || 'available'}
+                                  onChange={e => updateLine(lineKey, 'availability_status', e.target.value)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '.75rem',
+                                    width: 140,
+                                    fontWeight: 700,
+                                    color: line.availability_status === 'quarantine' ? '#dc2626' : line.availability_status === 'putaway_pending' ? '#d97706' : '#16a34a'
+                                  }}
+                                >
+                                  <option value="available">Kullanılabilir</option>
+                                  <option value="quarantine">Karantina</option>
+                                  <option value="putaway_pending">Putaway Bekliyor</option>
+                                </select>
+                              </div>
+
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -409,6 +524,11 @@ export default function MalKabul() {
   const [purchaseMovementRows, setPurchaseMovementRows] = useState([])
   const [search, setSearch] = useState('')
   const [editorState, setEditorState] = useState(null)
+  const isWmsMode = scope === 'anadepo'
+  const [warehouseLocations, setWarehouseLocations] = useState([])
+  const [warehouseLpns, setWarehouseLpns] = useState([])
+  const [warehouseSettings, setWarehouseSettings] = useState([])
+
   const selectedBranchRecord = useMemo(
     () => findBranchById(branches, selectedBranch),
     [branches, selectedBranch],
@@ -504,12 +624,31 @@ export default function MalKabul() {
       const movementRows = movementResult.data || []
       setBalanceRows(buildInventoryBalanceRows(movementRows))
       setPurchaseMovementRows(movementRows.filter(row => row.movement_type === 'purchase_receipt'))
+
+      if (isWmsMode && branchId) {
+        const [locResult, lpnResult, settingsResult] = await Promise.all([
+          db.from('warehouse_locations').select('*').eq('branch_id', branchId).eq('is_active', true).order('zone_code'),
+          db.from('warehouse_lpns').select('*').eq('branch_id', branchId).eq('status', 'active').order('lpn_code'),
+          db.from('stock_item_warehouse_settings').select('*').eq('branch_id', branchId),
+        ])
+        if (locResult.error) throw locResult.error
+        if (lpnResult.error) throw lpnResult.error
+        if (settingsResult.error) throw settingsResult.error
+
+        setWarehouseLocations(locResult.data || [])
+        setWarehouseLpns(lpnResult.data || [])
+        setWarehouseSettings(settingsResult.data || [])
+      } else {
+        setWarehouseLocations([])
+        setWarehouseLpns([])
+        setWarehouseSettings([])
+      }
     } catch (error) {
       toast(`Stok bakiyeleri okunamadi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setInventoryLoading(false)
     }
-  }, [branches, toast])
+  }, [branches, toast, isWmsMode])
 
   useEffect(() => {
     loadBase()
@@ -534,10 +673,18 @@ export default function MalKabul() {
   }, [receiptLines])
 
   const branchOrders = useMemo(() => (
-    orders.filter(order =>
-      branchMatchesRecord(order, selectedBranchRecord) &&
-      ['submitted', 'partially_received'].includes(order.status),
-    )
+    orders.filter(order => {
+      if (!branchMatchesRecord(order, selectedBranchRecord)) return false
+      if (!['submitted', 'partially_received'].includes(order.status)) return false
+      
+      // WMS sevk-gate: warehouse_replenishment siparişleri sadece depo sevk ettikten sonra (supplier_marked_sent === true) kabul edilebilir
+      if (order.flow_channel === 'warehouse_replenishment') {
+        const meta = getOrderMeta(order)
+        if (!meta?.supplier_marked_sent) return false
+      }
+      
+      return true
+    })
   ), [orders, selectedBranchRecord])
 
   const filteredOrders = useMemo(() => {
@@ -573,6 +720,8 @@ export default function MalKabul() {
         const alreadyReceived = Number(receivedByOrderLine.get(line.id) || 0)
         const remaining = Math.max(Number(line.ordered_qty || 0) - alreadyReceived, 0)
         const unitPrice = Number(line.unit_price || 0)
+        const setting = warehouseSettings.find(s => s.stock_item_id === line.stock_item_id)
+        const defaultLocId = setting?.default_location_id || ''
         return {
           order_line_id: line.id,
           stock_item_id: line.stock_item_id,
@@ -588,6 +737,11 @@ export default function MalKabul() {
           line_total: Number((remaining * unitPrice).toFixed(4)),
           line_total_vat_inc: Number((remaining * unitPrice * (1 + vatRate)).toFixed(4)),
           meta: line.meta || {},
+          location_id: defaultLocId,
+          lpn_id: '',
+          lot_number: '',
+          expiration_date: '',
+          availability_status: 'available',
         }
       })
 
@@ -698,7 +852,13 @@ export default function MalKabul() {
       line_total: Number(line.line_total || (Number(line.received_qty || 0) * Number(line.unit_price || 0))),
       line_total_vat_inc: Number(line.line_total_vat_inc || (Number(line.line_total || 0) * (1 + Number(line.vat_rate ?? form.vat_rate ?? 0.1)))),
       notes: null,
-      meta: {},
+      meta: {
+        location_id: line.location_id || null,
+        lpn_id: line.lpn_id || null,
+        lot_number: line.lot_number?.trim() || null,
+        expiration_date: line.expiration_date || null,
+        availability_status: line.availability_status || 'available',
+      },
       line_no: index + 1,
     }))
 
@@ -713,6 +873,7 @@ export default function MalKabul() {
 
     const currentBalances = new Map(balanceMap)
     const movementRows = insertedLines.map(line => {
+      const originalLine = lines.find(x => x.stock_item_id === line.stock_item_id)
       const previous = currentBalances.get(line.stock_item_id)
       const prevQty = Number(previous?.balance_qty_after || 0)
       const prevTotalCost = Number(previous?.balance_total_cost_after || 0)
@@ -766,11 +927,16 @@ export default function MalKabul() {
         balance_total_cost_after: nextTotalCost,
         calc_status: 'calculated',
         notes: form.note?.trim() || null,
+        location_id: originalLine?.location_id ? asUuidOrNull(originalLine.location_id) : null,
+        lpn_id: originalLine?.lpn_id ? asUuidOrNull(originalLine.lpn_id) : null,
+        lot_number: originalLine?.lot_number?.trim() || null,
+        expiration_date: originalLine?.expiration_date || null,
         meta: {
           doc_kind: form.doc_kind,
           doc_no: form.doc_no || null,
           order_id: form.order_id || null,
           order_no: form.order_no || null,
+          availability_status: originalLine?.availability_status || 'available',
         },
       }
     })
@@ -997,6 +1163,10 @@ export default function MalKabul() {
         manualMode={editorState?.type === 'manual'}
         onClose={() => setEditorState(null)}
         onSave={persistReceipt}
+        isWmsMode={isWmsMode}
+        warehouseLocations={warehouseLocations}
+        warehouseLpns={warehouseLpns}
+        warehouseSettings={warehouseSettings}
       />
     </div>
   )

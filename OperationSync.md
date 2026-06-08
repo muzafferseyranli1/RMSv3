@@ -9073,3 +9073,456 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - `Kullanıcı onayına sunulması ve git status doğrulaması yapılması.`
 - `Handoff Contract`:
   - `App.jsx üzerindeki rota değişikliklerini ve Sidebar.jsx içerisindeki Ana Depo menü grubu yapısını inceleyin.`
+
+## Entry 055
+
+- `Timestamp`: `2026-06-08T20:14:30+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS sipariş modeli tasarım notunun yazılması`
+- `Intent`: `Kullanıcıyla yapılan tasarım değerlendirmesini kalıcı bir dokümana dönüştürmek; ana depo kayıtlarının iç tedarikçi olarak senkronlanması, stok kartındaki tedarikçi altyapısının sipariş yönlendirme kaynağı olması ve WMS ikmal/satınalma ayrımının sonraki geliştirme için netleşmesini sağlamak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `src/App.jsx`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/PurchasingManager.jsx`
+  - `src/components/pages/StockItems.jsx`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-ChildItem -LiteralPath .\docs -File | Select-Object -ExpandProperty Name`
+  - `Get-Content -LiteralPath .\OperationSync.md -Encoding UTF8 -Tail 140`
+  - `rg -n "WMS|ana depo|merkez depo|tedarikçi|supplier|depo sipariş" C:\Users\muzaf\.codex\memories\MEMORY.md`
+  - `rg -n "CREATE TABLE IF NOT EXISTS public\.suppliers|CREATE TABLE IF NOT EXISTS public\.stock_items|supp_id|suppliers_list|workspace_scope|type = 'anadepo'|type==='anadepo'|type === 'anadepo'" schema-railway-master.sql src\components\pages\StockItems.jsx src\components\pages\Company*.jsx src\context\WorkspaceContext.jsx -C 15`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `/depo-orders` mevcut `Orders` bileşenini, `/depo-mal-kabul` mevcut `MalKabul` bileşenini kullanmaktadır; bu WMS için başlangıç sağlar fakat gerçek ana depo sipariş konsolu değildir.`
+  - `Stok kartında `stock_items.supp_id` ve `stock_items.suppliers_list` ile hazır tedarikçi altyapısı vardır; bu alanlar iç depo/dış tedarikçi yönlendirmesinin ana kaynağı olmalıdır.`
+  - `suppliers` tablosunda iç depo tedarikçisi ile dış firma tedarikçisini ayıran kanonik kolon yoktur; `supplier_kind`, `source_workspace_scope`, `source_branch_id`, `is_system_generated` ve `sync_key` gibi alanlar önerilmiştir.`
+  - `warehouse_locations`, `warehouse_lpns` ve `stock_item_warehouse_settings` mevcut WMS parçalarını sağlar; eksik olan bunların sipariş, toplama, paketleme ve sevk akışına bağlanmasıdır.`
+- `Decisions`:
+  - `Şirket ağacındaki `anadepo` node'ları `suppliers` tablosuna otomatik iç tedarikçi olarak senkronlanmalıdır.`
+  - `Sipariş yönlendirmesi şube seviyesinde tek varsayılan depo üzerinden değil, stok satırının tedarikçisi üzerinden çözülmelidir.`
+  - `İç depo tedarikçisine bağlı stok satırları WMS ikmal talebi, dış tedarikçiye bağlı satırlar dış satınalma siparişi olarak ayrılmalıdır.`
+  - `/depo-orders` ileride şube `Orders` ekranından ayrılıp Ana Depo Sipariş Konsolu haline getirilmelidir.`
+- `Open Risks`:
+  - `WMS ikmal taleplerinin mevcut `purchase_orders` tablolarında mı ayrılacağı yoksa ayrı `warehouse_requisitions` tabloları mı gerektireceği henüz karara bağlanmadı.`
+  - `İç tedarikçi supplier kayıtlarının kullanıcı tarafından düzenlenebilirliği ve şirket ağacı senkronunda silme/pasifleştirme davranışı ayrıca tasarlanmalıdır.`
+- `Next Step`:
+  - `Bir sonraki geliştirme adımında önce `docs/ana_depo_siparis_modeli.md` okunmalı; ardından ic tedarikci senkronu ve supplier_kind veri modeli için schema/API tasarımı çıkarılmalıdır.`
+- `Handoff Contract`:
+  - `Sonraki agent Ana Depo / WMS sipariş modeline dokunmadan önce `docs/ana_depo_siparis_modeli.md`, `SUITABLERMS_PROJECT_GOVERNANCE.md`, `OperationSync.md`, `src/components/pages/StockItems.jsx`, `src/components/pages/Orders.jsx`, `src/components/pages/MalKabul.jsx` ve `schema-railway-master.sql` dosyalarını okusun. Mevcut /depo-orders ekranının şube Orders bileşeninin yeniden kullanımı olduğunu unutmasın; yeni WMS konsolu tasarımı stok kartı tedarikçisi ve iç tedarikçi sınıflandırması üzerinden ilerlemelidir.`
+
+## Entry 056
+
+- `Timestamp`: `2026-06-08T20:17:12+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS sipariş modelinin Sipariş Akışları wizard etkisinin dokümana eklenmesi`
+- `Intent`: `Kullanıcının "Sipariş akışları wizardında değişiklik gerekir mi?" sorusunu mevcut OrderFlows koduna dayanarak değerlendirmek ve tasarım dokümanına eklemek.`
+- `Files Read`:
+  - `src/components/pages/OrderFlows.jsx`
+  - `docs/ana_depo_siparis_modeli.md`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content -LiteralPath .\src\components\pages\OrderFlows.jsx -Encoding UTF8`
+  - `Get-Content -LiteralPath .\docs\ana_depo_siparis_modeli.md -Encoding UTF8`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `OrderFlows wizard mevcutta `supplier_id`, `branches`, `urun_tipi`, `selected_stocks`, `stock_template_id`, takvim, teslim saati, onay ve miktar hesaplama alanlarıyla çalışmaktadır.`
+  - `Wizard stok kapsamını seçili tedarikçiye göre `stock_items.supp_id` ve `stock_items.suppliers_list` üzerinden filtrelemektedir; bu, iç depo tedarikçisi modeline uygun bir başlangıçtır.`
+  - `Wizard tedarikçileri sadece `id,name` ile okuduğu için gelecekteki `supplier_kind` ayrımını gösteremez; iç depo/dış tedarikçi dili ve davranışı için bu sorgu genişlemelidir.`
+- `Decisions`:
+  - `Sipariş akışları wizardı baştan yazılmayacak; seçili supplier türüne göre dil, badge, sonuç önizlemesi ve bazı seçeneklerin davranışı değiştirilecek.`
+  - `İç depo supplier seçildiğinde wizard sonucu WMS depo ikmal talebi olarak, dış supplier seçildiğinde dış satınalma siparişi olarak açıklanmalıdır.`
+  - `order_flows için `flow_channel` benzeri kanonik bir akış türü alanı önerilmiştir; ilk versiyonda supplier_kind üzerinden otomatik atanabilir.`
+- `Open Risks`:
+  - `order_flows tablosuna yeni alan eklenip eklenmeyeceği ve geçmiş akışların supplier_kind değişiminden etkilenmemesi için nasıl stabilize edileceği ayrıca karara bağlanmalıdır.`
+- `Next Step`:
+  - `İç tedarikçi senkronu tasarımından sonra OrderFlows.jsx içinde supplier_kind alanlarını okuyacak ve iç depo seçildiğinde ekran dilini değiştirecek küçük, kontrollü bir UI/model revizyonu planlanmalıdır.`
+- `Handoff Contract`:
+  - `Sipariş akışları wizardı üzerinde çalışacak agent önce `docs/ana_depo_siparis_modeli.md` içindeki "Siparis Akislari Wizard Etkisi" bölümünü, sonra `src/components/pages/OrderFlows.jsx` dosyasında supplierStocks filtresi, supplier select, branch select, auto_send/edit/cancel/onay adımlarını incelemelidir.`
+
+## Entry 057
+
+- `Timestamp`: `2026-06-08T20:20:14+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS dokümanında depo yönetimi ve mal kabul kapsamının genişletilmesi`
+- `Intent`: `Kullanıcının sipariş akışına fazla odaklanılıp depo yönetimi ve mal kabulün atlanmaması uyarısı üzerine, WMS dokümanında lokasyon, LPN, mal kabul, putaway, sayım, transfer, zayi ve kullanılabilir stok ayrımını netleştirmek.`
+- `Files Read`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Select-String -Path .\docs\ana_depo_siparis_modeli.md -Pattern '^## Ekran Ayrimi|^### Depo Mal Kabul|^### Faz 4|^### Faz 5|^## Akis Cizimi|^## Veri Iliskisi Cizimi' -Context 2,8`
+  - `Get-Content -LiteralPath .\OperationSync.md -Encoding UTF8 -Tail 80`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `Önceki dokümanda mal kabul ve toplama/putaway konuları vardı fakat sipariş modelinin yanında özet kalmıştı.`
+  - `WMS için depo yönetimi ayrı bir operasyon katmanı olarak tanımlanmalı; lokasyon, LPN/palet, lot/SKT, karantina/putaway ve kullanılabilir stok ayrımı siparişten bağımsız ele alınmalıdır.`
+- `Decisions`:
+  - `Dokümana "Depo Yonetimi Kapsami" ve "Mal Kabul ve Putaway Kapsami" bölümleri eklendi.`
+  - `Mal kabul akışı için ayrı Mermaid çizimi eklendi; veri ilişkisi çizimi inventory_movements, warehouse_locations, warehouse_lpns ve purchase_receipts bağlantılarıyla genişletildi.`
+  - `Fazlara "Depo Operasyon Derinlestirme" adımı eklendi.`
+- `Open Risks`:
+  - `Karantina/putaway/kullanılabilir stok ayrımının meta alanıyla mı yoksa yeni kolonlarla mı tutulacağı henüz karara bağlanmadı.`
+  - `Depo içi lokasyon transferlerinin mevcut transfer ekranına mı ekleneceği yoksa WMS'e özel bir ekran mı gerektireceği sonraki tasarımda netleşmelidir.`
+- `Next Step`:
+  - `Uygulama tasarımına geçildiğinde sipariş konsolu kadar mal kabul, putaway ve lokasyon/LPN bazlı stok hareketleri de ilk faz kapsamına alınmalıdır.`
+- `Handoff Contract`:
+  - `Sonraki agent WMS tasarımına devam ederken sadece sipariş akışını değil, `docs/ana_depo_siparis_modeli.md` içindeki "Depo Yonetimi Kapsami", "Mal Kabul ve Putaway Kapsami" ve "Depo Operasyon Ekranlari" bölümlerini de kanonik kabul etmelidir.`
+
+## Entry 058
+
+- `Timestamp`: `2026-06-08T20:28:36+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS mevcut uygunluk kontrolu`
+- `Intent`: `Kullanicinin depo kendi dis satin alma siparisi, WMS mal kabul, subelerden gelen ic depo taleplerinin konsolidasyonu, toplama, sevk ve arac/plaka eslestirme akisinin bugunku yapida tasinip tasinmadigini sormasi uzerine kod ve sema kanitlariyla read-only degerlendirme yapmak.`
+- `Files Read`:
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/PurchasingManager.jsx`
+  - `src/components/pages/SupplierOrderPanel.jsx`
+  - `src/components/pages/InventoryTransfer.jsx`
+  - `src/components/pages/WmsLpns.jsx`
+  - `schema-railway-master.sql`
+  - `docs/ana_depo_siparis_modeli.md`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `rg -n "location_id|lpn_id|lot_number|expiration_date|movementRows|purchase_receipts|purchase_receipt_lines" src schema-railway-master.sql`
+  - `rg -n "order_flows|supplier_id|flow_channel|supplier_kind|purchase_orders|purchase_order_lines" schema-railway-master.sql src`
+  - `rg -n "Satinalma Yoneticisi|konsolide|Consolid|supplier_dispatch|Sevk Et|shipment|plaka|plate|kamyon|truck|vehicle|arac|araç" src schema-railway-master.sql`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `inventory_movements semasinda location_id, lpn_id, lot_number ve expiration_date kolonlari var; warehouse_locations, warehouse_lpns ve stock_item_warehouse_settings da mevcut.`
+  - `MalKabul.jsx purchase_receipts, purchase_receipt_lines ve inventory_movements olusturuyor fakat lokasyon, LPN, lot ve SKT alanlarini UI'da toplamiyor ve kayitta doldurmuyor.`
+  - `MalKabul ekrani baslik/dil olarak halen sube baglaminda calisiyor; ana depo mal kabul icin WMS modu veya ayri ekran gerekiyor.`
+  - `PurchasingManager ve SupplierOrderPanel konsolidasyon gorunumu sagliyor fakat WMS stok yeterlilik, lokasyon bazli toplama, pick wave, kismi karsilama ve sevk karari seviyesinde degil.`
+  - `SupplierOrderPanel sevk bildirimi purchase_orders.meta.supplier_dispatch altina yazar; bu depo cikisi, LPN/paket, arac/plaka veya sube teslim modeli degildir.`
+  - `Arac, plaka, kamyon, sevk partisi veya delivery trip icin kanonik sema/ekran bulunamadi.`
+- `Decisions`:
+  - `Mevcut yapi baslangic iskeleti olarak uygun, ancak operasyonel merkez depo/WMS modeli icin yeterli degildir.`
+  - `Depo dis satin alma mevcut satin alma altyapisindan genisletilebilir; depo mal kabul, ic depo talep konsolu, toplama/sevk ve arac/plaka modeli ayrica tasarlanmalidir.`
+  - `docs/ana_depo_siparis_modeli.md icine "Mevcut Yapinin Uygunluk Kontrolu" bolumu ve mevcut-hedef akis Mermaid cizimi eklendi.`
+- `Open Risks`:
+  - `WMS talep/fulfillment modeli mevcut purchase_orders uzerinde kanal/status alanlariyla mi ilerleyecek yoksa warehouse_requisitions ve shipment tablolariyla mi ayrilacak karari acik.`
+  - `Putaway/karantina/kullanilabilir stok ayrimi meta ile baslatilsa bile operasyonel raporlama icin ileride kolonlasma gerekebilir.`
+- `Next Step`:
+  - `Ilk uygulama fazinda supplier_kind + flow_channel ayrimi, WMS mal kabul alanlari ve ana depo talep konsolu birlikte tasarlanmalidir; arac/plaka sevk partisi modeli fatura entegrasyonundan bagimsiz ele alinmalidir.`
+- `Handoff Contract`:
+  - `Sonraki agent bu konuyu acarsa docs/ana_depo_siparis_modeli.md icindeki "Mevcut Yapinin Uygunluk Kontrolu" bolumunu kanonik kabul etsin; MalKabul.jsx'te persistReceipt/movementRows, schema-railway-master.sql'de inventory_movements WMS kolonlari, PurchasingManager/SupplierOrderPanel konsolidasyon ve sevk bildirimi kodlari tekrar kontrol edilmelidir.`
+
+## Entry 059
+
+- `Timestamp`: `2026-06-08T20:36:03+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS siparis ekraninin tedarikci paneli karakterinin netlestirilmesi`
+- `Intent`: `Kullanicinin satin alma gorevlisi icin ana deponun herhangi bir tedarikci gibi gorulmesi, WMS tarafindaki siparis ekraninin ise tedarikci paneli ozelliklerini tasimasi ve urun toplam/sevk islemlerinin buradan yonetilmesi gerektigini belirtmesi uzerine tasarim dokumanini guncellemek.`
+- `Files Read`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Select-String -Path docs\\ana_depo_siparis_modeli.md -Pattern "### Ana Depo Siparis Konsolu|### Depo Satin Alma Siparisleri|### 4. Konsolidasyon|### 5. Toplama|Bu Kontrolden Cikan" -Context 2,12`
+  - `Get-Content -LiteralPath OperationSync.md -Tail 45`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `Satin alma gorevlisi ekraninda ana depo ozel bir WMS operasyonu degil, diger tedarikciler gibi gorunen bir ikmal kaynagi olmalidir.`
+  - `Ana Depo / WMS Siparisler ekrani satin alma konsolidasyon ekraninin kopyasi olmamalidir; ic tedarikci operasyon paneli gibi calismalidir.`
+  - `SupplierOrderPanel mantigi WMS siparis ekrani icin daha yakin referanstir, ancak stok yeterlilik, lokasyon/LPN, toplama, kismi sevk ve arac/plaka ile genisletilmelidir.`
+- `Decisions`:
+  - `PurchasingManager tedarikci agnostik kalacak; ana depo burada ozel depo operasyonu gibi ayrismayacak.`
+  - `WMS Siparisler ekrani urun toplam konsolidasyon, sube kirilimi, eksik stok karari, lokasyon bazli toplama, sevk partisi ve arac/plaka atamasini yonetecek ana operasyon ekrani olarak tasarlanacak.`
+  - `Depo satin alma ihtiyaci ayri bir satin alma ekranindan cok mevcut satin alma akisinin ana depo baglaminda dogru filtrelenmesi ve WMS mal kabule baglanmasi olarak ele alinacak.`
+- `Open Risks`:
+  - `SupplierOrderPanel'in mevcut meta tabanli sevk bildirimi WMS icin yeterli degildir; kalici shipment/pick/fulfillment modeli gerekecektir.`
+- `Next Step`:
+  - `Ana Depo / WMS Siparisler ekrani tasarlanirken once SupplierOrderPanel akis terminolojisi, sonra WMS icin gereken stok/lokasyon/sevk veri modeli birlikte ele alinmalidir.`
+- `Handoff Contract`:
+  - `Sonraki agent satin alma ekranini WMS operasyon ekranina cevirmeye calismasin; WMS operasyonu icin docs/ana_depo_siparis_modeli.md icindeki Ana Depo Siparis Konsolu ve Toplama/Sevk bolumleri kanonik kabul edilsin.`
+
+## Entry 060
+
+- `Timestamp`: `2026-06-08T20:41:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo / WMS tasariminin agent faz talimatlarina donusturulmesi`
+- `Intent`: `Kullanicinin ana depo/WMS dokumanini gerekirse fazlara bolerek baska agentlar icin talimat haline getirme ve bittiginde kontrol etme istegi uzerine uygulama fazlari, agent sorumluluklari, kabul kriterleri ve final reviewer kontrol listesini ayri bir dokumanda toplamak.`
+- `Files Read`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/ana_depo_siparis_modeli.md`
+  - `docs/ana_depo_wms_agent_talimatlari.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content -LiteralPath docs\\ana_depo_siparis_modeli.md`
+  - `Get-Content -LiteralPath OperationSync.md -Tail 90`
+  - `Get-Date -Format o`
+- `Findings`:
+  - `Ana depo/WMS tasarim dokumani kanonik mimari karar olarak kalmali; baska agentlar icin ayrica uygulanabilir faz talimati gerekiyor.`
+  - `En kritik ayrim satin alma gorevlisi ekraninin tedarikci agnostik kalmasi, WMS Siparisler ekraninin ise ic tedarikci operasyon paneli olarak tasarlanmasidir.`
+- `Decisions`:
+  - `docs/ana_depo_wms_agent_talimatlari.md olusturuldu.`
+  - `Fazlar Faz 0 kesif/karar, Faz 1 ic tedarikci veri modeli, Faz 2 OrderFlows ayrimi, Faz 3 sube siparisinden WMS talebe yonlendirme, Faz 4 WMS mal kabul/putaway, Faz 5 WMS Siparisler paneli, Faz 6 toplama/sevk/arac-plaka, Faz 7 depo operasyon derinlestirme, Faz 8 uctan uca kontrol olarak bolundu.`
+  - `Her faza okunacak dosya, agent talimati, teslimatlar ve kabul kriterleri eklendi.`
+  - `Her agent icin bitis kontrol listesi ve final reviewer kontrolu eklendi.`
+  - `Kontrol sirasinda ana tasarim dokumanindaki Faz 5'in eski "ayri Depo Satin Alma Siparisleri ekrani" ifadesi son kararla celistigi icin duzeltildi; mevcut satin alma altyapisinin ana depo baglaminda kullanilmasi karariyla uyumlu hale getirildi.`
+- `Open Risks`:
+  - `Faz 0 kararlarindan sonra WMS talep modeli purchase_orders uzantisi yerine warehouse_requisitions gibi ayri tabloya kayarsa sonraki fazlar bu karara gore revize edilmelidir.`
+- `Next Step`:
+  - `Uygulamaya gecilecekse ilk agent Faz 0 ile baslamali ve bu dosyadaki kontrol listesine gore sadece karar/etki analizi cikarmalidir.`
+- `Control`:
+  - `Kontrol edildi: docs/ana_depo_wms_agent_talimatlari.md icinde Faz 0-8 basliklari eksiksiz, her agent/final reviewer kontrol listeleri mevcut, satin alma ekranini WMS operasyon ekranina ceviren yonlendirme yok. Ana tasarim dokumanindaki Faz 5 ifadesi de son kararla uyumlu hale getirildi.`
+- `Handoff Contract`:
+  - `Sonraki agentlar docs/ana_depo_siparis_modeli.md dosyasini mimari kaynak, docs/ana_depo_wms_agent_talimatlari.md dosyasini uygulama talimati olarak kullanmalidir; faz atlamadan once bir onceki fazin kabul kriterlerini kontrol etmelidir.`
+
+## Entry 061
+
+- `Timestamp`: `2026-06-08T20:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Faz 0: Kesif ve Karar Netlestirme`
+- `Intent`: `WMS veri modeli, putaway/karantina/kullanilabilir stok ayrimi ve sube kabul adimi kararlarini netlestirerek docs/wms_faz0_karar_notu.md dosyasini olusturmak ve OperationSync.md devir kaydini guncellemek.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `docs/ana_depo_siparis_modeli.md`
+  - `docs/ana_depo_wms_agent_talimatlari.md`
+  - `schema-railway-master.sql`
+  - `wms-migration.sql`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/SupplierOrderPanel.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/WmsLocations.jsx`
+  - `src/components/pages/WmsLpns.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/PurchasingManager.jsx`
+  - `src/components/pages/InventoryTransfer.jsx`
+- `Files Changed`:
+  - `docs/wms_faz0_karar_notu.md`
+  - `OperationSync.md`
+- `Findings`:
+  - `purchase_orders ve purchase_order_lines veritabani tablolari ve Orders.jsx/MalKabul.jsx arayuzleri WMS ikmal talebi/kabul islemleri icin ideal sekilde reuse edilebilir. Bu sayede kod tekrari engellenir.`
+  - `inventory_movements tablosunda location_id, lpn_id, lot_number ve expiration_date kolonlari zaten mevcuttur.`
+  - `WMS lokasyonlarinda usage_type alani ve meta->>'availability_status' kullanilarak putaway/karantina ayrilari sema degisikligi yapilmadan persist edilebilir.`
+  - `Sube mal kabul adimi (MalKabul.jsx) WMS sevk sonrasi bekleyen durumdaki siparisleri dogrudan isleyebildigi icin bu adimin zorunlu tutulmasi ve ayni ekranin kullanilmasi idealdir.`
+- `Decisions`:
+  - `WMS ikmal talepleri icin warehouse_requisitions tablosu acilmayacak, purchase_orders tablosunda flow_channel kolonu ile ayrilarak reuse edilecektir.`
+  - `Yerlestirme/karantina stogu ilk versiyonda inventory_movements.meta->>'availability_status' altinda tutulacaktir.`
+  - `Sube kabul adimi zorunlu kalacaktir; WMS sevk ettiginde siparis submitted durumuna gecer ve sube mal kabulunde (MalKabul.jsx) islenir.`
+- `Open Risks`:
+  - `Yonetici onayi (hq_approval, branch_approval) gibi akis kurallarinin WMS siparisleri icin nasil davranacagi Faz 2 ve Faz 3 sirasinda test edilmelidir.`
+- `Next Step`:
+  - `Faz 1: suppliers tablosuna ic depo tedarikcilerini upsert eden senkron mekanizmasinin kurulmasi ve supplier_kind kolonunun eklenmesi/islenmesi.`
+- `Handoff Contract`:
+  - `Sonraki agent Faz 1 adimina gecmelidir. docs/wms_faz0_karar_notu.md dosyasini karar notu, docs/ana_depo_wms_agent_talimatlari.md dosyasini ise uygulama rehberi olarak kullanmalidir.`
+
+
+## Entry 062 (WMS Phase 1)
+
+- `Timestamp`: `2026-06-08T21:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Faz 1: İç Tedarikçi Veri Modeli ve Senkron`
+- `Intent`: `Şirket ağacındaki ana depo düğümlerini suppliers tablosuna otomatik olarak sync_key ile upsert eden senkronizasyon altyapısını kurmak; suppliers, purchase_orders ve order_flows tablolarına Faz 1 kanonik kolonları ve kısıtları ekleyen migrations adımlarını çalıştırmak; Suppliers listesi ekranında iç tedarikçileri badge'ler ile görselleştirmek ve silme/ünvan düzenleme kısıtlarını entegre etmek.`
+- `Files Changed`:
+  - `OperationSync.md`
+  - `schema-railway-master.sql`
+  - `wms-migration.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/Company (1).jsx`
+  - `src/components/pages/Suppliers.jsx`
+- `Commands Run`:
+  - `node scratch/run_migration_phase1.js` (Railway DB migrations uygulandı - BAŞARILI)
+  - `node scratch/verify_sync.js` (Ağaç ekleme, güncelleme ve silme senkronu testi - BAŞARILI)
+  - `npm run build` (Vite production build derlemesi - BAŞARILI)
+- `Findings`:
+  - `wms-migration.sql` ve `schema-railway-master.sql` içindeki eksik `suppliers.supplier_kind`, `purchase_orders.flow_channel` ve `order_flows.flow_channel` kolonları başarıyla tanımlandı ve Railway DB'de uygulandı.
+  - `Company (1).jsx` içinde saveTree çağrıldığında `anadepo` düğümleri `sync_key = 'anadepo_${id}'` ile `suppliers` tablosuna upsert edilmektedir.
+  - Şirket ağacından kaldırılan depolar, sipariş geçmişini bozmamak adına Suppliers tablosunda `active = false` ve `deleted_at = now()` olarak güncellenerek pasifize edilmektedir.
+  - `Suppliers.jsx` ekranında iç tedarikçiler "İç Depo" ve "Merkez Mutfak" badge'leri ile görselleştirildi, silme/geri yükleme butonları devre dışı bırakıldı ve düzenleme modalında ünvan ile aktiflik durumları şirket ağacıyla tutarsızlık olmaması adına salt-okunur (disabled) yapıldı.
+- `Decisions`:
+  - `İç tedarikçilerin ünvan ve aktiflik durumu Şirket Kuruluşu ekranından yönetilir; bu durum kullanıcıya Suppliers edit modalında bir yeşil bilgi kartı ile açıklanmıştır.`
+- `Open Risks`: None.
+- `Next Step`:
+  - `Faz 2: Siparis Akislari Wizard Ayrimi (OrderFlows.jsx üzerinde flow_channel ve supplier_kind entegrasyonu).`
+- `Handoff Contract`:
+  - `Faz 1 şema, backend senkron tetikleyici ve Suppliers UI koruma kuralları tamamlanmış, derlenmiş ve test edilmiştir. Sonraki agent Faz 2 (Sipariş Akışları Sihirbazı Ayrımı) aşamasına geçmeye hazırdır.`
+
+## Entry 063
+
+- `Timestamp`: `2026-06-08T21:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS Faz 1: Doğrulama ve Cila`
+- `Intent`: `Faz 1 kapsamında yapılan geliştirmelerin doğruluğunu denetlemek; Stok kartı ekranında (StockItems.jsx) iç tedarikçilerin net seçilebilmesi için isim ve dropdown seçeneklerine görsel etiketleri entegre etmek; Vite derlemesi ve veritabanı senkronizasyon testleri ile doğrulamayı tamamlamak.`
+- `Files Read`:
+  - `src/components/pages/StockItems.jsx`
+  - `scratch/verify_sync.js`
+- `Files Changed`:
+  - `src/components/pages/StockItems.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/verify_sync.js` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - `Company (1).jsx` içindeki sync hook'u ve `Suppliers.jsx` içindeki UI guard'ları/badge'leri tam olarak beklendiği gibi çalışmaktadır.
+  - `StockItems.jsx` dosyasında `suppliers` tablosu SELECT sorgusuna `supplier_kind` dahil edilerek, hem stok tablosunda hem de tedarikçi ekleme modalında iç tedarikçiler `[İç Depo]` / `[Mutfak]` etiketleriyle render edildi.
+  - `verify_sync.js` testi Railway Postgres üzerinde başarıyla çalışarak ağaca yeni depo ekleme, isim güncelleme ve silme (deaktive etme) durumlarını başarıyla doğruladı.
+  - Proje 0 hata ile başarıyla Vite üzerinden derlendi.
+- `Decisions`:
+  - İç depo ve merkez mutfak ayrımı stok kartında da görsel olarak etiketlendi; böylece satın alma / operasyon görevlisinin stok kartında iç ve dış tedarikçiyi yanlış seçme riski en aza indirildi.
+- `Open Risks`: None.
+- `Next Step`:
+  - `Faz 2: Sipariş Akışları Sihirbaz Ayrımı (OrderFlows.jsx üzerinde flow_channel ve supplier_kind dinamik wording entegrasyonu).`
+- `Handoff Contract`:
+  - `Faz 1 ulaştığı tüm kabul kriterleriyle doğrulanmış ve tamamlanmıştır. Sonraki adımda Faz 2 (OrderFlows wizard) akışı hayata geçirilecektir. Lütfen implementation_plan.md içindeki Faz 2 detaylarını inceleyerek devam edin.`
+
+
+
+
+
+## Entry 064
+
+- `Timestamp`: `2026-06-08T21:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Faz 2: Sipariş Akışları Sihirbazı Ayrımı`
+- `Intent`: `OrderFlows.jsx üzerinde flow_channel ve supplier_kind dinamik wording entegrasyonu yapmak; veritabanında flow_channel kolonunu doldurmak ve geriye dönük uyumluluk sağlamak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `docs/ana_depo_siparis_modeli.md`
+  - `docs/ana_depo_wms_agent_talimatlari.md`
+  - `src/components/pages/OrderFlows.jsx`
+- `Files Changed`:
+  - `src/components/pages/OrderFlows.jsx`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/backfill_order_flows.js` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - `suppliers` tablosu select sorgusu `id,name,supplier_kind` şeklinde genişletildi.
+  - `SupplierSelect` dropdown'ına tedarikçi türlerine göre görsel badge'ler (`İç Depo`, `Merkez Mutfak`, `Dış Tedarikçi`) eklendi.
+  - `FlowCard` listesinde ve `FlowDetail` panellerinde `flow_channel` badge'leri ve dinamik wording entegre edildi.
+  - Sihirbaz kaydetme adımında `flow_channel` değeri tedarikçinin `supplier_kind` değerine göre otomatik türetildi ve kaydedildi.
+  - Geriye dönük uyumluluk sağlandı.
+- `Decisions`:
+  - Kullanıcıdan gereksiz seçimler almak yerine `flow_channel` değeri tedarikçinin tipinden otomatik olarak türetildi.
+- `Open Risks`: None.
+- `Next Step`:
+  - `Faz 3: Şube Siparişinden WMS Talebe Yönlendirme (Orders.jsx ve branchPurchasing helper'larında stok tedarikçisine göre sipariş satırlarını bölerek WMS ikmal talebi oluşturma).`
+- `Handoff Contract`:
+  - `Faz 2 sipariş akış sihirbazı kanal ayrımı ve veri tamamlama adımları tamamlanmıştır. Sonraki agent Faz 3 şube sipariş satırı bölme ve WMS ikmal talebi oluşturma geliştirmelerine geçmelidir.`
+
+
+## Entry 065
+
+- `Timestamp`: `2026-06-08T21:49:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS Faz 1 & 2 Cilası ve Faz 3: Şube Siparişinden WMS Talebe Yönlendirme`
+- `Intent`: `Faz 1 ve Faz 2'deki hardcoded DB bağlantılarını temizlemek, Şirket ağacı senkronizasyonunda hata kontrolü eklemek ve Faz 3 kapsamında şube sipariş akışlarından üretilen siparişleri stok tedarikçisine göre bölüp doğru WMS ikmal kanallarına yönlendirmek.`
+- `Files Changed`:
+  - `server/run_db_migration.js`
+  - `src/components/pages/Company (1).jsx`
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Files Deleted`:
+  - `scratch/append_manual_phase2.cjs`
+- `Commands Run`:
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - `server/run_db_migration.js` içindeki Railway URL'i `process.env.DATABASE_URL`'e taşındı.
+  - `Company (1).jsx` içindeki upsert ve update sorgularının `{ error }` çıktıları yakalanıp hata fırlatma eklendi.
+  - `branchPurchasing.js` içine stok kartındaki birincil ve varsayılan tedarikçileri tarayarak asıl tedarikçiyi çözen `resolveLineSupplierId` eklendi.
+  - `Orders.jsx` `createOrdersForToday` akışı, üretilen satırları resolved supplier'a göre gruplayacak ve her gruba ayrı `order_no` ve sequential `line_no` ile `purchase_orders` / `purchase_order_lines` oluşturacak şekilde güncellendi.
+  - Bölünen siparişlerin `flow_channel` değeri tedarikçinin `supplier_kind` değerine göre (`warehouse_replenishment`, `kitchen_replenishment`, `external_purchase`) otomatik ayarlandı.
+  - Sipariş listesinde ve detay modalında wording ("İkmal Deposu", "Merkez Mutfak", "Kaydet ve WMS'e İlet" vb.) ile rozetler güncellendi.
+- `Decisions`:
+  - Tek bir sipariş akışı çalıştırıldığında farklı tedarikçilere ait ürünler otomatik bölünür; böylece şubeler tek akış üzerinden talep oluştururken arka planda WMS ve dış satın alma siparişleri doğru şekilde ayrışır.
+- `Open Risks`: None.
+- `Next Step`:
+  - `Faz 4: WMS Mal Kabul ve Putaway / Karantina Modelleri (MalKabul.jsx ekranında lokasyon, LPN, lot ve SKT bilgilerinin toplanması).`
+- `Handoff Contract`:
+  - `Faz 1, 2 cilaları ve Faz 3 geliştirmeleri ulaştığı tüm kabul kriterleri ile tamamlanıp Vite üzerinde başarıyla derlenmiştir. Sonraki agent Faz 4 (WMS Mal Kabul ve Putaway/Karantina) adımlarına geçmeye hazırdır.`
+
+
+## Entry 066
+
+- `Timestamp`: `2026-06-08T22:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS Faz 3: Bulgular ve Kritik Düzeltmeler`
+- `Intent`: `Faz 3 sonrasında tespit edilen P1, P2, P3 bulgularının temizlenmesi; WMS sevk-gate korumasının şube mal kabulüne eklenmesi, line supplier öncelik çözücüsünün düzeltilmesi, split siparişlerde mükerrerliği önleme ve test senaryosunun çalıştırılması.`
+- `Files Changed`:
+  - `src/components/pages/MalKabul.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/inspect_order_flows.cjs`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Files Created`:
+  - `scratch/test_split_flow_logic.cjs`
+- `Commands Run`:
+  - `node scratch/test_split_flow_logic.cjs` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - `MalKabul.jsx` `branchOrders` filtresi güncellendi; artık `warehouse_replenishment` siparişleri ancak depodan sevk onayı (`meta.supplier_marked_sent === true`) aldıktan sonra şube kabulüne düşmektedir.
+  - `branchPurchasing.js` `resolveLineSupplierId` fonksiyonu düzeltildi. Akış tedarikçisi, stok kartı tedarikçi listesinde varsa artık öncelikli olarak seçilmektedir.
+  - `Orders.jsx` `collectMissingDueFlows` fonksiyonu yeniden tasarlandı; artık akışın taranan ürünlerinin tedarikçi gruplarından en az biri eksikse akış tetiklenir. `createOrdersForToday` içindeki döngüde ise halihazırda siparişi olan gruplar atlanarak mükerrerlik ve kısmi başarısızlık riski tamamen önlendi.
+  - `scratch/inspect_order_flows.cjs` içerisindeki hardcoded Railway postgres url'i `process.env.DATABASE_URL` okuyacak şekilde güncellendi.
+  - `scratch/test_split_flow_logic.cjs` scripti veritabanı verilerini kullanarak 35 ürünün 8 farklı tedarikçiye bölünme simülasyonunu başarıyla doğrulamıştır.
+- `Decisions`:
+  - WMS mal kabul (Faz 4) öncesi, Faz 0-3 arası tüm açık riskler ve sevk-gate mantığı eksiksiz kapatılarak sistem bütünlüğü garanti altına alınmıştır.
+- `Open Risks`: None.
+- `Next Step`:
+  - `WMS Faz 4: Depo Mal Kabul ve Putaway (MalKabul.jsx üzerinde lokasyon, LPN, lot ve SKT bilgilerinin toplanması ve inventory_movements tablosuna WMS kolonlarıyla kaydı).`
+- `Handoff Contract`:
+  - `Tüm P1, P2, P3 bulguları doğrulanmış ve düzeltilmiştir. Vite build başarılıdır. Sonraki agent Faz 4 geliştirmelerine tam güvenle devam edebilir.`
+
+
+## Entry 067
+
+- `Timestamp`: `2026-06-08T22:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Faz 4: Depo Mal Kabul ve Putaway`
+- `Intent`: `Depo mal kabul süreçlerinde lokasyon, LPN, lot, SKT ve putaway (durum) bilgilerinin toplanması, validasyonu ve persistence katmanında direct DB kolonlarına ve JSONB meta alanına doğru şekilde eşlenmesi, ayrıca şube ikmal siparişleri için sevk-gate kontrolünün eklenmesi.`
+- `Files Changed`:
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `scratch/test_wms_mal_kabul.cjs`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test_wms_mal_kabul.cjs` (Başarılı)
+  - `npm run build` (Başarılı)
+  - `git status` (Başarılı)
+- `Findings`:
+  - `useWorkspace()` üzerinden alınan `scope` değeri `anadepo` olduğunda `isWmsMode` bayrağının aktifleştiği, arayüzde inline olarak LPN, Lokasyon, Lot, SKT ve kalite durumu alanlarının render edildiği doğrulandı.
+  - `isWmsMode` altındayken en az bir lokasyonun her kabul edilen satır için seçilmesinin zorunlu olduğu ve lokasyonsuz kayıtların toast hatası vererek engellendiği doğrulandı.
+  - Veritabanı seviyesinde `inventory_movements` tablosunun `location_id`, `lpn_id`, `lot_number` ve `expiration_date` kolonlarını direct type olarak desteklediği, entegrasyon testiyle (insert ve readback) başarıyla doğrulandı.
+  - `inventory_movements` soft delete edildiği için, test betiğinin cleanup adımında `DELETE` yerine `UPDATE ... SET deleted_at = now()` kullanılarak trigger çakışması önlendi ve entegrasyon testi başarıyla sonuçlandı.
+  - Şube mal kabulü (`scope !== 'anadepo'`) için, depodan sevk edilmemiş `warehouse_replenishment` siparişlerinin (`meta.supplier_marked_sent !== true`) listeden gizlenerek sevk-gate korumasının sağlandığı doğrulandı.
+- `Decisions`:
+  - WMS detay satırları sadece depo mal kabul ekranında ( scope === 'anadepo' ) gösterilerek şube mal kabul davranışı korundu.
+  - Kalite/karantina/putaway durumları `inventory_movements.meta.availability_status` içinde tutuldu, direct kolonlar ise veritabanı şemasında var olan location, LPN, lot ve SKT alanları ile doğrudan eşleştirildi.
+- `Open Risks`: None.
+- `Next Step`:
+  - `Faz 5: Ana Depo / WMS Siparişler Paneli (Ic depo supplier'ina gelen sube taleplerini tedarikci paneli karakterinde yoneten ana operasyon ekraninin kurulmasi).`
+- `Handoff Contract`:
+  - `Faz 4 depo mal kabul ve putaway geliştirmeleri ulaştığı tüm kabul kriterleri ile tamamlanıp DB entegrasyon testi ve Vite derlemesi başarıyla doğrulanmıştır. Sonraki agent Faz 5 depo sipariş konsolu konsolidasyon, toplama ve sevk yönetim ekranı geliştirmelerine geçmelidir.`
+

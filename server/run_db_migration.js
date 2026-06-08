@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 
 async function main() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    console.error("DATABASE_URL environment variable is missing.");
+    process.exit(1);
+  }
   const pool = new Pool({
-    connectionString: 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway',
+    connectionString,
   });
   try {
     console.log('Connected to PG. Running schema migrations...');

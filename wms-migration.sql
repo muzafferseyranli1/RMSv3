@@ -97,3 +97,30 @@ CREATE INDEX IF NOT EXISTS idx_inv_movements_lpn      ON public.inventory_moveme
 ALTER TABLE public.product_external_barcodes
   ADD COLUMN IF NOT EXISTS notes      TEXT,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- 6. Phase 1 Tedarikçi ve Kanal Eklemeleri
+ALTER TABLE public.suppliers
+  ADD COLUMN IF NOT EXISTS supplier_kind TEXT DEFAULT 'external',
+  ADD COLUMN IF NOT EXISTS source_workspace_scope TEXT,
+  ADD COLUMN IF NOT EXISTS source_branch_id UUID,
+  ADD COLUMN IF NOT EXISTS is_system_generated BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS sync_key TEXT;
+
+ALTER TABLE public.suppliers DROP CONSTRAINT IF EXISTS suppliers_sync_key_key;
+ALTER TABLE public.suppliers ADD CONSTRAINT suppliers_sync_key_key UNIQUE (sync_key);
+
+ALTER TABLE public.suppliers DROP CONSTRAINT IF EXISTS suppliers_supplier_kind_check;
+ALTER TABLE public.suppliers ADD CONSTRAINT suppliers_supplier_kind_check CHECK (supplier_kind IN ('external', 'internal_warehouse', 'internal_kitchen'));
+
+ALTER TABLE public.purchase_orders
+  ADD COLUMN IF NOT EXISTS flow_channel TEXT DEFAULT 'external_purchase';
+
+ALTER TABLE public.purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_flow_channel_check;
+ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'));
+
+ALTER TABLE public.order_flows
+  ADD COLUMN IF NOT EXISTS flow_channel TEXT DEFAULT 'external_purchase';
+
+ALTER TABLE public.order_flows DROP CONSTRAINT IF EXISTS order_flows_flow_channel_check;
+ALTER TABLE public.order_flows ADD CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'));
+

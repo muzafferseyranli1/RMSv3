@@ -1136,7 +1136,9 @@ CREATE TABLE IF NOT EXISTS public.order_flows (
   urun_tipi TEXT DEFAULT 'all'::text NOT NULL,
   selected_stocks JSONB DEFAULT '[]'::jsonb NOT NULL,
   stock_template_id UUID,
-  CONSTRAINT order_flows_pkey PRIMARY KEY (id)
+  flow_channel TEXT DEFAULT 'external_purchase'::text,
+  CONSTRAINT order_flows_pkey PRIMARY KEY (id),
+  CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel = ANY (ARRAY['external_purchase'::text, 'warehouse_replenishment'::text, 'kitchen_replenishment'::text]))
 );
 
 CREATE TABLE IF NOT EXISTS public.pos_sales (
@@ -1278,11 +1280,13 @@ CREATE TABLE IF NOT EXISTS public.purchase_orders (
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
+  flow_channel TEXT DEFAULT 'external_purchase'::text,
   CONSTRAINT purchase_orders_pkey PRIMARY KEY (id),
   CONSTRAINT purchase_orders_manager_approval_check CHECK (manager_approval_status = ANY (ARRAY['not_required'::text, 'pending'::text, 'approved'::text, 'rejected'::text])),
   CONSTRAINT purchase_orders_source_check CHECK (order_source = ANY (ARRAY['flow'::text, 'manual'::text])),
   CONSTRAINT purchase_orders_status_check CHECK (status = ANY (ARRAY['draft'::text, 'pending_action'::text, 'awaiting_approval'::text, 'submitted'::text, 'partially_received'::text, 'received'::text, 'cancelled'::text])),
-  CONSTRAINT purchase_orders_order_no_key UNIQUE (order_no)
+  CONSTRAINT purchase_orders_order_no_key UNIQUE (order_no),
+  CONSTRAINT purchase_orders_flow_channel_check CHECK (flow_channel = ANY (ARRAY['external_purchase'::text, 'warehouse_replenishment'::text, 'kitchen_replenishment'::text]))
 );
 
 CREATE TABLE IF NOT EXISTS public.purchase_receipt_lines (
@@ -1808,7 +1812,14 @@ CREATE TABLE IF NOT EXISTS public.suppliers (
   active BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
-  CONSTRAINT suppliers_pkey PRIMARY KEY (id)
+  supplier_kind TEXT DEFAULT 'external'::text,
+  source_workspace_scope TEXT,
+  source_branch_id UUID,
+  is_system_generated BOOLEAN DEFAULT false,
+  sync_key TEXT,
+  CONSTRAINT suppliers_pkey PRIMARY KEY (id),
+  CONSTRAINT suppliers_sync_key_key UNIQUE (sync_key),
+  CONSTRAINT suppliers_supplier_kind_check CHECK (supplier_kind = ANY (ARRAY['external'::text, 'internal_warehouse'::text, 'internal_kitchen'::text]))
 );
 
 CREATE TABLE IF NOT EXISTS public.taxes (
