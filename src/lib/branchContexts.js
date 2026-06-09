@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
 
-const DEFAULT_BRANCH_NAME = 'Kadikoy Subesi'
 const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v2'
 const BRANCH_CONTEXT_CACHE_TTL_MS = 5 * 60 * 1000
 let branchContextLoadPromise = null
@@ -15,15 +14,6 @@ function parseJsonValue(value, fallback = []) {
     }
   }
   return value
-}
-
-function normalizeBranchText(value) {
-  return String(value || '')
-    .trim()
-    .toLocaleLowerCase('tr-TR')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\u0131/g, 'i')
 }
 
 function compareNodeOrder(left = {}, right = {}) {
@@ -86,12 +76,7 @@ export function findPreferredBranchContext(branchContexts, preferredId = '') {
     if (remembered) return remembered
   }
 
-  const kadikoyBranch = list.find(branch => (
-    normalizeBranchText(branch.branchName) === normalizeBranchText(DEFAULT_BRANCH_NAME)
-  ))
-  if (kadikoyBranch) return kadikoyBranch
-
-  return list[0] || null
+  return null
 }
 
 export function mapBranchContextsToWorkspaceBranches(branchContexts = []) {

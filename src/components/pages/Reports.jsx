@@ -198,11 +198,11 @@ function buildSelection({
   }
 
   if (scopeVariant === 'branch') {
-    const selected = branches.find(branch => branch.id === (workspaceBranchId || branchId)) || branches[0]
+    const selected = branches.find(branch => branch.id === (workspaceBranchId || branchId)) || null
     return {
-      key: `branch:${selected.id}`,
+      key: `branch:${selected?.id || 'none'}`,
       kind: 'branch',
-      label: selected.name,
+      label: selected?.name || 'Sube secimi bekleniyor',
       branches: selected ? [selected] : [],
       branchNames: selected ? [selected.name] : [],
     }
@@ -222,11 +222,11 @@ function buildSelection({
   }
 
   if (branchMode === 'branch') {
-    const selectedBranch = branches.find(branch => branch.id === branchId) || branches[0]
+    const selectedBranch = branches.find(branch => branch.id === branchId) || null
     return {
-      key: `center-branch:${selectedBranch.id}`,
+      key: `center-branch:${selectedBranch?.id || 'none'}`,
       kind: 'branch',
-      label: selectedBranch.name,
+      label: selectedBranch?.name || 'Sube secin',
       branches: selectedBranch ? [selectedBranch] : [],
       branchNames: selectedBranch ? [selectedBranch.name] : [],
     }
@@ -1942,7 +1942,7 @@ export default function Reports({ scopeVariant = 'center', initialTab = 'overvie
         setBranches(resolvedBranches)
         setFilters(current => ({
           ...current,
-          branchId: current.branchId || workspaceBranchId || resolvedBranches[0]?.id || '',
+          branchId: current.branchId || workspaceBranchId || '',
         }))
       } catch (error) {
         if (!ignore) {
@@ -2153,7 +2153,7 @@ export default function Reports({ scopeVariant = 'center', initialTab = 'overvie
 
       if (key === 'branchMode') {
         if (value === 'branch') {
-          next.branchId = next.branchId || branches[0]?.id || ''
+          next.branchId = next.branchId || ''
         }
         if (value === 'template') {
           next.templateId = next.templateId || ''

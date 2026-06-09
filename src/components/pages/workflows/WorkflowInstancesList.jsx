@@ -83,7 +83,7 @@ export default function WorkflowInstancesList({ onManageDefinitions }) {
   const [approvalModalOpen, setApprovalModalOpen] = useState(false)
 
   const loadData = useCallback(async () => {
-    const storedUser = JSON.parse(sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user') || 'null')
+    const storedUser = JSON.parse(sessionStorage.getItem('rms_active_user') || 'null')
     if (!storedUser || !storedUser.id) {
       setLoading(false)
       return

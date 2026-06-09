@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { useWorkspace } from '@/context/WorkspaceContext'
-import { canAccessSection, getWorkspaceScopeOption, isBranchScopedScope } from '@/lib/workspace'
+import { WORKSPACE_SECTION, useWorkspace } from '@/context/WorkspaceContext'
 import { CHANGELOG, VERSION } from '@/version'
 import { getTheme, toggleTheme as doToggleTheme } from '@/lib/theme'
 import { getDisplayMode, setDisplayMode } from '@/lib/displayMode'
@@ -382,19 +381,59 @@ const SECTION_COLORS = {
   'Ayarlar': '#f59e0b',         // Yellow/Orange
 }
 
+function getNavSectionKey(sectionName) {
+  const name = String(sectionName || '').trim()
+  if (name === 'Merkez') return WORKSPACE_SECTION.center
+  if (name === 'Sube' || name === 'Şube' || name === 'Åube') return WORKSPACE_SECTION.branch
+  if (name === 'POS ve Ekranlar') return WORKSPACE_SECTION.pos
+  if (name === 'Ana Depo / WMS') return WORKSPACE_SECTION.warehouse
+  if (name === 'Merkez Mutfak') return WORKSPACE_SECTION.kitchen
+  if (name === 'Ayarlar') return WORKSPACE_SECTION.settings
+  return WORKSPACE_SECTION.center
+}
+
+function prepareNavItem(item, sectionKey, branchId) {
+  const rawPath = item.path || ''
+  const path = rawPath.includes(':branchId') && branchId
+    ? rawPath.replace(':branchId', branchId)
+    : rawPath
+  return {
+    ...item,
+    sectionKey,
+    rawPath,
+    path,
+    children: item.children?.map(child => ({
+      ...prepareNavItem(child, sectionKey, branchId),
+      subChildren: child.subChildren?.map(subChild => prepareNavItem(subChild, sectionKey, branchId)),
+    })),
+  }
+}
+
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, authBusy, signOut } = useAuth()
-  const { scope, branchId, branchName, openWorkspacePicker } = useWorkspace()
+  const {
+    getSectionSession,
+    getSectionStatus,
+    isSectionVisible,
+    toggleSectionVisible,
+    openSectionLogin,
+    resolveSectionPath,
+  } = useWorkspace()
   const { mode, mobileOpen, setMobileOpen, togglePin, isPinned, autoMode } = useSidebar()
 
+  const branchSession = getSectionSession(WORKSPACE_SECTION.branch)
+  const warehouseSession = getSectionSession(WORKSPACE_SECTION.warehouse)
+  const branchId = branchSession?.branchId || ''
+  const branchName = branchSession?.branchName || ''
+  const wmsBranchId = warehouseSession?.branchId || ''
   const [wmsPendingOrdersCount, setWmsPendingOrdersCount] = useState(0)
   const [wmsIncomingShipmentsCount, setWmsIncomingShipmentsCount] = useState(0)
 
   useEffect(() => {
     let active = true
-    if (!branchId) {
+    if (!wmsBranchId) {
       setWmsPendingOrdersCount(0)
       setWmsIncomingShipmentsCount(0)
       return
@@ -408,7 +447,7 @@ export default function Sidebar() {
           .from('suppliers')
           .select('id')
           .eq('supplier_kind', 'internal_warehouse')
-          .eq('source_branch_id', branchId)
+          .eq('source_branch_id', wmsBranchId)
           .is('deleted_at', null)
           .limit(1)
 
@@ -437,7 +476,7 @@ export default function Sidebar() {
         const { data: incomingOrders } = await db
           .from('purchase_orders')
           .select('meta')
-          .eq('branch_id', branchId)
+          .eq('branch_id', wmsBranchId)
           .eq('flow_channel', 'warehouse_replenishment')
           .in('status', ['submitted', 'partially_received'])
           .is('deleted_at', null)
@@ -463,25 +502,19 @@ export default function Sidebar() {
       active = false
       clearInterval(interval)
     }
-  }, [branchId, scope])
-  const scopeOption = getWorkspaceScopeOption(scope)
+  }, [wmsBranchId])
   const isIconOnly = mode === 'icon'
   const isMobileMode = mode === 'closed'
   const isVisible = !isMobileMode || mobileOpen
 
   const visibleSections = useMemo(
     () => NAV
-      .filter(section => canAccessSection(scope, fixMojibakeText(section.section)))
       .map(section => ({
         ...section,
-        items: section.items.map(item => {
-          if (item.path?.includes(':branchId')) {
-            return { ...item, path: item.path.replace(':branchId', branchId || 'secilmedi') }
-          }
-          return item
-        })
+        sectionKey: getNavSectionKey(fixMojibakeText(section.section)),
+        items: section.items.map(item => prepareNavItem(item, getNavSectionKey(fixMojibakeText(section.section)), branchId)),
       })),
-    [scope, branchId],
+    [branchId],
   )
 
   const matchesPath = path => location.pathname === path || location.pathname.startsWith(`${path}/`)
@@ -514,14 +547,6 @@ export default function Sidebar() {
   const [displayMode, setDisplayModeState] = useState(getDisplayMode)
   const searchRef = useRef()
 
-  const [activeUser, setActiveUser] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('rms_active_user') || 'null') } catch { return null }
-  })
-
-  useEffect(() => {
-    try { setActiveUser(JSON.parse(sessionStorage.getItem('rms_active_user') || 'null')) } catch { setActiveUser(null) }
-  }, [scope])
-
   const isActive = path => matchesPath(path)
   const toggleGroup = groupName => setOpenGroups(state => ({ ...state, [groupName]: !state[groupName] }))
 
@@ -545,10 +570,30 @@ export default function Sidebar() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [mobileOpen, setMobileOpen])
 
-  const handleNavSelect = path => {
+  const handleNavSelect = (path, sectionKey) => {
     if (!path) return
-    navigate(path)
+    const sectionSession = getSectionSession(sectionKey)
+    if (!sectionSession?.employeeId) {
+      openSectionLogin(sectionKey, { targetPath: path })
+      return
+    }
+    const resolvedPath = resolveSectionPath(sectionKey, path)
+    if (!resolvedPath || resolvedPath.includes(':branchId')) {
+      openSectionLogin(sectionKey, { targetPath: path })
+      return
+    }
+    navigate(resolvedPath)
     if (isMobileMode) setMobileOpen(false)
+  }
+
+  const handleScreenOpen = (screenPath, sectionKey) => {
+    if (!screenPath) return
+    const sectionSession = getSectionSession(sectionKey)
+    if (!sectionSession?.employeeId) {
+      openSectionLogin(sectionKey, { targetPath: screenPath })
+      return
+    }
+    window.open(resolveSectionPath(sectionKey, screenPath) || screenPath, '_blank')
   }
 
   const handleToggleTheme = () => {
@@ -564,6 +609,7 @@ export default function Sidebar() {
   const allNavItems = useMemo(() => {
     const result = []
     visibleSections.forEach(section => {
+      if (!isSectionVisible(section.sectionKey)) return
       section.items.forEach(item => {
         if (item.path) result.push({ ...item, section: section.section })
         if (item.children) {
@@ -579,7 +625,7 @@ export default function Sidebar() {
       })
     })
     return result
-  }, [visibleSections])
+  }, [visibleSections, isSectionVisible])
 
   const searchResults = searchQ.trim()
     ? allNavItems.filter(item => fixMojibakeText(item.label).toLowerCase().includes(searchQ.toLowerCase()))
@@ -699,73 +745,6 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Active user block */}
-        {!isIconOnly && activeUser && (
-          <div
-            style={{ padding: '6px 10px', flexShrink: 0, cursor: 'pointer' }}
-            onClick={openWorkspacePicker}
-            title="Kullanıcı değiştir"
-          >
-            <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.05)', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{
-                width: 30,
-                height: 30,
-                borderRadius: 999,
-                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 800,
-                fontSize: '.8rem',
-                flexShrink: 0,
-              }}>
-                {(activeUser.firstName?.[0] || '?').toUpperCase()}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {[activeUser.firstName, activeUser.lastName].filter(Boolean).join(' ') || 'Personel'}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {isIconOnly && activeUser && (
-          <div style={{ padding: '6px 10px', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-            <button
-              type="button"
-              title={[activeUser.firstName, activeUser.lastName].filter(Boolean).join(' ') || 'Personel'}
-              onClick={openWorkspacePicker}
-              style={{ width: 28, height: 28, borderRadius: 999, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.75rem' }}
-            >
-              {(activeUser.firstName?.[0] || '?').toUpperCase()}
-            </button>
-          </div>
-        )}
-
-        {/* Scope picker */}
-        {!isIconOnly && scopeOption && (
-          <div style={{ padding: '8px 10px', flexShrink: 0 }}>
-            <div style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.04)', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={openWorkspacePicker}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: scopeOption.bg, color: scopeOption.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '.75rem' }}>
-                <i className={`fa-solid ${isBranchScopedScope(scope) ? 'fa-store' : scopeOption.icon}`} />
-              </span>
-              <div style={{ minWidth: 0, flex: 1, fontSize: '.8rem', color: '#bbb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {isBranchScopedScope(scope) && branchName ? branchName : scopeOption.label}
-              </div>
-              <i className="fa-solid fa-arrow-right-arrow-left" style={{ fontSize: '.6rem', color: '#555', flexShrink: 0 }} />
-            </div>
-          </div>
-        )}
-        {isIconOnly && scopeOption && (
-          <div style={{ padding: '8px 10px', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-            <button type="button" title={isBranchScopedScope(scope) && branchName ? branchName : scopeOption.label} onClick={openWorkspacePicker}
-              style={{ width: 28, height: 28, borderRadius: 8, background: scopeOption.bg, color: scopeOption.accent, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem' }}>
-              <i className={`fa-solid ${isBranchScopedScope(scope) ? 'fa-store' : scopeOption.icon}`} />
-            </button>
-          </div>
-        )}
-
         {/* Search (full mode only) */}
         {!isIconOnly && (
           <div style={{ padding: '0 10px 8px', position: 'relative', flexShrink: 0 }}>
@@ -785,7 +764,7 @@ export default function Sidebar() {
             {searchResults.length > 0 && (
               <div style={{ position: 'absolute', left: 10, right: 10, top: 'calc(100% - 4px)', background: '#161616', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.5)', zIndex: 999, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
                 {searchResults.map(item => (
-                  <div key={item.path} onClick={() => { handleNavSelect(item.path); setSearchQ('') }}
+                  <div key={item.path} onClick={() => { handleNavSelect(item.rawPath || item.path, item.sectionKey); setSearchQ('') }}
                     style={{ padding: '7px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.05)' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.05)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
@@ -814,6 +793,9 @@ export default function Sidebar() {
           {visibleSections.map(section => {
             const secName = fixMojibakeText(section.section)
             const sectionColor = SECTION_COLORS[secName] || '#888888'
+            const sectionKey = section.sectionKey
+            const sectionOpen = isSectionVisible(sectionKey)
+            const sectionStatus = getSectionStatus(sectionKey)
             return (
               <div key={section.section} style={!isIconOnly ? {
                 borderLeft: `3px solid ${sectionColor}`,
@@ -821,7 +803,7 @@ export default function Sidebar() {
                 marginBottom: '16px',
               } : {}}>
                 {!isIconOnly && (
-                  <div className="sec-lbl" style={{
+                  <div className="sec-lbl" onClick={() => openSectionLogin(sectionKey)} style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
@@ -831,38 +813,55 @@ export default function Sidebar() {
                     fontWeight: 800,
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
+                    cursor: 'pointer',
                   }}>
                     <i className={`fa-solid ${section.icon}`} style={{ fontSize: '0.75rem', color: sectionColor }} />
-                    <span>{secName}</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span>{secName}</span>
+                      {sectionStatus && (
+                        <span style={{ display: 'block', marginTop: 2, fontSize: '.58rem', color: '#9ca3af', letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {sectionStatus}
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={sectionOpen}
+                      onChange={event => {
+                        event.stopPropagation()
+                        toggleSectionVisible(sectionKey)
+                      }}
+                      onClick={event => event.stopPropagation()}
+                      title="Alt menuleri goster/gizle"
+                      style={{ width: 13, height: 13, accentColor: sectionColor, cursor: 'pointer', flexShrink: 0 }}
+                    />
                     <div className="sec-lbl-line" style={{ background: `linear-gradient(90deg, ${sectionColor}22, transparent)` }} />
                   </div>
                 )}
-                {isIconOnly && <div style={{ height: 8 }} />}
+                {isIconOnly && (
+                  <button
+                    type="button"
+                    title={sectionStatus ? `${secName} - ${sectionStatus}` : secName}
+                    onClick={() => openSectionLogin(sectionKey)}
+                    style={{ width: '100%', height: 30, border: 'none', background: 'transparent', color: sectionColor, cursor: 'pointer' }}
+                  >
+                    <i className={`fa-solid ${section.icon}`} />
+                  </button>
+                )}
 
-              {fixMojibakeText(section.section) === 'Şube' && branchName && !isIconOnly && (
-                <button type="button" onClick={openWorkspacePicker} title="Çalışma bağlamını değiştir"
-                  style={{ width: '100%', margin: '2px 0 8px', padding: '6px 10px', border: '1px solid rgba(245,166,35,.2)', background: 'rgba(245,166,35,.06)', color: '#f5a623', display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', textAlign: 'left', borderRadius: 0 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,166,35,.15)', color: '#f5a623', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <i className="fa-solid fa-store" style={{ fontSize: '.65rem' }} />
-                  </span>
-                  <span style={{ minWidth: 0, flex: 1, fontSize: '.73rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{branchName}</span>
-                  <i className="fa-solid fa-pen-to-square" style={{ fontSize: '.65rem', opacity: 0.6, flexShrink: 0 }} />
-                </button>
-              )}
-
-              {section.items.map(item => (
+              {sectionOpen && section.items.map(item => (
                 item.children ? (
                   <div key={item.label} className={`nav-parent ${openGroups[item.group] ? 'open' : ''}`}>
                     {isIconOnly ? (
                       <div className="nav-item" title={fixMojibakeText(item.label)} style={{ justifyContent: 'center', padding: '8px 0', pointerEvents: 'all' }}
-                        onClick={() => handleNavSelect(item.path ?? getFirstChildPath(item))}>
+                        onClick={() => handleNavSelect(item.rawPath || item.path || getFirstChildPath(item), item.sectionKey)}>
                         <span className="nav-icon-box">
                           <i className={`fa-solid ${item.icon}`} />
                         </span>
                       </div>
                     ) : (
                       <div className="nav-item" onClick={() => {
-                        if (item.path) navigate(item.path)
+                        if (item.path) handleNavSelect(item.rawPath || item.path, item.sectionKey)
                         toggleGroup(item.group)
                       }}>
                         <span className="nav-icon-box">
@@ -870,7 +869,7 @@ export default function Sidebar() {
                         </span>
                         <span style={{ flex: 1, color: 'inherit' }}>{fixMojibakeText(item.label)}</span>
                         {item.screenPath && (
-                          <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); window.open(item.screenPath, '_blank') }}
+                          <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); handleScreenOpen(item.screenPath, item.sectionKey) }}
                             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontSize: '.6rem', lineHeight: 1, flexShrink: 0 }}>
                             <i className="fa-solid fa-arrow-up-right-from-square" />
                           </button>
@@ -883,7 +882,7 @@ export default function Sidebar() {
                       child.subGroup ? (
                         <div key={child.subGroup}>
                           <div className={`nav-item nav-child ${isActive(child.path) ? 'on' : ''}`} style={{ paddingRight: 8 }}
-                            onClick={() => { if (child.path) navigate(child.path); toggleGroup(child.subGroup) }}>
+                            onClick={() => { if (child.path) handleNavSelect(child.rawPath || child.path, child.sectionKey); toggleGroup(child.subGroup) }}>
                             <span className="nav-icon-box">
                               <i className={`fa-solid ${child.icon}`} />
                             </span>
@@ -894,7 +893,7 @@ export default function Sidebar() {
                           </div>
                           {openGroups[child.subGroup] && child.subChildren.map(subChild => (
                             <div key={subChild.path} className={`nav-item nav-child ${isActive(subChild.path) ? 'on' : ''}`}
-                              style={{ paddingLeft: 36 }} onClick={() => handleNavSelect(subChild.path)}>
+                              style={{ paddingLeft: 36 }} onClick={() => handleNavSelect(subChild.rawPath || subChild.path, subChild.sectionKey)}>
                               <span className="nav-icon-box" style={{ width: 22, height: 22, fontSize: '.62rem' }}>
                                 <i className={`fa-solid ${subChild.icon}`} />
                               </span>
@@ -903,13 +902,13 @@ export default function Sidebar() {
                           ))}
                         </div>
                       ) : (
-                        <div key={child.path} className={`nav-item nav-child ${isActive(child.path) ? 'on' : ''}`} onClick={() => handleNavSelect(child.path)}>
+                        <div key={child.path} className={`nav-item nav-child ${isActive(child.path) ? 'on' : ''}`} onClick={() => handleNavSelect(child.rawPath || child.path, child.sectionKey)}>
                           <span className="nav-icon-box">
                             <i className={`fa-solid ${child.icon}`} />
                           </span>
                           <span style={{ flex: 1, color: 'inherit' }}>{fixMojibakeText(child.label)}</span>
                           {child.screenPath && (
-                            <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); window.open(child.screenPath, '_blank') }}
+                            <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); handleScreenOpen(child.screenPath, child.sectionKey) }}
                               style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontSize: '.6rem', lineHeight: 1, flexShrink: 0 }}>
                               <i className="fa-solid fa-arrow-up-right-from-square" />
                             </button>
@@ -922,7 +921,7 @@ export default function Sidebar() {
                   <div key={item.path} className={`nav-item ${isActive(item.path) ? 'on' : ''}`}
                     style={isIconOnly ? { justifyContent: 'center', padding: '8px 0', pointerEvents: 'all' } : {}}
                     title={isIconOnly ? fixMojibakeText(item.label) : undefined}
-                    onClick={() => handleNavSelect(item.path)}>
+                    onClick={() => handleNavSelect(item.rawPath || item.path, item.sectionKey)}>
                     <span className="nav-icon-box">
                       <i className={`fa-solid ${item.icon}`} />
                     </span>
@@ -958,7 +957,7 @@ export default function Sidebar() {
                           )}
                         </span>
                         {item.screenPath && (
-                          <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); window.open(item.screenPath, '_blank') }}
+                          <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); handleScreenOpen(item.screenPath, item.sectionKey) }}
                             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontSize: '.6rem', lineHeight: 1, flexShrink: 0 }}>
                             <i className="fa-solid fa-arrow-up-right-from-square" />
                           </button>

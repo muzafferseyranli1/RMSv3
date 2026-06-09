@@ -19,7 +19,7 @@ function chipStyle(background, color) {
 }
 
 export default function Header({ title, subtitle, actions }) {
-  const { scope, branchName, openWorkspacePicker } = useWorkspace()
+  const { scope, branchName, activeSectionKey, openSectionLogin } = useWorkspace()
   const scopeOption = getWorkspaceScopeOption(scope)
   const showBranchChip = isBranchScopedScope(scope) && branchName
   const sidebar = useSidebar()
@@ -96,7 +96,7 @@ export default function Header({ title, subtitle, actions }) {
         {activeUser && (
           <button
             type="button"
-            onClick={openWorkspacePicker}
+            onClick={() => openSectionLogin(activeSectionKey)}
             title={[activeUser.firstName, activeUser.lastName].filter(Boolean).join(' ') || 'Kullanıcı'}
             style={{
               display: 'flex',

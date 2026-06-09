@@ -9,6 +9,19 @@ bilesenlerini kullandigi goruldu. Bu durum WMS iskeleti icin yeterli bir
 baslangic olsa da, merkezi depo operasyonu icin ayri siparis konsolu,
 konsolidasyon, toplama, paketleme ve sevk akisi gerektirir.
 
+## Guncel Baglam / Oturum Karari
+
+Ana Depo / WMS ekranlari tek/global calisma baglami modaliyla acilmaz.
+Kullanici sidebar'daki `Ana Depo / WMS` basligindan PIN girer; personelin
+yetkisi `Operasyon` ve varsayilan subesi `anadepo` tipinde ise `warehouse`
+oturumu acilir.
+
+- Oturum sekme omru boyunca `sessionStorage` icinde tutulur.
+- Bolum checkbox'i sadece alt menuleri gosterir/gizler, yetki yerine gecmez.
+- WMS route'unda depo oturumu yoksa sayfa icinde PIN ile giris uyarisi
+  gosterilir.
+- Sabit sube, ilk sube veya sabit depo gibi sessiz fallback kesinlikle yoktur.
+
 ## Ana Karar
 
 Ana depo tek basina "sube gibi siparis veren yer" olarak ele alinmamalidir.
@@ -367,7 +380,7 @@ erDiagram
 ### Faz 3: Ana Depo Siparis Konsolu
 
 - `/depo-orders` mevcut sube `Orders` ekranindan ayrilir.
-- Ekran aktif ana depo baglamina gore sadece o depoya dusen talepleri gosterir.
+- Ekran aktif `warehouse` PIN oturumundaki ana depoya dusen talepleri gosterir.
 - Talep satirlari urun, sube, teslim tarihi ve stok durumuna gore konsolide
   edilir.
 

@@ -23,7 +23,8 @@ Uygulama kural seti:
 - Supabase/AWS/local fake DB yaklasimi eklenmez.
 - Operasyonel veri `localStorage`, `sessionStorage`, IndexedDB veya browser
   cache'e tasinmaz.
-- PIN/workspace baglami disinda yeni auth kurgusu eklenmez.
+- Sidebar bolum bazli PIN oturumlari disinda yeni auth kurgusu eklenmez.
+- WMS ekranlari `warehouse` PIN oturumu ile calisir; depo yoksa sabit sube/ilk sube gibi sessiz fallback kullanilmaz.
 - Ilgili is bittiginde `OperationSync.md` guncellenir.
 - Buyuk refactor yerine fazin gerektirdigi en kucuk guvenli degisiklik yapilir.
 
@@ -205,7 +206,7 @@ hale getirmek.
 
 Agent talimati:
 
-- `MalKabul.jsx` mevcut sube baglaminda korunacak mi, yoksa WMS modu/ayri ekran
+- `MalKabul.jsx` mevcut sube PIN oturumunda korunacak mi, yoksa WMS modu/ayri ekran
   mi yapilacak kararini Faz 0 kararina gore uygula.
 - Depo baglaminda en az su alanlari topla:
   - lokasyon veya gecici kabul alani
@@ -240,7 +241,8 @@ Agent talimati:
 - `PurchasingManager` kopyalanip WMS'e cevrilmez.
 - `SupplierOrderPanel` davranisi referans alinir, ancak WMS ekranina ozel veri
   modeli kullanilir.
-- Ekran aktif ana depo baglamina gore calisir.
+- Ekran aktif `warehouse` bolum PIN oturumundaki ana depoya gore calisir.
+- Oturum yoksa sayfa icinde PIN giris uyarisi gosterilir; tam ekran calisma baglami modali acilmaz.
 - Gerekli gorunumleri sagla:
   - depoya dusen bekleyen talepler
   - urun toplam konsolidasyon
@@ -332,7 +334,7 @@ Kontrol senaryosu:
 1. Sirket agacinda `Istanbul Donuk Depo` ana depo olarak tanimlanir.
 2. Sistem bunu `internal_warehouse` supplier olarak senkronlar.
 3. Patates kizartmasi stok kartinda bu supplier'a baglanir.
-4. Kadikoy ve Besiktas subeleri ayni siparis akisindan urun ister.
+4. Iki farkli sube ayni siparis akisindan urun ister.
 5. Talepler Ana Depo / WMS `Siparisler` ekranina duser.
 6. Ekran urun toplam ve sube kirilimini gosterir.
 7. Depo mevcut stok ve lokasyon yeterliligi kontrol edilir.

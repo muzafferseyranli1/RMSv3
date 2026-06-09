@@ -147,6 +147,9 @@ Sidebar üç modda çalışır; Display Mode ve ekran genişliğine göre otomat
 - İkon-only modda her menü öğesi tooltip ile açıklanır.
 - Aktif menü öğesi sol kenarında `2px amber border` ile işaretlenir.
 - Menü grupları başlık etiketiyle ayrılır; başlık etiketleri küçük, büyük harf, gri renkte olur.
+- Merkez, Şube, POS ve Ekranlar, Ana Depo / WMS, Merkez Mutfak ve Ayarlar bölüm başlıkları her zaman görünür kalır; başlığa tıklamak bölüm PIN modalını açar.
+- Her bölüm başlığında alt menüleri göster/gizle checkbox'ı bulunur. Checkbox yetki kontrolü değildir ve başlığı gizlemez.
+- Bölüm başlığında durum bilgisi küçük yazılır; aynı şube/depo/personel bilgisi ayrıca ikinci bir satır/kart olarak tekrar edilmez.
 - Alt menüler aktif öğenin altında accordion gibi açılır; ayrı sayfa açmaz.
 - Logo/marka alanı sidebar üstünde sabit durur; menü kaydırıldığında görünmez olmaz.
 - Sidebar alt kısmında ayarlar ve tema toggle yer alır.

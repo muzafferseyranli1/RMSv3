@@ -1,19 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { POS_BRANCH_KEY } from '@/lib/branchPurchasing'
 import {
-  findPreferredBranchContext,
   loadBranchContextsFromDb,
   mapBranchContextsToWorkspaceBranches,
 } from '@/lib/branchContexts'
 import { isPublicDisplayPath } from '@/lib/publicDisplayRoutes'
 import {
-  WORKSPACE_BRANCH_STORAGE_KEY,
-  WORKSPACE_BRANCH_NAME_STORAGE_KEY,
   WORKSPACE_SCOPE,
-  WORKSPACE_SCOPE_OPTIONS,
   getRequiredScopeForPath,
-  WORKSPACE_SCOPE_STORAGE_KEY,
   getWorkspaceScopeOption,
   isBranchScopedScope,
   normalizeWorkspaceScope,
@@ -26,443 +21,376 @@ import {
 import { isDesktopMode } from '@/lib/terminalIdentity'
 
 const WorkspaceContext = createContext(null)
-const DEFAULT_ALLOWED_SCOPES = WORKSPACE_SCOPE_OPTIONS.map(option => option.value)
 
-function normalizeAllowedScopes(values) {
-  const inputValues = Array.isArray(values) && values.length > 0 ? values : DEFAULT_ALLOWED_SCOPES
-  const normalizedValues = inputValues
-    .map(value => normalizeWorkspaceScope(value))
-    .filter(Boolean)
-
-  return normalizedValues.length > 0
-    ? Array.from(new Set(normalizedValues))
-    : DEFAULT_ALLOWED_SCOPES
+export const WORKSPACE_SECTION = {
+  center: 'center',
+  branch: 'branch',
+  pos: 'pos',
+  warehouse: 'warehouse',
+  kitchen: 'kitchen',
+  settings: 'settings',
 }
 
-function resolveInitialScope({ forcedScope, allowedScopes, storedScope, pathScope }) {
-  const normalizedForcedScope = normalizeWorkspaceScope(forcedScope)
-  if (normalizedForcedScope) return normalizedForcedScope
+const SECTION_SESSION_STORAGE_KEY = 'suitable_workspace_section_sessions_v1'
+const SECTION_VISIBILITY_STORAGE_KEY = 'suitable_sidebar_section_visibility_v1'
 
-  const candidates = [storedScope, pathScope]
-    .map(value => normalizeWorkspaceScope(value))
-    .filter(value => allowedScopes.includes(value))
+const SESSION_SECTION_KEYS = [
+  WORKSPACE_SECTION.center,
+  WORKSPACE_SECTION.branch,
+  WORKSPACE_SECTION.warehouse,
+  WORKSPACE_SECTION.kitchen,
+]
 
-  if (candidates.length > 0) return candidates[0]
-  if (allowedScopes.length === 1) return allowedScopes[0]
-  return ''
+const SECTION_LABELS = {
+  [WORKSPACE_SECTION.center]: 'Merkez',
+  [WORKSPACE_SECTION.branch]: 'Sube',
+  [WORKSPACE_SECTION.pos]: 'POS ve Ekranlar',
+  [WORKSPACE_SECTION.warehouse]: 'Ana Depo / WMS',
+  [WORKSPACE_SECTION.kitchen]: 'Merkez Mutfak',
+  [WORKSPACE_SECTION.settings]: 'Ayarlar',
 }
 
-function readLocalStorage(key, fallback = '') {
+const SECTION_SCOPE = {
+  [WORKSPACE_SECTION.center]: WORKSPACE_SCOPE.center,
+  [WORKSPACE_SECTION.branch]: WORKSPACE_SCOPE.branch,
+  [WORKSPACE_SECTION.pos]: WORKSPACE_SCOPE.branch,
+  [WORKSPACE_SECTION.warehouse]: WORKSPACE_SCOPE.anadepo,
+  [WORKSPACE_SECTION.kitchen]: WORKSPACE_SCOPE.merkezmutfak,
+  [WORKSPACE_SECTION.settings]: WORKSPACE_SCOPE.center,
+}
+
+function readJsonStorage(storage, key, fallback) {
   try {
-    return localStorage.getItem(key) || fallback
+    const parsed = JSON.parse(storage.getItem(key) || 'null')
+    return parsed && typeof parsed === 'object' ? parsed : fallback
   } catch {
     return fallback
   }
 }
 
-function writeLocalStorage(key, value) {
+function writeJsonStorage(storage, key, value) {
   try {
-    if (value) localStorage.setItem(key, value)
-    else localStorage.removeItem(key)
+    storage.setItem(key, JSON.stringify(value))
   } catch {
     // Best-effort persistence only.
   }
 }
 
-function getRequiredWorkspaceBranchScope(scope) {
+function writeStringStorage(storage, key, value) {
+  try {
+    if (value) storage.setItem(key, value)
+    else storage.removeItem(key)
+  } catch {
+    // Best-effort persistence only.
+  }
+}
+
+function normalizeAuthority(value) {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0131/g, 'i')
+}
+
+function getSectionForScope(scope) {
   const normalizedScope = normalizeWorkspaceScope(scope)
-  if (normalizedScope === WORKSPACE_SCOPE.anadepo) return WORKSPACE_SCOPE.anadepo
-  if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) return WORKSPACE_SCOPE.merkezmutfak
-  return ''
+  if (normalizedScope === WORKSPACE_SCOPE.branch) return WORKSPACE_SECTION.branch
+  if (normalizedScope === WORKSPACE_SCOPE.anadepo) return WORKSPACE_SECTION.warehouse
+  if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) return WORKSPACE_SECTION.kitchen
+  return WORKSPACE_SECTION.center
 }
 
-function findWorkspaceBranchByScope(branches, workspaceScope) {
-  if (!workspaceScope) return null
-  return branches.find(branch => branch.workspaceScope === workspaceScope) || null
+function getSessionSectionKey(sectionKey) {
+  if (sectionKey === WORKSPACE_SECTION.pos) return WORKSPACE_SECTION.branch
+  if (sectionKey === WORKSPACE_SECTION.settings) return WORKSPACE_SECTION.center
+  return SESSION_SECTION_KEYS.includes(sectionKey) ? sectionKey : WORKSPACE_SECTION.center
 }
 
-function branchMatchesSelectionScope(branch, scope) {
-  if (!branch) return false
-  const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(scope)
-  if (requiredWorkspaceScope) return branch.workspaceScope === requiredWorkspaceScope
-  if (isBranchScopedScope(scope)) return !getRequiredWorkspaceBranchScope(branch.workspaceScope)
-  return true
+function getBranchType(branch) {
+  if (!branch) return ''
+  if (branch.workspaceScope === WORKSPACE_SCOPE.anadepo) return WORKSPACE_SECTION.warehouse
+  if (branch.workspaceScope === WORKSPACE_SCOPE.merkezmutfak) return WORKSPACE_SECTION.kitchen
+  return WORKSPACE_SECTION.branch
 }
 
-function overlayStyle(isBlocking) {
+function buildEmployeePayload(employee) {
+  if (!employee) return null
   return {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 5000,
-    background: isBlocking ? 'linear-gradient(135deg,#0f172a,#1e293b)' : 'rgba(15,23,42,.68)',
-    backdropFilter: 'blur(14px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    id: employee.id,
+    firstName: employee.firstName,
+    middleName: employee.middleName,
+    lastName: employee.lastName,
+    name: getPersonnelDisplayName(employee),
+    pin: employee.pin,
+    defaultBranchId: employee.defaultBranchId || '',
+    authorityLevel: employee.authorityLevel || '',
+    role: employee.role,
+    positionId: employee.positionId || '',
   }
 }
 
-function cardStyle(option, active) {
+function buildSectionSession({ sectionKey, scope, employee, branch }) {
+  const employeePayload = buildEmployeePayload(employee)
   return {
-    padding: 18,
-    borderRadius: 18,
-    border: `1px solid ${active ? option.accent : 'rgba(148,163,184,.24)'}`,
-    background: active ? option.bg : '#fff',
-    boxShadow: active ? `0 16px 40px ${option.accent}22` : '0 10px 30px rgba(15,23,42,.08)',
-    cursor: 'pointer',
-    transition: 'all .18s ease',
-    display: 'grid',
-    gap: 10,
+    sectionKey,
+    scope,
+    employee: employeePayload,
+    employeeId: employeePayload?.id || '',
+    employeeName: employeePayload?.name || '',
+    authorityLevel: employeePayload?.authorityLevel || '',
+    branchId: branch?.id || '',
+    branchName: branch?.name || '',
+    workspaceScope: branch?.workspaceScope || null,
+    signedInAt: new Date().toISOString(),
   }
 }
 
-function WorkspacePickerModal({
-  scope,
-  branchId,
-  branchName,
-  branches,
-  loadingBranches,
-  branchLoadError,
-  onReloadBranches,
-  scopeOptions,
-  open,
-  canClose,
-  onClose,
-  onSave,
-}) {
-  const [draftScope, setDraftScope] = useState(scope || '')
-  const [draftBranchId, setDraftBranchId] = useState(branchId || '')
-  const [pin, setPin] = useState('')
-  const [pinEmployee, setPinEmployee] = useState(null)
-  const [pinError, setPinError] = useState('')
-  const [pinLoading, setPinLoading] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    setDraftScope(scope || '')
-    setDraftBranchId(branchId || '')
-  }, [open, scope, branchId])
-
-  useEffect(() => {
-    if (!open) return
-    if (draftScope) return
-    if (scopeOptions.length !== 1) return
-    setDraftScope(scopeOptions[0].value)
-  }, [open, draftScope, scopeOptions])
-
-  useEffect(() => {
-    setPin('')
-    setPinEmployee(null)
-    setPinError('')
-  }, [draftScope])
-
-  useEffect(() => {
-    if (!open) {
-      setPin('')
-      setPinEmployee(null)
-      setPinError('')
+function sanitizeSessions(rawSessions) {
+  return SESSION_SECTION_KEYS.reduce((result, key) => {
+    const session = rawSessions?.[key]
+    if (session && typeof session === 'object' && session.employeeId) {
+      result[key] = session
+    } else {
+      result[key] = null
     }
-  }, [open])
+    return result
+  }, {})
+}
 
-  async function handlePinChange(value) {
-    const normalized = normalizePinInput(value)
-    setPin(normalized)
-    setPinEmployee(null)
-    setPinError('')
-    if (normalized.length < 4) return
-    setPinLoading(true)
-    try {
-      const employee = await findPersonnelForBranchPin(null, normalized)
-      if (employee) {
-        setPinEmployee(employee)
-        setDraftBranchId(employee.defaultBranchId || '')
-      } else {
-        setPinError('PIN bulunamadı')
-      }
-    } catch (err) {
-      setPinError('PIN doğrulanamadı: ' + err.message)
-    } finally {
-      setPinLoading(false)
-    }
+function resolveTargetPath(targetPath, session) {
+  if (!targetPath) return ''
+  if (targetPath.includes(':branchId')) {
+    if (!session?.branchId) return ''
+    return targetPath.replace(':branchId', session.branchId)
   }
+  return targetPath
+}
 
-  function handleSave() {
-    if (pinEmployee) {
-      try {
-        const userObj = {
-          id: pinEmployee.id,
-          firstName: pinEmployee.firstName,
-          lastName: pinEmployee.lastName,
-          pin: pinEmployee.pin,
-          defaultBranchId: pinEmployee.defaultBranchId,
-          role: pinEmployee.role,
-          positionId: pinEmployee.positionId || '',
-        }
-        sessionStorage.setItem('rms_active_user', JSON.stringify(userObj))
-        localStorage.setItem('rms_active_user', JSON.stringify(userObj))
-      } catch { /* ignore */ }
-    }
-    onSave({ scope: draftScope, branchId: draftBranchId })
-  }
+function getSessionStatusLabel(sectionKey, session) {
+  const key = getSessionSectionKey(sectionKey)
+  if (!session) return ''
+  if (key === WORKSPACE_SECTION.center) return session.employeeName || ''
+  return session.branchName || ''
+}
 
-  const selectedScope = getWorkspaceScopeOption(draftScope)
-  const branchRequired = isBranchScopedScope(draftScope)
-  const canSubmit = draftScope && pinEmployee && (!branchRequired || draftBranchId)
+function PageLoader() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg,#0f172a,#1e293b)',
+      color: '#e2e8f0',
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '1.15rem', fontWeight: 800, marginBottom: 10 }}>
+          <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 10 }} />
+          Calisma alani hazirlaniyor
+        </div>
+        <div style={{ color: '#94a3b8' }}>Sube ve rol bilgileri okunuyor...</div>
+      </div>
+    </div>
+  )
+}
 
-  if (!open) return null
+export function WorkspaceAccessPrompt({ sectionKey, title = '' }) {
+  const workspace = useWorkspace()
+  const resolvedSection = sectionKey || workspace.activeSectionKey || WORKSPACE_SECTION.center
+  const label = workspace.getSectionLabel(resolvedSection)
 
   return (
-    <div style={overlayStyle(!canClose)}>
+    <div className="card" style={{ padding: 24, borderColor: '#bfdbfe', background: '#eff6ff' }}>
+      <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 8 }}>
+        {title || label}
+      </div>
+      <div style={{ fontSize: '.85rem', color: '#1e40af', lineHeight: 1.6 }}>
+        Bu ekran {label} baglami ile calisir. Devam etmek icin ilgili basliga PIN ile giris yapin.
+      </div>
+      <button
+        type="button"
+        className="btn-p"
+        onClick={() => workspace.openSectionLogin(resolvedSection)}
+        style={{ marginTop: 16 }}
+      >
+        <i className="fa-solid fa-key" /> PIN ile Giris
+      </button>
+    </div>
+  )
+}
+
+function SectionPinModal({
+  branches,
+  loadingBranches,
+  modalState,
+  session,
+  onClose,
+  onSubmit,
+  onLogout,
+}) {
+  const [pin, setPin] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!modalState.open) return
+    setPin('')
+    setError('')
+    setLoading(false)
+  }, [modalState.open, modalState.sectionKey])
+
+  if (!modalState.open) return null
+
+  const sectionKey = modalState.sectionKey || WORKSPACE_SECTION.center
+  const label = SECTION_LABELS[sectionKey] || 'Calisma Alani'
+  const activeSession = session || null
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    const normalizedPin = normalizePinInput(pin)
+    if (normalizedPin.length < 4) {
+      setError('PIN en az 4 haneli olmalidir.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      await onSubmit(sectionKey, normalizedPin, modalState.targetPath || '')
+    } catch (err) {
+      setError(err?.message || 'PIN dogrulanamadi.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 5000,
+      background: 'rgba(15,23,42,.58)',
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    }}>
       <div style={{
-        width: 'min(940px, 100%)',
-        maxHeight: 'min(88vh, 920px)',
-        overflowY: 'auto',
+        width: 'min(380px, 100%)',
         background: '#f8fafc',
-        borderRadius: 28,
-        boxShadow: '0 30px 90px rgba(15,23,42,.34)',
-        border: '1px solid rgba(255,255,255,.16)',
+        borderRadius: 16,
+        border: '1px solid rgba(148,163,184,.28)',
+        boxShadow: '0 24px 70px rgba(15,23,42,.34)',
+        overflow: 'hidden',
       }}>
-        <div style={{
-          padding: '24px 26px 18px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 16,
-        }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#6366f1', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-              Çalışma Bağlamı
+            <div style={{ fontSize: '.7rem', fontWeight: 900, color: '#4f46e5', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+              {label}
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.45rem', color: '#0f172a' }}>
-              Uygulama hangi rolde açılsın?
-            </h2>
-            <p style={{ margin: '8px 0 0', color: '#475569', lineHeight: 1.55 }}>
-              İlk girişte hangi ekranda ve hangi şubede olduğumuzu netleştiriyoruz. Böylece menüler,
-              POS ve şube operasyonları doğru bağlamda açılıyor.
-            </p>
+            <div style={{ marginTop: 5, fontWeight: 900, color: '#0f172a' }}>
+              PIN ile Giris
+            </div>
           </div>
-          {canClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                border: '1px solid #cbd5e1',
-                background: '#fff',
-                color: '#475569',
-                cursor: 'pointer',
-              }}
-            >
-              <i className="fa-solid fa-xmark" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer' }}
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
         </div>
 
-        <div style={{ padding: 26, display: 'grid', gap: 22 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-            {scopeOptions.map(option => {
-              const active = draftScope === option.value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setDraftScope(option.value)}
-                  style={cardStyle(option, active)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 14,
-                      background: active ? option.accent : '#e2e8f0',
-                      color: active ? '#fff' : '#475569',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      <i className={`fa-solid ${option.icon}`} />
-                    </span>
-                    <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>{option.label}</div>
-                      <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 2 }}>{option.description}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <span style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 999,
-                      border: `2px solid ${active ? option.accent : '#cbd5e1'}`,
-                      background: active ? option.accent : 'transparent',
-                      color: '#fff',
-                      fontSize: '.7rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      {active ? <i className="fa-solid fa-check" /> : null}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          {draftScope && (
+        <form onSubmit={handleSubmit} style={{ padding: 18, display: 'grid', gap: 14 }}>
+          {activeSession && (
             <div style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: 18,
-              padding: 18,
-              display: 'grid',
-              gap: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 12px',
+              background: '#ecfdf5',
+              border: '1px solid #86efac',
+              borderRadius: 12,
             }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Personel PIN'i</div>
-                <div style={{ fontSize: '.82rem', color: '#64748b', marginTop: 4 }}>
-                  {branchRequired
-                    ? 'Şube modunda uygulamayı kilitlemek için PIN girin. Şube bilgisi PIN\'den otomatik alınır.'
-                    : 'Merkez operasyonları ve üretim akışlarında tüm menüleri görmek için PIN girin.'}
+              <span style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                background: '#16a34a',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 900,
+                flexShrink: 0,
+              }}>
+                {(activeSession.employeeName?.[0] || '?').toUpperCase()}
+              </span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ color: '#15803d', fontWeight: 900, fontSize: '.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {activeSession.employeeName}
                 </div>
-              </div>
-              <div style={{ position: 'relative', maxWidth: 220 }}>
-                <input
-                  className="f-input"
-                  type="text"
-                  inputMode="numeric"
-                  value={'•'.repeat(pin.length)}
-                  onChange={() => {}}
-                  onKeyDown={e => {
-                    if (e.key === 'Backspace') {
-                      handlePinChange(pin.slice(0, -1))
-                    } else if (/^[0-9]$/.test(e.key) && pin.length < 6) {
-                      handlePinChange(pin + e.key)
-                    } else if (e.key !== 'Tab') {
-                      e.preventDefault()
-                    }
-                  }}
-                  placeholder="PIN Giriniz"
-                  style={{ letterSpacing: '.15em', fontWeight: 700, fontSize: '1.1rem', textAlign: 'center' }}
-                  autoFocus
-                />
-                {pinLoading && (
-                  <i className="fa-solid fa-spinner fa-spin" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                {getSessionStatusLabel(sectionKey, activeSession) && (
+                  <div style={{ color: '#16a34a', fontSize: '.74rem', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {getSessionStatusLabel(sectionKey, activeSession)}
+                  </div>
                 )}
               </div>
-              {pinEmployee && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  background: '#f0fdf4',
-                  border: '1px solid #86efac',
-                  borderRadius: 12,
-                }}>
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 999,
-                    background: '#16a34a',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '.9rem',
-                    flexShrink: 0,
-                  }}>
-                    {(pinEmployee.firstName?.[0] || '?').toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, color: '#15803d', fontSize: '.9rem' }}>
-                      Hoş geldiniz, {getPersonnelDisplayName(pinEmployee)}
-                    </div>
-                    {pinEmployee.defaultBranchId && branches.find(b => b.id === pinEmployee.defaultBranchId) && (
-                      <div style={{ fontSize: '.76rem', color: '#16a34a', marginTop: 2 }}>
-                        <i className="fa-solid fa-location-dot" style={{ marginRight: 4 }} />
-                        {branches.find(b => b.id === pinEmployee.defaultBranchId)?.name}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {pinError && (
-                <div style={{
-                  fontSize: '.82rem',
-                  color: '#dc2626',
-                  background: '#fef2f2',
-                  border: '1px solid #fca5a5',
-                  borderRadius: 10,
-                  padding: '8px 12px',
-                }}>
-                  <i className="fa-solid fa-circle-xmark" style={{ marginRight: 6 }} />
-                  {pinError}
-                </div>
-              )}
             </div>
           )}
 
-          <div style={{
-            background: '#0f172a',
-            color: '#e2e8f0',
-            borderRadius: 20,
-            padding: 18,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ fontSize: '.72rem', fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#93c5fd', marginBottom: 5 }}>
-                Seçili Bağlam
-              </div>
-              <div style={{ fontSize: '1rem', fontWeight: 800 }}>
-                {selectedScope?.label || 'Rol seçilmedi'}
-                {pinEmployee && draftBranchId
-                  ? ` / ${branches.find(item => item.id === draftBranchId)?.name || ''}`
-                  : ''}
-              </div>
-              <div style={{ fontSize: '.82rem', color: '#94a3b8', marginTop: 4 }}>
-                {branchRequired
-                  ? 'Şube modunda seçili şube tüm şube ekranlarına varsayılan ve kilitli bağlam olarak gider.'
-                  : 'Bu seçim menüde hangi ana alanların gösterileceğini belirler.'}
-              </div>
+          <div>
+            <label className="f-label">Personel PIN'i</label>
+            <input
+              className="f-input"
+              type="text"
+              inputMode="numeric"
+              value={'*'.repeat(pin.length)}
+              onChange={() => {}}
+              onKeyDown={event => {
+                if (event.key === 'Backspace') {
+                  setPin(current => current.slice(0, -1))
+                  return
+                }
+                if (/^[0-9]$/.test(event.key) && pin.length < 6) {
+                  setPin(current => current + event.key)
+                  return
+                }
+                if (event.key !== 'Tab' && event.key !== 'Enter') event.preventDefault()
+              }}
+              placeholder="PIN Giriniz"
+              disabled={loading || loadingBranches}
+              autoFocus
+              style={{ textAlign: 'center', letterSpacing: '.18em', fontWeight: 900 }}
+            />
+          </div>
+
+          {error && (
+            <div style={{ padding: '9px 11px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c', fontSize: '.8rem', lineHeight: 1.45 }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 6 }} />
+              {error}
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {canClose && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="btn-o"
-                >
-                  Vazgeç
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSave}
-                className="btn-p"
-                disabled={!canSubmit || loadingBranches}
-              >
-                <i className="fa-solid fa-arrow-right" /> Devam Et
+          )}
+
+          <div style={{ display: 'flex', justifyContent: activeSession ? 'space-between' : 'flex-end', alignItems: 'center', gap: 10 }}>
+            {activeSession && (
+              <button type="button" className="btn-o" onClick={() => onLogout(sectionKey)}>
+                <i className="fa-solid fa-arrow-right-from-bracket" /> Cikis Yap
+              </button>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn-o" onClick={onClose}>
+                Vazgec
+              </button>
+              <button type="submit" className="btn-p" disabled={loading || loadingBranches}>
+                <i className={loading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrow-right'} /> Giris Yap
               </button>
             </div>
           </div>
-
-          {(scope || branchName) && canClose && (
-            <div style={{ fontSize: '.8rem', color: '#64748b' }}>
-              Mevcut bağlam: <strong>{getWorkspaceScopeOption(scope)?.label || '—'}</strong>
-              {scope === WORKSPACE_SCOPE.branch && branchName ? ` / ${branchName}` : ''}
-            </div>
-          )}
-        </div>
+        </form>
       </div>
     </div>
   )
@@ -470,354 +398,333 @@ function WorkspacePickerModal({
 
 export function WorkspaceProvider({
   children,
-  allowedScopes = DEFAULT_ALLOWED_SCOPES,
   forcedScope = '',
   forcedBranchId = '',
 }) {
   const location = useLocation()
+  const navigate = useNavigate()
   const publicKioskPath = isPublicDisplayPath(location.pathname)
-  // Desktop terminal modunda (forcedScope + forcedBranchId) picker hiç açılmaz
   const terminalLocked = Boolean(forcedScope && forcedBranchId) || isDesktopMode()
-  const normalizedAllowedScopes = normalizeAllowedScopes(allowedScopes)
   const normalizedForcedScope = normalizeWorkspaceScope(forcedScope)
-  const initialPathScope = getRequiredScopeForPath(location.pathname)
-  const initialStoredScope = readLocalStorage(WORKSPACE_SCOPE_STORAGE_KEY)
-  const initialResolvedScope = resolveInitialScope({
-    forcedScope: normalizedForcedScope,
-    allowedScopes: normalizedAllowedScopes,
-    storedScope: initialStoredScope,
-    pathScope: initialPathScope,
-  })
-  const [scope, setScope] = useState(() =>
-    initialResolvedScope
-  )
-  const [branchId, setBranchId] = useState(() =>
-    forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
-  )
-  const [persistedBranchMeta, setPersistedBranchMeta] = useState(() => ({
-    id: forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY),
-    name: readLocalStorage(WORKSPACE_BRANCH_NAME_STORAGE_KEY),
-  }))
+
   const [branches, setBranches] = useState([])
   const [branchLoadError, setBranchLoadError] = useState('')
   const [loadingBranches, setLoadingBranches] = useState(true)
-  const [pickerOpen, setPickerOpen] = useState(() => {
-    if (terminalLocked) return false
-    const initialBranchId = forcedBranchId || readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) || readLocalStorage(POS_BRANCH_KEY)
-    if (publicKioskPath) return false
-    return !initialResolvedScope || (initialResolvedScope === WORKSPACE_SCOPE.branch && !initialBranchId)
-  })
-  const scopeOptions = WORKSPACE_SCOPE_OPTIONS.filter(option => (
-    normalizedAllowedScopes.includes(option.value)
+  const [sectionSessions, setSectionSessions] = useState(() => (
+    typeof window === 'undefined'
+      ? sanitizeSessions({})
+      : sanitizeSessions(readJsonStorage(window.sessionStorage, SECTION_SESSION_STORAGE_KEY, {}))
   ))
+  const [sectionVisibility, setSectionVisibility] = useState(() => (
+    typeof window === 'undefined'
+      ? {}
+      : readJsonStorage(window.localStorage, SECTION_VISIBILITY_STORAGE_KEY, {})
+  ))
+  const [pinModal, setPinModal] = useState({ open: false, sectionKey: WORKSPACE_SECTION.center, targetPath: '' })
 
   const loadBranches = useCallback(async () => {
     setLoadingBranches(true)
     setBranchLoadError('')
-
     try {
       const branchContexts = await loadBranchContextsFromDb()
-      const nextBranches = mapBranchContextsToWorkspaceBranches(branchContexts)
-
-      setBranches(nextBranches)
-      setBranchId(current => {
-        const rememberedBranchId =
-          forcedBranchId ||
-          current ||
-          readLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY) ||
-          readLocalStorage(POS_BRANCH_KEY)
-
-        const resolved = findPreferredBranchContext(branchContexts, rememberedBranchId)?.branchId
-        return resolved || forcedBranchId || ''
-      })
+      setBranches(mapBranchContextsToWorkspaceBranches(branchContexts))
     } catch (error) {
       setBranches([])
-      setBranchLoadError(error?.message || 'Şube listesi veritabanından okunamadı.')
+      setBranchLoadError(error?.message || 'Sube listesi veritabanindan okunamadi.')
     } finally {
       setLoadingBranches(false)
     }
-  }, [forcedBranchId])
+  }, [])
 
   useEffect(() => {
     void loadBranches()
   }, [loadBranches])
 
   useEffect(() => {
-    if (forcedBranchId) {
-      setBranchId(forcedBranchId)
-      setPickerOpen(false)
-    }
-  }, [forcedBranchId])
+    if (!forcedBranchId || !normalizedForcedScope || branches.length === 0) return
+    const sectionKey = getSectionForScope(normalizedForcedScope)
+    const branch = branches.find(item => item.id === forcedBranchId)
+    setSectionSessions(current => ({
+      ...current,
+      [sectionKey]: {
+        sectionKey,
+        scope: normalizedForcedScope,
+        employee: null,
+        employeeId: 'terminal',
+        employeeName: 'Terminal',
+        authorityLevel: 'Terminal',
+        branchId: forcedBranchId,
+        branchName: branch?.name || '',
+        workspaceScope: branch?.workspaceScope || null,
+        signedInAt: new Date().toISOString(),
+      },
+    }))
+  }, [forcedBranchId, normalizedForcedScope, branches])
 
   useEffect(() => {
-    if (!normalizedForcedScope) return
-    if (scope === normalizedForcedScope) return
-    setScope(normalizedForcedScope)
-  }, [scope, normalizedForcedScope])
+    if (typeof window === 'undefined') return
+    writeJsonStorage(window.sessionStorage, SECTION_SESSION_STORAGE_KEY, sectionSessions)
+  }, [sectionSessions])
 
   useEffect(() => {
-    writeLocalStorage(WORKSPACE_SCOPE_STORAGE_KEY, scope)
-  }, [scope])
+    if (typeof window === 'undefined') return
+    writeJsonStorage(window.localStorage, SECTION_VISIBILITY_STORAGE_KEY, sectionVisibility)
+  }, [sectionVisibility])
 
-  useEffect(() => {
-    writeLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY, branchId)
-    const selectedBranch = branches.find(branch => branch.id === branchId)
-    if (branchMatchesSelectionScope(selectedBranch, WORKSPACE_SCOPE.branch)) {
-      writeLocalStorage(POS_BRANCH_KEY, branchId)
-    } else if (selectedBranch && getRequiredWorkspaceBranchScope(selectedBranch.workspaceScope)) {
-      writeLocalStorage(POS_BRANCH_KEY, '')
-    }
-  }, [branchId, branches])
-
-  useEffect(() => {
-    const resolvedBranchName = branches.find(branch => branch.id === branchId)?.name || ''
-    if (resolvedBranchName) {
-      setPersistedBranchMeta(current => (
-        current.id === branchId && current.name === resolvedBranchName
-          ? current
-          : { id: branchId, name: resolvedBranchName }
-      ))
-      return
-    }
-
-    if (!branchId) {
-      setPersistedBranchMeta(current => (
-        current.id || current.name
-          ? { id: '', name: '' }
-          : current
-      ))
-      return
-    }
-
-    setPersistedBranchMeta(current => (
-      current.id === branchId ? current : { id: branchId, name: '' }
-    ))
-  }, [branchId, branches])
-
-  useEffect(() => {
-    writeLocalStorage(WORKSPACE_BRANCH_NAME_STORAGE_KEY, persistedBranchMeta.name || '')
-  }, [persistedBranchMeta.name])
-
-  useEffect(() => {
-    if (terminalLocked) { setPickerOpen(false); return }
-    if (publicKioskPath) return
-    if (forcedBranchId) {
-      setPickerOpen(false)
-      return
-    }
-    if (!scope) {
-      setPickerOpen(true)
-      return
-    }
-    const selectedBranch = branches.find(branch => branch.id === branchId)
-    const branchSelectionRequired = isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope)
-    if (branchSelectionRequired && !branchMatchesSelectionScope(selectedBranch, scope)) {
-      setPickerOpen(true)
-    }
-  }, [scope, branchId, branches, publicKioskPath, forcedBranchId, terminalLocked])
-
-  useEffect(() => {
-    if (terminalLocked) return
-    if (publicKioskPath) return
-    if (forcedBranchId) return
-    if (loadingBranches) return
-    if (!scope) return
-
-    const selectedBranch = branches.find(branch => branch.id === branchId)
-
-    if (branchMatchesSelectionScope(selectedBranch, scope)) {
-      if (isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope)) {
-        setPickerOpen(false)
-      }
-      return
-    }
-
-    if (isBranchScopedScope(scope)) {
-      const fallbackBranch = branches.find(branch => !getRequiredWorkspaceBranchScope(branch.workspaceScope))
-      if (fallbackBranch) {
-        setBranchId(fallbackBranch.id)
-        setPickerOpen(false)
-      } else {
-        setBranchId('')
-        setPickerOpen(true)
-      }
-      return
-    }
-
-    const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(scope)
-    if (!requiredWorkspaceScope) return
-
-    const fallbackBranch = findWorkspaceBranchByScope(branches, requiredWorkspaceScope)
-    if (fallbackBranch) {
-      setBranchId(fallbackBranch.id)
-      setPickerOpen(false)
-      return
-    }
-
-    setBranchId('')
-    setPickerOpen(true)
-  }, [scope, branchId, branches, loadingBranches, publicKioskPath, forcedBranchId, terminalLocked])
-
-  useEffect(() => {
-    if (scope) return
-    if (terminalLocked) return
-
-    const pathScope = getRequiredScopeForPath(location.pathname)
-    const nextScope = resolveInitialScope({
-      forcedScope: normalizedForcedScope,
-      allowedScopes: normalizedAllowedScopes,
-      storedScope: '',
-      pathScope,
+  const activeScope = normalizedForcedScope || getRequiredScopeForPath(location.pathname) || WORKSPACE_SCOPE.center
+  const activeSectionKey = getSectionForScope(activeScope)
+  const activeSession = sectionSessions[getSessionSectionKey(activeSectionKey)] || null
+  const activeBranch = activeSession?.branchId
+    ? branches.find(branch => branch.id === activeSession.branchId) || null
+    : null
+  const branchId = forcedBranchId || activeSession?.branchId || ''
+  const branchName = activeSession?.branchName || activeBranch?.name || ''
+  const currentBranch = branchId
+    ? (activeBranch || {
+      id: branchId,
+      branchId,
+      name: branchName,
+      branchName,
+      workspaceScope: activeSession?.workspaceScope || null,
     })
-    if (!nextScope) return
+    : null
+  const hasSelection = Boolean(terminalLocked || activeSession?.employeeId)
+  const scopeOption = getWorkspaceScopeOption(activeScope)
 
-    if (nextScope === WORKSPACE_SCOPE.branch) {
-      if (loadingBranches) return
-      const resolvedBranchId = branchId || findPreferredBranchContext(branches, branchId)?.branchId || ''
-      if (!resolvedBranchId) return
-      setScope(nextScope)
-      setBranchId(resolvedBranchId)
-      setPickerOpen(false)
-      return
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const employee = activeSession?.employee || null
+    if (employee) {
+      writeJsonStorage(window.sessionStorage, 'rms_active_user', employee)
+    } else {
+      try { window.sessionStorage.removeItem('rms_active_user') } catch { /* noop */ }
+    }
+  }, [activeSession])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const branchSession = sectionSessions[WORKSPACE_SECTION.branch]
+    writeStringStorage(window.localStorage, POS_BRANCH_KEY, branchSession?.branchId || '')
+  }, [sectionSessions])
+
+  const getSectionSession = useCallback((sectionKey) => (
+    sectionSessions[getSessionSectionKey(sectionKey)] || null
+  ), [sectionSessions])
+
+  const getSectionLabel = useCallback((sectionKey) => (
+    SECTION_LABELS[sectionKey] || SECTION_LABELS[getSessionSectionKey(sectionKey)] || 'Calisma Alani'
+  ), [])
+
+  const getSectionStatus = useCallback((sectionKey) => (
+    getSessionStatusLabel(sectionKey, getSectionSession(sectionKey))
+  ), [getSectionSession])
+
+  const isSectionVisible = useCallback((sectionKey) => (
+    sectionVisibility[sectionKey] !== false
+  ), [sectionVisibility])
+
+  const setSectionVisible = useCallback((sectionKey, visible) => {
+    setSectionVisibility(current => ({
+      ...current,
+      [sectionKey]: Boolean(visible),
+    }))
+  }, [])
+
+  const toggleSectionVisible = useCallback((sectionKey) => {
+    setSectionVisibility(current => ({
+      ...current,
+      [sectionKey]: current[sectionKey] === false,
+    }))
+  }, [])
+
+  const openSectionLogin = useCallback((sectionKey = WORKSPACE_SECTION.center, options = {}) => {
+    setPinModal({
+      open: true,
+      sectionKey,
+      targetPath: options.targetPath || '',
+    })
+  }, [])
+
+  const closeSectionLogin = useCallback(() => {
+    setPinModal(current => ({ ...current, open: false, targetPath: '' }))
+  }, [])
+
+  const logoutSection = useCallback((sectionKey) => {
+    const sessionKey = getSessionSectionKey(sectionKey)
+    setSectionSessions(current => ({ ...current, [sessionKey]: null }))
+    if (pinModal.open && getSessionSectionKey(pinModal.sectionKey) === sessionKey) {
+      setPinModal(current => ({ ...current, targetPath: '' }))
+    }
+  }, [pinModal.open, pinModal.sectionKey])
+
+  const validatePersonnelForSection = useCallback((sectionKey, employee) => {
+    if (!employee || employee.deletedAt) {
+      throw new Error('Personel bulunamadi veya pasif.')
     }
 
-    const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(nextScope)
-    if (requiredWorkspaceScope) {
-      if (loadingBranches) return
-      const resolvedBranch = findWorkspaceBranchByScope(branches, requiredWorkspaceScope)
-      if (!resolvedBranch) return
-      setScope(nextScope)
-      setBranchId(resolvedBranch.id)
-      setPickerOpen(false)
-      return
+    const sessionKey = getSessionSectionKey(sectionKey)
+    const authority = normalizeAuthority(employee.authorityLevel)
+    const defaultBranch = employee.defaultBranchId
+      ? branches.find(branch => branch.id === employee.defaultBranchId)
+      : null
+    const branchType = getBranchType(defaultBranch)
+
+    if (sessionKey === WORKSPACE_SECTION.center) {
+      if (authority !== normalizeAuthority('Genel Merkez')) {
+        throw new Error('Bu bolum icin Genel Merkez yetkisi gerekir.')
+      }
+      return buildSectionSession({
+        sectionKey: sessionKey,
+        scope: WORKSPACE_SCOPE.center,
+        employee,
+        branch: null,
+      })
     }
 
-    setScope(nextScope)
-    setPickerOpen(false)
-  }, [
-    scope,
-    location.pathname,
-    loadingBranches,
-    branchId,
-    branches,
-    normalizedForcedScope,
-    normalizedAllowedScopes,
-    terminalLocked,
-  ])
-
-  const selectedBranch = useMemo(
-    () => branches.find(branch => branch.id === branchId) || null,
-    [branches, branchId],
-  )
-
-  const branchName = useMemo(
-    () => selectedBranch?.name
-      || (persistedBranchMeta.id === branchId ? persistedBranchMeta.name || '' : ''),
-    [selectedBranch, branchId, persistedBranchMeta],
-  )
-
-  const hasSelection = !!scope && (
-    (isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope))
-      ? branchMatchesSelectionScope(selectedBranch, scope)
-      : true
-  )
-
-  const saveSelection = useCallback(({ scope: nextScope, branchId: nextBranchId }) => {
-    const normalizedScope = normalizedForcedScope || normalizeWorkspaceScope(nextScope)
-    if (!normalizedScope) return
-    if (!normalizedAllowedScopes.includes(normalizedScope)) return
-
-    let resolvedBranchId = nextBranchId || branchId || ''
-    
-    if (normalizedScope === WORKSPACE_SCOPE.branch) {
-      const requestedBranch = branches.find(branch => branch.id === (nextBranchId || branchId))
-      const fallbackBranch = branches.find(branch => !getRequiredWorkspaceBranchScope(branch.workspaceScope))
-      resolvedBranchId = branchMatchesSelectionScope(requestedBranch, normalizedScope)
-        ? requestedBranch.id
-        : fallbackBranch?.id || ''
-    } else if (normalizedScope === WORKSPACE_SCOPE.anadepo) {
-      const adBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.anadepo)
-      resolvedBranchId = adBranch?.id || ''
-    } else if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) {
-      const mmBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.merkezmutfak)
-      resolvedBranchId = mmBranch?.id || ''
+    if (sessionKey === WORKSPACE_SECTION.branch) {
+      if (authority !== normalizeAuthority('Sube') && authority !== normalizeAuthority('Şube')) {
+        throw new Error('Bu bolum icin Sube yetkisi gerekir.')
+      }
+      if (!defaultBranch || branchType !== WORKSPACE_SECTION.branch) {
+        throw new Error('Personelin varsayilan subesi gercek sube olmalidir.')
+      }
+      return buildSectionSession({
+        sectionKey: sessionKey,
+        scope: WORKSPACE_SCOPE.branch,
+        employee,
+        branch: defaultBranch,
+      })
     }
 
-    if ((isBranchScopedScope(normalizedScope) || getRequiredWorkspaceBranchScope(normalizedScope)) && !resolvedBranchId) return
+    if (sessionKey === WORKSPACE_SECTION.warehouse) {
+      if (authority !== normalizeAuthority('Operasyon')) {
+        throw new Error('Ana Depo icin Operasyon yetkisi gerekir.')
+      }
+      if (!defaultBranch || branchType !== WORKSPACE_SECTION.warehouse) {
+        throw new Error('Personelin varsayilan subesi Ana Depo olmalidir.')
+      }
+      return buildSectionSession({
+        sectionKey: sessionKey,
+        scope: WORKSPACE_SCOPE.anadepo,
+        employee,
+        branch: defaultBranch,
+      })
+    }
 
-    setScope(normalizedScope)
-    setBranchId(resolvedBranchId)
-    setPickerOpen(false)
-  }, [branchId, branches, normalizedAllowedScopes, normalizedForcedScope])
+    if (authority !== normalizeAuthority('Operasyon')) {
+      throw new Error('Merkez Mutfak icin Operasyon yetkisi gerekir.')
+    }
+    if (!defaultBranch || branchType !== WORKSPACE_SECTION.kitchen) {
+      throw new Error('Personelin varsayilan subesi Merkez Mutfak olmalidir.')
+    }
+    return buildSectionSession({
+      sectionKey: sessionKey,
+      scope: WORKSPACE_SCOPE.merkezmutfak,
+      employee,
+      branch: defaultBranch,
+    })
+  }, [branches])
 
-  const closePicker = useCallback(() => {
-    if (hasSelection) setPickerOpen(false)
-  }, [hasSelection])
+  const submitSectionPin = useCallback(async (sectionKey, pin, targetPath = '') => {
+    const employee = await findPersonnelForBranchPin('', pin, { preferCache: false })
+    const session = validatePersonnelForSection(sectionKey, employee)
+
+    setSectionSessions(current => ({
+      ...current,
+      [session.sectionKey]: session,
+    }))
+    setPinModal(current => ({ ...current, open: false, targetPath: '' }))
+
+    const nextPath = resolveTargetPath(targetPath, session)
+    if (nextPath && !publicKioskPath) navigate(nextPath)
+  }, [navigate, publicKioskPath, validatePersonnelForSection])
+
+  const resolveSectionPath = useCallback((sectionKey, path) => (
+    resolveTargetPath(path, getSectionSession(sectionKey))
+  ), [getSectionSession])
 
   const value = useMemo(() => ({
-    scope,
+    scope: activeScope,
+    scopeOption,
     branchId,
     branchName,
+    branch: currentBranch,
+    currentBranch,
     branches,
     loadingBranches,
-    pickerOpen,
+    branchLoadError,
     hasSelection,
-    branchLocked: (isBranchScopedScope(scope) || !!getRequiredWorkspaceBranchScope(scope)) && !!branchId,
-    openWorkspacePicker: () => setPickerOpen(true),
-    closeWorkspacePicker: closePicker,
-    setWorkspaceSelection: saveSelection,
-  }), [scope, branchId, branchName, branches, loadingBranches, pickerOpen, hasSelection, closePicker, saveSelection])
+    pickerOpen: pinModal.open,
+    branchLocked: (isBranchScopedScope(activeScope) || activeScope === WORKSPACE_SCOPE.anadepo || activeScope === WORKSPACE_SCOPE.merkezmutfak) && !!branchId,
+    activeSectionKey,
+    activeSession,
+    sectionSessions,
+    sectionVisibility,
+    getSectionSession,
+    getSectionLabel,
+    getSectionStatus,
+    isSectionVisible,
+    setSectionVisible,
+    toggleSectionVisible,
+    openSectionLogin,
+    closeSectionLogin,
+    logoutSection,
+    resolveSectionPath,
+    reloadBranches: loadBranches,
+    terminalLocked,
+  }), [
+    activeScope,
+    scopeOption,
+    branchId,
+    branchName,
+    currentBranch,
+    branches,
+    loadingBranches,
+    branchLoadError,
+    hasSelection,
+    pinModal.open,
+    activeSectionKey,
+    activeSession,
+    sectionSessions,
+    sectionVisibility,
+    getSectionSession,
+    getSectionLabel,
+    getSectionStatus,
+    isSectionVisible,
+    setSectionVisible,
+    toggleSectionVisible,
+    openSectionLogin,
+    closeSectionLogin,
+    logoutSection,
+    resolveSectionPath,
+    loadBranches,
+    terminalLocked,
+  ])
 
   return (
     <WorkspaceContext.Provider value={value}>
       {children}
-      <WorkspacePickerModal
-        scope={scope}
-        branchId={branchId}
-        branchName={branchName}
-        branches={branches}
-        loadingBranches={loadingBranches}
-        branchLoadError={branchLoadError}
-        onReloadBranches={loadBranches}
-        scopeOptions={scopeOptions}
-        open={pickerOpen && !publicKioskPath}
-        canClose={hasSelection}
-        onClose={closePicker}
-        onSave={saveSelection}
-      />
+      {!terminalLocked && (
+        <SectionPinModal
+          branches={branches}
+          loadingBranches={loadingBranches}
+          modalState={pinModal}
+          session={getSectionSession(pinModal.sectionKey)}
+          onClose={closeSectionLogin}
+          onSubmit={submitSectionPin}
+          onLogout={logoutSection}
+        />
+      )}
     </WorkspaceContext.Provider>
   )
 }
 
 export function WorkspaceGate({ children }) {
   const location = useLocation()
-  const { hasSelection, loadingBranches } = useWorkspace()
+  const { loadingBranches } = useWorkspace()
 
-  if (isPublicDisplayPath(location.pathname)) {
-    return children
-  }
-
-  if (!hasSelection && loadingBranches) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg,#0f172a,#1e293b)',
-        color: '#e2e8f0',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.15rem', fontWeight: 800, marginBottom: 10 }}>
-            <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 10 }} />
-            Çalışma alanı hazırlanıyor
-          </div>
-          <div style={{ color: '#94a3b8' }}>Şube ve rol bilgileri okunuyor...</div>
-        </div>
-      </div>
-    )
-  }
-
+  if (isPublicDisplayPath(location.pathname)) return children
+  if (loadingBranches) return <PageLoader />
   return children
 }
 
@@ -828,16 +735,39 @@ export function WorkspaceBranchScope({ children }) {
     throw new Error('WorkspaceBranchScope must be used within WorkspaceProvider')
   }
 
+  const branchSession = workspace.getSectionSession(WORKSPACE_SECTION.branch)
   const scopedValue = useMemo(() => ({
     ...workspace,
     scope: WORKSPACE_SCOPE.branch,
-    hasSelection: !!workspace.branchId,
-    branchLocked: !!workspace.branchId,
-  }), [workspace])
+    activeSectionKey: WORKSPACE_SECTION.branch,
+    activeSession: branchSession,
+    branchId: branchSession?.branchId || '',
+    branchName: branchSession?.branchName || '',
+    branch: branchSession?.branchId
+      ? {
+        id: branchSession.branchId,
+        branchId: branchSession.branchId,
+        name: branchSession.branchName,
+        branchName: branchSession.branchName,
+        workspaceScope: branchSession.workspaceScope || null,
+      }
+      : null,
+    currentBranch: branchSession?.branchId
+      ? {
+        id: branchSession.branchId,
+        branchId: branchSession.branchId,
+        name: branchSession.branchName,
+        branchName: branchSession.branchName,
+        workspaceScope: branchSession.workspaceScope || null,
+      }
+      : null,
+    hasSelection: Boolean(workspace.terminalLocked || branchSession?.employeeId),
+    branchLocked: Boolean(branchSession?.branchId),
+  }), [workspace, branchSession])
 
   return (
     <WorkspaceContext.Provider value={scopedValue}>
-      {children}
+      {scopedValue.hasSelection ? children : <WorkspaceAccessPrompt sectionKey={WORKSPACE_SECTION.branch} />}
     </WorkspaceContext.Provider>
   )
 }

@@ -25,7 +25,7 @@ export const CHANGELOG = [
     date: '2026-03-27',
     items: [
       'Sube operasyonlari icin Siparisler ve Mal Kabul modulleri eklendi; akislari stok mali ve inventory_movements altyapisina baglandi',
-      'Uygulama acilisina Merkez, Ana Depo / Merkez Mutfak, Sube ve Admin calisma baglami secimi eklendi; menuler bu baglama gore filtrelenir hale geldi',
+      'Uygulama acilisindaki tam ekran calisma baglami yerine bolum bazli PIN oturumlari kullanilir; menuler checkbox ile gosterilip gizlenir',
       'POS, Tahmin, Siparisler, Mal Kabul ve Stok Hareketleri ekranlari secilen sube baglamina kilitlendi; sol menudeki calisma alani karti sade kompakt yapiya guncellendi',
     ],
   },
@@ -92,7 +92,7 @@ export const CHANGELOG = [
     version: '1.7.15',
     date: '2026-03-26',
     items: [
-      'POS: cihazda kayitli sube secimi yoksa veya gecersizse test ortami icin varsayilan olarak Kadikoy Subesi secili gelir hale getirildi',
+      'POS: cihazda kayitli sube secimi yoksa veya gecersizse zorunlu sube baglami istenir',
       'POS: mevcut localStorage sube secimi korunmaya devam eder; ilk secim sonraki acilislarda yeniden kullanilir',
     ],
   },

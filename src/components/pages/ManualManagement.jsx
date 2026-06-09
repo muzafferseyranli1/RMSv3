@@ -151,6 +151,98 @@ function renderFormattedDescription(text) {
   return <div className="mr-formatted-desc" style={{ display: 'inline-block', width: '100%', textAlign: 'inherit' }}>{elements}</div>;
 }
 
+function parseStepText(description, idx) {
+  if (!description) return { stepNumber: idx + 1, title: '', body: '' };
+  
+  const match = description.match(/^(Adım\s+\d+[:.-]?\s*[^.\n]+)(.*)$/i) ||
+                description.match(/^([^.\n]+)(.*)$/);
+                 
+  if (match) {
+    let title = match[1].trim();
+    let body = match[2].trim();
+    
+    title = title.replace(/\s+/g, ' ');
+    
+    if (body.length < 5) {
+      const cleanTitleMatch = description.match(/^Adım\s+\d+[:.-]?\s*(.*)$/i);
+      const cleanTitle = cleanTitleMatch ? cleanTitleMatch[1].trim() : description;
+      return {
+        stepNumber: idx + 1,
+        title: cleanTitle || '',
+        body: description
+      };
+    }
+    
+    const cleanTitleMatch = title.match(/^Adım\s+\d+[:.-]?\s*(.*)$/i);
+    const cleanTitle = cleanTitleMatch ? cleanTitleMatch[1].trim() : title;
+    
+    body = body.replace(/^[.:\-\s]+/, '').trim();
+    
+    return { stepNumber: idx + 1, title: cleanTitle || title, body };
+  }
+  
+  return {
+    stepNumber: idx + 1,
+    title: '',
+    body: description
+  };
+}
+
+function renderChannelsTooltipInline(r, globalChannels) {
+  const rowChannels = r.channels || [];
+  const allChannels = globalChannels || [];
+  
+  const quantityText = `${r.qty} ${r.unit}`;
+  
+  if (allChannels.length === 0) {
+    return <span>{quantityText}</span>;
+  }
+
+  const isActiveAll = rowChannels.length === 0 || rowChannels.length === allChannels.length;
+
+  const getChannelIcon = (c) => {
+    if (c.icon) return c.icon;
+    const nameLower = (c.name || '').toLowerCase();
+    if (nameLower.includes('hızlı') || nameLower.includes('pos')) return 'fa-solid fa-bolt';
+    if (nameLower.includes('gel al') || nameLower.includes('paket')) return 'fa-solid fa-bag-shopping';
+    if (nameLower.includes('masa')) return 'fa-solid fa-chair';
+    if (nameLower.includes('qr')) return 'fa-solid fa-qrcode';
+    if (nameLower.includes('kiosk')) return 'fa-solid fa-desktop';
+    if (nameLower.includes('yemeksepeti') || nameLower.includes('yemek sepeti')) return 'fa-solid fa-basket-shopping';
+    if (nameLower.includes('getir')) return 'fa-solid fa-motorcycle';
+    if (nameLower.includes('trendyol')) return 'fa-solid fa-shop';
+    if (nameLower.includes('çağrı') || nameLower.includes('call')) return 'fa-solid fa-phone';
+    return 'fa-solid fa-circle-nodes';
+  };
+
+  return (
+    <div className="mr-channel-tooltip-container" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+      <span>
+        {quantityText}
+      </span>
+      <div className="mr-channel-tooltip-content" style={{ textAlign: 'left', fontWeight: 'normal' }}>
+        <div className="mr-channel-tooltip-arrow-border" />
+        <div className="mr-channel-tooltip-arrow" />
+        <div className="mr-channel-tooltip-title">
+          {isActiveAll ? 'Tüm Kanallar' : 'Geçerli Kanallar'}
+        </div>
+        <ul className="mr-channel-list">
+          {allChannels.map(c => {
+            const isActive = isActiveAll || rowChannels.includes(c.id);
+            if (!isActive) return null;
+            return (
+              <li key={c.id} className="mr-channel-item">
+                <i className={getChannelIcon(c)} style={{ color: isActiveAll ? '#10b981' : '#6366f1', width: '14px', textAlign: 'center' }} />
+                <span>{c.name}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export default function ManualManagement() {
   const toast = useToast()
 
@@ -737,6 +829,165 @@ export default function ManualManagement() {
             max-width: 280px !important;
           }
         }
+
+        /* ─── CHANNEL TOOLTIP (PREVIEW) ─── */
+        .mr-channel-tooltip-container {
+          position: relative;
+          display: inline-block;
+        }
+
+        .mr-channel-tooltip-content {
+          visibility: hidden;
+          opacity: 0;
+          position: absolute;
+          bottom: 125%;
+          right: 0;
+          transform: translateY(4px);
+          background: #ffffff;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          padding: 6px 10px;
+          min-width: 150px;
+          z-index: 100;
+          pointer-events: none;
+          transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+        }
+
+        .mr-channel-tooltip-container:hover .mr-channel-tooltip-content {
+          visibility: visible;
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
+        }
+
+        .mr-channel-tooltip-arrow {
+          position: absolute;
+          top: 100%;
+          right: 15px;
+          border-width: 5px;
+          border-style: solid;
+          border-color: #ffffff transparent transparent transparent;
+        }
+        
+        .mr-channel-tooltip-arrow-border {
+          position: absolute;
+          top: 100%;
+          right: 15px;
+          border-width: 6px;
+          border-style: solid;
+          border-color: #ddd transparent transparent transparent;
+          z-index: -1;
+        }
+
+        .mr-channel-list {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .mr-channel-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.65rem;
+          padding: 2px 0;
+          color: #555;
+        }
+        
+        .mr-channel-tooltip-title {
+          font-size: 0.62rem;
+          font-weight: 700;
+          color: #333;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 4px;
+          margin-bottom: 4px;
+          text-transform: uppercase;
+        }
+
+        /* ─── RECIPE GRID (PREVIEW) ─── */
+        .mr-recipe-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+        @media (max-width: 768px) {
+          .mr-recipe-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .mr-recipe-common {
+          font-weight: 600 !important;
+          color: #1e293b !important;
+        }
+        .mr-recipe-specific {
+          font-weight: 450 !important;
+          color: #1e293b !important;
+          opacity: 0.85;
+        }
+
+        /* ─── EQUIP TABLE (PREVIEW) ─── */
+        .mr-equip-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: .72rem;
+          margin-top: 6px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        .mr-equip-table th {
+          background: #f8fafc;
+          padding: 6px 10px;
+          font-weight: 600;
+          color: #64748b;
+          border-bottom: 1.5px solid #cbd5e1;
+          text-align: left;
+        }
+        .mr-equip-table td {
+          padding: 6px 10px;
+          border-bottom: 1px solid #e2e8f0;
+          color: #334155;
+        }
+        .mr-equip-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        /* ─── STEP BADGE (PREVIEW) ─── */
+        .mr-step-badge {
+          position: absolute;
+          top: -12px;
+          left: 12px;
+          background: linear-gradient(135deg, #14496b, #0c2d48);
+          color: #ffffff;
+          font-size: 0.6rem;
+          font-weight: 800;
+          padding: 3px 10px;
+          border-radius: 20px;
+          box-shadow: 0 3px 8px rgba(20, 73, 107, 0.25);
+          z-index: 10;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          animation: mr-badge-glowing-preview 3s infinite ease-in-out;
+        }
+        @keyframes mr-badge-glowing-preview {
+          0% {
+            box-shadow: 0 3px 8px rgba(20, 73, 107, 0.25);
+            transform: translateY(0);
+          }
+          50% {
+            box-shadow: 0 5px 12px rgba(20, 73, 107, 0.45), 0 0 0 3px rgba(20, 73, 107, 0.12);
+            transform: translateY(-1.5px);
+          }
+          100% {
+            box-shadow: 0 3px 8px rgba(20, 73, 107, 0.25);
+            transform: translateY(0);
+          }
+        }
       `}</style>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -995,7 +1246,6 @@ export default function ManualManagement() {
                     {recipeContext.length > 0 ? (() => {
                       const portionNames = recipeMeta.portionNames || { '__standart__': 'Standart' }
                       const allCh = recipeMeta.allChannels || []
-                      const allChIds = new Set(allCh.map(c => c.id))
 
                       // Boyutlara göre gruplandır: boş portions → Standart, önce Standart sonra diğerleri
                       const portionGroups = {}
@@ -1011,99 +1261,103 @@ export default function ManualManagement() {
                         if (b === '__standart__') return 1
                         return (portionNames[a] || a).localeCompare(portionNames[b] || b, 'tr')
                       })
+                      const hasMultipleGroups = groupKeys.length > 1 || (groupKeys.length === 1 && groupKeys[0] !== '__standart__')
 
-                      // Kanal rozeti hesapla: hangi kanalların eksik olduğunu bul
-                      const getChannelBadge = (rowChannels) => {
-                        if (!Array.isArray(rowChannels) || rowChannels.length === 0) return null // Tümü
-                        if (allCh.length === 0) return null // kanal verisi yok
-                        const rowChSet = new Set(rowChannels)
-                        const excluded = allCh.filter(c => !rowChSet.has(c.id))
-                        if (excluded.length === 0) return null // Tümü var
-                        // 1-2 kanal hariç: "X Hariç" göster
-                        if (excluded.length <= 2) {
-                          return (
-                            <span style={{ fontSize: '.52rem', background: '#fee2e2', color: '#991b1b', padding: '1px 5px', borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                              {excluded.map(c => c.name).join(', ')} hariç
-                            </span>
-                          )
-                        }
-                        // Çok kanal hariç: kaç kanalda var göster
-                        return (
-                          <span style={{ fontSize: '.52rem', background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            {rowChannels.length}/{allCh.length} Kanal
-                          </span>
-                        )
+                      // Tüm boyutlarda ortak kullanılan malzemeleri bul: 
+                      // Diğer boyutlarda (portions) listelenmeyen, yani override edilmeyen, yalnızca standart olanlar.
+                      const commonIngredientNames = new Set()
+                      const specificNames = new Set()
+                      if (groupKeys.length > 1) {
+                        groupKeys.forEach(portKey => {
+                          if (portKey !== '__standart__') {
+                            const rows = portionGroups[portKey] || []
+                            rows.forEach(r => {
+                              specificNames.add((r.name || '').toLowerCase().trim())
+                            })
+                          }
+                        })
+                        const standartRows = portionGroups['__standart__'] || []
+                        standartRows.forEach(r => {
+                          const nameLower = (r.name || '').toLowerCase().trim()
+                          if (!specificNames.has(nameLower)) {
+                            commonIngredientNames.add(nameLower)
+                          }
+                        })
                       }
 
-                      const hasAnyChannelDiff = recipeContext.some(r => {
-                        if (!Array.isArray(r.channels) || r.channels.length === 0) return false
-                        if (allCh.length === 0) return false
-                        return r.channels.length !== allCh.length
-                      })
-
-                      return groupKeys.map((portKey, gi) => {
-                        const groupRows = portionGroups[portKey]
-                        const groupLabel = portionNames[portKey] || portKey
-                        const isStandart = portKey === '__standart__'
-                        return (
-                          <div key={portKey} style={{ marginBottom: gi < groupKeys.length - 1 ? 8 : 0 }}>
-                            {groupKeys.length > 1 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                                <span style={{
-                                  fontSize: '.6rem', fontWeight: 800, padding: '1px 7px', borderRadius: 20,
-                                  background: isStandart ? '#dbeafe' : '#ede9fe',
-                                  color: isStandart ? '#1d4ed8' : '#7c3aed'
-                                }}>{groupLabel}</span>
-                              </div>
-                            )}
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.72rem' }}>
-                              {gi === 0 && (
-                                <thead>
-                                  <tr style={{ borderBottom: '1.5px solid #14496b' }}>
-                                    <th style={{ padding: '3px 5px', textAlign: 'left', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Malzeme</th>
-                                    <th style={{ padding: '3px 5px', textAlign: 'right', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Miktar</th>
-                                    {hasAnyChannelDiff && <th style={{ padding: '3px 5px', textAlign: 'center', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase' }}>Kanal</th>}
-                                  </tr>
-                                </thead>
-                              )}
-                              <tbody>
-                                {groupRows.map((r, i) => {
-                                  const badge = getChannelBadge(r.channels)
-                                  return (
-                                    <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
-                                      <td style={{ padding: '3px 5px', color: '#333' }}>{r.name}</td>
-                                      <td style={{ padding: '3px 5px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
-                                      {hasAnyChannelDiff && (
-                                        <td style={{ padding: '3px 5px', textAlign: 'center' }}>
-                                          {badge || <span style={{ fontSize: '.52rem', color: '#ccc' }}>✓</span>}
-                                        </td>
-                                      )}
+                      return (
+                        <div className={hasMultipleGroups ? "mr-recipe-grid" : ""} style={{ gap: hasMultipleGroups ? 16 : 0 }}>
+                          {groupKeys.map((portKey, gi) => {
+                            const groupRows = portionGroups[portKey]
+                            const groupLabel = portionNames[portKey] || portKey
+                            const isStandart = portKey === '__standart__'
+                            return (
+                              <div key={portKey} style={{ display: 'flex', flexDirection: 'column', marginBottom: hasMultipleGroups ? 0 : 8 }}>
+                                {groupKeys.length > 1 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                                    <span style={{
+                                      fontSize: '.6rem', fontWeight: 800, padding: '1px 7px', borderRadius: 20,
+                                      background: isStandart ? '#dbeafe' : '#ede9fe',
+                                      color: isStandart ? '#1d4ed8' : '#7c3aed'
+                                    }}>{groupLabel}</span>
+                                  </div>
+                                )}
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.72rem' }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1.5px solid #14496b' }}>
+                                      <th style={{ padding: '3px 5px', textAlign: 'left', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Malzeme</th>
+                                      <th style={{ padding: '3px 5px', textAlign: 'right', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Miktar</th>
                                     </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )
-                      })
+                                  </thead>
+                                  <tbody>
+                                    {groupRows.map((r, i) => {
+                                      const isCommon = groupKeys.length > 1 && commonIngredientNames.has((r.name || '').toLowerCase().trim())
+                                      const itemClass = isCommon ? 'mr-recipe-common' : 'mr-recipe-specific'
+                                      return (
+                                        <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                                          <td style={{ padding: '3px 5px' }} className={itemClass}>{r.name}</td>
+                                          <td style={{ padding: '3px 5px', textAlign: 'right', fontWeight: 600 }}>
+                                            {renderChannelsTooltipInline(r, allCh)}
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
                     })() : (
                       <div style={{ padding: '10px 6px', color: '#ccc', textAlign: 'center', fontStyle: 'italic', fontSize: '.72rem' }}>Ürün seçilince buraya yüklenir</div>
                     )}
 
-                    {/* Ekipmanlar as pills */}
+                    {/* Ekipmanlar as Table */}
                     {pageForm.equipment_ids.length > 0 && (
                       <div style={{ marginTop: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
                           <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
                           <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>Ekipmanlar</span>
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                          {pageForm.equipment_ids.map(eqId => {
-                            const eq = equipments.find(e => e.id === eqId);
-                            if (!eq) return null;
-                            return <span key={eqId} style={{ padding: '3px 9px', background: '#eef4ff', border: '1px solid #c8d9f5', borderRadius: 20, fontSize: '.68rem', color: '#14496b', fontWeight: 600 }}>{eq.name}</span>;
-                          })}
-                        </div>
+                        <table className="mr-equip-table" style={{ maxWidth: '400px' }}>
+                          <thead>
+                            <tr>
+                              <th>Ekipman</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageForm.equipment_ids.map(eqId => {
+                              const eq = equipments.find(e => e.id === eqId);
+                              if (!eq) return null;
+                              return (
+                                <tr key={eqId}>
+                                  <td>{eq.name}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
@@ -1121,20 +1375,28 @@ export default function ManualManagement() {
                         </span>
                       </div>
                       {pageForm.metadata.steps.map((step, idx) => {
+                        const { stepNumber, title, body } = parseStepText(step.description, idx)
                         const isEven = idx % 2 === 0; // even = image left; odd = image right
                         const hasImg = !!step.imageUrl;
                         return (
                           <div key={idx} style={{
                             display: 'flex',
                             flexDirection: isEven ? 'row' : 'row-reverse',
-                            marginBottom: 10,
+                            marginBottom: 14,
                             borderRadius: 8,
-                            overflow: 'hidden',
+                            overflow: 'visible',
                             border: '1px solid #e8e8e8',
                             background: '#fff',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                             minHeight: 80,
+                            position: 'relative'
                           }}>
+                            {/* Animated Badge */}
+                            <div className="mr-step-badge">
+                              <i className="fa-solid fa-fire-burner" />
+                              <span>Adım {stepNumber}</span>
+                            </div>
+
                             {/* Image / Number Block */}
                             <div style={{
                               width: hasImg ? 140 : 44,
@@ -1147,33 +1409,32 @@ export default function ManualManagement() {
                               justifyContent: 'center',
                               position: 'relative',
                               overflow: 'hidden',
+                              borderRadius: isEven ? '7px 0 0 7px' : '0 7px 7px 0'
                             }}>
-                              {hasImg ? (
-                                <>
-                                  <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
-                                  <div style={{
-                                    position: 'absolute', top: 6,
-                                    [isEven ? 'right' : 'left']: 6,
-                                    width: 20, height: 20, borderRadius: '50%',
-                                    background: '#14496b', color: '#fff',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '.65rem', fontWeight: 800,
-                                    boxShadow: '0 1px 4px rgba(0,0,0,0.4)'
-                                  }}>{idx + 1}</div>
-                                </>
-                              ) : (
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'rgba(255,255,255,0.55)' }}>{idx + 1}</div>
+                              {hasImg && (
+                                <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
+                              )}
+                              {!hasImg && (
+                                <i className="fa-solid fa-cookie-bite" style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.4)' }} />
                               )}
                             </div>
                             {/* Text */}
                             <div style={{
-                              flex: 1, padding: '12px 16px',
-                              display: 'flex', alignItems: 'center',
+                              flex: 1, padding: '16px 20px',
+                              display: 'flex', flexDirection: 'column', justifyContent: 'center',
                               fontSize: '.84rem', color: '#2d2d2d', lineHeight: 1.65,
                               borderLeft: isEven ? '3px solid #14496b' : 'none',
                               borderRight: isEven ? 'none' : '3px solid #14496b',
                             }}>
-                              {step.description ? renderFormattedDescription(step.description) : <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
+                              {title && (
+                                <div style={{ fontWeight: 800, color: '#14496b', marginBottom: 6, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.75rem', opacity: 0.8 }} />
+                                  {title}
+                                </div>
+                              )}
+                              <div>
+                                {body ? renderFormattedDescription(body) : <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
+                              </div>
                             </div>
                           </div>
                         );

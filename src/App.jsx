@@ -4,11 +4,11 @@ import AuthGate from '@/components/auth/AuthGate'
 import Sidebar from '@/components/layout/Sidebar'
 import Placeholder from '@/components/ui/Placeholder'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
-import { WorkspaceBranchScope, WorkspaceGate, WorkspaceProvider, useWorkspace } from '@/context/WorkspaceContext'
+import { WORKSPACE_SECTION, WorkspaceAccessPrompt, WorkspaceBranchScope, WorkspaceGate, WorkspaceProvider, useWorkspace } from '@/context/WorkspaceContext'
 import { ToastProvider } from '@/hooks/useToast'
 import { logActivity } from '@/lib/activityLogger'
 import { isPublicDisplayPath } from '@/lib/publicDisplayRoutes'
-import { WORKSPACE_SCOPE, canAccessPath, getDefaultPathForScope } from '@/lib/workspace'
+import { WORKSPACE_SCOPE, getDefaultPathForScope, getRequiredScopeForPath } from '@/lib/workspace'
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext'
 import { isDesktopMode } from '@/lib/terminalIdentity'
 import { useParams, useSearchParams } from 'react-router-dom'
@@ -140,12 +140,11 @@ function QrRedirector() {
 }
 
 function WarehouseBranchRoute({ title, expectedScope = WORKSPACE_SCOPE.anadepo, children }) {
-  const { branchId, branchName, branches, loadingBranches, openWorkspacePicker } = useWorkspace()
-  const selectedBranch = branches.find(branch => branch.id === branchId) || null
+  const { branchName, hasSelection, loadingBranches, openSectionLogin } = useWorkspace()
   const expectedLabel = expectedScope === WORKSPACE_SCOPE.merkezmutfak ? 'Merkez Mutfak' : 'Ana Depo'
-  const branchMatchesScope = selectedBranch?.workspaceScope === expectedScope
+  const sectionKey = expectedScope === WORKSPACE_SCOPE.merkezmutfak ? WORKSPACE_SECTION.kitchen : WORKSPACE_SECTION.warehouse
 
-  if (branchMatchesScope) return children
+  if (hasSelection) return children
 
   if (loadingBranches) {
     return (
@@ -164,15 +163,15 @@ function WarehouseBranchRoute({ title, expectedScope = WORKSPACE_SCOPE.anadepo, 
       <div style={{ fontSize: '.85rem', color: '#1e40af', lineHeight: 1.6 }}>
         Bu ekran {expectedLabel} baglami ile calisir.
         {branchName ? ` Mevcut secim: ${branchName}.` : ''}
-        {' '}Devam etmek icin calisma baglamindan uygun {expectedLabel.toLowerCase()} kaydini secin.
+        {' '}Devam etmek icin ilgili bolum basligindan PIN ile giris yapin.
       </div>
       <button
         type="button"
         className="btn-p"
-        onClick={openWorkspacePicker}
+        onClick={() => openSectionLogin(sectionKey)}
         style={{ marginTop: 16 }}
       >
-        <i className="fa-solid fa-warehouse" /> {expectedLabel} Sec
+        <i className="fa-solid fa-warehouse" /> {expectedLabel} PIN Girisi
       </button>
     </div>
   )
@@ -302,6 +301,23 @@ function AdminLayout({ children }) {
   )
 }
 
+function WorkspaceRouteGate({ children }) {
+  const location = useLocation()
+  const workspace = useWorkspace()
+
+  if (isPublicDisplayPath(location.pathname)) return children
+  if (location.pathname === '/') return children
+  if (workspace.loadingBranches) return <PageLoader />
+
+  const routeScope = getRequiredScopeForPath(location.pathname) || WORKSPACE_SCOPE.center
+  const routeNeedsLogin = Boolean(routeScope)
+  if (routeNeedsLogin && !workspace.hasSelection) {
+    return <WorkspaceAccessPrompt />
+  }
+
+  return children
+}
+
 function AppShell() {
   const location = useLocation()
   const { scope } = useWorkspace()
@@ -327,10 +343,6 @@ function AppShell() {
         </Suspense>
       </PageErrorBoundary>
     )
-  }
-
-  if (!isPublicDisplay && scope && location.pathname !== '/' && !canAccessPath(scope, location.pathname)) {
-    return <Navigate to={defaultPath} replace />
   }
 
   if (isPOS) {
@@ -371,9 +383,10 @@ function AppShell() {
       <RouteActivityTracker />
       <Sidebar />
       <AdminLayout>
-        <PageErrorBoundary key={location.pathname}>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
+        <WorkspaceRouteGate>
+          <PageErrorBoundary key={location.pathname}>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
               <Route path="/" element={<Navigate to={defaultPath} replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/design-demo" element={<DesignDemo />} />
@@ -517,9 +530,10 @@ function AppShell() {
               <Route path="/gorev-yoneticisi" element={<TaskManager />} />
               <Route path="/is-akisleri" element={<Workflows />} />
               <Route path="*" element={<Navigate to={defaultPath} replace />} />
-            </Routes>
-          </Suspense>
-        </PageErrorBoundary>
+              </Routes>
+            </Suspense>
+          </PageErrorBoundary>
+        </WorkspaceRouteGate>
       </AdminLayout>
     </>
   )

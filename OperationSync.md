@@ -5062,6 +5062,35 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 
 
 
+## Entry — 2026-06-09 Sidebar Bolum Bazli PIN Oturumlari ve Fallback Temizligi
+
+- `Timestamp`: `2026-06-09T05:35:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Tam ekran calisma baglami modalini kaldirma, sidebar bolum PIN oturumlari, sabit sube fallback temizligi`
+- `Intent`: `Global calisma baglami/picker modelini yeni bolum bazli PIN oturumlariyla hizalamak; sonraki agent'larin eski pasif kod veya dokuman izlerini kullanmasini engellemek. OperationSync eski entry'leri tarihsel logdur, guncel mimari talimat olarak kullanilmaz.`
+- `Files Changed`:
+  - `.antigravityrules.md` — bolum bazli PIN oturumu, sessionStorage/localStorage istisnasi, sabit sube fallback yasagi ve olu kod yasagi eklendi.
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md` — personel PIN oturumu ve fallback yasagi yeni yapıyla hizalandi.
+  - `DESIGN_HANDBOOK_V3_TR.md` — sidebar bolum basligi, checkbox ve tekrar etmeyen durum bilgisi kurali eklendi.
+  - `docs/ana_depo_siparis_modeli.md`, `docs/ana_depo_wms_agent_talimatlari.md`, `docs/ana_depo_wms_agent_talimatlari2.txt` — WMS ekranlarinin `warehouse` PIN oturumu ile calistigi ve sessiz fallback kullanilmayacagi belirtildi.
+  - `src/context/WorkspaceContext.jsx` — tek global scope/branch yerine `center`, `branch`, `warehouse`, `kitchen` oturumlari eklendi; aktif route gerekli bolum oturumunu `useWorkspace()` uyumluluk yuzeyine yansitir.
+  - `src/components/layout/Sidebar.jsx` — global personel/baglam kartlari ve tekrar eden sube rozeti kaldirildi; bolum basliklari her zaman gorunur, checkbox alt menuleri goster/gizler.
+  - `src/App.jsx`, `src/components/layout/Header.jsx`, `src/components/pages/Tasks.jsx` — eski global picker API kullanimi `openSectionLogin` akisi ile degistirildi.
+  - `src/lib/branchContexts.js` ve ilgili ekranlar — sabit sube/ilk sube runtime fallback temizlendi.
+  - `src/components/pages/FormSubmissions.jsx`, `src/components/pages/CallCenter.jsx`, `src/components/pages/workflows/WorkflowInstancesList.jsx` — `rms_active_user` sadece `sessionStorage` kaynakli okunacak sekilde guncellendi.
+  - `src/components/pages/ReportDesigner.jsx` — pasif debug kosulu kaldirildi; dev modda acik opt-in debug flag'e baglandi.
+- `Commands Run`:
+  - `rg "DEFAULT_BRANCH_NAME|branches\\[0\\]|branchRows\\[0\\]|resolvedBranches\\[0\\]|branchTemplates\\[0\\]" src` → sonuc yok.
+  - `rg "localStorage.*rms_active_user" src` → sonuc yok.
+  - `npm run build` → basarili; mevcut CSS minify uyarisi (`-: T;`) devam ediyor, build hatasi yok.
+- `Decisions`:
+  - Eski global calisma baglami modalina donus yok.
+  - Sidebar basliklari yetkiyle gizlenmez; checkbox sadece alt menuleri gizler.
+  - Sube/depo yoksa islem yapilmaz; ilgili bolum PIN oturumu istenir.
+  - Pasif kod veya yorumlanmis eski implementasyon birakilmamasi kural haline getirildi.
+- `Handoff Contract`:
+  - `Sonraki agent bu konuya dokunacaksa once .antigravityrules.md, SUITABLERMS_PROJECT_GOVERNANCE.md ve bu entry'yi okusun. Eski global picker, tam ekran calisma baglami modali, sabit sube fallback veya pasif JSX bloklari geri getirilmeyecek.`
+
 ## Entry 105
 
 - `Timestamp`: `2026-05-23T13:50:00+03:00`
@@ -9770,9 +9799,5 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - İsteğe bağlı: lot bazlı raporlama için `inventory_movements.lot_number` üzerinden analitik sorgu sayfası.
 - `Handoff Contract`:
   - `WMS Faz 0–8 (ve UI Görünürlük Cilası) tüm fazlarıyla tamamlandı. Schema, UI, routing, sidebar dinamik sayaçları (badges), süreç stepper'ları, bağlam rozetleri ve operasyonel hafıza eksiksiz güncellendi. Sistem üretim kullanımına hazır.`
-
-
-
-
 
 

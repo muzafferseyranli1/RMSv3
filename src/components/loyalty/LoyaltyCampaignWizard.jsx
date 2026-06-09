@@ -4800,9 +4800,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                 <button
                   type="button"
                   onClick={() => {
-                    const defaultSelection = branchTemplates[0]
-                      ? [{ id: String(branchTemplates[0].id), type: 'template', name: branchTemplates[0].name, branchIds: (branchTemplates[0].branch_ids || []).map(String) }]
-                      : (branches[0] ? [{ id: String(branches[0].id), type: 'branch', name: branches[0].name }] : [])
+                    const defaultSelection = []
                     updateCampaign({ metadata: { ...wizardCampaign.metadata, branchSelections: defaultSelection } })
                   }}
                   style={campaignButtonStyle(wizardCampaign.metadata?.branchSelections && wizardCampaign.metadata.branchSelections.length > 0, '#7c3aed')}
@@ -5986,9 +5984,7 @@ export default function LoyaltyCampaignWizard({ mode }) {
                     <button
                       type="button"
                       onClick={() => {
-                        const defaultSelection = branchTemplates[0]
-                          ? [{ id: String(branchTemplates[0].id), type: 'template', name: branchTemplates[0].name, branchIds: (branchTemplates[0].branch_ids || []).map(String) }]
-                          : (branches[0] ? [{ id: String(branches[0].id), type: 'branch', name: branches[0].name }] : [])
+                        const defaultSelection = []
                         updateCampaign({ metadata: { ...wizardCampaign.metadata, branchSelections: defaultSelection } })
                       }}
                       style={campaignButtonStyle(wizardCampaign.metadata?.branchSelections && wizardCampaign.metadata.branchSelections.length > 0, '#7c3aed')}

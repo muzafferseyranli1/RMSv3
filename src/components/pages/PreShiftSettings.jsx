@@ -300,7 +300,7 @@ function OperatingHoursPanel({
         <div className="card" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
           <div style={{ fontWeight: 800, color: '#9a3412', marginBottom: 8 }}>Sube secilmedi</div>
           <div style={{ fontSize: '.86rem', color: '#7c2d12', lineHeight: 1.55 }}>
-            Sube saatleri sube bazli tutulur. Bu alanlari duzenlemeden once calisma baglamindan bir sube secilmelidir.
+            Sube saatleri sube bazli tutulur. Bu alanlari duzenlemeden once sidebar Sube bolumunden PIN ile giris yapilmalidir.
           </div>
         </div>
       ) : databaseError ? (
@@ -894,7 +894,7 @@ export default function PreShiftSettings() {
         <div className="card" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
           <div style={{ fontWeight: 800, color: '#9a3412', marginBottom: 8 }}>Sube secilmedi</div>
           <div style={{ fontSize: '.86rem', color: '#7c2d12', lineHeight: 1.55 }}>
-            Vardiya on tanimlari sube bazli tutulur. Ekrani kullanmadan once calisma baglamindan bir sube secilmelidir.
+            Vardiya on tanimlari sube bazli tutulur. Ekrani kullanmadan once sidebar Sube bolumunden PIN ile giris yapilmalidir.
           </div>
         </div>
       ) : databaseError ? (

@@ -986,25 +986,6 @@ export default function ReportDesigner() {
         if (qErr) throw qErr
 
         const batch = data || []
-        if (false && page === 0) {
-          console.group('[ReportDesigner] Ham veri')
-          console.log('İlk 3 satır:', batch.slice(0, 3))
-          console.log('Seçilen kolonlar:', [...needed])
-          console.log('Satır boyutları:', rowFields.map(f => f.col))
-          console.log('Değer ölçümleri:', valueFields.map(f => ({ id: f.id, col: f.col, agg: f.agg })))
-          if (batch.length > 0) {
-            const sample = batch[0]
-            console.log('Örnek satır anahtarları:', Object.keys(sample))
-            rowFields.forEach(f => {
-              console.log(`  ${f.id} (col=${f.col}) → örnek değer:`, sample[f.col])
-            })
-            valueFields.forEach(f => {
-              console.log(`  ${f.id} (col=${f.col}) → örnek değer:`, sample[f.col])
-            })
-          }
-          console.groupEnd()
-        }
-
         batch.forEach(row => updatePivotAccumulator(accumulator, row))
         totalRows += batch.length
 

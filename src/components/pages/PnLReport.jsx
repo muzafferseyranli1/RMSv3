@@ -176,7 +176,7 @@ function parseBranchIds(template) {
 
 function buildSelection({ scopeVariant, branches, branchTemplates, scopeMode, branchId, templateId, workspaceBranchId }) {
   if (scopeVariant === 'branch') {
-    const selectedBranch = branches.find(branch => branch.id === workspaceBranchId) || branches[0] || null
+    const selectedBranch = branches.find(branch => branch.id === workspaceBranchId) || null
     return {
       kind: 'branch',
       label: selectedBranch?.name || 'Sube secimi bekleniyor',
@@ -185,7 +185,7 @@ function buildSelection({ scopeVariant, branches, branchTemplates, scopeMode, br
   }
 
   if (scopeMode === 'branch') {
-    const selectedBranch = branches.find(branch => branch.id === branchId) || branches[0] || null
+    const selectedBranch = branches.find(branch => branch.id === branchId) || null
     return {
       kind: 'branch',
       label: selectedBranch?.name || 'Sube secin',
@@ -273,7 +273,7 @@ export default function PnLReport({ scopeVariant = 'center' }) {
         setBranches(resolvedBranches)
         setFilters(current => ({
           ...current,
-          branchId: current.branchId || workspaceBranchId || resolvedBranches[0]?.id || '',
+          branchId: current.branchId || workspaceBranchId || '',
         }))
       } catch (error) {
         if (ignore) return

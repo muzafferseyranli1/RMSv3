@@ -808,7 +808,7 @@ export default function FormTemplates() {
               <input
                 type="text"
                 className="f-input"
-                placeholder="Örn: Masa QR - Kadıköy Şubesi, Instagram Kampanyası"
+                placeholder="Orn: Masa QR - Sube, Instagram Kampanyasi"
                 value={qrLabel}
                 onChange={e => setQrLabel(e.target.value)}
                 style={{ width: '100%', padding: '8px 12px' }}

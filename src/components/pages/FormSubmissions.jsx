@@ -634,14 +634,14 @@ export default function FormSubmissions() {
     const allowedContexts = template.allowed_contexts || ['center', 'branch', 'warehouse']
     const isBranchAllowed = allowedContexts.includes('branch')
     
-    const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+    const activeUserRaw = sessionStorage.getItem('rms_active_user')
     const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
     
     let activeBranch = ''
     if (isBranchAllowed && activeUser?.defaultBranchId) {
       activeBranch = activeUser.defaultBranchId
     } else {
-      activeBranch = branchId || (branches && branches[0]?.id) || ''
+      activeBranch = branchId || ''
     }
 
     setMetaBranchId(activeBranch)
@@ -758,7 +758,7 @@ export default function FormSubmissions() {
     if (!template) return
 
     // Get inspector name from pin session
-    const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+    const activeUserRaw = sessionStorage.getItem('rms_active_user')
     const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
     const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
 
@@ -1511,7 +1511,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   className="f-input"
                   value={
                     (() => {
-                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
                       const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
                       return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Denetçi'
                     })()
@@ -1651,7 +1651,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   className="f-input"
                   value={
                     (() => {
-                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
                       const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
                       return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
                     })()
@@ -1770,7 +1770,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
                   className="f-input"
                   value={
                     (() => {
-                      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
                       const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
                       return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
                     })()

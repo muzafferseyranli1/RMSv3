@@ -522,7 +522,7 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
   async function submitCreate() {
     if (!actor) {
       toast('Önce çalışma bağlamını seçin.', 'error')
-      workspace.openWorkspacePicker()
+      workspace.openSectionLogin(workspace.activeSectionKey)
       return
     }
     if (!form.title.trim() || !form.responsibleId || !form.locationId) {
@@ -849,8 +849,8 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
           <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#9a3412' }}>Görev bağlamı hazır değil</div>
           <div style={{ marginTop: 6, fontSize: '.82rem', color: '#9a3412' }}>{actorError}</div>
           <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn-p" onClick={() => workspace.openWorkspacePicker()}>
-              Çalışma Bağlamını Aç
+            <button type="button" className="btn-p" onClick={() => workspace.openSectionLogin(workspace.activeSectionKey)}>
+              PIN Oturumunu Aç
             </button>
           </div>
         </div>

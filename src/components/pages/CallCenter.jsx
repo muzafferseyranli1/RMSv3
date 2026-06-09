@@ -1087,7 +1087,7 @@ export default function OrderHub() {
       setBranches(branchRows)
       setBranchAddresses((branchAddressesResult.data || []).filter(row => row.active !== false))
       setBranchCoverageRows((branchCoverageResult.data || []).filter(row => row.active !== false))
-      setSelectedBranchId(current => current || branchRows[0]?.id || '')
+      setSelectedBranchId(current => current || '')
 
       const channelRows = (channelsResult.data || []).filter(channel => channel.active !== false)
       setChannels(channelRows)
@@ -1294,7 +1294,7 @@ export default function OrderHub() {
         if (nextBranch) {
           nextSource = 'history'
         } else {
-          nextBranch = resolveBranchByIdentity(branches, selectedCustomer?.home_branch_id, selectedCustomer?.home_branch_name) || branches[0] || null
+          nextBranch = resolveBranchByIdentity(branches, selectedCustomer?.home_branch_id, selectedCustomer?.home_branch_name) || null
           nextSource = 'fallback'
         }
       }
@@ -1302,7 +1302,7 @@ export default function OrderHub() {
       nextBranch = branchRecommendations[0].branch
       nextSource = branchRecommendations[0].source
     } else {
-      nextBranch = branches[0] || null
+      nextBranch = null
       nextSource = 'fallback'
     }
 
@@ -1581,7 +1581,7 @@ export default function OrderHub() {
   }
 
   const handleOpenFeedbackModal = (customer = null) => {
-    const initialBranchId = selectedBranchId || branches[0]?.id || ''
+    const initialBranchId = selectedBranchId || ''
     
     let initialPhone = ''
     let initialName = ''
@@ -1697,7 +1697,7 @@ export default function OrderHub() {
 
     setFeedbackSubmitting(true)
     try {
-      const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+      const activeUserRaw = sessionStorage.getItem('rms_active_user')
       const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
       const inspectorName = activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
 
@@ -3414,7 +3414,7 @@ export default function OrderHub() {
                         type="text"
                         className="f-input"
                         value={(() => {
-                          const activeUserRaw = sessionStorage.getItem('rms_active_user') || localStorage.getItem('rms_active_user')
+                          const activeUserRaw = sessionStorage.getItem('rms_active_user')
                           const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
                           return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
                         })()}
@@ -3751,5 +3751,3 @@ function InfoModalSafe({ title, message, onClose }) {
     </div>
   )
 }
-
-

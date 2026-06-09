@@ -93,40 +93,39 @@ function renderFormattedDescription(text) {
 }
 
 function parseStepText(description, idx) {
-  if (!description) return { title: `Adım ${idx + 1}`, body: '' };
+  if (!description) return { stepNumber: idx + 1, title: '', body: '' };
   
   // Try to match patterns like "Adım 1: Malzemelerin Hazırlanması (Mizanplas)" at the start
   const match = description.match(/^(Adım\s+\d+[:.-]?\s*[^.\n]+)(.*)$/i) ||
                 description.match(/^([^.\n]+)(.*)$/); // fallback: first sentence/line as title
-                
+                 
   if (match) {
     let title = match[1].trim();
     let body = match[2].trim();
     
-    // Clean up title (remove double spaces, extra whitespace)
     title = title.replace(/\s+/g, ' ');
     
-    // If body is empty or too short, let's keep the whole description as body and use a default title
     if (body.length < 5) {
+      const cleanTitleMatch = description.match(/^Adım\s+\d+[:.-]?\s*(.*)$/i);
+      const cleanTitle = cleanTitleMatch ? cleanTitleMatch[1].trim() : description;
       return {
-        title: `Adım ${idx + 1}`,
+        stepNumber: idx + 1,
+        title: cleanTitle || '',
         body: description
       };
     }
     
-    // If title doesn't start with "Adım", prefix it for consistency
-    if (!title.toLowerCase().startsWith('adım')) {
-      title = `Adım ${idx + 1}: ${title}`;
-    }
+    const cleanTitleMatch = title.match(/^Adım\s+\d+[:.-]?\s*(.*)$/i);
+    const cleanTitle = cleanTitleMatch ? cleanTitleMatch[1].trim() : title;
     
-    // Clean up body (strip leading punctuation and spaces)
     body = body.replace(/^[.:\-\s]+/, '').trim();
     
-    return { title, body };
+    return { stepNumber: idx + 1, title: cleanTitle || title, body };
   }
   
   return {
-    title: `Adım ${idx + 1}`,
+    stepNumber: idx + 1,
+    title: '',
     body: description
   };
 }
@@ -211,41 +210,39 @@ function estimateReadingTime(page) {
   return Math.max(1, Math.ceil(words / 180))
 }
 
-function renderChannelsBadge(r, globalChannels) {
+function renderChannelsTooltipInline(r, globalChannels) {
   const rowChannels = r.channels || [];
   const allChannels = globalChannels || [];
   
-  if (allChannels.length === 0) return null;
+  const quantityText = `${parseFloat(r.qty || 0)} ${r.unit}`;
+  
+  if (allChannels.length === 0) {
+    return <span>{quantityText}</span>;
+  }
 
   const isActiveAll = rowChannels.length === 0 || rowChannels.length === allChannels.length;
-  const activeChannels = isActiveAll ? allChannels : allChannels.filter(c => rowChannels.includes(c.id));
 
-  // Determine trigger icon and color class
-  const triggerClass = isActiveAll ? 'mr-channel-tooltip-trigger all-channels' : 'mr-channel-tooltip-trigger';
-  const triggerIcon = isActiveAll ? 'fa-globe' : 'fa-shop';
-
-  // Helper to resolve channel icon
   const getChannelIcon = (c) => {
     if (c.icon) return c.icon;
     const nameLower = (c.name || '').toLowerCase();
-    if (nameLower.includes('hızlı') || nameLower.includes('pos')) return 'fa-bolt';
-    if (nameLower.includes('gel al') || nameLower.includes('paket')) return 'fa-bag-shopping';
-    if (nameLower.includes('masa')) return 'fa-chair';
-    if (nameLower.includes('qr')) return 'fa-qrcode';
-    if (nameLower.includes('kiosk')) return 'fa-desktop';
-    if (nameLower.includes('yemeksepeti') || nameLower.includes('yemek sepeti')) return 'fa-basket-shopping';
-    if (nameLower.includes('getir')) return 'fa-motorcycle';
-    if (nameLower.includes('trendyol')) return 'fa-shop';
-    if (nameLower.includes('çağrı') || nameLower.includes('call')) return 'fa-phone';
-    return 'fa-circle-nodes'; // fallback
+    if (nameLower.includes('hızlı') || nameLower.includes('pos')) return 'fa-solid fa-bolt';
+    if (nameLower.includes('gel al') || nameLower.includes('paket')) return 'fa-solid fa-bag-shopping';
+    if (nameLower.includes('masa')) return 'fa-solid fa-chair';
+    if (nameLower.includes('qr')) return 'fa-solid fa-qrcode';
+    if (nameLower.includes('kiosk')) return 'fa-solid fa-desktop';
+    if (nameLower.includes('yemeksepeti') || nameLower.includes('yemek sepeti')) return 'fa-solid fa-basket-shopping';
+    if (nameLower.includes('getir')) return 'fa-solid fa-motorcycle';
+    if (nameLower.includes('trendyol')) return 'fa-solid fa-shop';
+    if (nameLower.includes('çağrı') || nameLower.includes('call')) return 'fa-solid fa-phone';
+    return 'fa-solid fa-circle-nodes';
   };
 
   return (
-    <div className="mr-channel-tooltip-container">
-      <div className={triggerClass}>
-        <i className={`fa-solid ${triggerIcon}`} style={{ fontSize: '.72rem' }} />
-      </div>
-      <div className="mr-channel-tooltip-content">
+    <div className="mr-channel-tooltip-container" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+      <span>
+        {quantityText}
+      </span>
+      <div className="mr-channel-tooltip-content" style={{ textAlign: 'left', fontWeight: 'normal' }}>
         <div className="mr-channel-tooltip-arrow-border" />
         <div className="mr-channel-tooltip-arrow" />
         <div className="mr-channel-tooltip-title">
@@ -254,10 +251,10 @@ function renderChannelsBadge(r, globalChannels) {
         <ul className="mr-channel-list">
           {allChannels.map(c => {
             const isActive = isActiveAll || rowChannels.includes(c.id);
-            if (!isActive) return null; // Only show active channels in the list
+            if (!isActive) return null;
             return (
               <li key={c.id} className={`mr-channel-item active ${isActiveAll ? 'all' : ''}`}>
-                <i className={`fa-solid ${getChannelIcon(c)}`} style={{ color: isActiveAll ? '#10b981' : '#4f46e5' }} />
+                <i className={getChannelIcon(c)} style={{ color: isActiveAll ? '#10b981' : '#6366f1', width: '14px', textAlign: 'center' }} />
                 <span>{c.name}</span>
               </li>
             );
@@ -1633,6 +1630,26 @@ export default function ManualReader() {
           color: var(--text-strong);
         }
 
+        .mr-recipe-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 20px;
+          margin-bottom: 24px;
+        }
+        @media (max-width: 992px) {
+          .mr-recipe-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .mr-recipe-common {
+          font-weight: 600 !important;
+          color: var(--text-strong) !important;
+        }
+        .mr-recipe-specific {
+          font-weight: 450 !important;
+          color: var(--text-strong) !important;
+          opacity: 0.85;
+        }
         .mr-recipe-table {
           width: 100%;
           border-collapse: separate;
@@ -1641,7 +1658,7 @@ export default function ManualReader() {
           border: 1px solid var(--border);
           border-radius: 12px;
           overflow: visible;
-          margin-bottom: 24px;
+          margin-bottom: 0px;
         }
         .mr-recipe-table thead tr:first-child th:first-child {
           border-top-left-radius: 11px;
@@ -1753,6 +1770,44 @@ export default function ManualReader() {
           margin-bottom: 40px;
         }
         
+        .mr-step-badge {
+          position: absolute;
+          top: -14px;
+          left: 16px;
+          background: linear-gradient(135deg, #2d6a4f, #1b4332);
+          color: #ffffff;
+          font-size: 0.65rem;
+          font-weight: 800;
+          padding: 4px 12px;
+          border-radius: 30px;
+          box-shadow: 0 4px 10px rgba(45, 106, 79, 0.25);
+          z-index: 10;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          animation: mr-badge-glowing 3s infinite ease-in-out;
+        }
+        @keyframes mr-badge-glowing {
+          0% {
+            box-shadow: 0 4px 10px rgba(45, 106, 79, 0.25);
+            transform: translateY(0);
+          }
+          50% {
+            box-shadow: 0 6px 15px rgba(82, 183, 136, 0.5), 0 0 0 4px rgba(82, 183, 136, 0.15);
+            transform: translateY(-2px);
+          }
+          100% {
+            box-shadow: 0 4px 10px rgba(45, 106, 79, 0.25);
+            transform: translateY(0);
+          }
+        }
+        [data-theme="dark"] .mr-step-badge {
+          background: linear-gradient(135deg, #52b788, #2d6a4f);
+          box-shadow: 0 4px 10px rgba(82, 183, 136, 0.25);
+        }
         .mr-step-premium-card {
           position: relative;
           background: var(--surface);
@@ -2205,43 +2260,10 @@ export default function ManualReader() {
           }
         }
 
-        /* ─── CHANNEL TOOLTIP ─── */
+                /* ─── CHANNEL TOOLTIP ─── */
         .mr-channel-tooltip-container {
           position: relative;
           display: inline-block;
-        }
-
-        .mr-channel-tooltip-trigger {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 26px;
-          height: 26px;
-          border-radius: 50%;
-          background: rgba(99, 102, 241, 0.08);
-          color: #4f46e5;
-          border: 1px solid rgba(99, 102, 241, 0.18);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .mr-channel-tooltip-trigger:hover {
-          background: #4f46e5;
-          color: #ffffff;
-          transform: scale(1.05);
-          box-shadow: 0 4px 10px rgba(99, 102, 241, 0.25);
-        }
-
-        .mr-channel-tooltip-trigger.all-channels {
-          background: rgba(16, 185, 129, 0.08);
-          color: #10b981;
-          border-color: rgba(16, 185, 129, 0.18);
-        }
-
-        .mr-channel-tooltip-trigger.all-channels:hover {
-          background: #10b981;
-          color: #ffffff;
-          box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
         }
 
         .mr-channel-tooltip-content {
@@ -2249,8 +2271,8 @@ export default function ManualReader() {
           opacity: 0;
           position: absolute;
           bottom: 125%;
-          left: 50%;
-          transform: translateX(-50%) translateY(4px);
+          right: 0;
+          transform: translateY(4px);
           background: #ffffff;
           border: 1px solid var(--border);
           border-radius: 10px;
@@ -2265,15 +2287,14 @@ export default function ManualReader() {
         .mr-channel-tooltip-container:hover .mr-channel-tooltip-content {
           visibility: visible;
           opacity: 1;
-          transform: translateX(-50%) translateY(0);
+          transform: translateY(0);
           pointer-events: auto;
         }
 
         .mr-channel-tooltip-arrow {
           position: absolute;
           top: 100%;
-          left: 50%;
-          transform: translateX(-50%);
+          right: 15px;
           border-width: 6px;
           border-style: solid;
           border-color: #ffffff transparent transparent transparent;
@@ -2282,12 +2303,77 @@ export default function ManualReader() {
         .mr-channel-tooltip-arrow-border {
           position: absolute;
           top: 100%;
-          left: 50%;
-          transform: translateX(-50%);
+          right: 15px;
           border-width: 7px;
           border-style: solid;
           border-color: var(--border) transparent transparent transparent;
           z-index: -1;
+        }
+
+        /* ─── EQUIP TABLE ─── */
+        .mr-equip-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          font-size: .8rem;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          overflow: visible;
+          margin-bottom: 16px;
+        }
+        .mr-equip-table thead tr:first-child th:first-child {
+          border-top-left-radius: 11px;
+        }
+        .mr-equip-table thead tr:first-child th:last-child {
+          border-top-right-radius: 11px;
+        }
+        .mr-equip-table tbody tr:last-child td:first-child {
+          border-bottom-left-radius: 11px;
+        }
+        .mr-equip-table tbody tr:last-child td:last-child {
+          border-bottom-right-radius: 11px;
+        }
+        .mr-equip-table thead th {
+          background: var(--surface-2);
+          padding: 8px 12px;
+          text-align: left;
+          font-size: .65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .06em;
+          color: var(--text-muted);
+          border-bottom: 1px solid var(--border);
+        }
+        .mr-equip-table thead th:last-child { text-align: center; }
+        .mr-equip-table tbody tr { transition: background .12s; }
+        .mr-equip-table tbody tr:hover { background: rgba(239, 68, 68, 0.03); }
+        .mr-equip-table tbody td {
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--border);
+          color: var(--text-strong);
+        }
+        .mr-equip-table tbody tr:last-child td { border-bottom: none; }
+        .mr-equip-table tbody td:last-child { text-align: center; }
+        
+        .mr-equip-fault-btn {
+          font-size: .62rem;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 4px;
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          background: rgba(239, 68, 68, 0.05);
+          color: #ef4444;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .mr-equip-fault-btn:hover {
+          background: #ef4444;
+          color: #ffffff;
+          border-color: #ef4444;
+          box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
         }
 
         .mr-channel-tooltip-title {
@@ -2858,8 +2944,6 @@ export default function ManualReader() {
 
             {/* Recipe — Boyuta Göre Gruplandırılmış */}
             {recipeContext.length > 0 && (() => {
-              // Tüm kanal ID'leri
-              const allChannelIds = [...new Set(recipeContext.flatMap(r => r.channels || []))]
               // Porsiyon grupları: __standart__ önce
               const portionGroups = {}
               recipeContext.forEach(r => {
@@ -2875,7 +2959,28 @@ export default function ManualReader() {
                 return a.localeCompare(b, 'tr')
               })
               const hasMultipleGroups = groupKeys.length > 1 || (groupKeys.length === 1 && groupKeys[0] !== '__standart__')
-              const hasChannelFilter = allChannelIds.length > 1
+
+              // Tüm boyutlarda ortak kullanılan malzemeleri bul: 
+              // Diğer boyutlarda (portions) listelenmeyen, yani override edilmeyen, yalnızca standart olanlar.
+              const commonIngredientNames = new Set()
+              const specificNames = new Set()
+              if (groupKeys.length > 1) {
+                groupKeys.forEach(portKey => {
+                  if (portKey !== '__standart__') {
+                    const rows = portionGroups[portKey] || []
+                    rows.forEach(r => {
+                      specificNames.add((r.name || '').toLowerCase().trim())
+                    })
+                  }
+                })
+                const standartRows = portionGroups['__standart__'] || []
+                standartRows.forEach(r => {
+                  const nameLower = (r.name || '').toLowerCase().trim()
+                  if (!specificNames.has(nameLower)) {
+                    commonIngredientNames.add(nameLower)
+                  }
+                })
+              }
 
               return (
                 <div style={{ marginBottom: 24 }}>
@@ -2889,14 +2994,14 @@ export default function ManualReader() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: hasMultipleGroups ? 12 : 0 }}>
+                  <div className={hasMultipleGroups ? "mr-recipe-grid" : ""} style={{ gap: hasMultipleGroups ? 20 : 0 }}>
                     {groupKeys.map((portKey, gi) => {
                       const groupRows = portionGroups[portKey]
                       const isStandart = portKey === '__standart__'
                       const groupLabel = globalPortionNames[portKey] || recipeMeta.portionNames?.[portKey] || (isStandart ? 'Standart' : portKey)
 
                       return (
-                        <div key={portKey}>
+                        <div key={portKey} style={{ display: 'flex', flexDirection: 'column' }}>
                           {/* Boyut başlığı */}
                           {hasMultipleGroups && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -2920,47 +3025,31 @@ export default function ManualReader() {
                           )}
 
                           <table className="mr-recipe-table" style={{ marginBottom: 0, tableLayout: 'fixed' }}>
-                            {gi === 0 && (
-                              <thead>
-                                <tr>
-                                  <th style={{ width: 'auto', textAlign: 'left' }}>Malzeme</th>
-                                  <th style={{ width: '140px', textAlign: 'right' }}>Miktar</th>
-                                  {hasChannelFilter && <th style={{ width: '90px', textAlign: 'center' }}>Kanal</th>}
-                                  <th style={{ width: '130px', textAlign: 'center' }}>Kılavuz</th>
-                                </tr>
-                              </thead>
-                            )}
+                            <thead>
+                              <tr>
+                                <th style={{ width: 'auto', textAlign: 'left' }}>Malzeme</th>
+                                <th style={{ width: '100px', textAlign: 'right' }}>Miktar</th>
+                              </tr>
+                            </thead>
                             <tbody>
                               {groupRows.map((r, i) => {
                                 const targetPageId = r.linked_page_id || pages.find(p => p.title?.toLowerCase().trim() === r.name?.toLowerCase().trim())?.id
+                                const isCommon = groupKeys.length > 1 && commonIngredientNames.has((r.name || '').toLowerCase().trim())
+                                const itemClass = isCommon ? 'mr-recipe-common' : 'mr-recipe-specific'
+
                                 return (
                                   <tr key={i}>
                                     <td style={{ width: 'auto', textAlign: 'left' }}>
                                       {targetPageId ? (
-                                        <button className="mr-recipe-link" onClick={() => navigateToPage(targetPageId)}>
+                                        <button className={`mr-recipe-link ${itemClass}`} onClick={() => navigateToPage(targetPageId)}>
                                           {r.name}
                                         </button>
                                       ) : (
-                                        <span>{r.name}</span>
+                                        <span className={itemClass}>{r.name}</span>
                                       )}
                                     </td>
-                                    <td style={{ width: '140px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>
-                                      {parseFloat(r.qty || 0)} {r.unit}
-                                    </td>
-                                    {hasChannelFilter && (
-                                      <td style={{ width: '90px', textAlign: 'center' }}>
-                                        {renderChannelsBadge(r, globalChannels)}
-                                      </td>
-                                    )}
-                                    <td style={{ width: '130px', textAlign: 'center' }}>
-                                      {targetPageId ? (
-                                        <button className="mr-recipe-go-btn" onClick={() => navigateToPage(targetPageId)}>
-                                          <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, fontSize: '.55rem' }} />
-                                          Kılavuza Git
-                                        </button>
-                                      ) : (
-                                        <span style={{ color: 'var(--border)' }}>—</span>
-                                      )}
+                                    <td style={{ width: '100px', textAlign: 'right', fontWeight: 600 }}>
+                                      {renderChannelsTooltipInline(r, globalChannels)}
                                     </td>
                                   </tr>
                                 )
@@ -2975,23 +3064,30 @@ export default function ManualReader() {
               )
             })()}
 
-            {/* Equipment pills */}
+            {/* Equipment Table */}
             {pageDetails.equipments?.length > 0 && (
               <div style={{ marginBottom: 24 }}>
                 <div className="mr-section-head">
                   <div className="mr-section-bar" style={{ background: '#ef4444' }} />
                   <span className="mr-section-label">Ekipmanlar</span>
                 </div>
-                <div className="mr-equip-pills">
-                  {pageDetails.equipments.map(eq => (
-                    <button key={eq.id} className="mr-equip-pill" onClick={() => handleOpenFaultModal(eq)} title="Arıza Bildir">
-                      <i className="fa-solid fa-triangle-exclamation" /> {eq.name}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: -12, marginBottom: 24 }}>
-                  Ekipmana tıklayarak arıza bildiriminde bulunabilirsiniz.
-                </div>
+                
+                <table className="mr-equip-table" style={{ width: '100%', maxWidth: '400px', marginBottom: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Ekipman</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageDetails.equipments.map(eq => (
+                      <tr key={eq.id}>
+                        <td style={{ textAlign: 'left', fontWeight: 500 }}>
+                          {eq.name}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 
@@ -3010,7 +3106,7 @@ export default function ManualReader() {
                   
                   <div className="mr-steps-premium-container">
                     {pageDetails.metadata.steps.map((step, idx) => {
-                      const { title, body } = parseStepText(step.description, idx)
+                      const { stepNumber, title, body } = parseStepText(step.description, idx)
                       const isAlternate = idx % 2 === 1
                       const hasImage = !!step.imageUrl
                       
@@ -3025,6 +3121,12 @@ export default function ManualReader() {
                             <div className="mr-sketch-line mr-sketch-line-middle"></div>
                           )}
                           
+                          {/* Animated Badge */}
+                          <div className="mr-step-badge">
+                            <i className="fa-solid fa-fire-burner" />
+                            <span>Adım {stepNumber}</span>
+                          </div>
+                          
                           <div className="mr-step-premium-grid">
                             {hasImage && (
                               <div className="mr-step-premium-img-box">
@@ -3032,10 +3134,12 @@ export default function ManualReader() {
                               </div>
                             )}
                             <div className="mr-step-premium-content-box">
-                              <h3 className="mr-step-premium-title">
-                                <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.8rem', opacity: 0.8 }} />
-                                {title}
-                              </h3>
+                              {title && (
+                                <h3 className="mr-step-premium-title">
+                                  <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.8rem', opacity: 0.8 }} />
+                                  {title}
+                                </h3>
+                              )}
                               <div className="mr-step-premium-desc">
                                 {body ? renderFormattedDescription(body) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
                               </div>

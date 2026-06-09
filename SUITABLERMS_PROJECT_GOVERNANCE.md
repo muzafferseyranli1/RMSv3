@@ -65,6 +65,8 @@ Aşağıdakiler tarihe karışmıştır. Hiçbir agent bu adreslere bağlanmaz, 
 ### Fallback Yasağı
 - Uygulama DB'ye ulaşamazsa ekranda açıkça hata gösterir.
 - Sessiz fallback, mock veri gösterimi veya "sanki çalışıyormuş gibi" davranış yasaktır.
+- Şube/depo bağlamı yoksa sistem sabit bir şubeye, ilk şubeye veya sabit bir depoya düşemez; ilgili bölüm PIN oturumu istenir.
+- Kaldırılan davranışlar kısa devreye alınmış JSX, yorum satırı veya kullanılmayan legacy blok olarak kodda bırakılamaz.
 
 ---
 
@@ -84,6 +86,8 @@ Bu projede kullanıcı kimlik doğrulaması yoktur.
 - PIN doğrulaması `src/lib/posStaffAuth.js` üzerinden yapılır.
 - PIN eşleşince kimlik `sessionStorage`'a yazılır, sekme kapanınca uçar.
 - Bu sistem auth değildir, sadece ekran bağlamı bilgisidir.
+- Çalışma bağlamı tek/global modal değildir. Sidebar bölüm başlıklarından bölüm bazlı PIN oturumu açılır: `center`, `branch`, `warehouse`, `kitchen`.
+- `POS ve Ekranlar` şube oturumunu, `Ayarlar` merkez oturumunu kullanır. Bölüm checkbox'ları sadece alt menü görünürlüğünü yönetir; yetki yerine geçmez.
 
 ---
 
