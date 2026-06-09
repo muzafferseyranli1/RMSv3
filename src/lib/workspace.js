@@ -183,6 +183,7 @@ const BRANCH_PATHS = new Set([
 
 const ANADEPO_PATHS = new Set([
   '/depo-orders',
+  '/depo-satinalma',
   '/depo-documents',
   '/depo-count',
   '/depo-transfer',

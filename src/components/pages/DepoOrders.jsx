@@ -253,7 +253,8 @@ export default function DepoOrders() {
         vehiclesResult,
         shipmentsResult,
         shipmentOrdersResult,
-        shipmentLinesResult
+        shipmentLinesResult,
+        stockItemsResult
       ] = await Promise.all([
         db
           .from('purchase_orders')
@@ -302,7 +303,11 @@ export default function DepoOrders() {
           .is('deleted_at', null),
         db
           .from('warehouse_shipment_lines')
-          .select('*, stock_items(name, sku, unit)')
+          .select('*')
+          .is('deleted_at', null),
+        db
+          .from('stock_items')
+          .select('id, name, sku, unit')
           .is('deleted_at', null)
       ])
 
@@ -314,6 +319,7 @@ export default function DepoOrders() {
       if (shipmentsResult.error) throw shipmentsResult.error
       if (shipmentOrdersResult.error) throw shipmentOrdersResult.error
       if (shipmentLinesResult.error) throw shipmentLinesResult.error
+      if (stockItemsResult.error) throw stockItemsResult.error
 
       const loadedOrders = ordersResult.data || []
       setOrders(loadedOrders)
@@ -323,7 +329,19 @@ export default function DepoOrders() {
       setVehicles(vehiclesResult.data || [])
       setShipments(shipmentsResult.data || [])
       setShipmentOrders(shipmentOrdersResult.data || [])
-      setShipmentLines(shipmentLinesResult.data || [])
+
+      const stockItemsList = stockItemsResult.data || []
+      const stockItemsMap = {}
+      for (const item of stockItemsList) {
+        stockItemsMap[item.id] = item
+      }
+
+      const rawLines = shipmentLinesResult.data || []
+      const mappedLines = rawLines.map(line => ({
+        ...line,
+        stock_items: stockItemsMap[line.stock_item_id] || null
+      }))
+      setShipmentLines(mappedLines)
 
       if (loadedOrders.length > 0) {
         const orderIds = loadedOrders.map(o => o.id)

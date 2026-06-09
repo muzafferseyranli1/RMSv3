@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 
-const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v2'
+const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v3'
 const BRANCH_CONTEXT_CACHE_TTL_MS = 5 * 60 * 1000
 let branchContextLoadPromise = null
 
@@ -92,7 +92,7 @@ export function buildBranchContextsFromCompanyNodes(nodes = []) {
   const nodeMap = new Map(normalizedNodes.map(node => [String(node.id), node]))
 
   return normalizedNodes
-    .filter(node => node?.can_sell === true || node?.type === 'anadepo' || node?.type === 'mutfak')
+    .filter(node => node?.can_sell === true || node?.type === 'anadepo' || node?.type === 'mutfak' || node?.type === 'uretim')
     .sort(compareNodeOrder)
     .map(branchNode => {
       let current = branchNode
@@ -119,7 +119,7 @@ export function buildBranchContextsFromCompanyNodes(nodes = []) {
         legalEntityName: legalEntity?.name || null,
         orgUnitId: orgUnit?.id ? String(orgUnit.id) : null,
         orgUnitName: orgUnit?.name || null,
-        workspaceScope: branchNode.workspace_scope || (branchNode.type === 'anadepo' ? 'anadepo' : (branchNode.type === 'mutfak' ? 'merkezmutfak' : null)),
+        workspaceScope: branchNode.workspace_scope || (branchNode.type === 'anadepo' ? 'anadepo' : ((branchNode.type === 'mutfak' || branchNode.type === 'uretim') ? 'merkezmutfak' : null)),
       }
     })
 }
@@ -150,7 +150,7 @@ export function buildBranchContextsFromCompanyTree(treeValue) {
       if (node.type === 'tuzel') nextCtx.legalEntity = { id: node.id, name: node.name }
       if (node.type === 'org') nextCtx.orgUnit = { id: node.id, name: node.name }
 
-      if ((node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak') && node.id && node.name) {
+      if ((node.type === 'sube' || node.type === 'anadepo' || node.type === 'mutfak' || node.type === 'uretim') && node.id && node.name) {
         result.push({
           branchId: String(node.id),
           branchName: String(node.name),
@@ -160,7 +160,7 @@ export function buildBranchContextsFromCompanyTree(treeValue) {
           legalEntityName: nextCtx.legalEntity?.name || null,
           orgUnitId: nextCtx.orgUnit?.id ? String(nextCtx.orgUnit.id) : null,
           orgUnitName: nextCtx.orgUnit?.name || null,
-          workspaceScope: node.workspace_scope || (node.type === 'anadepo' ? 'anadepo' : (node.type === 'mutfak' ? 'merkezmutfak' : null)),
+          workspaceScope: node.workspace_scope || (node.type === 'anadepo' ? 'anadepo' : ((node.type === 'mutfak' || node.type === 'uretim') ? 'merkezmutfak' : null)),
         })
       }
 

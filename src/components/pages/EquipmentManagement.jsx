@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl, resolveImageUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
-const API = import.meta.env.VITE_API_URL || 'https://rms-api-production-219d.up.railway.app'
+const API = buildApiUrl()
 
 // ── Küçük yardımcılar ────────────────────────────────────────────
 const fmt = (n, decimals = 2) =>
@@ -240,15 +240,86 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
+  const cropAndResizeImage = (file, targetAspect = 4 / 3, maxWidth = 800) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        img.onload = () => {
+          const srcW = img.naturalWidth
+          const srcH = img.naturalHeight
+          const srcAspect = srcW / srcH
+
+          let cropW, cropH, cropX, cropY
+          if (srcAspect > targetAspect) {
+            cropH = srcH
+            cropW = Math.round(srcH * targetAspect)
+            const offscreen = document.createElement('canvas')
+            offscreen.width = srcW; offscreen.height = 1
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, srcW, 1)
+            const data2 = ctx2.getImageData(0, 0, srcW, 1).data
+            let totalBrightness = 0, weightedX = 0
+            for (let x = 0; x < srcW; x++) {
+              const brightness = data2[x * 4] * 0.299 + data2[x * 4 + 1] * 0.587 + data2[x * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedX += brightness * x
+            }
+            const focusX = totalBrightness > 0 ? weightedX / totalBrightness : srcW / 2
+            cropX = Math.max(0, Math.min(srcW - cropW, Math.round(focusX - cropW / 2)))
+            cropY = 0
+          } else {
+            cropW = srcW
+            cropH = Math.round(srcW / targetAspect)
+            const offscreen = document.createElement('canvas')
+            offscreen.width = 1; offscreen.height = srcH
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, 1, srcH)
+            const data2 = ctx2.getImageData(0, 0, 1, srcH).data
+            let totalBrightness = 0, weightedY = 0
+            for (let y = 0; y < srcH; y++) {
+              const brightness = data2[y * 4] * 0.299 + data2[y * 4 + 1] * 0.587 + data2[y * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedY += brightness * y
+            }
+            const focusY = totalBrightness > 0 ? weightedY / totalBrightness : srcH / 2
+            cropX = 0
+            cropY = Math.max(0, Math.min(srcH - cropH, Math.round(focusY - cropH / 2)))
+          }
+
+          const outW = Math.min(maxWidth, cropW)
+          const outH = Math.round(outW / targetAspect)
+
+          const canvas = document.createElement('canvas')
+          canvas.width = outW; canvas.height = outH
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, outW, outH)
+
+          canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error('Kırpma başarısız'))
+            resolve(blob)
+          }, 'image/jpeg', 0.88)
+        }
+        img.onerror = reject
+        img.src = ev.target.result
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingImage(true)
     try {
+      const croppedBlob = await cropAndResizeImage(file, 4 / 3, 800)
+      const croppedFile = new File([croppedBlob], file.name || 'image.jpg', { type: 'image/jpeg' })
+
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', croppedFile)
       const res = await uploadApiFile(formData)
-      setForm(f => ({ ...f, image_url: buildApiUrl(res.file_url) }))
+      setForm(f => ({ ...f, image_url: res.file_url }))
     } catch (err) {
       alert('Resim yüklenemedi: ' + err.message)
     } finally {
@@ -455,13 +526,14 @@ function InstanceFormModal({ instance, definitions, onClose, onSuccess }) {
                 <label style={labelStyle}>Ekipman Resmi</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {form.image_url && (
-                    <img src={form.image_url} alt="Thumbnail" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                    <img src={resolveImageUrl(form.image_url)} alt="Thumbnail" style={{ width: 48, height: 36, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
                   )}
                   <label style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px dashed #cbd5e1', background: '#f8fafc', cursor: 'pointer', textAlign: 'center', fontSize: '.78rem', color: '#475569' }}>
                     {uploadingImage ? 'Yükleniyor…' : (form.image_url ? 'Resmi Değiştir' : 'Resim Yükle')}
                     <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
                   </label>
                 </div>
+                <p style={{ fontSize: '.7rem', color: '#94a3b8', margin: '4px 0 0' }}>Önerilen: 4:3 oranında (örn. 800×600px), PNG veya JPG.</p>
               </div>
 
               {/* Kullanım Kılavuzu Yükleme */}
@@ -825,9 +897,9 @@ export default function EquipmentManagement() {
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {inst.image_url ? (
-                              <img src={inst.image_url} alt="Equipment" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                              <img src={resolveImageUrl(inst.image_url)} alt="Equipment" style={{ width: 48, height: 36, borderRadius: 6, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
                             ) : (
-                              <div style={{ width: 36, height: 36, borderRadius: 6, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', fontSize: '.88rem' }}>🔧</div>
+                              <div style={{ width: 48, height: 36, borderRadius: 6, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', fontSize: '.88rem' }}>🔧</div>
                             )}
                             <div>
                               <div style={{ fontWeight: 700, color: 'var(--text-1,#1e293b)', fontSize: '.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>

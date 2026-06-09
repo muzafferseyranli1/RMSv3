@@ -243,6 +243,48 @@ function renderChannelsTooltipInline(r, globalChannels) {
   );
 }
 
+const DEFAULT_METADATA_HAMMADDELER = {
+  erp_code: '',
+  approved_suppliers: '',
+  subcategory: '',
+  ideal_product_photo: '',
+  dimensions: '',
+  weight: '',
+  slicing_standard: '',
+  texture: '',
+  // Bölüm 2: Sipariş ve Lojistik Dinamikleri
+  order_unit: '',
+  min_order_qty: '',
+  delivery_lead_time: '',
+  critical_stock_level: '',
+  max_stack_qty: '',
+  storage_location: '',
+  // Bölüm 3+: Lojistik Kabul
+  delivery_temp: '',
+  packaging_qty: '',
+  box_condition: '',
+  storage_area: '',
+  primary_shelf_life: '',
+  thawing_procedure: '',
+  secondary_shelf_life: '',
+  toast_temp: '',
+  toast_time: '',
+  caramelization_target: '',
+  rejection_logistics: '',
+  rejection_cutting: '',
+  rejection_cold_chain: '',
+  rejection_visual: '',
+  visual_comparisons: [],
+  custom_parameters: [],
+  shelf_lives: [],
+  steps: [
+    {
+      description: 'bu stok malı kullanım için herhangi bir ön hazırlığa gerek yoktur doğrudan kullanılabilir.',
+      imageUrl: '__default_check__'
+    }
+  ]
+};
+
 export default function ManualManagement() {
   const toast = useToast()
 
@@ -391,9 +433,9 @@ export default function ManualManagement() {
         fetch(buildApiUrl('/api/manual/categories')).then(r => r.json()),
         fetch(buildApiUrl('/api/manual/pages')).then(r => r.json()),
         fetch(buildApiUrl('/api/manual/equipments')).then(r => r.json()),
-        db.from('sale_items').select('id,name').eq('active', true),
-        db.from('semi_items').select('id,name').eq('setting_active', true),
-        db.from('stock_items').select('id,name').eq('setting_active', true)
+        db.from('sale_items').select('id,name').is('deleted_at', null).order('name'),
+        db.from('semi_items').select('id,name').is('deleted_at', null).order('name'),
+        db.from('stock_items').select('id,name').is('deleted_at', null).order('name')
       ])
 
       if (catsRes.error) throw new Error(catsRes.error.message)
@@ -516,7 +558,10 @@ export default function ManualManagement() {
     if (!pageForm.title.trim()) return toast('Sayfa başlığı zorunludur', 'warning')
     if (!pageForm.last_updated_by_pin.trim()) return toast('PIN kodu zorunludur', 'warning')
 
-    const isUrunler = categories.find(c => c.id === activeTab)?.name === 'Ürünler';
+    const activeCategory = categories.find(c => c.id === (pageForm.category_id || activeTab));
+    const activeCategoryName = activeCategory?.name || '';
+    const isUrunler = activeCategoryName.toLowerCase().includes('ürün') || activeCategoryName.toLowerCase().includes('urun');
+    const isHammaddeler = activeCategoryName.toLowerCase().includes('hammad');
     let finalContent = pageForm.content;
 
     if (isUrunler) {
@@ -533,6 +578,123 @@ export default function ManualManagement() {
           md += `\n---\n`;
         });
       }
+
+      const comps = pageForm.metadata?.visual_comparisons || [];
+      const validComps = comps.filter(c => c.correct_image || c.wrong_image);
+      if (validComps.length > 0) {
+        md += `## Görsel Karşılaştırma Rehberleri\n\n`;
+        validComps.forEach(comp => {
+          if (comp.title) md += `### ${comp.title}\n`;
+          if (comp.description) md += `${comp.description}\n\n`;
+          if (comp.correct_image) md += `* **DOĞRU:** ![Doğru](${comp.correct_image})\n`;
+          if (comp.wrong_image) md += `* **YANLIŞ:** ![Yanlış](${comp.wrong_image})\n`;
+          md += `\n`;
+        });
+      }
+
+      finalContent = md;
+    } else if (isHammaddeler) {
+      if (!pageForm.linked_item_id) return toast('Lütfen bir hammadde seçiniz. Hammaddeler kategorisi için bu alan zorunludur.', 'warning')
+      const meta = pageForm.metadata || {};
+      let md = '';
+      
+      md += `## 1. Kimlik ve Sistem Bilgileri\n`;
+      md += `* **Sistem/ERP Kodu:** ${meta.erp_code || '-'}\n`;
+      md += `* **Onaylı Tedarikçi(ler):** ${meta.approved_suppliers || '-'}\n`;
+      md += `* **Kategori:** ${meta.subcategory || '-'}\n\n`;
+
+      md += `## 2. Sipariş ve Lojistik Dinamikleri\n`;
+      md += `* **Sipariş Birimi:** ${meta.order_unit || '-'}\n`;
+      md += `* **Minimum Sipariş Miktarı:** ${meta.min_order_qty || '-'}\n`;
+      md += `* **Teslimat / Tedarik Süresi:** ${meta.delivery_lead_time || '-'}\n`;
+      md += `* **Kritik Stok Seviyesi:** ${meta.critical_stock_level || '-'}\n`;
+      md += `* **Maksimum İstifleme:** ${meta.max_stack_qty || '-'}\n`;
+      md += `* **Depolama Lokasyonu:** ${meta.storage_location || '-'}\n\n`;
+
+      md += `## 3. Fiziksel ve Görsel Spesifikasyonlar\n`;
+      if (meta.ideal_product_photo) {
+        md += `![İdeal Ürün Fotoğrafı](${meta.ideal_product_photo})\n\n`;
+      }
+      md += `* **Çap ve Yükseklik:** ${meta.dimensions || '-'}\n`;
+      md += `* **Gramaj:** ${meta.weight || '-'}\n`;
+      md += `* **Tat - Koku:** ${meta.slicing_standard || '-'}\n`;
+      md += `* **Doku/Görünüm:** ${meta.texture || '-'}\n\n`;
+
+      md += `## 4. Lojistik Kabul Kriterleri\n`;
+      md += `* **Sevkiyat Sıcaklığı:** ${meta.delivery_temp || '-'}\n`;
+      md += `* **Ambalajlama Miktarı/Düzeni:** ${meta.packaging_qty || '-'}\n`;
+      md += `* **Kutu Kondisyonu:** ${meta.box_condition || '-'}\n\n`;
+
+      md += `## 5. Depolama ve Raf Ömrü\n`;
+      const shelfLives = meta.shelf_lives || [];
+      if (shelfLives.length > 0) {
+        md += `| Durum | Saklama Alanı | Raf Ömrü |\n`;
+        md += `| :--- | :--- | :--- |\n`;
+        shelfLives.forEach(item => {
+          md += `| ${item.status || '-'} | ${item.storage_area || '-'} | ${item.duration || '-'} |\n`;
+        });
+        md += `\n`;
+      } else {
+        md += `* **Birincil Raf Ömrü:** ${meta.primary_shelf_life || '-'}\n`;
+        md += `* **İkincil Raf Ömrü:** ${meta.secondary_shelf_life || '-'}\n\n`;
+      }
+
+      md += `## 6. Kullanıma Hazırlık\n\n`;
+      const hammadSteps = meta.steps || [];
+      const validHammadSteps = hammadSteps.filter(s => s.description?.trim() || s.imageUrl);
+      if (validHammadSteps.length > 0) {
+        validHammadSteps.forEach((step, idx) => {
+          md += `**${idx + 1}. Adım:**\n${step.description || ''}\n`;
+          if (step.imageUrl) md += `\n![Adım ${idx + 1} Görseli](${step.imageUrl})\n`;
+          md += `\n---\n`;
+        });
+      }
+
+      if (meta.custom_parameters && meta.custom_parameters.length > 0) {
+        md += `## Ek Depolama ve İstifleme Kuralları\n`;
+        meta.custom_parameters.forEach(param => {
+          if (param.label && param.value) {
+            md += `* **${param.label}:** ${param.value}\n`;
+          }
+        });
+        md += `\n`;
+      }
+
+      md += `## 7. Kusur Tanımları ve Red Kriterleri\n`;
+      md += `* **Lojistik Kaynaklı Kusurlar:** ${meta.rejection_logistics || '-'}\n`;
+      md += `* **Kesim/Form Kusurları:** ${meta.rejection_cutting || '-'}\n`;
+      md += `* **Soğuk Zincir/Nem Kusurları:** ${meta.rejection_cold_chain || '-'}\n`;
+      md += `* **Görsel/Renk Kusurları:** ${meta.rejection_visual || '-'}\n\n`;
+
+      if (meta.compare_caramelization_correct || meta.compare_caramelization_incorrect) {
+        md += `### Görsel Karşılaştırma: Karamelizasyon Rehberi\n`;
+        if (meta.compare_caramelization_desc) md += `${meta.compare_caramelization_desc}\n\n`;
+        if (meta.compare_caramelization_correct) md += `* **DOĞRU:** ![Doğru Karamelizasyon](${meta.compare_caramelization_correct})\n`;
+        if (meta.compare_caramelization_incorrect) md += `* **YANLIŞ:** ![Yanlış Karamelizasyon](${meta.compare_caramelization_incorrect})\n`;
+        md += `\n`;
+      }
+
+      if (meta.compare_cutting_correct || meta.compare_cutting_incorrect) {
+        md += `### Görsel Karşılaştırma: Tat - Koku Standardı Rehberi\n`;
+        if (meta.compare_cutting_desc) md += `${meta.compare_cutting_desc}\n\n`;
+        if (meta.compare_cutting_correct) md += `* **DOĞRU:** ![Doğru Tat - Koku](${meta.compare_cutting_correct})\n`;
+        if (meta.compare_cutting_incorrect) md += `* **YANLIŞ:** ![Yanlış Tat - Koku](${meta.compare_cutting_incorrect})\n`;
+        md += `\n`;
+      }
+
+      const comps = meta.visual_comparisons || [];
+      const validComps = comps.filter(c => c.correct_image || c.wrong_image);
+      if (validComps.length > 0) {
+        md += `## Görsel Karşılaştırma Rehberleri\n\n`;
+        validComps.forEach(comp => {
+          if (comp.title) md += `### ${comp.title}\n`;
+          if (comp.description) md += `${comp.description}\n\n`;
+          if (comp.correct_image) md += `* **DOĞRU:** ![Doğru](${comp.correct_image})\n`;
+          if (comp.wrong_image) md += `* **YANLIŞ:** ![Yanlış](${comp.wrong_image})\n`;
+          md += `\n`;
+        });
+      }
+
       finalContent = md;
     }
 
@@ -540,7 +702,9 @@ export default function ManualManagement() {
       const method = editingPage ? 'PUT' : 'POST'
       const url = editingPage ? buildApiUrl(`/api/manual/pages/${editingPage.id}`) : buildApiUrl('/api/manual/pages')
 
-      const bodyData = { ...pageForm, category_id: activeTab, content: finalContent }
+      // Edit modunda pageForm.category_id'yi kullan, yeni sayfa için activeTab
+      const saveCategoryId = editingPage ? (pageForm.category_id || activeTab) : activeTab
+      const bodyData = { ...pageForm, category_id: saveCategoryId, content: finalContent }
 
       const response = await fetch(url, {
         method,
@@ -581,6 +745,45 @@ export default function ManualManagement() {
         portionNames: ctxRes.data?.portionNames || { '__standart__': 'Standart' },
         allChannels: ctxRes.data?.allChannels || []
       })
+      
+      const catName = categories.find(c => c.id === details.category_id)?.name || '';
+      const isHammaddeler = catName.toLowerCase().includes('hammad');
+      const pageMetadata = details.metadata || {};
+      const mergedMetadata = isHammaddeler 
+        ? { ...DEFAULT_METADATA_HAMMADDELER, ...pageMetadata }
+        : { product_image: '', description: '', steps: [], visual_comparisons: [], ...pageMetadata };
+
+      if (isHammaddeler) {
+        if (!mergedMetadata.shelf_lives || mergedMetadata.shelf_lives.length === 0) {
+          const legacyLives = [];
+          if (mergedMetadata.primary_shelf_life) {
+            legacyLives.push({
+              id: Date.now(),
+              status: 'Kapalı',
+              storage_area: mergedMetadata.storage_area || 'Depo',
+              duration: mergedMetadata.primary_shelf_life
+            });
+          }
+          if (mergedMetadata.secondary_shelf_life) {
+            legacyLives.push({
+              id: Date.now() + 1,
+              status: 'Açık / Çözünmüş',
+              storage_area: '+4°C',
+              duration: mergedMetadata.secondary_shelf_life
+            });
+          }
+          mergedMetadata.shelf_lives = legacyLives;
+        }
+        if (!mergedMetadata.steps || mergedMetadata.steps.length === 0) {
+          mergedMetadata.steps = [
+            {
+              description: 'bu stok malı kullanım için herhangi bir ön hazırlığa gerek yoktur doğrudan kullanılabilir.',
+              imageUrl: '__default_check__'
+            }
+          ];
+        }
+      }
+
       setPageForm({
         category_id: details.category_id || '',
         title: details.title || '',
@@ -590,7 +793,7 @@ export default function ManualManagement() {
         linked_item_id: details.linked_item_id || '',
         linked_item_type: details.linked_item_type || '',
         is_draft: details.is_draft || false,
-        metadata: details.metadata || { product_image: '', description: '', steps: [] }
+        metadata: mergedMetadata
       })
     } catch (err) {
       toast('Sayfa detayları yüklenemedi: ' + err.message, 'error')
@@ -617,11 +820,15 @@ export default function ManualManagement() {
     }
   }
 
-  const handleCancelPageEdit = () => {
+  const handleCancelPageEdit = (targetCatId) => {
     setEditingPage(null)
     setEqSearch('')
+    const catId = targetCatId || activeTab
+    const catName = categories.find(c => c.id === catId)?.name || ''
+    const isHamm = catName.toLowerCase().includes('hammad')
+
     setPageForm({
-      category_id: '',
+      category_id: catId || '',
       title: '',
       content: '',
       last_updated_by_pin: '',
@@ -629,7 +836,9 @@ export default function ManualManagement() {
       linked_item_id: '',
       linked_item_type: '',
       is_draft: false,
-      metadata: { product_image: '', description: '', steps: [] }
+      metadata: isHamm 
+        ? { ...DEFAULT_METADATA_HAMMADDELER }
+        : { product_image: '', description: '', steps: [], visual_comparisons: [] }
     })
     setRecipeContext([])
     setRecipeMeta({ portionNames: { '__standart__': 'Standart' }, allChannels: [] })
@@ -687,6 +896,16 @@ export default function ManualManagement() {
       return { ...prev, equipment_ids: ids }
     })
   }
+
+  const activeCat = categories.find(c => c.id === (pageForm.category_id || activeTab));
+  const activeCatName = activeCat?.name || '';
+  const isUrunler = activeCatName.toLowerCase().includes('ürün') || activeCatName.toLowerCase().includes('urun');
+  const isHammaddeler = activeCatName.toLowerCase().includes('hammad');
+
+  const currentTabCat = categories.find(c => c.id === activeTab);
+  const currentTabCatName = currentTabCat?.name || '';
+  const isCurrentTabUrunler = currentTabCatName.toLowerCase().includes('ürün') || currentTabCatName.toLowerCase().includes('urun');
+  const isCurrentTabHammaddeler = currentTabCatName.toLowerCase().includes('hammad');
 
   return (
     <div className="page-enter" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -983,10 +1202,91 @@ export default function ManualManagement() {
             box-shadow: 0 5px 12px rgba(20, 73, 107, 0.45), 0 0 0 3px rgba(20, 73, 107, 0.12);
             transform: translateY(-1.5px);
           }
-          100% {
-            box-shadow: 0 3px 8px rgba(20, 73, 107, 0.25);
-            transform: translateY(0);
-          }
+        }
+
+        /* ─── PREMIUM COMPARISONS (EDITOR PREVIEW) ─── */
+        .mr-comp-premium-card {
+          position: relative;
+          background: var(--surface);
+          margin: 20px 24px;
+          padding: 0;
+        }
+        .mr-comp-premium-grid {
+          display: grid;
+          gap: 0;
+          min-height: 120px;
+        }
+        .mr-comp-premium-img-box {
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          background: var(--surface-2);
+          aspect-ratio: 4 / 3;
+          height: 5cm;
+          align-self: center;
+          flex-shrink: 0;
+        }
+        .mr-comp-premium-img-box.correct {
+          border-radius: 6px 0 0 6px;
+          border-left: 3px solid #10b981;
+        }
+        .mr-comp-premium-img-box.wrong {
+          border-radius: 0 6px 6px 0;
+          border-right: 3px solid #ef4444;
+        }
+        .mr-comp-premium-img-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .mr-comp-premium-img-box.correct img {
+          border-radius: 6px 0 0 6px;
+        }
+        .mr-comp-premium-img-box.wrong img {
+          border-radius: 0 6px 6px 0;
+        }
+        .mr-comp-premium-content-box {
+          padding: 16px 20px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          text-align: center;
+        }
+        .mr-comp-premium-title {
+          margin: 0 0 8px 0;
+          font-size: 1rem;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .mr-comp-premium-desc {
+          margin: 0;
+          font-size: 0.84rem;
+          line-height: 1.6;
+          color: var(--text-strong);
+        }
+        .mr-sketch-line-middle-left {
+          position: absolute;
+          top: -24px;
+          bottom: -24px;
+          left: calc(5cm * 4 / 3);
+          width: 3px;
+          border-radius: 1px;
+          z-index: 2;
+        }
+        .mr-sketch-line-middle-right {
+          position: absolute;
+          top: -24px;
+          bottom: -24px;
+          right: calc(5cm * 4 / 3);
+          width: 3px;
+          border-radius: 1px;
+          z-index: 2;
         }
       `}</style>
       {/* Header */}
@@ -1013,7 +1313,7 @@ export default function ManualManagement() {
             className={activeTab === cat.id ? 'btn-p' : 'btn-o'}
             onClick={() => {
               setActiveTab(cat.id);
-              handleCancelPageEdit();
+              handleCancelPageEdit(cat.id);
             }}
             style={{ boxShadow: activeTab === cat.id ? undefined : 'none', whiteSpace: 'nowrap' }}
           >
@@ -1030,9 +1330,9 @@ export default function ManualManagement() {
       </div>
 
       {activeTab !== 'categories' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: categories.find(c => c.id === activeTab)?.name === 'Ürünler' && (editingPage || pageForm.title || pageForm.linked_item_id) ? '1fr 1fr' : 'minmax(0, 5fr) minmax(0, 7fr)', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: (isUrunler || isHammaddeler) && (editingPage || pageForm.title || pageForm.linked_item_id) ? '1fr 1fr' : 'minmax(0, 5fr) minmax(0, 7fr)', gap: 24 }}>
           
-          {categories.find(c => c.id === activeTab)?.name === 'Ürünler' && (editingPage || pageForm.title || pageForm.linked_item_id) ? (
+          {isUrunler && (editingPage || pageForm.title || pageForm.linked_item_id) ? (
             <div className="card" style={{ padding: 20 }}>
               <h2 className="text-primary" style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>
                 <i className="fa-solid fa-eye" style={{ marginRight: 8 }} /> Canlı Önizleme
@@ -1315,7 +1615,25 @@ export default function ManualManagement() {
                                       const itemClass = isCommon ? 'mr-recipe-common' : 'mr-recipe-specific'
                                       return (
                                         <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
-                                          <td style={{ padding: '3px 5px' }} className={itemClass}>{r.name}</td>
+                                          <td style={{ padding: '3px 5px' }} className={itemClass}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                              {r.image_url && (
+                                                <img
+                                                  src={resolveImageUrl(r.image_url)}
+                                                  alt={r.name}
+                                                  style={{
+                                                    height: '2cm',
+                                                    maxHeight: '2cm',
+                                                    width: 'auto',
+                                                    objectFit: 'contain',
+                                                    borderRadius: '4px',
+                                                    flexShrink: 0
+                                                  }}
+                                                />
+                                              )}
+                                              <span>{r.name}</span>
+                                            </div>
+                                          </td>
                                           <td style={{ padding: '3px 5px', textAlign: 'right', fontWeight: 600 }}>
                                             {renderChannelsTooltipInline(r, allCh)}
                                           </td>
@@ -1352,7 +1670,25 @@ export default function ManualManagement() {
                               if (!eq) return null;
                               return (
                                 <tr key={eqId}>
-                                  <td>{eq.name}</td>
+                                  <td>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {eq.image_url && (
+                                        <img
+                                          src={resolveImageUrl(eq.image_url)}
+                                          alt={eq.name}
+                                          style={{
+                                            height: '2cm',
+                                            maxHeight: '2cm',
+                                            width: 'auto',
+                                            objectFit: 'contain',
+                                            borderRadius: '4px',
+                                            flexShrink: 0
+                                          }}
+                                        />
+                                      )}
+                                      <span>{eq.name}</span>
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -1443,13 +1779,413 @@ export default function ManualManagement() {
                   );
                 })()}
 
+                {/* Visual Guides */}
+                {(() => {
+                  const comps = Array.isArray(pageForm.metadata?.visual_comparisons) 
+                    ? pageForm.metadata.visual_comparisons.filter(c => c.correct_image || c.wrong_image) 
+                    : [];
+                  if (comps.length === 0) return null;
+                  return (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+                        <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
+                        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>
+                          Görsel Karşılaştırma Rehberleri
+                        </span>
+                      </div>
+                      {comps.map((comp, idx) => (
+                        <div key={idx} className="mr-comp-premium-card mr-step-premium-card">
+                          {/* Sketch border lines */}
+                          <div className="mr-sketch-line mr-sketch-line-top"></div>
+                          <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                          <div className="mr-sketch-line mr-sketch-line-left"></div>
+                          <div className="mr-sketch-line mr-sketch-line-right"></div>
+                          {comp.correct_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-left"></div>
+                          )}
+                          {comp.wrong_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-right"></div>
+                          )}
+                          
+                          <div className="mr-comp-premium-grid" style={{ 
+                            display: 'grid',
+                            gridTemplateColumns: `${comp.correct_image ? 'calc(5cm * 4 / 3)' : '0px'} 1fr ${comp.wrong_image ? 'calc(5cm * 4 / 3)' : '0px'}`,
+                            alignItems: 'stretch'
+                          }}>
+                            {comp.correct_image ? (
+                              <div className="mr-comp-premium-img-box correct">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#10b981', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✓ DOĞRU</span>
+                                <img src={resolveImageUrl(comp.correct_image)} alt="Correct" />
+                              </div>
+                            ) : <div />}
+                            
+                            <div className="mr-comp-premium-content-box">
+                              {comp.title && (
+                                <h3 className="mr-comp-premium-title" style={{ color: '#14496b', justifyContent: 'center' }}>
+                                  <i className="fa-solid fa-images" style={{ fontSize: '0.85rem' }} />
+                                  {comp.title}
+                                </h3>
+                              )}
+                              {comp.description && (
+                                <div className="mr-comp-premium-desc">
+                                  {renderFormattedDescription(comp.description)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {comp.wrong_image ? (
+                              <div className="mr-comp-premium-img-box wrong">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#ef4444', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✗ YANLIŞ</span>
+                                <img src={resolveImageUrl(comp.wrong_image)} alt="Incorrect" />
+                              </div>
+                            ) : <div />}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
                 {/* ── FOOTER ── */}
                 <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 9, marginTop: 24, display: 'flex', justifyContent: 'space-between', color: '#bbb', fontSize: '.65rem' }}>
-                  <span>{categories.find(c => c.id === activeTab)?.name}</span>
+                  <span>{activeCatName}</span>
                   <span>{pageForm.title || (pageForm.linked_item_id ? systemItems.find(i => i.id === pageForm.linked_item_id)?.name : '')}</span>
                   <span>Sayfa 1</span>
                 </div>
                             </div>
+            </div>
+          ) : isHammaddeler && (editingPage || pageForm.title || pageForm.linked_item_id) ? (
+            <div className="card" style={{ padding: 20 }}>
+              <h2 className="text-primary" style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>
+                <i className="fa-solid fa-eye" style={{ marginRight: 8 }} /> Canlı Önizleme
+              </h2>
+              {/* Premium spec sheet */}
+              <div style={{ background: '#fff', color: '#222', padding: '28px 32px', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
+                
+                {/* Header */}
+                <div style={{ borderBottom: '2.5px solid #1e3a8a', paddingBottom: 10, marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '.65rem', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 3 }}>İşletme ve Eğitim El Kitabı</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>
+                      {pageForm.title || 'Hammadde Başlığı'}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '.7rem', fontWeight: 700, padding: '4px 10px', borderRadius: 12, background: 'rgba(30, 58, 138, 0.1)', color: '#1e3a8a' }}>
+                    HAMMADDE
+                  </div>
+                </div>
+
+                {/* 1. Kimlik ve Sistem Bilgileri */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: '.75rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '.65rem', textTransform: 'uppercase' }}>Sistem/ERP Kodu</span>
+                      <strong style={{ color: '#0f172a' }}>{pageForm.metadata?.erp_code || '-'}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '.65rem', textTransform: 'uppercase' }}>Kategori</span>
+                      <strong style={{ color: '#0f172a' }}>{pageForm.metadata?.subcategory || '-'}</strong>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8, fontSize: '.75rem' }}>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '.65rem', textTransform: 'uppercase' }}>Onaylı Tedarikçiler</span>
+                    <strong style={{ color: '#0f172a' }}>{pageForm.metadata?.approved_suppliers || '-'}</strong>
+                  </div>
+                </div>
+
+                {/* 2. Fiziksel ve Görsel Spesifikasyonlar */}
+                <div style={{ display: 'flex', gap: 18, marginBottom: 20, alignItems: 'stretch' }}>
+                  {/* Ideal Photo (4:3) */}
+                  <div style={{ flex: 1, maxWidth: '200px', borderRadius: 8, overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {pageForm.metadata?.ideal_product_photo ? (
+                      <img src={resolveImageUrl(pageForm.metadata.ideal_product_photo)} alt="Ideal" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#cbd5e1', padding: 12 }}>
+                        <i className="fa-solid fa-camera" style={{ fontSize: '1.4rem', display: 'block', marginBottom: 4 }} />
+                        <span style={{ fontSize: '.65rem' }}>Görsel Girilmedi</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Physical parameters */}
+                  <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: 6, fontSize: '.75rem', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: 4 }}>
+                      <span style={{ color: '#64748b' }}><i className="fa-solid fa-ruler" style={{ marginRight: 5, color: '#3b82f6' }} /> Çap ve Yükseklik:</span>
+                      <strong style={{ color: '#334155' }}>{pageForm.metadata?.dimensions || '-'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: 4 }}>
+                      <span style={{ color: '#64748b' }}><i className="fa-solid fa-weight-scale" style={{ marginRight: 5, color: '#eab308' }} /> Gramaj:</span>
+                      <strong style={{ color: '#334155' }}>{pageForm.metadata?.weight || '-'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: 4 }}>
+                      <span style={{ color: '#64748b' }}><i className="fa-solid fa-utensils" style={{ marginRight: 5, color: '#10b981' }} /> Tat - Koku:</span>
+                      <strong style={{ color: '#334155' }}>{pageForm.metadata?.slicing_standard || '-'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 4 }}>
+                      <span style={{ color: '#64748b' }}><i className="fa-solid fa-certificate" style={{ marginRight: 5, color: '#a855f7' }} /> Doku/Görünüm:</span>
+                      <strong style={{ color: '#334155' }}>{pageForm.metadata?.texture || '-'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 & 4. Lojistik ve Depolama */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  {/* Logistics */}
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 10, fontSize: '.75rem' }}>
+                    <h4 style={{ margin: '0 0 6px', color: '#1e40af', fontWeight: 700, fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <i className="fa-solid fa-truck-ramp-box" /> Lojistik Kabul
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: 12, listStyleType: 'disc', color: '#1e3a8a', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <li>Sıcaklık: <strong>{pageForm.metadata?.delivery_temp || '-'}</strong></li>
+                      <li>Ambalaj: <strong>{pageForm.metadata?.packaging_qty || '-'}</strong></li>
+                      <li>Koli: <strong>{pageForm.metadata?.box_condition || '-'}</strong></li>
+                    </ul>
+                  </div>
+
+                  {/* Storage & Shelf Life */}
+                  <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: 10, fontSize: '.75rem' }}>
+                    <h4 style={{ margin: '0 0 6px', color: '#92400e', fontWeight: 700, fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <i className="fa-solid fa-temperature-arrow-down" /> Depolama & Raf Ömrü
+                    </h4>
+                    <div style={{ color: '#78350f', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {/* Dynamic Shelf Lives */}
+                      {pageForm.metadata?.shelf_lives && pageForm.metadata.shelf_lives.length > 0 ? (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: '.68rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #d97706', color: '#92400e', textAlign: 'left' }}>
+                              <th style={{ padding: '2px 4px', fontWeight: 700 }}>Durum</th>
+                              <th style={{ padding: '2px 4px', fontWeight: 700 }}>Saklama Alanı</th>
+                              <th style={{ padding: '2px 4px', fontWeight: 700 }}>Raf Ömrü</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageForm.metadata.shelf_lives.map((item, i) => (
+                              <tr key={i} style={{ borderBottom: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                <td style={{ padding: '3px 4px' }}>{item.status || '-'}</td>
+                                <td style={{ padding: '3px 4px' }}>{item.storage_area || '-'}</td>
+                                <td style={{ padding: '3px 4px', fontWeight: 700 }}>{item.duration || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: 12, listStyleType: 'disc', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <li>1. Ömür: <strong>{pageForm.metadata?.primary_shelf_life || '-'}</strong></li>
+                          <li>2. Ömür: <strong>{pageForm.metadata?.secondary_shelf_life || '-'}</strong></li>
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dynamic/Flexible parameters grid */}
+                {pageForm.metadata?.custom_parameters && pageForm.metadata.custom_parameters.length > 0 && (
+                  <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: 10, marginBottom: 16, fontSize: '.75rem' }}>
+                    <h4 style={{ margin: '0 0 6px', color: '#5b21b6', fontWeight: 700, fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <i className="fa-solid fa-circle-exclamation" /> Ek Depolama ve İstifleme Kuralları
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {pageForm.metadata.custom_parameters.map((param, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #ede9fe', paddingBottom: 2 }}>
+                          <span style={{ color: '#7c3aed', fontWeight: 500 }}>{param.label}:</span>
+                          <strong style={{ color: '#4c1d95', wordBreak: 'break-all' }}>{param.value}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Kullanıma Hazırlık */}
+                {pageForm.metadata?.steps?.length > 0 && (() => {
+                  const validSteps = pageForm.metadata.steps.filter(s => s.description?.trim() || s.imageUrl);
+                  if (validSteps.length === 0) return null;
+                  return (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+                        <div style={{ width: 3, height: 14, background: '#10b981', borderRadius: 2, flexShrink: 0 }} />
+                        <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '.6px' }}>
+                          Kullanıma Hazırlık
+                        </span>
+                      </div>
+                      {pageForm.metadata.steps.map((step, idx) => {
+                        const { stepNumber, title, body } = parseStepText(step.description, idx)
+                        const isEven = idx % 2 === 0;
+                        const hasImg = !!step.imageUrl;
+                        return (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            flexDirection: isEven ? 'row' : 'row-reverse',
+                            marginBottom: 14,
+                            borderRadius: 8,
+                            overflow: 'visible',
+                            border: '1px solid #e8e8e8',
+                            background: '#fff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                            minHeight: 80,
+                            position: 'relative'
+                          }}>
+                            {/* Animated Badge */}
+                            <div className="mr-step-badge" style={{ background: 'linear-gradient(135deg, #10b981, #047857)' }}>
+                              <i className="fa-solid fa-circle-check" />
+                              <span>Adım {stepNumber}</span>
+                            </div>
+
+                            {/* Image / Number Block */}
+                            <div style={{
+                              width: hasImg ? 140 : 44,
+                              height: hasImg ? '5cm' : 'auto',
+                              alignSelf: 'center',
+                              flexShrink: 0,
+                              background: hasImg ? '#f5f6f8' : '#10b981',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              position: 'relative',
+                              overflow: 'hidden',
+                              borderRadius: isEven ? '7px 0 0 7px' : '0 7px 7px 0'
+                            }}>
+                              {hasImg && (
+                                step.imageUrl === '__default_check__' ? (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ecfdf5' }}>
+                                    <i className="fa-solid fa-circle-check" style={{ fontSize: '2rem', color: '#10b981' }} />
+                                  </div>
+                                ) : (
+                                  <img src={resolveImageUrl(step.imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
+                                )
+                              )}
+                              {!hasImg && (
+                                <i className="fa-solid fa-circle-check" style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.4)' }} />
+                              )}
+                            </div>
+                            {/* Text */}
+                            <div style={{
+                              flex: 1, padding: '16px 20px',
+                              display: 'flex', flexDirection: 'column',
+                              justifyContent: 'center',
+                              fontSize: '.84rem', color: '#2d2d2d', lineHeight: 1.65,
+                              borderLeft: isEven ? '3px solid #10b981' : 'none',
+                              borderRight: isEven ? 'none' : '3px solid #10b981',
+                            }}>
+                              {title && (
+                                <div style={{ fontWeight: 800, color: '#047857', marginBottom: 6, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.75rem', opacity: 0.8 }} />
+                                  {title}
+                                </div>
+                              )}
+                              <div>
+                                {body ? renderFormattedDescription(body) : <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* 7. Kusurlar ve Red Kriterleri */}
+                <div style={{ background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: '.75rem' }}>
+                  <h4 style={{ margin: '0 0 8px', color: '#c53030', fontWeight: 700, fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <i className="fa-solid fa-triangle-exclamation" /> Red Kriterleri & Kusurlar
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {pageForm.metadata?.rejection_logistics && (
+                      <div><strong style={{ color: '#9b2c2c' }}>Lojistik:</strong> <span style={{ color: '#742a2a' }}>{pageForm.metadata.rejection_logistics}</span></div>
+                    )}
+                    {pageForm.metadata?.rejection_cutting && (
+                      <div><strong style={{ color: '#9b2c2c' }}>Kesim/Form:</strong> <span style={{ color: '#742a2a' }}>{pageForm.metadata.rejection_cutting}</span></div>
+                    )}
+                    {pageForm.metadata?.rejection_cold_chain && (
+                      <div><strong style={{ color: '#9b2c2c' }}>Soğuk Zincir/Nem:</strong> <span style={{ color: '#742a2a' }}>{pageForm.metadata.rejection_cold_chain}</span></div>
+                    )}
+                    {pageForm.metadata?.rejection_visual && (
+                      <div><strong style={{ color: '#9b2c2c' }}>Görsel/Renk:</strong> <span style={{ color: '#742a2a' }}>{pageForm.metadata.rejection_visual}</span></div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Visual Guides */}
+                {(() => {
+                  const newComps = Array.isArray(pageForm.metadata?.visual_comparisons) 
+                    ? pageForm.metadata.visual_comparisons.filter(c => c.correct_image || c.wrong_image) 
+                    : [];
+                  const legacyComps = [];
+                  if (pageForm.metadata?.compare_caramelization_correct || pageForm.metadata?.compare_caramelization_incorrect) {
+                    legacyComps.push({ 
+                      title: 'Karamelizasyon Standardı', 
+                      description: pageForm.metadata.compare_caramelization_desc || '', 
+                      correct_image: pageForm.metadata.compare_caramelization_correct || '', 
+                      wrong_image: pageForm.metadata.compare_caramelization_incorrect || '' 
+                    });
+                  }
+                  if (pageForm.metadata?.compare_cutting_correct || pageForm.metadata?.compare_cutting_incorrect) {
+                    legacyComps.push({ 
+                      title: 'Tat - Koku Standardı', 
+                      description: pageForm.metadata.compare_cutting_desc || '', 
+                      correct_image: pageForm.metadata.compare_cutting_correct || '', 
+                      wrong_image: pageForm.metadata.compare_cutting_incorrect || '' 
+                    });
+                  }
+                  const allComps = [...newComps, ...legacyComps];
+                  if (allComps.length === 0) return null;
+                  return allComps.map((comp, idx) => (
+                    <div key={idx} className="mr-comp-premium-card mr-step-premium-card">
+                      {/* Sketch border lines */}
+                      <div className="mr-sketch-line mr-sketch-line-top"></div>
+                      <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                      <div className="mr-sketch-line mr-sketch-line-left"></div>
+                      <div className="mr-sketch-line mr-sketch-line-right"></div>
+                      {comp.correct_image && (
+                        <div className="mr-sketch-line mr-sketch-line-middle-left"></div>
+                      )}
+                      {comp.wrong_image && (
+                        <div className="mr-sketch-line mr-sketch-line-middle-right"></div>
+                      )}
+                      
+                      <div className="mr-comp-premium-grid" style={{ 
+                        display: 'grid',
+                        gridTemplateColumns: `${comp.correct_image ? 'calc(5cm * 4 / 3)' : '0px'} 1fr ${comp.wrong_image ? 'calc(5cm * 4 / 3)' : '0px'}`,
+                        alignItems: 'stretch'
+                      }}>
+                        {comp.correct_image ? (
+                          <div className="mr-comp-premium-img-box correct">
+                            <span style={{ position: 'absolute', top: 8, left: 8, background: '#10b981', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✓ DOĞRU</span>
+                            <img src={resolveImageUrl(comp.correct_image)} alt="Correct" />
+                          </div>
+                        ) : <div />}
+                        
+                        <div className="mr-comp-premium-content-box">
+                          {comp.title && (
+                            <h3 className="mr-comp-premium-title" style={{ color: '#1e3a8a', justifyContent: 'center' }}>
+                              <i className="fa-solid fa-images" style={{ fontSize: '0.85rem' }} />
+                              {comp.title}
+                            </h3>
+                          )}
+                          {comp.description && (
+                            <div className="mr-comp-premium-desc">
+                              {renderFormattedDescription(comp.description)}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {comp.wrong_image ? (
+                          <div className="mr-comp-premium-img-box wrong">
+                            <span style={{ position: 'absolute', top: 8, left: 8, background: '#ef4444', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✗ YANLIŞ</span>
+                            <img src={resolveImageUrl(comp.wrong_image)} alt="Incorrect" />
+                          </div>
+                        ) : <div />}
+                      </div>
+                    </div>
+                  ));
+                })()}
+
+                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 9, marginTop: 24, display: 'flex', justifyContent: 'space-between', color: '#bbb', fontSize: '.65rem' }}>
+                  <span>{activeCatName}</span>
+                  <span>{pageForm.title || ''}</span>
+                  <span>Sayfa 1</span>
+                </div>
+
+              </div>
             </div>
           ) : (
           // Page List Card
@@ -1544,7 +2280,13 @@ export default function ManualManagement() {
               </div>
 
               <div>
-                <label className="f-label">{categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? 'Ürün Seçiniz' : 'Sistemden Ürün/Hammadde Bağla (İsteğe Bağlı)'}</label>
+                <label className="f-label">
+                  {isUrunler
+                    ? 'Ürün Seçiniz'
+                    : isHammaddeler
+                    ? 'Sistemden Hammadde Bağla (Zorunlu)'
+                    : 'Sistemden Ürün/Hammadde Bağla (İsteğe Bağlı)'}
+                </label>
                 <div className="sel-wrap">
                   <select
                     className="f-input"
@@ -1556,13 +2298,17 @@ export default function ManualManagement() {
                         setRecipeContext([]);
                       } else {
                         const [type, id] = val.split('::');
-                        setPageForm(prev => ({ ...prev, linked_item_id: id, linked_item_type: type }));
                         
-                        // Automatically set title if it's empty
+                        // Always copy the name from the selected item into title field
                         const selectedItem = systemItems.find(i => i.id === id);
-                        if (selectedItem && !pageForm.title) {
-                          setPageForm(prev => ({ ...prev, title: selectedItem.name, linked_item_id: id, linked_item_type: type }));
-                        }
+                        const newTitle = selectedItem ? selectedItem.name : '';
+
+                        setPageForm(prev => ({ 
+                          ...prev, 
+                          title: newTitle || prev.title,
+                          linked_item_id: id, 
+                          linked_item_type: type 
+                        }));
 
                         // Fetch recipe dynamically
                         try {
@@ -1575,12 +2321,113 @@ export default function ManualManagement() {
                         } catch (err) {
                           console.error('Recipe fetch error', err);
                         }
+
+                        // Intelligent Auto-Fill for Hammaddeler
+                        if (isHammaddeler) {
+                          try {
+                            if (type === 'stock_item') {
+                              const { data: stockItem, error } = await db.from('stock_items').select('*').eq('id', id).single();
+                              if (stockItem && !error) {
+                                const erpCode = stockItem.sku || stockItem.acc_code || '';
+                                // Ölçü birimi (ml, litre, kg vb.)
+                                const measureUnit = stockItem.unit || '';
+                                // Sipariş birimi - 'ana' ise ölçü birimini kullan
+                                const orderUnitRaw = stockItem.order_unit || 'ana';
+                                const orderUnit = orderUnitRaw === 'ana' ? measureUnit : orderUnitRaw;
+                                // Min/max sipariş miktarı
+                                const minOrderQty = stockItem.min_order ? String(stockItem.min_order) : '';
+                                const maxStackQty = stockItem.max_order ? String(stockItem.max_order) : '';
+                                // Kritik stok seviyesi
+                                const criticalStock = stockItem.min_stock != null ? String(stockItem.min_stock) : '';
+
+                                // Kategori - en derin seviyeyi kullan
+                                let subcatName = '';
+                                const deepestCatId = stockItem.cat_l5 || stockItem.cat_l4 || stockItem.cat_l3 || stockItem.cat_l2 || stockItem.cat_l1;
+                                if (deepestCatId) {
+                                  const { data: catData } = await db.from('categories').select('name').eq('id', deepestCatId).single();
+                                  if (catData) subcatName = catData.name;
+                                }
+
+                                // Tedarikçi isimleri
+                                let supplierNames = '';
+                                if (stockItem.suppliers_list && stockItem.suppliers_list.length > 0) {
+                                  const supplierIds = stockItem.suppliers_list.map(s => s.supp_id || s.id).filter(Boolean);
+                                  if (supplierIds.length > 0) {
+                                    const { data: sups } = await db.from('suppliers').select('name').in('id', supplierIds);
+                                    if (sups && sups.length > 0) {
+                                      supplierNames = sups.map(s => s.name).join(', ');
+                                    }
+                                  }
+                                } else if (stockItem.supp_id) {
+                                  const { data: sup } = await db.from('suppliers').select('name').eq('id', stockItem.supp_id).single();
+                                  if (sup) supplierNames = sup.name;
+                                }
+
+                                const photoUrl = stockItem.image_url || '';
+
+                                setPageForm(prev => ({
+                                  ...prev,
+                                  title: stockItem.name || prev.title,
+                                  metadata: {
+                                    ...prev.metadata,
+                                    erp_code: erpCode,
+                                    packaging_qty: '',
+                                    order_unit: orderUnit,
+                                    min_order_qty: minOrderQty,
+                                    max_stack_qty: maxStackQty,
+                                    critical_stock_level: criticalStock,
+                                    subcategory: subcatName,
+                                    approved_suppliers: supplierNames,
+                                    ideal_product_photo: photoUrl || prev.metadata.ideal_product_photo || ''
+                                  }
+                                }));
+                                toast('Stok kartı bilgileri otomatik aktarıldı.', 'success');
+                              }
+                            } else if (type === 'semi_product') {
+                              const { data: semiItem, error } = await db.from('semi_items').select('*').eq('id', id).single();
+                              if (semiItem && !error) {
+                                const erpCode = semiItem.sku || semiItem.acc_code || '';
+                                let subcatName = '';
+                                if (semiItem.sale_cat_l1) {
+                                  const { data: catData } = await db.from('semi_categories').select('name').eq('id', semiItem.sale_cat_l1).single();
+                                  if (catData) subcatName = catData.name;
+                                }
+                                const photoUrl = semiItem.image_url || semiItem.pos_image || semiItem.channel_image || '';
+
+                                setPageForm(prev => ({
+                                  ...prev,
+                                  title: semiItem.name || prev.title,
+                                  metadata: {
+                                    ...prev.metadata,
+                                    erp_code: erpCode,
+                                    subcategory: subcatName,
+                                    approved_suppliers: 'İç Üretim / Şube',
+                                    ideal_product_photo: photoUrl || prev.metadata.ideal_product_photo || ''
+                                  }
+                                }));
+                                toast('Yarı mamul kartı bilgileri otomatik aktarıldı.', 'success');
+                              }
+                            }
+                          } catch (err) {
+                            console.error('Auto-fill query failed:', err);
+                          }
+                        }
                       }
                     }}
                   >
-                    <option value="::">-- {categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? 'Satış Ürünü Seçiniz' : 'Bağımsız Sayfa (Sistem Bağlantısı Yok)'} --</option>
+                    <option value="::">
+                      {isUrunler
+                        ? '-- Satış Ürünü Seçiniz --'
+                        : isHammaddeler
+                        ? '-- Lütfen bir Hammadde Seçiniz (Zorunlu) --'
+                        : '-- Bağımsız Sayfa (Sistem Bağlantısı Yok) --'}
+                    </option>
                     {systemItems
-                      .filter(item => categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? item.type === 'sale_item' : true)
+                      .filter(item => {
+                        if (isUrunler) return item.type === 'sale_item';
+                        if (isHammaddeler) return item.type === 'stock_item';
+                        return true;
+                      })
                       .map(item => (
                       <option key={`${item.type}::${item.id}`} value={`${item.type}::${item.id}`}>
                         [{item.typeName}] {item.name}
@@ -1588,10 +2435,14 @@ export default function ManualManagement() {
                     ))}
                   </select>
                 </div>
-                <p className="f-hint">Ürün bağlanırsa, reçetesi el kitabında otomatik listelenir.</p>
+                <p className="f-hint">
+                  {isHammaddeler
+                    ? 'Hammadde bağlanması zorunludur. Seçilen hammaddenin resim, SKU, tedarikçi ve kategori bilgileri otomatik aktarılır.'
+                    : 'Ürün bağlanırsa, reçetesi el kitabında otomatik listelenir.'}
+                </p>
               </div>
 
-              {categories.find(c => c.id === activeTab)?.name !== 'Ürünler' && recipeContext.length > 0 && (
+              {!isUrunler && recipeContext.length > 0 && (
                 <div style={{ background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
                   <h4 className="text-primary" style={{ margin: '0 0 8px', fontSize: '.9rem' }}>
                     <i className="fa-solid fa-list-check" style={{ marginRight: 6 }}/>
@@ -1608,7 +2459,7 @@ export default function ManualManagement() {
                 </div>
               )}
 
-              {categories.find(c => c.id === activeTab)?.name === 'Ürünler' ? (
+              {isUrunler ? (
                 <>
                   <div>
                     <label className="f-label">Ürün Resmi Yükleyin</label>
@@ -1848,7 +2699,716 @@ export default function ManualManagement() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Görsel Karşılaştırma Rehberleri - Ürünler */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <h3 style={{ margin: 0, fontSize: '.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                        <i className="fa-solid fa-images" /> Görsel Karşılaştırma Rehberleri
+                      </h3>
+                      <button type="button" className="btn-p" style={{ padding: '4px 10px', fontSize: '.75rem' }}
+                        onClick={() => {
+                          const comps = pageForm.metadata?.visual_comparisons || [];
+                          setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: [...comps, { id: Date.now(), title: '', description: '', correct_image: '', wrong_image: '' }] } }));
+                        }}>
+                        <i className="fa-solid fa-plus" /> Rehber Ekle
+                      </button>
+                    </div>
+                    {(pageForm.metadata?.visual_comparisons || []).length === 0 && (
+                      <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+                        Hazırlık veya servis standardı görsel rehberleri ekleyin. Örn: Porsiyon büyüklüğü, sosun konumu, tabak sunumu...
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                      {(pageForm.metadata?.visual_comparisons || []).map((comp, idx) => (
+                        <div key={comp.id || idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, position: 'relative', background: 'var(--surface)' }}>
+                          <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 8, right: 8, padding: '2px 6px', fontSize: '.65rem' }}
+                            onClick={() => {
+                              const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                              comps.splice(idx, 1);
+                              setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                            }}><i className="fa-solid fa-xmark" /></button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, paddingRight: 30 }}>
+                            <i className="fa-solid fa-grip-vertical" style={{ color: 'var(--text-muted)', fontSize: '.7rem' }} />
+                            <input type="text" className="f-input" style={{ flex: 1 }} placeholder="Rehber Başlığı (Örn: Servis Porsiyon Standardı)" value={comp.title}
+                              onChange={e => {
+                                const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                comps[idx] = { ...comps[idx], title: e.target.value };
+                                setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                              }} />
+                          </div>
+                          <input type="text" className="f-input" style={{ marginBottom: 10, fontSize: '.8rem' }} placeholder="Açıklama (Örn: Tabak üzerine 3 adet olmalı, ekmek soldaki pozisyonda)" value={comp.description}
+                            onChange={e => {
+                              const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                              comps[idx] = { ...comps[idx], description: e.target.value };
+                              setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                            }} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div>
+                              <label className="f-label" style={{ color: '#10b981', marginBottom: 6 }}><i className="fa-solid fa-circle-check" style={{ marginRight: 4 }} />DOĞRU / UYGUN</label>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                                  <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 8px', borderColor: '#10b981', color: '#10b981' }}>
+                                    <i className="fa-solid fa-cloud-arrow-up" /> Yükle (4:3)
+                                  </span>
+                                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                                    const file = e.target.files?.[0]; if (!file) return;
+                                    try {
+                                      toast('İşleniyor...', 'info');
+                                      const url = await uploadImage(file, 4 / 3);
+                                      const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                      comps[idx] = { ...comps[idx], correct_image: url };
+                                      setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                                      toast('Görsel yüklendi', 'success');
+                                    } catch(err) { toast('Hata: ' + err.message, 'error') }
+                                  }} />
+                                </label>
+                                {comp.correct_image && (
+                                  <div style={{ position: 'relative', border: '2px solid #10b981', borderRadius: 6, width: 100, height: 75, overflow: 'hidden', flexShrink: 0 }}>
+                                    <img src={resolveImageUrl(comp.correct_image)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Correct" />
+                                    <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(16,185,129,.9)', color: '#fff', fontSize: '.4rem', fontWeight: 700, padding: '1px 3px', borderRadius: 3 }}>DOĞRU</div>
+                                    <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 2, right: 2, padding: '1px 3px', fontSize: '.6rem' }}
+                                      onClick={() => { const comps=[...(pageForm.metadata?.visual_comparisons||[])]; comps[idx]={...comps[idx],correct_image:''}; setPageForm(prev=>({...prev,metadata:{...prev.metadata,visual_comparisons:comps}})); }}>
+                                      <i className="fa-solid fa-xmark" /></button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <label className="f-label" style={{ color: '#ef4444', marginBottom: 6 }}><i className="fa-solid fa-circle-xmark" style={{ marginRight: 4 }} />YANLIŞ / RED</label>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                                  <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 8px', borderColor: '#ef4444', color: '#ef4444' }}>
+                                    <i className="fa-solid fa-cloud-arrow-up" /> Yükle (4:3)
+                                  </span>
+                                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                                    const file = e.target.files?.[0]; if (!file) return;
+                                    try {
+                                      toast('İşleniyor...', 'info');
+                                      const url = await uploadImage(file, 4 / 3);
+                                      const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                      comps[idx] = { ...comps[idx], wrong_image: url };
+                                      setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                                      toast('Görsel yüklendi', 'success');
+                                    } catch(err) { toast('Hata: ' + err.message, 'error') }
+                                  }} />
+                                </label>
+                                {comp.wrong_image && (
+                                  <div style={{ position: 'relative', border: '2px solid #ef4444', borderRadius: 6, width: 100, height: 75, overflow: 'hidden', flexShrink: 0 }}>
+                                    <img src={resolveImageUrl(comp.wrong_image)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Incorrect" />
+                                    <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(239,68,68,.9)', color: '#fff', fontSize: '.4rem', fontWeight: 700, padding: '1px 3px', borderRadius: 3 }}>YANLIŞ</div>
+                                    <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 2, right: 2, padding: '1px 3px', fontSize: '.6rem' }}
+                                      onClick={() => { const comps=[...(pageForm.metadata?.visual_comparisons||[])]; comps[idx]={...comps[idx],wrong_image:''}; setPageForm(prev=>({...prev,metadata:{...prev.metadata,visual_comparisons:comps}})); }}>
+                                      <i className="fa-solid fa-xmark" /></button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </>
+              ) : isHammaddeler ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {/* 1. Kimlik ve Sistem Bilgileri */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                      <i className="fa-solid fa-id-card" /> 1. Kimlik ve Sistem Bilgileri
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="f-label">Sistem / ERP Kodu</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.erp_code || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, erp_code: e.target.value } }))} placeholder="Örn: ERP-90812" />
+                      </div>
+                      <div>
+                        <label className="f-label">Kategori</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.subcategory || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, subcategory: e.target.value } }))} placeholder="Örn: Unlu Mamuller / Donuk" />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <label className="f-label">Onaylı Tedarikçi(ler)</label>
+                      <input type="text" className="f-input" value={pageForm.metadata?.approved_suppliers || ''}
+                        onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, approved_suppliers: e.target.value } }))} placeholder="Örn: Lezita, Keskinoğlu" />
+                    </div>
+                  </div>
+
+                  {/* 2. Sipariş ve Lojistik Dinamikleri */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                      <i className="fa-solid fa-cart-flatbed" /> 2. Sipariş ve Lojistik Dinamikleri
+                    </h3>
+                    <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', margin: '0 0 12px', fontStyle: 'italic' }}>Stok kartındaki bilgiler otomatik aktarılır. Şube bazlı değerler manuel girilebilir.</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                      <div>
+                        <label className="f-label">Sipariş Birimi</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.order_unit || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, order_unit: e.target.value } }))} placeholder="Örn: Koli, Adet, Kg" />
+                      </div>
+                      <div>
+                        <label className="f-label">Minimum Sipariş Miktarı</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.min_order_qty || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, min_order_qty: e.target.value } }))} placeholder="Örn: 1 Koli (8 Adet)" />
+                      </div>
+                      <div>
+                        <label className="f-label">Teslimat / Tedarik Süresi</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.delivery_lead_time || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, delivery_lead_time: e.target.value } }))} placeholder="Örn: 2 iş günü" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="f-label">Kritik Stok Seviyesi</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.critical_stock_level || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, critical_stock_level: e.target.value } }))} placeholder="Örn: 3 Kolinin altına düşme" />
+                      </div>
+                      <div>
+                        <label className="f-label">Maksimum İstifleme</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.max_stack_qty || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, max_stack_qty: e.target.value } }))} placeholder="Örn: En fazla 5 koli" />
+                      </div>
+                      <div>
+                        <label className="f-label">Depolama Lokasyonu</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.storage_location || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, storage_location: e.target.value } }))} placeholder="Örn: Donuk Depo - Raf 3" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Fiziksel ve Görsel Spesifikasyonlar */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                      <i className="fa-solid fa-ruler-combined" /> 3. Fiziksel ve Görsel Spesifikasyonlar
+                    </h3>
+                    <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <label className="f-label">Çap ve Yükseklik</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.dimensions || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, dimensions: e.target.value } }))} placeholder="Örn: Çap 10 cm ± 0.5 cm" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className="f-label">Gramaj</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.weight || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, weight: e.target.value } }))} placeholder="Örn: 60 gr ± 2 gr" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <label className="f-label">Tat - Koku</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.slicing_standard || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, slicing_standard: e.target.value } }))} placeholder="Örn: Tereyağı kokulu, hafif tuzlu" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className="f-label">Doku ve Görünüm</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.texture || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, texture: e.target.value } }))} placeholder="Örn: Parlak kabuklu, gözenekli iç" />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="f-label">İdeal Ürün Fotoğrafı</label>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <label style={{ cursor: 'pointer' }}>
+                          <span className="btn-o" style={{ fontSize: '.78rem', padding: '6px 12px' }}>
+                            <i className="fa-solid fa-cloud-arrow-up" style={{ marginRight: 5 }} /> Görsel Yükle (4:3)
+                          </span>
+                          <input type="file" accept="image/*" style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                toast('Resim işleniyor...', 'info');
+                                const url = await uploadImage(file, 4 / 3);
+                                setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, ideal_product_photo: url } }));
+                                toast('İdeal ürün görseli yüklendi', 'success');
+                              } catch(err) {
+                                toast('Resim yüklenemedi: ' + err.message, 'error');
+                              }
+                            }}
+                          />
+                        </label>
+                        {pageForm.metadata?.ideal_product_photo && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 80, height: 60, borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                              <img src={resolveImageUrl(pageForm.metadata.ideal_product_photo)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Ideal" />
+                            </div>
+                            <button type="button" className="ico-btn del" onClick={() => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, ideal_product_photo: '' } }))}>
+                              <i className="fa-solid fa-trash" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Lojistik Kabul Kriterleri */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                      <i className="fa-solid fa-truck" /> 4. Lojistik Kabul Kriterleri
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="f-label">Sevkiyat Sıcaklığı</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.delivery_temp || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, delivery_temp: e.target.value } }))} placeholder="Örn: -18°C veya altı" />
+                      </div>
+                      <div>
+                        <label className="f-label">Ambalajlama Düzeni</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.packaging_qty || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, packaging_qty: e.target.value } }))} placeholder="Örn: 8'li poşet, 6 poşet/koli" />
+                      </div>
+                      <div>
+                        <label className="f-label">Kutu Kondisyonu</label>
+                        <input type="text" className="f-input" value={pageForm.metadata?.box_condition || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, box_condition: e.target.value } }))} placeholder="Örn: Ezilmemiş, ıslanmamış koli" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Depolama ve Raf Ömrü */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                        <i className="fa-solid fa-warehouse" /> 5. Depolama ve Raf Ömrü
+                      </h3>
+                      <button type="button" className="btn-p" style={{ padding: '4px 12px', fontSize: '.75rem' }}
+                        onClick={() => {
+                          const list = pageForm.metadata?.shelf_lives || [];
+                          setPageForm(prev => ({
+                            ...prev,
+                            metadata: {
+                              ...prev.metadata,
+                              shelf_lives: [...list, { id: Date.now(), status: '', storage_area: '', duration: '' }]
+                            }
+                          }));
+                        }}>
+                        <i className="fa-solid fa-plus" /> Satır Ekle
+                      </button>
+                    </div>
+                    
+                    {(pageForm.metadata?.shelf_lives || []).length === 0 ? (
+                      <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: '10px 0' }}>
+                        Henüz raf ömrü kriteri eklenmedi. Satır Ekle butonunu kullanın.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {(pageForm.metadata?.shelf_lives || []).map((item, idx) => (
+                          <div key={item.id || idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ flex: 1.2 }}>
+                              {idx === 0 && <label className="f-label" style={{ marginBottom: 4 }}>Durum</label>}
+                              <input type="text" className="f-input" style={{ padding: '6px 10px', fontSize: '.78rem' }}
+                                value={item.status || ''} placeholder="Durum (Örn: Kapalı)"
+                                onChange={e => {
+                                  const list = [...(pageForm.metadata?.shelf_lives || [])];
+                                  list[idx] = { ...list[idx], status: e.target.value };
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_lives: list } }));
+                                }} />
+                            </div>
+                            <div style={{ flex: 1.5 }}>
+                              {idx === 0 && <label className="f-label" style={{ marginBottom: 4 }}>Saklama Alanı / Sıcaklığı</label>}
+                              <input type="text" className="f-input" style={{ padding: '6px 10px', fontSize: '.78rem' }}
+                                value={item.storage_area || ''} placeholder="Saklama Alanı (Örn: +4°C)"
+                                onChange={e => {
+                                  const list = [...(pageForm.metadata?.shelf_lives || [])];
+                                  list[idx] = { ...list[idx], storage_area: e.target.value };
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_lives: list } }));
+                                }} />
+                            </div>
+                            <div style={{ flex: 1.2 }}>
+                              {idx === 0 && <label className="f-label" style={{ marginBottom: 4 }}>Raf Ömrü</label>}
+                              <input type="text" className="f-input" style={{ padding: '6px 10px', fontSize: '.78rem' }}
+                                value={item.duration || ''} placeholder="Raf Ömrü (Örn: 12 ay)"
+                                onChange={e => {
+                                  const list = [...(pageForm.metadata?.shelf_lives || [])];
+                                  list[idx] = { ...list[idx], duration: e.target.value };
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_lives: list } }));
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: idx === 0 ? 54 : 'auto' }}>
+                              <button type="button" className="ico-btn del" style={{ padding: '6px 10px', fontSize: '.8rem' }}
+                                onClick={() => {
+                                  const list = [...(pageForm.metadata?.shelf_lives || [])];
+                                  list.splice(idx, 1);
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_lives: list } }));
+                                }}>
+                                <i className="fa-solid fa-trash-can" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 6. Kullanıma Hazırlık */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                        <i className="fa-solid fa-kitchen-set" /> Kullanıma Hazırlık
+                      </h3>
+                      <button 
+                        type="button" 
+                        className="btn-p" 
+                        style={{ padding: '4px 10px', fontSize: '.75rem' }}
+                        onClick={() => {
+                          setPageForm(prev => ({
+                            ...prev,
+                            metadata: {
+                              ...prev.metadata,
+                              steps: [...(prev.metadata?.steps || []), { description: '', imageUrl: '' }]
+                            }
+                          }))
+                        }}
+                      >
+                        <i className="fa-solid fa-plus" /> Adım Ekle
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {(pageForm.metadata?.steps || []).map((step, index) => (
+                        <div key={index} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 8, position: 'relative', background: 'var(--surface)' }}>
+                          <button 
+                            type="button"
+                            className="ico-btn del"
+                            style={{ position: 'absolute', top: 8, right: 8 }}
+                            onClick={() => {
+                              const newSteps = [...pageForm.metadata.steps];
+                              newSteps.splice(index, 1);
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, steps: newSteps }
+                              }));
+                            }}
+                          >
+                            <i className="fa-solid fa-xmark" />
+                          </button>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <h5 style={{ margin: 0, fontSize: '.85rem' }}>{index + 1}. Adım</h5>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                className="btn-o"
+                                style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                                onClick={() => handleInsertFormat(`editor-step-hammad-${index}`, '- ', (val) => {
+                                  const newSteps = [...pageForm.metadata.steps];
+                                  newSteps[index].description = val;
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                })}
+                                title="Madde İşareti Ekle"
+                              >
+                                <i className="fa-solid fa-list-ul" /> Liste
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-o"
+                                style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                                onClick={() => handleInsertFormat(`editor-step-hammad-${index}`, '1. ', (val) => {
+                                  const newSteps = [...pageForm.metadata.steps];
+                                  newSteps[index].description = val;
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                })}
+                                title="Numaralı Liste Ekle"
+                              >
+                                <i className="fa-solid fa-list-ol" /> Numaralandırma
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            id={`editor-step-hammad-${index}`}
+                            className="f-input"
+                            rows={2}
+                            placeholder="Bu adımda ne yapılması gerektiğini açıklayın..."
+                            value={step.description}
+                            onChange={(e) => {
+                              const newSteps = [...pageForm.metadata.steps];
+                              newSteps[index].description = e.target.value;
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, steps: newSteps }
+                              }));
+                            }}
+                            style={{ marginBottom: 8 }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                            <label style={{ cursor: 'pointer' }}>
+                              <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 10px' }}>
+                                <i className="fa-solid fa-camera" style={{ marginRight: 4 }} />
+                                Adım Resmi (4:3)
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={async (e) => {
+                                  const file = e.target.files[0];
+                                  if (!file) return;
+                                  try {
+                                    const url = await uploadImage(file, 4 / 3);
+                                    const newSteps = [...pageForm.metadata.steps];
+                                    newSteps[index].imageUrl = url;
+                                    setPageForm(prev => ({
+                                      ...prev,
+                                      metadata: { ...prev.metadata, steps: newSteps }
+                                    }));
+                                    toast('Adım resmi yüklendi (4:3)', 'success');
+                                  } catch (err) {
+                                    toast('Resim yüklenemedi: ' + err.message, 'error');
+                                  }
+                                }}
+                              />
+                            </label>
+                            {step.imageUrl && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ position: 'relative', aspectRatio: '4/3', height: 60, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                  {step.imageUrl === '__default_check__' ? (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ecfdf5' }}>
+                                      <i className="fa-solid fa-circle-check" style={{ fontSize: '1.5rem', color: '#10b981' }} />
+                                    </div>
+                                  ) : (
+                                    <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                  )}
+                                  <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: '.45rem', fontWeight: 700, padding: '1px 4px', borderRadius: 3 }}>4:3</div>
+                                </div>
+                                <button type="button" className="ico-btn del" style={{ padding: '4px 6px' }}
+                                  onClick={() => {
+                                    const newSteps = [...pageForm.metadata.steps];
+                                    newSteps[index].imageUrl = '';
+                                    setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                  }}>
+                                  <i className="fa-solid fa-xmark" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 6. Ek Depolama ve İstifleme Kuralları (Esnek) */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-primary)' }}>
+                        <i className="fa-solid fa-list-check" /> Ek Depolama ve İstifleme Kuralları (Esnek)
+                      </h3>
+                      <button 
+                        type="button" 
+                        className="btn-p" 
+                        style={{ padding: '4px 10px', fontSize: '.75rem' }}
+                        onClick={() => {
+                          const customParams = pageForm.metadata?.custom_parameters || [];
+                          setPageForm(prev => ({
+                            ...prev,
+                            metadata: {
+                              ...prev.metadata,
+                              custom_parameters: [...customParams, { label: '', value: '' }]
+                            }
+                          }));
+                        }}
+                      >
+                        <i className="fa-solid fa-plus" /> Ekle
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(pageForm.metadata?.custom_parameters || []).map((param, index) => (
+                        <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            className="f-input"
+                            style={{ flex: 1 }}
+                            placeholder="Başlık (Örn: İstifleme Limiti)"
+                            value={param.label}
+                            onChange={(e) => {
+                              const newParams = [...pageForm.metadata.custom_parameters];
+                              newParams[index].label = e.target.value;
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, custom_parameters: newParams }
+                              }));
+                            }}
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            style={{ flex: 1.5 }}
+                            placeholder="Değer (Örn: En fazla 5 koli koyulur)"
+                            value={param.value}
+                            onChange={(e) => {
+                              const newParams = [...pageForm.metadata.custom_parameters];
+                              newParams[index].value = e.target.value;
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, custom_parameters: newParams }
+                              }));
+                            }}
+                          />
+                          <button 
+                            type="button"
+                            className="ico-btn del"
+                            onClick={() => {
+                              const newParams = [...pageForm.metadata.custom_parameters];
+                              newParams.splice(index, 1);
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, custom_parameters: newParams }
+                              }));
+                            }}
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      ))}
+                      {(pageForm.metadata?.custom_parameters || []).length === 0 && (
+                        <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Kayıtlı esnek kural bulunmuyor.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 7. Kusur Tanımları ve Red Kriterleri */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface-2)' }}>
+                    <h3 style={{ fontSize: '.9rem', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6, color: '#ef4444' }}>
+                      <i className="fa-solid fa-triangle-exclamation" /> 7. Kusur Tanımları ve Red Kriterleri
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                      <div>
+                        <label className="f-label">Lojistik Kaynaklı Kusurlar (Ezilme, Islanma, Yırtılma)</label>
+                        <textarea className="f-input" rows={2} value={pageForm.metadata?.rejection_logistics || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, rejection_logistics: e.target.value } }))} placeholder="Örn: Yırtık veya ıslanmış koliler kesinlikle teslim alınmaz." />
+                      </div>
+                      <div>
+                        <label className="f-label">Kesim ve Form Kusurları (Yamuk kesim, ezik ebat)</label>
+                        <textarea className="f-input" rows={2} value={pageForm.metadata?.rejection_cutting || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, rejection_cutting: e.target.value } }))} placeholder="Örn: Kesimi ortalanmamış, alt tabanı kopmuş ekmekler elenir." />
+                      </div>
+                      <div>
+                        <label className="f-label">Soğuk Zincir ve Nem Kusurları (Buzlanma, yapışkanlık)</label>
+                        <textarea className="f-input" rows={2} value={pageForm.metadata?.rejection_cold_chain || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, rejection_cold_chain: e.target.value } }))} placeholder="Örn: Üzerinde buz kristalleri oluşmuş donuk ürünler reddedilir." />
+                      </div>
+                      <div>
+                        <label className="f-label">Görsel ve Renk Kusurları (Koyu renk, şekilsizlik)</label>
+                        <textarea className="f-input" rows={2} value={pageForm.metadata?.rejection_visual || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, rejection_visual: e.target.value } }))} placeholder="Örn: Üzeri yanmış veya aşırı beyaz kalmış ekmekler elenir." />
+                      </div>
+                    </div>
+
+                    {/* Görsel Karşılaştırma Rehberleri - Dinamik */}
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <h4 style={{ margin: 0, fontSize: '.84rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <i className="fa-solid fa-images" style={{ color: '#6366f1' }} /> Görsel Karşılaştırma Rehberleri
+                        </h4>
+                        <button type="button" className="btn-p" style={{ padding: '4px 10px', fontSize: '.75rem' }}
+                          onClick={() => {
+                            const comps = pageForm.metadata?.visual_comparisons || [];
+                            setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: [...comps, { id: Date.now(), title: '', description: '', correct_image: '', wrong_image: '' }] } }));
+                          }}>
+                          <i className="fa-solid fa-plus" /> Rehber Ekle
+                        </button>
+                      </div>
+                      {(pageForm.metadata?.visual_comparisons || []).length === 0 && (
+                        <p style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+                          Henüz görsel karşılaştırma eklenmedi. Örn: Karamelizasyon, Tat - koku standardı, Porsiyon kontrolü...
+                        </p>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                        {(pageForm.metadata?.visual_comparisons || []).map((comp, idx) => (
+                          <div key={comp.id || idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, position: 'relative', background: 'var(--surface)' }}>
+                            <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 8, right: 8, padding: '2px 6px', fontSize: '.65rem' }}
+                              onClick={() => {
+                                const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                comps.splice(idx, 1);
+                                setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                              }}><i className="fa-solid fa-xmark" /></button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, paddingRight: 30 }}>
+                              <i className="fa-solid fa-grip-vertical" style={{ color: 'var(--text-muted)', fontSize: '.7rem' }} />
+                              <input type="text" className="f-input" style={{ flex: 1 }} placeholder="Rehber Başlığı (Örn: Karamelizasyon Standardı, Kesim Kontrolü)" value={comp.title}
+                                onChange={e => {
+                                  const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                  comps[idx] = { ...comps[idx], title: e.target.value };
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                                }} />
+                            </div>
+                            <input type="text" className="f-input" style={{ marginBottom: 10, fontSize: '.8rem' }} placeholder="Açıklama (Örn: Tost makinesi çıkışı renk eşiği)" value={comp.description}
+                              onChange={e => {
+                                const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                comps[idx] = { ...comps[idx], description: e.target.value };
+                                setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                              }} />
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                              <div>
+                                <label className="f-label" style={{ color: '#10b981', marginBottom: 6 }}><i className="fa-solid fa-circle-check" style={{ marginRight: 4 }} />DOĞRU / UYGUN</label>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                                    <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 8px', borderColor: '#10b981', color: '#10b981' }}>
+                                      <i className="fa-solid fa-cloud-arrow-up" /> Yükle (4:3)
+                                    </span>
+                                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                                      const file = e.target.files?.[0]; if (!file) return;
+                                      try {
+                                        toast('İşleniyor...', 'info');
+                                        const url = await uploadImage(file, 4 / 3);
+                                        const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                        comps[idx] = { ...comps[idx], correct_image: url };
+                                        setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                                        toast('Görsel yüklendi', 'success');
+                                      } catch(err) { toast('Hata: ' + err.message, 'error') }
+                                    }} />
+                                  </label>
+                                  {comp.correct_image && (
+                                    <div style={{ position: 'relative', border: '2px solid #10b981', borderRadius: 6, width: 100, height: 75, overflow: 'hidden', flexShrink: 0 }}>
+                                      <img src={resolveImageUrl(comp.correct_image)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Correct" />
+                                      <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(16,185,129,.9)', color: '#fff', fontSize: '.4rem', fontWeight: 700, padding: '1px 3px', borderRadius: 3 }}>DOĞRU</div>
+                                      <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 2, right: 2, padding: '1px 3px', fontSize: '.6rem' }}
+                                        onClick={() => { const comps=[...(pageForm.metadata?.visual_comparisons||[])]; comps[idx]={...comps[idx],correct_image:''}; setPageForm(prev=>({...prev,metadata:{...prev.metadata,visual_comparisons:comps}})); }}>
+                                        <i className="fa-solid fa-xmark" /></button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="f-label" style={{ color: '#ef4444', marginBottom: 6 }}><i className="fa-solid fa-circle-xmark" style={{ marginRight: 4 }} />YANLIŞ / RED</label>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                                    <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 8px', borderColor: '#ef4444', color: '#ef4444' }}>
+                                      <i className="fa-solid fa-cloud-arrow-up" /> Yükle (4:3)
+                                    </span>
+                                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                                      const file = e.target.files?.[0]; if (!file) return;
+                                      try {
+                                        toast('İşleniyor...', 'info');
+                                        const url = await uploadImage(file, 4 / 3);
+                                        const comps = [...(pageForm.metadata?.visual_comparisons || [])];
+                                        comps[idx] = { ...comps[idx], wrong_image: url };
+                                        setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, visual_comparisons: comps } }));
+                                        toast('Görsel yüklendi', 'success');
+                                      } catch(err) { toast('Hata: ' + err.message, 'error') }
+                                    }} />
+                                  </label>
+                                  {comp.wrong_image && (
+                                    <div style={{ position: 'relative', border: '2px solid #ef4444', borderRadius: 6, width: 100, height: 75, overflow: 'hidden', flexShrink: 0 }}>
+                                      <img src={resolveImageUrl(comp.wrong_image)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Incorrect" />
+                                      <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(239,68,68,.9)', color: '#fff', fontSize: '.4rem', fontWeight: 700, padding: '1px 3px', borderRadius: 3 }}>YANLIŞ</div>
+                                      <button type="button" className="ico-btn del" style={{ position: 'absolute', top: 2, right: 2, padding: '1px 3px', fontSize: '.6rem' }}
+                                        onClick={() => { const comps=[...(pageForm.metadata?.visual_comparisons||[])]; comps[idx]={...comps[idx],wrong_image:''}; setPageForm(prev=>({...prev,metadata:{...prev.metadata,visual_comparisons:comps}})); }}>
+                                        <i className="fa-solid fa-xmark" /></button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
               ) : (
                 <div>
                   <label className="f-label">Prosedür İçeriği (Markdown Desteklenir)</label>

@@ -503,6 +503,7 @@ function AppShell() {
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
               {/* Ana Depo İşlemleri */}
               <Route path="/depo-orders" element={<WarehouseBranchRoute title="Siparişler"><DepoOrders /></WarehouseBranchRoute>} />
+              <Route path="/depo-satinalma" element={<WarehouseBranchRoute title="Depo Satınalma Siparişleri"><Orders /></WarehouseBranchRoute>} />
               <Route path="/depo-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="anadepo" /></WarehouseBranchRoute>} />

@@ -1,29 +1,17 @@
-# WMS Faz 7: Depo Operasyon Derinleştirme - Görev Listesi
+# Task List: WMS Faz 8 Demand Method Cila
 
-- `[x]` 1. Sayım Ekranı Güncellemesi (`Count.jsx`)
-  - `[x]` `isWmsMode` bayrağını ve WMS için lokasyon/LPN yüklemelerini eklemek.
-  - `[x]` movements tablosundan lokasyon bazlı son stok bakiyelerini hesaplamak.
-  - `[x]` Sayım listesini lokasyon/LPN satırı kırılımında göstermek.
-  - `[x]` "Raf Satırı Ekle" arayüzünü tasarlayıp uygulamak.
-  - `[x]` WMS sayım satırlarında lokasyon seçimini zorunlu kılmak.
-  - `[x]` Fark hareketlerini lokasyon, LPN, lot ve SKT verileriyle `inventory_movements`'a yazmak.
-- `[x]` 2. Zayi ve Serbest Kullanım Ekranı Güncellemesi (`InventoryOperationRecord.jsx`)
-  - `[x]` WMS modunda şube seçimini kilitlemek ve lokasyon/LPN verilerini yüklemek.
-  - `[x]` Ürün bazlı mevcut stok lokasyon/LPN/lot bakiye seçim dropdown'ını eklemek.
-  - `[x]` Zayi/serbest kullanım hareketlerini seçilen lokasyon, LPN, lot ve SKT ile `inventory_movements`'a kaydetmek.
-- `[x]` 3. Depo İçi Lokasyon Taşıma (`WmsInternalTransfer.jsx` — yeni bileşen)
-  - `[x]` Yeni `WmsInternalTransfer.jsx` bileşeni oluşturuldu.
-  - `[x]` Kaynak ve hedef lokasyon/LPN formu tasarlandı.
-  - `[x]` `transfer_out` + `transfer_in` çifti `wms_transfer_pair_id` ile birlikte yazılıyor.
-  - `[x]` `/depo-iclokasyon-tasima` route'u App.jsx'e eklendi.
-- `[x]` 4. WMS Lokasyon & LPN Stok Rapor Modalları
-  - `[x]` `WmsLocations.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
-  - `[x]` `WmsLpns.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
-- `[x]` 5. Stok Hareketleri Sayfası Filtreleri (`InventoryMovements.jsx`)
-  - `[x]` Filtre state'lerine `locationId` ve `lpnId` eklendi.
-  - `[x]` WMS modunda (`scope === 'anadepo'`) Lokasyon ve LPN filtre dropdown'ları gösteriliyor.
-  - `[x]` `location_id`, `lpn_id`, `lot_number`, `expiration_date` SELECT'e dahil edildi.
-  - `[x]` Client-side filtreleme (RPC sonrasında) eklendi.
-- `[x]` 6. Derleme Doğrulaması
-  - `[x]` `npm run build` — 19.27s içinde hatasız tamamlandı.
-- `[ ]` 7. OperationSync.md güncellenmesi
+- `[x]` Add real `demand_method` generation to the WMS warehouse demand engine.
+- `[x]` Support `recipe_forecast`, `usage_average`, `stock_topup`, `repeat_last_order`, and `manual`.
+- `[x]` Persist demand method inside purchase order line meta (`meta.forecast.demand_method`).
+- `[x]` Show demand method in the purchase order detail UI.
+- `[x]` Make warehouse repeat-last-order mode use warehouse purchase history instead of branch order history.
+- `[x]` Prevent warehouse purchase flows from creating internal supplier replenishment orders.
+- `[x]` Split inbound warehouse purchase quantities and outbound branch replenishment quantities in the WMS calculation.
+- `[x]` Remove touched runtime first-branch/Kadikoy fallback paths from warehouse purchase flow.
+- `[x]` Remove hardcoded DATABASE_URL fallback from new Faz 8 scratch scripts.
+- `[x]` Run branch purchasing regression test to confirm existing branch algorithm remains intact.
+- `[x]` Run syntax checks, WMS engine smoke test, static fallback scan, and production build.
+
+## Not Run
+
+- `[ ]` Live WMS DB integration test was not run because `DATABASE_URL` was intentionally not present in the environment.

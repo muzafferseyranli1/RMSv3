@@ -1137,8 +1137,10 @@ CREATE TABLE IF NOT EXISTS public.order_flows (
   selected_stocks JSONB DEFAULT '[]'::jsonb NOT NULL,
   stock_template_id UUID,
   flow_channel TEXT DEFAULT 'external_purchase'::text,
+  receiver_scope TEXT DEFAULT 'branch'::text NOT NULL,
   CONSTRAINT order_flows_pkey PRIMARY KEY (id),
-  CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel = ANY (ARRAY['external_purchase'::text, 'warehouse_replenishment'::text, 'kitchen_replenishment'::text]))
+  CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel = ANY (ARRAY['external_purchase'::text, 'warehouse_replenishment'::text, 'kitchen_replenishment'::text])),
+  CONSTRAINT order_flows_receiver_scope_check CHECK (receiver_scope = ANY (ARRAY['branch'::text, 'warehouse'::text, 'kitchen'::text]))
 );
 
 CREATE TABLE IF NOT EXISTS public.pos_sales (
@@ -1765,6 +1767,7 @@ CREATE TABLE IF NOT EXISTS public.stock_items (
   sale_group TEXT,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
+  image_url TEXT,
   CONSTRAINT stock_items_pkey PRIMARY KEY (id),
   CONSTRAINT stock_items_cat_l1_fkey FOREIGN KEY (cat_l1) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l2_fkey FOREIGN KEY (cat_l2) REFERENCES categories(id) ON DELETE SET NULL,

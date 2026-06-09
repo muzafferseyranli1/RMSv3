@@ -47,6 +47,18 @@ pool.on('error', (err) => {
   console.error('Unexpected error on idle database client', err)
 })
 
+// Auto schema check on startup
+async function checkSchema() {
+  try {
+    await pool.query('ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
+    await pool.query('ALTER TABLE public.semi_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
+    console.log('Database schema auto-checked and image_url columns verified.');
+  } catch (err) {
+    console.error('Error in database schema auto-check:', err.message);
+  }
+}
+checkSchema();
+
 const app = express()
 app.use(compression())
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/app/uploads'
@@ -1277,13 +1289,36 @@ app.get('/api/manual/context-by-item', async (req, res) => {
         if (nameRes.rows.length) name = nameRes.rows[0].name;
       }
       
-      const manualRes = await pool.query('SELECT id FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
+      const manualRes = await pool.query('SELECT id, metadata FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
       const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
+      let imageUrl = null;
+      if (manualRes.rows.length) {
+        let meta = manualRes.rows[0].metadata;
+        if (typeof meta === 'string') {
+          try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+        }
+        imageUrl = meta?.product_image || null;
+      }
+      
+      if (!imageUrl) {
+        if (isSemi) {
+          const imgRes = await pool.query('SELECT image_url, pos_image, channel_image FROM public.semi_items WHERE id = $1', [targetId]);
+          if (imgRes.rows.length) {
+            imageUrl = imgRes.rows[0].image_url || imgRes.rows[0].pos_image || imgRes.rows[0].channel_image || null;
+          }
+        } else {
+          const imgRes = await pool.query('SELECT image_url FROM public.stock_items WHERE id = $1', [targetId]);
+          if (imgRes.rows.length) {
+            imageUrl = imgRes.rows[0].image_url || null;
+          }
+        }
+      }
       
       enrichedRecipe.push({
         ...row,
         name,
-        linked_page_id: manualPageId
+        linked_page_id: manualPageId,
+        image_url: imageUrl
       });
     }
     
@@ -1382,13 +1417,36 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
         if (nameRes.rows.length) name = nameRes.rows[0].name;
       }
       
-      const manualRes = await pool.query('SELECT id FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
+      const manualRes = await pool.query('SELECT id, metadata FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
       const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
+      let imageUrl = null;
+      if (manualRes.rows.length) {
+        let meta = manualRes.rows[0].metadata;
+        if (typeof meta === 'string') {
+          try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+        }
+        imageUrl = meta?.product_image || null;
+      }
+      
+      if (!imageUrl) {
+        if (isSemi) {
+          const imgRes = await pool.query('SELECT image_url, pos_image, channel_image FROM public.semi_items WHERE id = $1', [targetId]);
+          if (imgRes.rows.length) {
+            imageUrl = imgRes.rows[0].image_url || imgRes.rows[0].pos_image || imgRes.rows[0].channel_image || null;
+          }
+        } else {
+          const imgRes = await pool.query('SELECT image_url FROM public.stock_items WHERE id = $1', [targetId]);
+          if (imgRes.rows.length) {
+            imageUrl = imgRes.rows[0].image_url || null;
+          }
+        }
+      }
       
       enrichedRecipe.push({
         ...row,
         name,
-        linked_page_id: manualPageId
+        linked_page_id: manualPageId,
+        image_url: imageUrl
       });
     }
     

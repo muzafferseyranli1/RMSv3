@@ -10,7 +10,7 @@ function getAllBranches(tree) {
   const r = []
   function walk(n) {
     for (const x of n||[]) {
-      if (x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({ id:x.id, name:x.name })
+      if (x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak' || x.type === 'uretim') r.push({ id:x.id, name:x.name, type:x.type })
       walk(x.children||[])
     }
   }
@@ -82,6 +82,7 @@ const EMPTY_FORM = {
   hq_approval:false, hq_approval_threshold:'',
   allow_date_change:false, check_credit_limit:false,
   flow_channel:'external_purchase',
+  receiver_scope:'branch',
 }
 
 const FLOW_CHANNEL_BADGE = {
@@ -168,7 +169,7 @@ function SupplierSelect({ value, onChange, suppliers }) {
   )
 }
 
-// ── Şube / Şablon Çoklu Seçici ────────────────────────────────
+// ── Alıcı Nokta / Şablon Çoklu Seçici ────────────────────────────────
 function BranchMultiSelect({ value, onChange, branches, branchTemplates }) {
   const [open,setOpen]=useState(false); const [q,setQ]=useState(''); const wrapRef=useRef()
   useEffect(()=>{
@@ -214,7 +215,7 @@ function BranchMultiSelect({ value, onChange, branches, branchTemplates }) {
         minHeight:40,display:'flex',alignItems:'center',flexWrap:'wrap',gap:5,userSelect:'none',
         boxShadow:'inset 0 2px 4px rgba(0,0,0,.06)'}}>
         {selected.length===0
-          ?<span style={{color:'#94a3b8'}}>Şube veya şablon seçin…</span>
+          ?<span style={{color:'#94a3b8'}}>Alıcı nokta veya şablon seçin…</span>
           :selected.map(x=>(
             <span key={x.id+x.type} style={{display:'inline-flex',alignItems:'center',gap:4,
               background:x.type==='template'?'#ede9fe':'#eff6ff',
@@ -226,7 +227,7 @@ function BranchMultiSelect({ value, onChange, branches, branchTemplates }) {
                 onClick={e=>{e.stopPropagation();toggle(x.type,x.id,x.name,x.branchIds)}}/>
             </span>
           ))}
-        {selected.length>0&&<span style={{marginLeft:'auto',fontSize:'.75rem',color:'#64748b',whiteSpace:'nowrap'}}>{totalBranches} şube</span>}
+        {selected.length>0&&<span style={{marginLeft:'auto',fontSize:'.75rem',color:'#64748b',whiteSpace:'nowrap'}}>{totalBranches} alıcı nokta</span>}
       </div>
       <i className="fa-solid fa-chevron-down" style={{position:'absolute',right:12,top:14,color:'#94a3b8',fontSize:'.65rem',pointerEvents:'none'}}/>
       {open&&(
@@ -253,7 +254,7 @@ function BranchMultiSelect({ value, onChange, branches, branchTemplates }) {
           </div>
           <div style={{overflowY:'auto',flex:1,padding:'4px 0'}}>
             {filtTpl.length>0&&<>
-              <div style={{padding:'6px 14px 3px',fontSize:'.7rem',fontWeight:700,color:'#7c3aed',textTransform:'uppercase',letterSpacing:'.08em'}}>Şube Şablonları</div>
+              <div style={{padding:'6px 14px 3px',fontSize:'.7rem',fontWeight:700,color:'#7c3aed',textTransform:'uppercase',letterSpacing:'.08em'}}>Alıcı Nokta Şablonları</div>
               {filtTpl.map(t=>{
                 const bids=parseBranchIds(t); const sel=selected.some(x=>x.type==='template'&&x.id===t.id)
                 return(
@@ -265,14 +266,14 @@ function BranchMultiSelect({ value, onChange, branches, branchTemplates }) {
                     <span style={{width:26,height:26,borderRadius:6,background:'rgba(109,40,217,.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                       <i className="fa-solid fa-layer-group" style={{color:'#7c3aed',fontSize:'.65rem'}}/>
                     </span>
-                    <div style={{flex:1}}><div style={{fontWeight:sel?700:500}}>{t.name}</div><div style={{fontSize:'.72rem',color:'#94a3b8'}}>{bids.length} şube</div></div>
+                    <div style={{flex:1}}><div style={{fontWeight:sel?700:500}}>{t.name}</div><div style={{fontSize:'.72rem',color:'#94a3b8'}}>{bids.length} alıcı nokta</div></div>
                     {sel&&<i className="fa-solid fa-check" style={{color:'#7c3aed',fontSize:'.75rem'}}/>}
                   </div>
                 )
               })}
             </>}
             {filtBr.length>0&&<>
-              <div style={{padding:'6px 14px 3px',fontSize:'.7rem',fontWeight:700,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.08em'}}>Tekil Şubeler</div>
+              <div style={{padding:'6px 14px 3px',fontSize:'.7rem',fontWeight:700,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.08em'}}>Tekil Alıcı Noktalar</div>
               {filtBr.map(b=>{
                 const sel=selected.some(x=>x.type==='branch'&&x.id===b.id); const covered=coveredBranchIds.has(b.id)
                 return(
@@ -530,7 +531,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
   async function save(){
     if(!form.name.trim()){toast('Akış adı zorunlu','error');setStep(0);return}
     if(!form.supplier_id){toast('Tedarikçi seçilmeli','error');setStep(0);return}
-    if(form.branches.length===0){toast('En az bir şube seçin','error');setStep(0);return}
+    if(form.branches.length===0){toast('En az bir alıcı nokta seçin','error');setStep(0);return}
     
     const supplierKind = selectedSupplier?.supplier_kind || 'external'
     let flowChannel = 'external_purchase'
@@ -538,6 +539,11 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
       flowChannel = 'warehouse_replenishment'
     } else if (supplierKind === 'internal_kitchen') {
       flowChannel = 'kitchen_replenishment'
+    }
+    if (form.receiver_scope === 'warehouse' && supplierKind !== 'external') {
+      toast('Ana Depo Satinalma akisi yalnizca dis tedarikci ile kurulabilir','error')
+      setStep(0)
+      return
     }
 
     setSaving(true)
@@ -564,6 +570,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
         hq_approval_threshold:form.hq_approval&&form.hq_approval_threshold!==''?parseFloat(form.hq_approval_threshold):null,
         allow_date_change:form.allow_date_change, check_credit_limit:form.check_credit_limit,
         flow_channel: flowChannel,
+        receiver_scope: form.receiver_scope || 'branch',
       }
 
       const query = isNew
@@ -611,6 +618,25 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
           </div>
         </div>
         <div>
+          <label className="f-label">Alıcı Kapsamı</label>
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            {[{v:'branch',l:'Şube Siparişi',i:'fa-store',d:'Şubeler için tahmin/sipariş'},
+              {v:'warehouse',l:'Ana Depo Satınalma',i:'fa-warehouse',d:'Ana depo dış satınalma planı'},
+              {v:'kitchen',l:'Merkez Mutfak (Pasif)',i:'fa-kitchen-set',d:'Hazırlık aşamasında', disabled:true}].map(t=>(
+              <div key={t.v} onClick={()=>{if(!t.disabled) set('receiver_scope',t.v)}}
+                style={{flex:1,border:`2px solid ${form.receiver_scope===t.v?'#6366f1':t.disabled?'#f1f5f9':'#cbd5e1'}`,borderRadius:10,
+                  padding:'10px 12px',cursor:t.disabled?'not-allowed':'pointer',background:form.receiver_scope===t.v?'#f5f3ff':t.disabled?'#fafafa':'#fff',
+                  opacity:t.disabled?0.6:1,transition:'all .15s'}}>
+                <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
+                  <i className={`fa-solid ${t.i}`} style={{color:form.receiver_scope===t.v?'#6366f1':'#94a3b8',fontSize:'.85rem'}}/>
+                  <span style={{fontWeight:700,fontSize:'.855rem',color:form.receiver_scope===t.v?'#4338ca':'#1e293b'}}>{t.l}</span>
+                </div>
+                <div style={{fontSize:'.75rem',color:'#64748b'}}>{t.d}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
           <label className="f-label">İş Akışı Adı <span style={{color:'#ef4444'}}>*</span></label>
           <input className="f-input" placeholder="Örn: Süt ürünleri pazartesi siparişi"
             value={form.name} onChange={e=>set('name',e.target.value)}/>
@@ -625,8 +651,8 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
           <SupplierSelect value={form.supplier_id} onChange={v=>set('supplier_id',v)} suppliers={suppliers}/>
         </div>
         <div>
-          <label className="f-label">Sipariş Verebilecek Şubeler <span style={{color:'#ef4444'}}>*</span></label>
-          <p className="f-hint">Tüm şubeler, şablon veya tekil şube seçimi yapılır.</p>
+          <label className="f-label">Sipariş Verebilecek Alıcı Noktalar <span style={{color:'#ef4444'}}>*</span></label>
+          <p className="f-hint">Şube, ana depo, mutfak, şablon veya tekil alıcı nokta seçimi yapılır.</p>
           <BranchMultiSelect value={form.branches} onChange={v=>set('branches',v)}
             branches={branches} branchTemplates={branchTemplates}/>
         </div>
@@ -958,8 +984,8 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
     return (
       <div style={{display:'flex',flexDirection:'column',gap:4}}>
         <Toggle checked={form.branch_approval} onChange={v=>set('branch_approval',v)}
-          label="Şube yöneticisi onayı gerekiyor"
-          hint="Sipariş oluşturulduğunda şubede onay yetkisi olan personelin onayı beklenir"/>
+          label={form.receiver_scope === 'warehouse' ? "Depo yöneticisi onayı gerekiyor" : "Şube yöneticisi onayı gerekiyor"}
+          hint={form.receiver_scope === 'warehouse' ? "Sipariş oluşturulduğunda depoda onay yetkisi olan personelin onayı beklenir" : "Sipariş oluşturulduğunda şubede onay yetkisi olan personelin onayı beklenir"}/>
 
         <Toggle checked={form.hq_approval} onChange={v=>set('hq_approval',v)}
           label="Genel Merkez onayı gerekiyor"/>
@@ -990,7 +1016,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
 
           <Toggle checked={form.check_credit_limit} onChange={v=>set('check_credit_limit',v)}
             label="Cari hesap limitini kontrol et"
-            hint="Şubenin cari bakiyesi limitini aşıyorsa sipariş oluşturulmaz, ekranda uyarı verilir"/>
+            hint={form.receiver_scope === 'warehouse' ? "Alıcı noktanın cari bakiyesi limitini aşıyorsa sipariş oluşturulmaz, ekranda uyarı verilir" : "Şubenin cari bakiyesi limitini aşıyorsa sipariş oluşturulmaz, ekranda uyarı verilir"}/>
         </div>
       </div>
     )
@@ -1038,7 +1064,53 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
 }
 
 // ── Detay Paneli ──────────────────────────────────────────────
-function FlowDetail({ flow, suppliers, onEdit, onClose }) {
+function getFlowReceiverType(flow, allBranches) {
+  if (flow.receiver_scope === 'warehouse') {
+    return { label: 'Depo Satınalma', bg: '#ecfeff', color: '#0891b2' }
+  }
+  if (flow.receiver_scope === 'kitchen') {
+    return { label: 'Mutfak Satınalma', bg: '#fff7ed', color: '#c2410c' }
+  }
+
+  const flowChannel = flow.flow_channel || 'external_purchase'
+  if (flowChannel === 'warehouse_replenishment' || flowChannel === 'kitchen_replenishment') {
+    return { label: 'İç İkmal', bg: '#f3e8ff', color: '#6b21a8' }
+  }
+
+  let flowBranchSelections = []
+  try {
+    flowBranchSelections = typeof flow.branches === 'string' ? JSON.parse(flow.branches || '[]') : (flow.branches || [])
+  } catch {
+    flowBranchSelections = []
+  }
+
+  const branchIds = new Set()
+  for (const sel of flowBranchSelections) {
+    if (sel?.type === 'branch' && sel.id) {
+      branchIds.add(sel.id)
+    } else if (sel?.type === 'template' && Array.isArray(sel.branchIds)) {
+      for (const id of sel.branchIds) {
+        if (id) branchIds.add(id)
+      }
+    }
+  }
+
+  let hasWarehouseOrKitchen = false
+  for (const id of branchIds) {
+    const br = (allBranches || []).find(b => b.id === id)
+    if (br && (br.type === 'anadepo' || br.type === 'mutfak')) {
+      hasWarehouseOrKitchen = true
+      break
+    }
+  }
+
+  if (hasWarehouseOrKitchen) {
+    return { label: 'Depo Satınalma', bg: '#ecfeff', color: '#0891b2' }
+  }
+  return { label: 'Şube Satınalma', bg: '#eff6ff', color: '#1d4ed8' }
+}
+
+function FlowDetail({ flow, suppliers, onEdit, onClose, branches }) {
   const supplier=suppliers.find(s=>s.id===flow.supplier_id)
   
   // Geriye uyumlu kanal eşleşmesi (boşsa veya tanımsızsa supplier'dan türet)
@@ -1104,7 +1176,14 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>
             <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:700,color:'#1e293b'}}>{flow.name}</h2>
             <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:ftBadge.bg,color:ftBadge.color}}>{ftBadge.label}</span>
-            <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:channelBadge.bg,color:channelBadge.color}}>{channelBadge.label}</span>
+            {(() => {
+              const rcv = getFlowReceiverType(flow, branches)
+              return (
+                <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:rcv.bg,color:rcv.color}}>
+                  {rcv.label}
+                </span>
+              )
+            })()}
             <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
               background:flow.active?'#dcfce7':'#f1f5f9',color:flow.active?'#166534':'#64748b'}}>
               {flow.active?'Aktif':'Pasif'}
@@ -1120,7 +1199,7 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
 
       <div style={{flex:1,overflowY:'auto',padding:'14px 22px'}}>
         <Row icon="fa-truck-fast" label={supplierLabel} value={supplier?.name||'—'} color="#f87171"/>
-        <Row icon="fa-store" label="Şubeler" value={`${parsedBranches.length} seçim · ${totalBranches} şube`} color="#3b82f6"/>
+        <Row icon="fa-store" label="Alıcı Noktalar" value={`${parsedBranches.length} seçim · ${totalBranches} alıcı nokta`} color="#3b82f6"/>
         {parsedBranches.length>0&&(
           <div style={{display:'flex',flexWrap:'wrap',gap:5,margin:'6px 0 4px 24px'}}>
             {parsedBranches.map(x=>(
@@ -1164,7 +1243,7 @@ function FlowDetail({ flow, suppliers, onEdit, onClose }) {
           textTransform:'uppercase',letterSpacing:'.1em',paddingBottom:4,borderBottom:'1px solid #e2e8f0'}}>
           Onay
         </div>
-        <Check label="Şube yöneticisi onayı" checked={flow.branch_approval}/>
+        <Check label={flow.receiver_scope === 'warehouse' ? "Depo yöneticisi onayı" : "Şube yöneticisi onayı"} checked={flow.branch_approval}/>
         <Check label={`Genel Merkez${flow.hq_approval&&flow.hq_approval_threshold?' (≥'+parseFloat(flow.hq_approval_threshold).toLocaleString('tr-TR')+' ₺)':''}`}
           checked={flow.hq_approval}/>
         <Check label="Teslimat tarihi değiştirilebilir" checked={flow.allow_date_change}/>
@@ -1273,7 +1352,14 @@ export default function OrderFlows() {
             <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
               <span style={{fontWeight:700,fontSize:'.9rem',color:'#1e293b'}}>{flow.name}</span>
               <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:ftBadge.bg,color:ftBadge.color}}>{ftBadge.label}</span>
-              <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:channelBadge.bg,color:channelBadge.color}}>{channelBadge.label}</span>
+              {(() => {
+                const rcv = getFlowReceiverType(flow, branches)
+                return (
+                  <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,background:rcv.bg,color:rcv.color}}>
+                    {rcv.label}
+                  </span>
+                )
+              })()}
               <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
                 background:flow.active?'#dcfce7':'#f1f5f9',color:flow.active?'#166534':'#64748b'}}>
                 {flow.active?'Aktif':'Pasif'}
@@ -1382,7 +1468,7 @@ export default function OrderFlows() {
                 branchTemplates={branchTemplates} stockItems={stockItems}
                 stockTemplates={stockTemplates} contracts={contracts}
                 onSave={onFormSaved} onClose={()=>setPanel(null)}/>
-            :<FlowDetail flow={panel.flow} suppliers={suppliers}
+            :<FlowDetail flow={panel.flow} suppliers={suppliers} branches={branches}
                 onEdit={()=>setPanel({mode:'form',flow:panel.flow})} onClose={()=>setPanel(null)}/>}
         </div>
       )}

@@ -206,7 +206,8 @@ const NAV = [
     section: 'Ana Depo / WMS',
     icon: 'fa-warehouse',
     items: [
-      { label: 'WMS Sipariş Konsolu', path: '/depo-orders', icon: 'fa-warehouse', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+      { label: 'Şube Talepleri / Sevk Konsolu', path: '/depo-orders', icon: 'fa-warehouse', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+      { label: 'Depo Satınalma Siparişleri', path: '/depo-satinalma', icon: 'fa-cart-shopping', color: '#fb923c', bg: 'rgba(251,146,60,.18)' },
       { label: 'Mal Kabul & Putaway', path: '/depo-mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
       {
         label: 'İşlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',

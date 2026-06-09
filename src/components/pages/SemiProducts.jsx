@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { db } from '@/lib/db'
+import { db, buildApiUrl, resolveImageUrl, uploadApiFile } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
@@ -104,7 +104,7 @@ function resolveRecipeRowsWithCosts(rowsInput, stockItems, semiItems) {
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak' || x.type === 'uretim' || x.type === 'uretim') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
   walk(tree); return r
 }
 
@@ -432,6 +432,7 @@ const EMPTY = {
   // Tab 3 - Görsel
   pos_image:'', pos_color:'#1e293b', pos_text_color:'#ffffff',
   channel_image:'', channel_description:'',
+  image_url: '',
 }
 
 const TABS = [
@@ -464,6 +465,94 @@ export default function SemiProducts() {
   const [skuStatus, setSkuStatus] = useState({ type:'idle', msg:'' })
   const [existingSkus, setExistingSkus] = useState(new Set())
   const locationDefaultAppliedRef = useRef(false)
+  const [uploadingImg, setUploadingImg] = useState(false)
+
+  const cropAndResizeImage = (file, targetAspect = 4 / 3, maxWidth = 800) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        img.onload = () => {
+          const srcW = img.naturalWidth
+          const srcH = img.naturalHeight
+          const srcAspect = srcW / srcH
+
+          let cropW, cropH, cropX, cropY
+          if (srcAspect > targetAspect) {
+            cropH = srcH
+            cropW = Math.round(srcH * targetAspect)
+            const offscreen = document.createElement('canvas')
+            offscreen.width = srcW; offscreen.height = 1
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, srcW, 1)
+            const data2 = ctx2.getImageData(0, 0, srcW, 1).data
+            let totalBrightness = 0, weightedX = 0
+            for (let x = 0; x < srcW; x++) {
+              const brightness = data2[x * 4] * 0.299 + data2[x * 4 + 1] * 0.587 + data2[x * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedX += brightness * x
+            }
+            const focusX = totalBrightness > 0 ? weightedX / totalBrightness : srcW / 2
+            cropX = Math.max(0, Math.min(srcW - cropW, Math.round(focusX - cropW / 2)))
+            cropY = 0
+          } else {
+            cropW = srcW
+            cropH = Math.round(srcW / targetAspect)
+            const offscreen = document.createElement('canvas')
+            offscreen.width = 1; offscreen.height = srcH
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, 1, srcH)
+            const data2 = ctx2.getImageData(0, 0, 1, srcH).data
+            let totalBrightness = 0, weightedY = 0
+            for (let y = 0; y < srcH; y++) {
+              const brightness = data2[y * 4] * 0.299 + data2[y * 4 + 1] * 0.587 + data2[y * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedY += brightness * y
+            }
+            const focusY = totalBrightness > 0 ? weightedY / totalBrightness : srcH / 2
+            cropX = 0
+            cropY = Math.max(0, Math.min(srcH - cropH, Math.round(focusY - cropH / 2)))
+          }
+
+          const outW = Math.min(maxWidth, cropW)
+          const outH = Math.round(outW / targetAspect)
+
+          const canvas = document.createElement('canvas')
+          canvas.width = outW; canvas.height = outH
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, outW, outH)
+
+          canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error('Kırpma başarısız'))
+            resolve(blob)
+          }, 'image/jpeg', 0.88)
+        }
+        img.onerror = reject
+        img.src = ev.target.result
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleImageUpload = async (file) => {
+    if (!file) return
+    setUploadingImg(true)
+    try {
+      const croppedBlob = await cropAndResizeImage(file, 4 / 3, 800)
+      const croppedFile = new File([croppedBlob], file.name || 'image.jpg', { type: 'image/jpeg' })
+
+      const formData = new FormData()
+      formData.append('file', croppedFile)
+      const data = await uploadApiFile(formData)
+      setForm(prev => ({ ...prev, image_url: data.file_url }))
+      toast('Resim başarıyla yüklendi.', 'success')
+    } catch (err) {
+      toast('Resim yüklenemedi: ' + err.message, 'error')
+    } finally {
+      setUploadingImg(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -615,6 +704,7 @@ export default function SemiProducts() {
       hide_kitchen: item.hide_kitchen||false, substitute_id: item.substitute_id||'',
       pos_image: item.pos_image||'', pos_color: item.pos_color||'#1e293b', pos_text_color: item.pos_text_color||'#ffffff',
       channel_image: item.channel_image||'', channel_description: item.channel_description||'',
+      image_url: item.image_url||''
     })
     setEditId(item.id); setTab(0)
     setSkuStatus(item.auto_sku ? {type:'auto',msg:'Otomatik üretildi.'} : {type:'idle',msg:''})
@@ -681,6 +771,7 @@ export default function SemiProducts() {
       substitute_id: form.substitute_id||null,
       pos_image: form.pos_image||null, pos_color: form.pos_color||'#1e293b', pos_text_color: form.pos_text_color||'#ffffff',
       channel_image: form.channel_image||null, channel_description: form.channel_description||null,
+      image_url: form.image_url || null
     }
 
     if (editId) {
@@ -879,6 +970,41 @@ export default function SemiProducts() {
                   <label className="f-label">Kısa İsim <span style={{fontSize:'.7rem',color:'#94a3b8',fontWeight:400}}>(opsiyonel)</span></label>
                   <input className="f-input" value={form.short_name} onChange={e=>set('short_name',e.target.value)} placeholder="Ör: Su 500 ml"/>
                   <p className="f-hint">Boş bırakılırsa tam isim kullanılır.</p>
+                </div>
+
+                {/* Yarımamul Görseli */}
+                <div>
+                  <label className="f-label">Yarımamul Görseli</label>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                    <div style={{
+                      width: 96, height: 72, borderRadius: 12, border: '1.5px solid #e2e8f0',
+                      background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', flexShrink: 0
+                    }}>
+                      {form.image_url ? (
+                        <img src={resolveImageUrl(form.image_url)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Görsel" />
+                      ) : (
+                        <i className="fa-solid fa-image" style={{ fontSize: '1.5rem', color: '#cbd5e1' }} />
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <label style={{ cursor: 'pointer' }}>
+                          <span className="btn-o" style={{ fontSize: '.78rem', padding: '6px 12px' }}>
+                            {uploadingImg ? <><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 5 }} /> Yükleniyor...</> : <><i className="fa-solid fa-cloud-arrow-up" style={{ marginRight: 5 }} /> Resim Yükle</>}
+                          </span>
+                          <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingImg}
+                            onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0])} />
+                        </label>
+                        {form.image_url && (
+                          <button className="btn-g" onClick={() => setForm(prev => ({ ...prev, image_url: '' }))} style={{ fontSize: '.78rem', padding: '6px 12px' }}>
+                            <i className="fa-solid fa-xmark" style={{ marginRight: 5 }} /> Resmi Kaldır
+                          </button>
+                        )}
+                      </div>
+                      <p className="f-hint" style={{ margin: 0 }}>Önerilen: 4:3 oranında (örn. 800×600px), PNG veya JPG.</p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Location */}

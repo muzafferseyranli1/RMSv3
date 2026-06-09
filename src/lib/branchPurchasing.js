@@ -81,7 +81,7 @@ export function getAllBranches(treeValue) {
   const result = []
   function walk(nodes) {
     for (const node of nodes || []) {
-      if (node?.type === 'sube' || node?.type === 'anadepo' || node?.type === 'mutfak') {
+      if (node?.type === 'sube' || node?.type === 'anadepo' || node?.type === 'mutfak' || node?.type === 'uretim') {
         result.push({ id: node.id, name: node.name, type: node.type })
       }
       walk(node?.children || [])
@@ -266,12 +266,12 @@ export function diffDays(fromDate, toDate) {
   return Math.round(ms / 86400000)
 }
 
-function safeNumber(value, fallback = 0) {
+export function safeNumber(value, fallback = 0) {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : fallback
 }
 
-function clamp(value, min, max) {
+export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 

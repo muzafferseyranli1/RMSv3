@@ -576,7 +576,7 @@ export default function MalKabul() {
         ? allTreeNodes.filter(b => b.type === 'anadepo')
         : allTreeNodes.filter(b => b.type !== 'anadepo')
       const rememberedBranch = branchLocked ? workspaceBranchId : getStoredBranchId()
-      const initialBranch = nextBranches.find(branch => branch.id === rememberedBranch)?.id || nextBranches[0]?.id || ''
+      const initialBranch = nextBranches.find(branch => branch.id === rememberedBranch)?.id || ''
 
       setOrders(ordersResult.data || [])
       setOrderLines(linesResult.data || [])
@@ -1042,7 +1042,7 @@ export default function MalKabul() {
     <div>
       <Header
         title="Mal Kabul"
-        subtitle={`${selectedBranchRecord?.name || 'Sube secin'} subesi`}
+        subtitle={isWmsMode ? (selectedBranchRecord?.name || 'Ana Depo') : `${selectedBranchRecord?.name || 'Sube secin'} subesi`}
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <select
@@ -1052,6 +1052,7 @@ export default function MalKabul() {
               style={{ minWidth: 220 }}
               disabled={branchLocked}
             >
+              <option value="">{isWmsMode ? 'Ana Depo secin' : 'Sube secin'}</option>
               {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
             <button className="btn-o" onClick={() => { loadBase(); loadInventory(selectedBranch) }}>
@@ -1060,7 +1061,7 @@ export default function MalKabul() {
             <button className="btn-p" onClick={() => setEditorState({
               type: 'manual',
               title: 'Manuel Mal Kabul',
-              subtitle: `${selectedBranchRecord?.name || 'Sube'} • Siparis disi kabul`,
+              subtitle: `${selectedBranchRecord?.name || (isWmsMode ? 'Ana Depo' : 'Sube')} • Siparis disi kabul`,
               draft: buildManualDraft(),
             })}>
               <i className="fa-solid fa-plus" /> Manuel Mal Kabul

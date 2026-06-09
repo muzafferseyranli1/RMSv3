@@ -98,7 +98,7 @@ function resolveRecipeRowsWithCosts(rowsInput, stockItems, semiItems) {
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
+  function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak' || x.type === 'uretim' || x.type === 'uretim') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
   walk(tree); return r
 }
 

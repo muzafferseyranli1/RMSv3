@@ -42,7 +42,9 @@ import {
   resolveLineSupplierId,
   summarizeLines,
   todayStr,
+  resolveSelectionIds,
 } from '@/lib/branchPurchasing'
+import { calculateWarehouseDemand } from '@/lib/warehouseDemandPlanning'
 
 function OrderTabBar({ activeTab, onChange, counts }) {
   return (
@@ -126,6 +128,26 @@ function getSupplierNotes(order) {
   const meta = parseJsonValue(order?.meta, {})
   const list = Array.isArray(meta?.supplier_notes) ? meta.supplier_notes.filter(Boolean) : []
   return list.sort((left, right) => String(right?.created_at || '').localeCompare(String(left?.created_at || '')))
+}
+
+const DEMAND_METHOD_LABELS = {
+  recipe_forecast: 'Recete tahmini',
+  usage_average: 'Kullanim ortalamasi',
+  stock_topup: 'Stok tamamlama',
+  repeat_last_order: 'Son siparis',
+  manual: 'Manuel',
+}
+
+function getDemandMethodLabel(method) {
+  return DEMAND_METHOD_LABELS[method] || method || '-'
+}
+
+function buildReceivedQtyByOrderLine(receiptLines = []) {
+  return receiptLines.reduce((map, line) => {
+    if (!line?.order_line_id) return map
+    map.set(line.order_line_id, (map.get(line.order_line_id) || 0) + Number(line.received_qty || 0))
+    return map
+  }, new Map())
 }
 
 function buildLastOrderQtyMap(allOrders, allLines, flowId, branch, excludeOrderId = '') {
@@ -1205,6 +1227,16 @@ function createDraftLines({
   assumedInboundOrderIds,
   targetSupplierId,
   allSuppliers = [],
+  allReceiptLines = [],
+  // WMS parameters
+  isDepoSiparis = false,
+  connectedBranches = [],
+  wmsWarehouseSettings = [],
+  wmsMultiBranchBalances = new Map(),
+  wmsMultiBranchDailyUsageMap = new Map(),
+  wmsMultiBranchDailySales = new Map(),
+  wmsMultiBranchForecasts = new Map(),
+  wmsMultiBranchSaleLines = new Map(),
 }) {
   if (!flow || !branch) return []
 
@@ -1231,11 +1263,171 @@ function createDraftLines({
     return contractPriceMaps.get(key).get(itemId)
   }
 
-  const lastOrderMap = buildLastOrderQtyMap(allOrders, allLines, flow.id, branch, order.id)
-  const coverageDays = computeCoverageDays(flow, order.order_date)
   const dates = getFlowDates(flow, order.order_date)
   const planningEndDate = dates.nextDeliveryDate || dates.deliveryDate || order.order_date
   const planningDates = buildInclusiveDates(order.order_date, planningEndDate)
+
+  if (flow.receiver_scope === 'warehouse') {
+    const receivedByOrderLine = buildReceivedQtyByOrderLine(allReceiptLines)
+    const planningEnd = toDateOnly(planningEndDate)
+    const connectedBranchIds = new Set(connectedBranches.map(item => item.id))
+    const warehouseSupplier = allSuppliers.find(
+      supplier => supplier?.supplier_kind === 'internal_warehouse' && supplier?.source_branch_id === branch.id
+    )
+
+    // 1. Calculate connected branches' recipe forecasts dynamically using the grouped maps
+    const wmsMultiBranchRecipeForecastMap = new Map()
+    for (const b of connectedBranches) {
+      const bId = b.id
+      const branchDailySales = wmsMultiBranchDailySales.get(bId) || []
+      const branchForecasts = wmsMultiBranchForecasts.get(bId) || []
+      const branchSaleLines = wmsMultiBranchSaleLines.get(bId) || []
+
+      const branchRecipeForecastUsage = buildForecastRecipeUsage({
+        horizonDates: planningDates,
+        dailySalesRows: branchDailySales,
+        savedForecastRows: branchForecasts,
+        saleLineRows: branchSaleLines,
+        saleItems,
+        saleOptions,
+        stockItems: items,
+        lookbackWeeks: forecastLookbackWeeks,
+        forecastRatio: safeNumber(flow?.forecast_ratio, 1),
+      })
+
+      for (const [stockId, qty] of branchRecipeForecastUsage.usageByStockId.entries()) {
+        wmsMultiBranchRecipeForecastMap.set(`${bId}:${stockId}`, qty)
+      }
+    }
+
+    // 2. Build remaining Maps required by calculateWarehouseDemand:
+    // warehouseBalances: Map: stockItemId -> availableQty
+    const warehouseBalances = new Map()
+    for (const row of balanceRows) {
+      const avail = Number(row.available_qty ?? row.balance_qty_after ?? 0)
+      warehouseBalances.set(row.stock_item_id, avail)
+    }
+
+    // inboundWarehouseQtyMap: Map: stockItemId -> inboundQty (external purchase orders to warehouse)
+    const inboundWarehouseQtyMap = new Map()
+    for (const ord of allOrders) {
+      const deliveryDate = toDateOnly(ord.delivery_date)
+      if (
+        ord.branch_id === branch.id &&
+        ord.flow_channel === 'external_purchase' &&
+        ['submitted', 'partially_received'].includes(ord.status) &&
+        ord.id !== order.id &&
+        (!deliveryDate || !planningEnd || deliveryDate <= planningEnd)
+      ) {
+        const lines = allLines.filter(l => l.order_id === ord.id)
+        for (const line of lines) {
+          if (line.stock_item_id) {
+            const remainingQty = Math.max(Number(line.ordered_qty || 0) - Number(receivedByOrderLine.get(line.id) || 0), 0)
+            if (remainingQty <= 0) continue
+            const current = inboundWarehouseQtyMap.get(line.stock_item_id) || 0
+            inboundWarehouseQtyMap.set(line.stock_item_id, current + remainingQty)
+          }
+        }
+      }
+    }
+
+    // outboundReplenishingQtyMap: Map: `${branchId}:${stockItemId}` -> inTransitQty (warehouse to branch)
+    const outboundReplenishingQtyMap = new Map()
+    for (const ord of allOrders) {
+      const deliveryDate = toDateOnly(ord.delivery_date)
+      if (
+        ord.flow_channel === 'warehouse_replenishment' &&
+        ['submitted', 'partially_received'].includes(ord.status) &&
+        parseJsonValue(ord.meta, {}).supplier_marked_sent &&
+        (!warehouseSupplier || ord.supplier_id === warehouseSupplier.id) &&
+        connectedBranchIds.has(ord.branch_id) &&
+        (!deliveryDate || !planningEnd || deliveryDate <= planningEnd)
+      ) {
+        const bId = ord.branch_id
+        const lines = allLines.filter(l => l.order_id === ord.id)
+        for (const line of lines) {
+          if (line.stock_item_id) {
+            const remainingQty = Math.max(Number(line.ordered_qty || 0) - Number(receivedByOrderLine.get(line.id) || 0), 0)
+            if (remainingQty <= 0) continue
+            const key = `${bId}:${line.stock_item_id}`
+            const current = outboundReplenishingQtyMap.get(key) || 0
+            outboundReplenishingQtyMap.set(key, current + remainingQty)
+          }
+        }
+      }
+    }
+
+    // lastOrderQtyMap: Map: `${branchId}:${stockItemId}` -> lastOrderQty
+    const lastOrderQtyMap = new Map()
+    for (const b of connectedBranches) {
+      const bId = b.id
+      const branchLastOrderMap = buildLastOrderQtyMap(allOrders, allLines, flow.id, b, order.id)
+      for (const [stockId, qty] of branchLastOrderMap.entries()) {
+        lastOrderQtyMap.set(`${bId}:${stockId}`, qty)
+      }
+    }
+    const warehouseLastOrderQtyMap = buildLastOrderQtyMap(allOrders, allLines, flow.id, branch, order.id)
+
+    // warehouseSettingsMap: Map: stockItemId -> { min_stock, safety_stock, min_order, max_order, order_unit }
+    const warehouseSettingsMap = new Map()
+    for (const setting of wmsWarehouseSettings || []) {
+      warehouseSettingsMap.set(setting.stock_item_id, setting)
+    }
+
+    // 3. Call calculateWarehouseDemand
+    const planningDays = planningDates.length
+    const demandLines = calculateWarehouseDemand({
+      warehouseBranchId: branch.id,
+      flow,
+      stockItems: items,
+      connectedBranches,
+      planningDays,
+      multiBranchBalances: wmsMultiBranchBalances,
+      warehouseBalances,
+      inboundWarehouseQtyMap,
+      outboundReplenishingQtyMap,
+      multiBranchDailyUsageMap: wmsMultiBranchDailyUsageMap,
+      multiBranchRecipeForecastMap: wmsMultiBranchRecipeForecastMap,
+      lastOrderQtyMap,
+      warehouseLastOrderQtyMap,
+      warehouseSettingsMap,
+    })
+
+    return demandLines.map((line, idx) => {
+      const item = items.find(it => it.id === line.stock_item_id)
+      const itemSupplierId = flow.supplier_id
+      const contractPrice = getContractPrice(itemSupplierId, line.stock_item_id)
+      const cardPrice = Number(item?.purchase_price || 0)
+      const fallbackPrice = priceMap.get(line.stock_item_id)
+      const unitPrice = Number(contractPrice?.price || fallbackPrice || cardPrice || 0)
+      const orderedQty = Number(line.suggested_qty || 0)
+
+      return {
+        ...line,
+        line_no: idx + 1,
+        min_order: item?.min_order || null,
+        max_order: item?.max_order || null,
+        packaging_units: item?.packaging_units || [],
+        planned_delivery_date: dates.deliveryDate || null,
+        next_order_date: dates.nextOrderDate || null,
+        next_delivery_date: dates.nextDeliveryDate || null,
+        unit_price: unitPrice,
+        line_total: Number((orderedQty * unitPrice).toFixed(4)),
+        contract_id: asUuidOrNull(contractPrice?.contractId),
+        notes: null,
+        meta: {
+          ...line.meta,
+          contract_no: contractPrice?.contractNo || null,
+          warnings: getOrderWarnings(item || line, orderedQty),
+          assumed_inbound_orders: [],
+        }
+      }
+    })
+  }
+
+  // Branch calculation path (original code below):
+  const lastOrderMap = buildLastOrderQtyMap(allOrders, allLines, flow.id, branch, order.id)
+  const coverageDays = computeCoverageDays(flow, order.order_date)
   const inboundSummary = buildAssumedInboundSummary({
     allOrders,
     allLines,
@@ -1647,7 +1839,9 @@ function OrderDetailModal({
                   const contractLocked = line.price_source === 'contract'
                   const lineId = line.id || line.line_no
                   const forecastDetails = line.meta?.forecast?.detail_rows || []
-                  const hasForecastDetails = flow?.qty_mode === 'tahmin' && forecastDetails.length > 0
+                  const hasForecastDetails = flow?.receiver_scope === 'warehouse'
+                    ? !!line.meta?.forecast
+                    : (flow?.qty_mode === 'tahmin' && forecastDetails.length > 0)
                   const forecastDetailsExpanded = expandedForecastLineIds.includes(lineId)
                   return (
                     <tr key={lineId} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -1669,36 +1863,72 @@ function OrderDetailModal({
                         )}
                         {hasForecastDetails && forecastDetailsExpanded && (
                           <div style={{ marginTop: 10, border: '1px solid #e9d5ff', borderRadius: 10, background: '#faf5ff', padding: 10, display: 'grid', gap: 8 }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                              <span style={{ fontSize: '.68rem', fontWeight: 900, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                                Tahmin Aciklamasi
-                              </span>
-                              <span style={{ fontSize: '.68rem', color: '#475569' }}>
-                                {forecastDetails.length} katki satiri
-                              </span>
-                              <span style={{ fontSize: '.68rem', color: '#1d4ed8', fontWeight: 800 }}>
-                                Toplam: {formatQty(forecastDetails.reduce((sum, row) => sum + safeNumber(row.movement_qty), 0))}
-                              </span>
-                            </div>
-                            <div style={{ display: 'grid', gap: 6 }}>
-                              {forecastDetails.map((detail, index) => (
-                                <div key={`${lineId}-detail-${index}`} style={{ borderRadius: 8, background: '#fff', border: '1px solid #f3e8ff', padding: '8px 10px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                                    <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#0f172a' }}>
-                                      {detail.source_name}
-                                      {detail.portion_name ? ` - ${detail.portion_name}` : ''}
-                                    </div>
-                                    <div style={{ fontSize: '.68rem', color: '#64748b' }}>{formatDate(detail.date)}</div>
+                            {flow?.receiver_scope === 'warehouse' ? (
+                              <>
+                                <div style={{ fontSize: '.7rem', fontWeight: 900, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                                  Ana Depo Planlama Detayları
+                                </div>
+                                <div style={{ fontSize: '.72rem', color: '#475569', display: 'grid', gap: 4 }}>
+                                  <div><strong>Talep Yontemi:</strong> {getDemandMethodLabel(line.demand_method || line.meta?.forecast?.demand_method)}</div>
+                                  <div><strong>Hesaplama:</strong> {line.meta?.forecast?.qty_mode_explanation}</div>
+                                  <div><strong>Yuvarlama:</strong> {line.meta?.forecast?.rounding_reason}</div>
+                                  <div><strong>Depo Envanter Durumu:</strong> Mevcut: {formatQty(line.meta?.forecast?.warehouse_avail)} + Tedarikçiden Yolda: {formatQty(line.meta?.forecast?.inbound_yolda)}</div>
+                                </div>
+                                <div style={{ borderTop: '1px solid #e9d5ff', paddingTop: 8 }}>
+                                  <div style={{ fontSize: '.68rem', fontWeight: 900, color: '#7c3aed', marginBottom: 6 }}>
+                                    Bağlı Şube Talepleri
                                   </div>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '.67rem', color: '#64748b' }}>
-                                    <span>Fis: {formatQty(detail.receipt_count)}</span>
-                                    <span>Tahmin adet: {formatQty(detail.forecast_qty)}</span>
-                                    <span>{detail.mode === 'recipe' ? `Recete: ${formatQty(detail.recipe_qty)} / ${formatQty(detail.recipe_output_qty || 1)}` : 'Direkt esleme'}</span>
-                                    <span style={{ color: '#0f766e', fontWeight: 800 }}>Stok katkisi: {formatQty(detail.movement_qty)}</span>
+                                  <div style={{ display: 'grid', gap: 6 }}>
+                                    {(line.meta?.forecast?.branch_details || []).map((bDetail, bIdx) => (
+                                      <div key={`${lineId}-branch-${bIdx}`} style={{ borderRadius: 8, background: '#fff', border: '1px solid #f3e8ff', padding: '8px 10px', fontSize: '.72rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#0f172a' }}>
+                                          <span>{bDetail.branchName}</span>
+                                          <span style={{ color: '#1d4ed8' }}>Net İhtiyaç: {formatQty(bDetail.netBranch)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, color: '#64748b', fontSize: '.68rem' }}>
+                                          <span>Brüt Talep: {formatQty(bDetail.gross)} ({bDetail.source === 'recipe_forecast' ? 'reçete tahmini' : bDetail.source === 'usage_average' ? 'kullanım ortalaması' : bDetail.source === 'stock_topup' ? 'stok tamamlama' : bDetail.source === 'repeat_last_order' ? 'son sipariş' : 'manuel'})</span>
+                                          <span>Şube Stoğu: {formatQty(bDetail.available)}</span>
+                                          <span>Şubeye Yolda: {formatQty(bDetail.outboundYolda)}</span>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
-                              ))}
-                            </div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                                  <span style={{ fontSize: '.68rem', fontWeight: 900, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                                    Tahmin Aciklamasi
+                                  </span>
+                                  <span style={{ fontSize: '.68rem', color: '#475569' }}>
+                                    {forecastDetails.length} katki satiri
+                                  </span>
+                                  <span style={{ fontSize: '.68rem', color: '#1d4ed8', fontWeight: 800 }}>
+                                    Toplam: {formatQty(forecastDetails.reduce((sum, row) => sum + safeNumber(row.movement_qty), 0))}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'grid', gap: 6 }}>
+                                  {forecastDetails.map((detail, index) => (
+                                    <div key={`${lineId}-detail-${index}`} style={{ borderRadius: 8, background: '#fff', border: '1px solid #f3e8ff', padding: '8px 10px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                                        <div style={{ fontSize: '.72rem', fontWeight: 800, color: '#0f172a' }}>
+                                          {detail.source_name}
+                                          {detail.portion_name ? ` - ${detail.portion_name}` : ''}
+                                        </div>
+                                        <div style={{ fontSize: '.68rem', color: '#64748b' }}>{formatDate(detail.date)}</div>
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4, fontSize: '.67rem', color: '#64748b' }}>
+                                        <span>Fis: {formatQty(detail.receipt_count)}</span>
+                                        <span>Tahmin adet: {formatQty(detail.forecast_qty)}</span>
+                                        <span>{detail.mode === 'recipe' ? `Recete: ${formatQty(detail.recipe_qty)} / ${formatQty(detail.recipe_output_qty || 1)}` : 'Direkt esleme'}</span>
+                                        <span style={{ color: '#0f766e', fontWeight: 800 }}>Stok katkisi: {formatQty(detail.movement_qty)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
                           </div>
                         )}
                       </td>
@@ -1827,12 +2057,15 @@ export default function Orders() {
   const toast = useToast()
   const { user } = useAuth()
   const { scope, branchId: workspaceBranchId } = useWorkspace()
+  const isDepoSiparis = scope === 'anadepo'
+  const isMutfakSiparis = scope === 'merkezmutfak'
   const branchLocked = isBranchScopedScope(scope) && !!workspaceBranchId
   const forecastSettings = readForecastSettings()
   const [loading, setLoading] = useState(true)
   const [inventoryLoading, setInventoryLoading] = useState(false)
   const [orders, setOrders] = useState([])
   const [orderLines, setOrderLines] = useState([])
+  const [receiptLines, setReceiptLines] = useState([])
   const [flows, setFlows] = useState([])
   const [stockItems, setStockItems] = useState([])
   const [saleItems, setSaleItems] = useState([])
@@ -1848,12 +2081,164 @@ export default function Orders() {
   const [dailySalesRows, setDailySalesRows] = useState([])
   const [savedForecastRows, setSavedForecastRows] = useState([])
   const [saleLineRows, setSaleLineRows] = useState([])
+
+  // WMS multi-branch planning state variables
+  const [allCompanyBranches, setAllCompanyBranches] = useState([])
+  const [wmsMultiBranchBalances, setWmsMultiBranchBalances] = useState(new Map())
+  const [wmsMultiBranchDailyUsageMap, setWmsMultiBranchDailyUsageMap] = useState(new Map())
+  const [wmsMultiBranchDailySales, setWmsMultiBranchDailySales] = useState(new Map())
+  const [wmsMultiBranchForecasts, setWmsMultiBranchForecasts] = useState(new Map())
+  const [wmsMultiBranchSaleLines, setWmsMultiBranchSaleLines] = useState(new Map())
+  const [wmsWarehouseSettings, setWmsWarehouseSettings] = useState([])
+
   const [activeTab, setActiveTab] = useState('pending')
   const [search, setSearch] = useState('')
   const [detailOrderId, setDetailOrderId] = useState('')
   const [confirmCancel, setConfirmCancel] = useState(null)
   const [currentClockHour, setCurrentClockHour] = useState(() => getCurrentLocalHour())
   const generationRef = useRef('')
+
+  const getConnectedBranches = useCallback((whBranchId) => {
+    if (!whBranchId) return []
+    const warehouseSupplier = suppliers.find(
+      s => s.supplier_kind === 'internal_warehouse' && s.source_branch_id === whBranchId
+    )
+    const allSubeBranches = allCompanyBranches.filter(b => b.type === 'sube')
+    if (!warehouseSupplier) return []
+
+    const warehouseFlows = flows.filter(
+      f => f.supplier_id === warehouseSupplier.id && f.flow_channel === 'warehouse_replenishment'
+    )
+    const connectedBranchIds = new Set()
+    for (const flow of warehouseFlows) {
+      const branchIds = resolveSelectionIds(flow.branches)
+      for (const id of branchIds) {
+        connectedBranchIds.add(id)
+      }
+    }
+    const connected = allSubeBranches.filter(b => connectedBranchIds.has(b.id))
+    return connected
+  }, [suppliers, allCompanyBranches, flows])
+
+  const fetchWmsSnapshot = useCallback(async (branchId, connectedBranches) => {
+    const connectedBranchIds = connectedBranches.map(b => b.id)
+    if (connectedBranchIds.length === 0) {
+      return {
+        wmsWarehouseSettings: [],
+        wmsMultiBranchBalances: new Map(),
+        wmsMultiBranchDailyUsageMap: new Map(),
+        wmsMultiBranchDailySales: new Map(),
+        wmsMultiBranchForecasts: new Map(),
+        wmsMultiBranchSaleLines: new Map(),
+      }
+    }
+
+    const today = todayStr()
+    const forecastEndDate = addDays(today, 62)
+    const historyStartDate = addDays(today, -(Math.max(forecastSettings.lookbackWeeks * 7 + 56, 90)))
+
+    const [whSettingsRes, multiMovementsRes, multiDailySalesRes, multiForecastsRes] = await Promise.all([
+      db.from('stock_item_warehouse_settings').select('*').eq('branch_id', branchId),
+      db
+        .from('inventory_movements')
+        .select('stock_item_id,unit_cost,quantity,direction,quantity_signed,movement_at,ledger_seq,branch_id,branch_name,movement_type,balance_qty_after,meta')
+        .eq('item_type', 'stock_item')
+        .in('branch_id', connectedBranchIds)
+        .is('deleted_at', null)
+        .eq('is_cancelled', false)
+        .order('movement_at', { ascending: false })
+        .order('ledger_seq', { ascending: false })
+        .limit(20000),
+      db
+        .from('daily_sales')
+        .select('sale_date,branch_id,branch_name,total_sales,receipt_count')
+        .in('branch_id', connectedBranchIds)
+        .gte('sale_date', addDays(today, -(Math.max(forecastSettings.lookbackWeeks * 7, 28) + 14)))
+        .lte('sale_date', today)
+        .order('sale_date', { ascending: true }),
+      db
+        .from('sales_forecasts')
+        .select('forecast_date,branch_id,calc_receipt_count,adj_receipt_count')
+        .in('branch_id', connectedBranchIds)
+        .gte('forecast_date', today)
+        .lte('forecast_date', forecastEndDate)
+        .order('forecast_date', { ascending: true }),
+    ])
+
+    if (whSettingsRes.error) throw whSettingsRes.error
+    if (multiMovementsRes.error) throw multiMovementsRes.error
+    if (multiDailySalesRes.error) throw multiDailySalesRes.error
+    if (multiForecastsRes.error) throw multiForecastsRes.error
+
+    const multiSaleLines = await fetchAllRows((from, to) =>
+      db
+        .from('sale_lines')
+        .select('product_id,product_name,portion_id,portion_name,options_json,qty,line_gross_after_discount,sale_datetime,branch_id,branch_name')
+        .in('branch_id', connectedBranchIds)
+        .gte('sale_datetime', `${historyStartDate}T00:00:00`)
+        .lte('sale_datetime', `${today}T23:59:59`)
+        .order('sale_datetime', { ascending: true })
+        .range(from, to),
+    )
+
+    // Group movements by branch
+    const movementsByBranch = new Map()
+    for (const m of multiMovementsRes.data || []) {
+      const bId = m.branch_id
+      if (!movementsByBranch.has(bId)) movementsByBranch.set(bId, [])
+      movementsByBranch.get(bId).push(m)
+    }
+
+    const tempBalances = new Map()
+    const tempDailyUsage = new Map()
+
+    for (const bId of connectedBranchIds) {
+      const branchMovs = movementsByBranch.get(bId) || []
+      const branchBalances = buildInventoryBalanceRows(branchMovs)
+      const branchUsageCatalog = buildStockDailyUsageCatalog(branchMovs, today)
+
+      for (const row of branchBalances) {
+        const avail = Number(row.available_qty ?? row.balance_qty_after ?? 0)
+        tempBalances.set(`${bId}:${row.stock_item_id}`, avail)
+      }
+
+      for (const item of stockItems) {
+        const usageMeta = resolveNonRecipeDailyUsage(item, branchUsageCatalog)
+        tempDailyUsage.set(`${bId}:${item.id}`, usageMeta.dailyUsage)
+      }
+    }
+
+    // Group sales, forecasts, and sale lines by branch
+    const salesByBranch = new Map()
+    for (const s of multiDailySalesRes.data || []) {
+      const bId = s.branch_id
+      if (!salesByBranch.has(bId)) salesByBranch.set(bId, [])
+      salesByBranch.get(bId).push(s)
+    }
+
+    const forecastsByBranch = new Map()
+    for (const f of multiForecastsRes.data || []) {
+      const bId = f.branch_id
+      if (!forecastsByBranch.has(bId)) forecastsByBranch.set(bId, [])
+      forecastsByBranch.get(bId).push(f)
+    }
+
+    const saleLinesByBranch = new Map()
+    for (const sl of multiSaleLines || []) {
+      const bId = sl.branch_id
+      if (!saleLinesByBranch.has(bId)) saleLinesByBranch.set(bId, [])
+      saleLinesByBranch.get(bId).push(sl)
+    }
+
+    return {
+      wmsWarehouseSettings: whSettingsRes.data || [],
+      wmsMultiBranchBalances: tempBalances,
+      wmsMultiBranchDailyUsageMap: tempDailyUsage,
+      wmsMultiBranchDailySales: salesByBranch,
+      wmsMultiBranchForecasts: forecastsByBranch,
+      wmsMultiBranchSaleLines: saleLinesByBranch,
+    }
+  }, [stockItems, forecastSettings.lookbackWeeks])
   const selectedBranchRecord = useMemo(
     () => findBranchById(branches, selectedBranch),
     [branches, selectedBranch],
@@ -1979,6 +2364,7 @@ export default function Orders() {
       const [
         ordersResult,
         linesResult,
+        receiptLinesResult,
         flowsResult,
         stockItemsResult,
         saleItemsResult,
@@ -1990,18 +2376,20 @@ export default function Orders() {
       ] = await Promise.all([
         db.from('purchase_orders').select('*').is('deleted_at', null).order('order_date', { ascending: false }).order('created_at', { ascending: false }),
         db.from('purchase_order_lines').select('*').is('deleted_at', null).order('line_no'),
+        db.from('purchase_receipt_lines').select('order_line_id,received_qty').is('deleted_at', null),
         db.from('order_flows').select('*').is('deleted_at', null).order('name'),
         loadLatestStockItems(),
         db.from('sale_items').select('id,name,short_name,portions,recipe_rows,recipe_output_qty,substitute_id,active').eq('active', true).order('name'),
         db.from('sale_options').select('id,name,short_name,recipe_rows,sale_status').eq('sale_status', true).is('deleted_at', null).order('name'),
         db.from('stock_templates').select('*').order('name'),
         db.from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
-        db.from('suppliers').select('id,name,supplier_kind').eq('active', true).order('name'),
+        db.from('suppliers').select('id,name,supplier_kind,source_branch_id').eq('active', true).order('name'),
         db.from('settings').select('value').eq('key', 'company_tree').single(),
       ])
 
       if (ordersResult.error) throw ordersResult.error
       if (linesResult.error) throw linesResult.error
+      if (receiptLinesResult.error) throw receiptLinesResult.error
       if (flowsResult.error) throw flowsResult.error
       if (!Array.isArray(stockItemsResult)) throw new Error('Stok kartlari okunamadi')
       if (saleItemsResult.error) throw saleItemsResult.error
@@ -2011,13 +2399,24 @@ export default function Orders() {
       if (suppliersResult.error) throw suppliersResult.error
       if (settingsResult.error) throw settingsResult.error
 
-      const nextBranches = getAllBranches(settingsResult.data?.value)
+      const allTreeNodes = getAllBranches(settingsResult.data?.value)
+      const nextBranches = allTreeNodes.filter(branch => {
+        if (scope === 'anadepo') return branch.type === 'anadepo'
+        if (scope === 'merkezmutfak') return branch.type === 'mutfak'
+        return branch.type === 'sube'
+      })
       const rememberedBranch = branchLocked ? workspaceBranchId : getStoredBranchId()
-      const initialBranch = nextBranches.find(branch => branch.id === rememberedBranch)?.id || nextBranches[0]?.id || ''
+      const initialBranch = nextBranches.find(branch => branch.id === rememberedBranch)?.id || ''
 
       setOrders(ordersResult.data || [])
       setOrderLines(linesResult.data || [])
-      setFlows(flowsResult.data || [])
+      setReceiptLines(receiptLinesResult.data || [])
+      setAllCompanyBranches(allTreeNodes)
+      setFlows((flowsResult.data || []).filter(flow => {
+        if (scope === 'anadepo') return flow.receiver_scope === 'warehouse'
+        if (scope === 'merkezmutfak') return flow.receiver_scope === 'kitchen'
+        return flow.receiver_scope === 'branch' || !flow.receiver_scope
+      }))
       setStockItems(stockItemsResult || [])
       setSaleItems(saleItemsResult.data || [])
       setSaleOptions(saleOptionsResult.data || [])
@@ -2027,15 +2426,15 @@ export default function Orders() {
       setBranches(nextBranches)
       setSelectedBranch(prev => (
         branchLocked
-          ? (nextBranches.find(branch => branch.id === workspaceBranchId)?.id || initialBranch)
-          : (prev || initialBranch)
+          ? (nextBranches.find(branch => branch.id === workspaceBranchId)?.id || '')
+          : (nextBranches.find(branch => branch.id === prev)?.id || initialBranch)
       ))
     } catch (error) {
       toast(`Siparisler yuklenemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setLoading(false)
     }
-  }, [branchLocked, loadLatestStockItems, toast, workspaceBranchId])
+  }, [branchLocked, loadLatestStockItems, scope, toast, workspaceBranchId])
 
   const loadInventory = useCallback(async branchId => {
     const branch = findBranchById(branches, branchId)
@@ -2046,6 +2445,12 @@ export default function Orders() {
       setDailySalesRows([])
       setSavedForecastRows([])
       setSaleLineRows([])
+      setWmsMultiBranchBalances(new Map())
+      setWmsMultiBranchDailyUsageMap(new Map())
+      setWmsMultiBranchDailySales(new Map())
+      setWmsMultiBranchForecasts(new Map())
+      setWmsMultiBranchSaleLines(new Map())
+      setWmsWarehouseSettings([])
       return
     }
     setInventoryLoading(true)
@@ -2064,12 +2469,23 @@ export default function Orders() {
       if (snapshot.errors?.savedForecastError) {
         toast(`Kayitli tahminler okunamadi: ${snapshot.errors.savedForecastError.message}`, 'warning')
       }
+
+      if (isDepoSiparis) {
+        const connected = getConnectedBranches(branchId)
+        const wmsSnapshot = await fetchWmsSnapshot(branchId, connected)
+        setWmsWarehouseSettings(wmsSnapshot.wmsWarehouseSettings)
+        setWmsMultiBranchBalances(wmsSnapshot.wmsMultiBranchBalances)
+        setWmsMultiBranchDailyUsageMap(wmsSnapshot.wmsMultiBranchDailyUsageMap)
+        setWmsMultiBranchDailySales(wmsSnapshot.wmsMultiBranchDailySales)
+        setWmsMultiBranchForecasts(wmsSnapshot.wmsMultiBranchForecasts)
+        setWmsMultiBranchSaleLines(wmsSnapshot.wmsMultiBranchSaleLines)
+      }
     } catch (error) {
       toast(`Stok verileri okunamadi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setInventoryLoading(false)
     }
-  }, [branches, fetchBranchInventorySnapshot, toast])
+  }, [branches, fetchBranchInventorySnapshot, toast, isDepoSiparis, getConnectedBranches, fetchWmsSnapshot])
 
   useEffect(() => {
     loadBase()
@@ -2117,6 +2533,12 @@ export default function Orders() {
     for (const flow of missingFlows) {
       const flowDates = getFlowDates(flow, today)
       
+      let wmsData = {}
+      if (flow.receiver_scope === 'warehouse') {
+        const connected = getConnectedBranches(branch.id)
+        wmsData = await fetchWmsSnapshot(branch.id, connected)
+      }
+
       const allDraftLines = createDraftLines({
         order: { order_date: today },
         flow,
@@ -2128,6 +2550,7 @@ export default function Orders() {
         contracts,
         allOrders: orders,
         allLines: orderLines,
+        allReceiptLines: receiptLines,
         balanceRows: branchSnapshot.balanceRows,
         inventoryMovementRows: branchSnapshot.inventoryMovementRows,
         purchaseMovementRows: branchSnapshot.purchaseMovementRows,
@@ -2136,13 +2559,18 @@ export default function Orders() {
         saleLineRows: branchSnapshot.saleLineRows,
         forecastLookbackWeeks: forecastSettings.lookbackWeeks,
         allSuppliers: suppliers,
+        isDepoSiparis: flow.receiver_scope === 'warehouse',
+        connectedBranches: flow.receiver_scope === 'warehouse' ? getConnectedBranches(branch.id) : [],
+        ...wmsData,
       })
 
       // Group draft lines by their resolved supplier
       const linesBySupplier = {}
       for (const line of allDraftLines) {
         const item = stockItems.find(x => x.id === line.stock_item_id)
-        const resolvedSupId = resolveLineSupplierId(item, flow.supplier_id, suppliers)
+        const resolvedSupId = flow.receiver_scope === 'warehouse'
+          ? flow.supplier_id
+          : resolveLineSupplierId(item, flow.supplier_id, suppliers)
         if (!linesBySupplier[resolvedSupId]) {
           linesBySupplier[resolvedSupId] = []
         }
@@ -2163,6 +2591,10 @@ export default function Orders() {
 
         const targetSupplier = suppliers.find(row => row.id === supId)
         const supplierKind = targetSupplier?.supplier_kind || 'external'
+        if (flow.receiver_scope === 'warehouse' && supplierKind !== 'external') {
+          toast('Ana depo satinalma akisi yalnizca dis tedarikci ile siparis olusturabilir.', 'error')
+          continue
+        }
         
         let flowChannel = 'external_purchase'
         if (supplierKind === 'internal_warehouse') flowChannel = 'warehouse_replenishment'
@@ -2210,7 +2642,7 @@ export default function Orders() {
           cancelled_at: null,
           cancelled_reason: null,
           notes: null,
-          meta: {},
+          meta: flow.receiver_scope && flow.receiver_scope !== 'branch' ? { receiver_scope: flow.receiver_scope } : {},
         }
 
         const { data: insertedOrder, error: insertOrderError } = await db
@@ -2228,7 +2660,7 @@ export default function Orders() {
         await logActivity({
           user,
           actionType: 'purchase_order_create',
-          route: '/orders',
+          route: flow.receiver_scope === 'warehouse' ? '/depo-satinalma' : '/orders',
           entityType: 'purchase_order',
           entityId: insertedOrder.id,
           metadata: {
@@ -2256,6 +2688,7 @@ export default function Orders() {
     stockTemplates,
     contracts,
     orderLines,
+    receiptLines,
     balanceRows,
     inventoryMovementRows,
     purchaseMovementRows,
@@ -2263,8 +2696,11 @@ export default function Orders() {
     savedForecastRows,
     saleLineRows,
     fetchBranchInventorySnapshot,
+    fetchWmsSnapshot,
     forecastSettings.lookbackWeeks,
     forecastSettings.orderForecastGenerationHour,
+    getConnectedBranches,
+    toast,
     user,
   ])
 
@@ -2298,8 +2734,22 @@ export default function Orders() {
   }, [loading, selectedBranch, currentClockHour, forecastSettings.orderForecastGenerationHour, flows.length, orders.length, orderLines.length, createOrdersForToday, loadBase, toast])
 
   const branchOrders = useMemo(() => (
-    orders.filter(order => !selectedBranchRecord || branchMatchesRecord(order, selectedBranchRecord))
-  ), [orders, selectedBranchRecord])
+    orders.filter(order => {
+      if (!selectedBranchRecord) return false
+      if (selectedBranchRecord && !branchMatchesRecord(order, selectedBranchRecord)) return false
+
+      const orderMeta = parseJsonValue(order.meta, {})
+      const orderReceiverScope = orderMeta.receiver_scope
+
+      if (scope === 'anadepo') {
+        return (orderReceiverScope === 'warehouse' || (!orderReceiverScope && selectedBranchRecord?.type === 'anadepo')) && order.flow_channel === 'external_purchase'
+      }
+      if (scope === 'merkezmutfak') {
+        return (orderReceiverScope === 'kitchen' || (!orderReceiverScope && selectedBranchRecord?.type === 'mutfak')) && order.flow_channel === 'external_purchase'
+      }
+      return (!orderReceiverScope || orderReceiverScope === 'branch')
+    })
+  ), [orders, selectedBranchRecord, scope])
 
   const filteredOrders = useMemo(() => {
     const text = search.trim().toLowerCase()
@@ -2355,6 +2805,12 @@ export default function Orders() {
     const branchSnapshot = await fetchBranchInventorySnapshot(branch)
     setStockItems(latestStockItems)
 
+    let wmsData = {}
+    if (flow.receiver_scope === 'warehouse') {
+      const connected = getConnectedBranches(branch.id)
+      wmsData = await fetchWmsSnapshot(branch.id, connected)
+    }
+
     return createDraftLines({
       order,
       flow,
@@ -2364,9 +2820,10 @@ export default function Orders() {
       saleOptions,
       stockTemplates,
       contracts,
-      allOrders: orders,
-      allLines: orderLines,
-      balanceRows: branchSnapshot.balanceRows,
+        allOrders: orders,
+        allLines: orderLines,
+        allReceiptLines: receiptLines,
+        balanceRows: branchSnapshot.balanceRows,
       inventoryMovementRows: branchSnapshot.inventoryMovementRows,
       purchaseMovementRows: branchSnapshot.purchaseMovementRows,
       dailySalesRows: branchSnapshot.dailySalesRows,
@@ -2376,6 +2833,9 @@ export default function Orders() {
       assumedInboundOrderIds: options.assumedInboundOrderIds,
       targetSupplierId: order.supplier_id,
       allSuppliers: suppliers,
+      isDepoSiparis: flow.receiver_scope === 'warehouse',
+      connectedBranches: flow.receiver_scope === 'warehouse' ? getConnectedBranches(branch.id) : [],
+      ...wmsData,
     })
   }
 
@@ -2541,13 +3001,17 @@ export default function Orders() {
     }
   }
 
-  const branchName = selectedBranchRecord?.name || 'Sube secin'
+  const branchName = selectedBranchRecord?.name || (isDepoSiparis ? 'Depo secin' : isMutfakSiparis ? 'Mutfak secin' : 'Sube secin')
+  const pageTitle = isDepoSiparis ? 'Depo Satinalma Siparisleri' : isMutfakSiparis ? 'Mutfak Satinalma Siparisleri' : 'Siparisler'
+  const pageSubtitle = selectedBranchRecord
+    ? (isDepoSiparis ? `${branchName} ihtiyaci` : isMutfakSiparis ? `${branchName} ihtiyaci` : `${branchName} subesi`)
+    : (isDepoSiparis ? 'Ana depo secimi bekleniyor' : isMutfakSiparis ? 'Mutfak secimi bekleniyor' : 'Sube secimi bekleniyor')
 
   return (
     <div>
       <Header
-        title="Siparisler"
-        subtitle={`${branchName} subesi`}
+        title={pageTitle}
+        subtitle={pageSubtitle}
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <select
@@ -2557,6 +3021,7 @@ export default function Orders() {
               style={{ minWidth: 220 }}
               disabled={branchLocked}
             >
+              <option value="">{isDepoSiparis ? 'Depo secin' : isMutfakSiparis ? 'Mutfak secin' : 'Sube secin'}</option>
               {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
             <button className="btn-o" onClick={() => { loadBase() }}>
@@ -2736,4 +3201,3 @@ export default function Orders() {
     </div>
   )
 }
-

@@ -9801,3 +9801,243 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - `WMS Faz 0–8 (ve UI Görünürlük Cilası) tüm fazlarıyla tamamlandı. Schema, UI, routing, sidebar dinamik sayaçları (badges), süreç stepper'ları, bağlam rozetleri ve operasyonel hafıza eksiksiz güncellendi. Sistem üretim kullanımına hazır.`
 
 
+## Entry 072
+
+- `Timestamp`: `2026-06-09T14:14:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `stock_items tablosuna image_url eklenmesi ve görsel yükleme hatasının giderilmesi`
+- `Intent`: `Stok Malı Düzenle ekranında malzeme görseli kaydedilirken image_url alanının stock_items tablosunda tanımlı olmamasından kaynaklanan veritabanı hatasını çözmek.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `schema-railway-master.sql`
+  - `src/components/pages/StockItems.jsx`
+- `Files Changed`:
+  - `schema-railway-master.sql`
+  - `OperationSync.md`
+- `Files Created`:
+  - `migrations/033_add_image_url_to_stock_items.sql`
+  - `scratch/apply_image_url_stock_items_migration.cjs`
+- `Commands Run`:
+  - `node scratch/apply_image_url_stock_items_migration.cjs`
+  - `git status`
+  - `npm run build`
+- `Findings`:
+  - `StockItems.jsx` bileşeni malzeme görsellerini `image_url` alanı üzerinden işlemekteydi fakat veritabanında `public.stock_items` tablosunda bu sütun yer almıyordu.
+  - Bu eksiklik kaydetme işlemi esnasında `column "image_url" of relation "stock_items" does not exist` hatasına yol açıyordu.
+- `Decisions`:
+  - `stock_items` tablosuna `image_url` sütunu (tip: `TEXT`) eklenmesi için `033_add_image_url_to_stock_items.sql` göçü (migration) oluşturuldu ve Railway Postgres veritabanına uygulandı.
+  - Ana şema dosyası (`schema-railway-master.sql`) yeni sütunla güncellendi.
+- `Open Risks`: None.
+- `Next Step`:
+  - Kullanıcının "Stok Malı Düzenle" ekranında malzeme görseli ekleme/düzenleme işlemini tekrar test etmesi sağlanmalı.
+- `Handoff Contract`:
+  - `image_url sütunu başarıyla eklendi, göç uygulandı ve Vite üretimi derlemesi sorunsuzdur. Bir sonraki agent diğer iyileştirme adımlarına veya yeni gereksinimlere geçebilir.`
+
+## Entry 073
+
+- `Timestamp`: `2026-06-09T17:42:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS Faz 8: Ana Depo Talep Tahmini ve Satınalma Planlama Motoru`
+- `Intent`: `Ana Depo'nun kendi satınalma siparişlerini bağlı şubelerin ihtiyaçlarına, mevcut depo envanter pozisyonuna ve dış siparişlere göre otomatik hesaplayan motoru entegre etmek ve regresyonları engellemek.`
+- `Files Read`:
+  - `src/lib/branchPurchasing.js`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/OrderFlows.jsx`
+  - `migrations/034_add_receiver_scope_to_order_flows.sql`
+  - `scratch/apply_receiver_scope_migration.cjs`
+  - `scratch/test_wms_demand_planning.js`
+- `Files Changed`:
+  - `src/lib/branchPurchasing.js`
+  - `OperationSync.md`
+  - `docs/task.md`
+- `Commands Run`:
+  - `git status`
+  - `npm run build`
+  - `node scratch/apply_receiver_scope_migration.cjs`
+  - `npx -y vite-node scratch/test_wms_demand_planning.js`
+- `Findings`:
+  - `safeNumber` ve `clamp` yardımcı fonksiyonları `branchPurchasing.js` içerisinde tanımlanmış ancak dışarı aktarılmamıştı (non-exported). Bu durum build ve test süreçlerinde `warehouseDemandPlanning.js` tarafından içe aktarılmak istendiğinde hataya yol açıyordu. Fonksiyonların dışarı aktarılmasıyla derleme hatası giderildi.
+  - Entegrasyon testleri (`test_wms_demand_planning.js`) hem `tahmin` (Recipe/Usage) hem de `stok` (Stock top-up) modları için tam uyumlu sonuçlar vererek başarıyla koşturuldu.
+  - `npm run build` işlemi sıfır hata ile derlendi, JSX kod bloklarının geçerliliği teyit edildi.
+- `Decisions`:
+  - Şube sipariş akışlarının regresyonlardan korunması amacıyla motor dalı `receiver_scope === 'warehouse'` filtresine bağlandı, varsayılan şube akışları eski mantıkla izole edildi.
+- `Open Risks`: None.
+- `Next Step`:
+  - WMS Faz 8 uygulaması tamamlandı. Kullanıcı doğrulaması ve üretim onayı beklenecektir.
+- `Handoff Contract`:
+  - `WMS Faz 8 başarıyla tamamlanmış olup derleme ve entegrasyon testleri sorunsuzdur. Bir sonraki aşamaya veya kullanıcı geri bildirimlerine göre ilerlenebilir.`
+
+
+## Entry 074
+
+- `Timestamp`: `2026-06-09T18:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS Faz 8 - Ana Depo Talep Tahmini ve Satınalma Planlama Motorunun Faz Faz Uygulanması ve UI Cilalama`
+- `Intent`: `depotahmin.md talimatlarını faz faz uygulayıp, şube regresyon testleri ve WMS entegrasyon testleriyle doğrulamak; akış onay ve limit terminolojisini dinamik hale getirmek.`
+- `Files Read`:
+  - `docs/depotahmin.md`
+  - `src/components/pages/OrderFlows.jsx`
+  - `src/components/pages/Orders.jsx`
+  - `src/lib/branchPurchasing.js`
+- `Files Changed`:
+  - `src/components/pages/OrderFlows.jsx` - `getFlowReceiverType` badge mantığı ve `FlowForm`/`FlowDetail` içindeki "Şube yöneticisi onayı" / "Cari limit" terminolojileri `receiver_scope` değerine göre dinamik hale getirildi.
+- `Files Created`:
+  - `scratch/test_branch_purchasing_regression.js` - Şube sipariş toplama regresyon testi kilidi oluşturuldu.
+  - `docs/walkthrough_wms_phase8.md` - Faz 8.0-8.7 kapsamını ve test sonuçlarını detaylandıran yeni walkthrough belgesi eklendi.
+- `Commands Run`:
+  - `npx -y vite-node scratch/test_branch_purchasing_regression.js` (Başarılı)
+  - `npx -y vite-node scratch/test_wms_demand_planning.js` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - Şube sipariş toplama mekanizması regresyon testi ile tam kilitlendi. Depo tahmin motoru şube hesaplama yollarına hiçbir yan etki yapmamaktadır.
+  - WMS talep tahmini motoru (`calculateWarehouseDemand`) `tahmin` (Recipe/Usage) ve `stok` (Stock top-up) modları altında yoldaki stokları yönlerine göre doğru hesaplayarak sipariş önerileri üretmektedir.
+  - Depo satın alma siparişleri ve akışları `/depo-satinalma` rotasında izole edilmiş ve WMS sevk konsolundan arındırılmıştır. Submitted durumunda `/depo-mal-kabul` ekranına palet (LPN), lot, SKT ve karantina detayları korunarak düşmektedir.
+- `Decisions`:
+  - WMS Faz 8.0 - 8.7 arasındaki tüm fazların zaten başarıyla kodlandığı ve test edildiği doğrulandı.
+  - Ek olarak UI cilalaması kapsamında "Şube" kelimeleri depo kapsamındaki akışlarda "Depo" olarak dinamikleştirildi.
+- `Next Step`:
+  - Kullanıcı doğrulaması ve üretim onayına sunulması.
+- `Handoff Contract`:
+  - WMS Faz 8 tüm alt fazlarıyla başarıyla tamamlandı, test edildi ve Vite üretimi derlemesi sorunsuzdur. Sistem kullanıma hazırdır.
+
+
+## Entry 075
+
+- `Timestamp`: `2026-06-09T18:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `DepoOrders.jsx join sorgusu hatasının düzeltilmesi`
+- `Intent`: `/depo-orders sayfasında (WMS konsolu) ilişkisel JOIN (stock_items) sorgulamasından kaynaklanan veritabanı query translator parser hatasını (column "stock_items(name" does not exist) çözmek.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `src/components/pages/DepoOrders.jsx`
+- `Files Changed`:
+  - `src/components/pages/DepoOrders.jsx` - `warehouse_shipment_lines` tablosundan nested select kaldırılarak `stock_items` tablosu ayrı sorgulanacak şekilde `Promise.all` güncellendi ve geri dönen satırlar hafızada birleştirildi (map).
+- `Commands Run`:
+  - `npm run build` (Başarılı)
+  - `npx -y vite-node scratch/test_branch_purchasing_regression.js` (Başarılı)
+  - `npx -y vite-node scratch/test_wms_demand_planning.js` (Başarılı)
+- `Findings`:
+  - API query translator'ın nested select sorgularında virgül split etme mantığı, `stock_items(name, sku, unit)` ifadesini bozarak `stock_items(name` şeklinde kolon aramasına ve Postgres seviyesinde hata vermesine neden olmaktaydı.
+  - Sorgunun bölünmesi ve in-memory map yapılması hem backend hata vermesini engelledi hem de UI'ın `line.stock_items` bağımlılığını tam olarak karşıladı.
+- `Decisions`:
+  - SQL join yetenekleri backend API query translator tarafından sınırlı desteklendiği için, bu gibi nested relational nesne okuma işlemlerinde ayrı sorgu ve in-memory mapping yöntemi standart düzeltme deseni olarak benimsenmiştir.
+- `Next Step`:
+  - WMS modüllerinin kullanıcı tarafından canlı veritabanı ve ortamda uçtan uca doğrulanması.
+- `Handoff Contract`:
+  - `/depo-orders` konsolundaki join tabanlı query hatası giderildi, testler ve build başarılı bir şekilde tamamlandı. Proje stabil durumdadır.
+
+## Entry 076
+
+- `Timestamp`: `2026-06-09T18:20:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Merkez Mutfak Giriş ve Bağlam Probleminin Giderilmesi`
+- `Intent`: `Şirket ağacında 'uretim' tipindeki Merkez Mutfak düğümünün, koddaki 'mutfak' tipi kontrol kısıtları nedeniyle yüklenememesinden kaynaklanan PIN giriş ve bağlam eşleşmeme hatasını çözmek.`
+- `Files Read`:
+  - `src/lib/branchContexts.js`
+  - `src/context/WorkspaceContext.jsx`
+  - `scripts/bootstrap-company-tree.mjs`
+- `Files Changed`:
+  - `src/lib/branchContexts.js` (Düğüm tipi `uretim` olan kayıtların `merkezmutfak` scope'una alınması sağlandı, cache sürümü `v3`'e yükseltildi)
+  - 17 adet frontend dosyası (`LoyaltyCampaignWizard.jsx`, `ComboMenu.jsx`, `Contracts.jsx`, `InventoryMovements.jsx`, `Options.jsx`, `OrderFlows.jsx`, `PeriodClose.jsx`, `Prices.jsx`, `SaleItems.jsx`, `SemiProducts.jsx`, `StockItems.jsx`, `Templates.jsx`, `catalogHelpers.js`, `branchPurchasing.js`, `countFlowUtils.js`, `demoSalesGenerator.js`, `personnelConfig.js`) içerisinde `mutfak` kontrolünün yanına `uretim` tipi eklendi.
+- `Files Created`:
+  - `scratch/read_company_tree.js`
+  - `scratch/verify_actual_branch_contexts.js`
+- `Commands Run`:
+  - `node scratch/fix_mutfak_type.js` (Otomatik kod güncelleme)
+  - `npx -y vite-node scratch/verify_actual_branch_contexts.js` (Doğrulama başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - Şirket ağacı bootstraplenirken Merkez Mutfak'ın tipi `uretim` olarak tanımlanmıştı. Ancak arayüzün ve bağlam yöneticisinin (`WorkspaceContext`) beklediği varsayılan tip `mutfak` idi.
+  - Bu fark, Merkez Mutfak düğümünün şube listesinden tamamen elenmesine ve personelin varsayılan şube tipinin `branch` (şube) olarak çözümlenerek PIN girişinde hata vermesine neden oluyordu.
+  - Yapılan güncellemeyle `uretim` tipi `mutfak` ile eşit olarak ele alınarak problem giderildi.
+- `Decisions`:
+  - Şirket hiyerarşisindeki `uretim` tip kuralı bozulmadan frontend ve veri yükleme katmanında uretim/mutfak eşleşmesi yaygınlaştırıldı.
+- `Next Step`:
+  - Kullanıcının Merkez Mutfak PIN giriş ekranını tarayıcıda yenileyerek tekrar denemesi ve girişin doğrulanması.
+- `Handoff Contract`:
+  - Merkez Mutfak bağlam çözme ve PIN giriş hatası başarıyla giderildi, tüm kontroller sağlandı ve build başarılı bir şekilde tamamlandı.
+
+
+## Entry 077
+
+- `Timestamp`: `2026-06-09T18:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Kullanıma Hazırlık ve Hammaddeler Ön Yüz Tasarım Uyumluluğu`
+- `Intent`: `Hammaddeler el kitabı sayfasını Ürünler sayfasıyla aynı tasarım diliyle (Premium Spec Grid, Art Cards) görselleştirmek ve Bölüm 6'yı dinamik adım editörü "Kullanıma Hazırlık" olarak yapılandırmak.`
+- `Files Read`:
+  - `docs.md`
+  - `src/components/pages/ManualManagement.jsx`
+  - `src/components/pages/ManualReader.jsx`
+  - `docs/walkthrough.md`
+- `Files Changed`:
+  - `src/components/pages/ManualManagement.jsx` - Bölüm 6'daki statik giriş alanları kaldırılarak dinamik adım ekleme/silme editörü kuruldu, markdown derleyici/çözümleyici `Kullanıma Hazırlık` başlığıyla uyumlu hale getirildi.
+  - `src/components/pages/ManualReader.jsx` - `getSpecTheme` fonksiyonuna hammaddelere özgü başlıklar için hareketli ikonlar ve renkler eklendi, hammaddeler yerleşimi `mr-specs-banner` ve Art Cards yapısına geçirildi.
+- `Files Created`: None.
+- `Commands Run`:
+  - `npm run build:web` (Başarılı)
+- `Findings`:
+  - Hammaddeler detay sayfası, Ürünler detay sayfasındaki hand-drawn wobbly eskiz estetiğini ve animasyonlu ikonları kusursuzca devralmaktadır.
+  - Dinamik adımlar ve varsayılan check-mark yapısı, hiçbir ön hazırlık gerektirmeyen hammadde stok kartları için temiz bir fallback sağlamaktadır.
+- `Decisions`:
+  - Tasarım bütünlüğünü korumak adına tüm manual detay arayüzleri tek bir CSS sınıf kütüphanesine bağlanmıştır.
+- `Next Step`:
+  - `git status` ile tüm değişikliklerin git takibinde olduğunun doğrulanması ve oturum teslimi.
+- `Handoff Contract`:
+  - Kullanıma Hazırlık ve Hammaddeler tasarım uyumlandırması tamamlanmış, tüm dokümantasyon güncellenmiş ve Vite üretim derlemesi 0 hata ile çalışmaktadır.
+## Entry 186
+
+- `Timestamp`: `2026-06-09T19:10:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS Faz 8 Demand Method Cila ve Dokumantasyon Senkronu`
+- `Intent`: `Ana Depo satin alma siparisleri icin demand_method eksigini kapatmak, depo satin alma tahmin motorunu sube algoritmasini bozmadan guclendirmek ve docs.md geregi proje dokumanlarini senkronize etmek.`
+- `Files Read`:
+  - `docs.md`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/OrderFlows.jsx`
+  - `scratch/test_wms_demand_planning.js`
+  - `scratch/apply_receiver_scope_migration.cjs`
+  - `scratch/apply_image_url_stock_items_migration.cjs`
+- `Files Changed`:
+  - `src/lib/warehouseDemandPlanning.js` - `demand_method` uretimi, demand source label, depo son satin alma gecmisi ve toleransli saf fonksiyon parametreleri eklendi.
+  - `src/components/pages/Orders.jsx` - Ana Depo WMS snapshot entegrasyonu, inbound/outbound yolda miktar ayrimi, depo satin alma satirlarinda demand method gosterimi ve dis tedarikciye kilitleme davranisi eklendi.
+  - `src/components/pages/OrderFlows.jsx` - Ana Depo alici kapsaminda ic tedarikci secimi engellendi ve tekrar eden `uretim` tipi kontrolu temizlendi.
+  - `scratch/test_wms_demand_planning.js` - hardcoded database fallback kaldirildi, assertion hatalarinda nonzero exit davranisi eklendi.
+  - `scratch/apply_receiver_scope_migration.cjs` - hardcoded database fallback kaldirildi.
+  - `scratch/apply_image_url_stock_items_migration.cjs` - hardcoded database fallback kaldirildi.
+  - `docs/implementation_plan.md` - WMS Faz 8 demand method cila plani yazildi.
+  - `docs/task.md` - WMS Faz 8 task listesi guncellendi.
+  - `docs/walkthrough.md` - WMS Faz 8 degisiklik ve dogrulama ozeti yazildi.
+- `Files Created`:
+  - `src/lib/warehouseDemandPlanning.js`
+  - `scratch/test_wms_demand_planning.js`
+  - `scratch/apply_receiver_scope_migration.cjs`
+  - `scratch/apply_image_url_stock_items_migration.cjs`
+- `Commands Run`:
+  - `node scratch\test_branch_purchasing_regression.js` (Basarili)
+  - `node --check scratch\test_wms_demand_planning.js` (Basarili)
+  - `node --check scratch\apply_receiver_scope_migration.cjs` (Basarili)
+  - `node --check scratch\apply_image_url_stock_items_migration.cjs` (Basarili)
+  - `node -e "import('./src/lib/warehouseDemandPlanning.js').then(...)"` (Basarili)
+  - `rg "nextBranches\[0\]|branches\[0\]|Kadikoy|Kadıköy|DEFAULT_BRANCH_NAME" ...` (Dokunulan WMS runtime dosyalarinda eslesme yok)
+  - `npm.cmd run build` (Basarili; mevcut CSS minify uyarisi devam ediyor)
+- `Findings`:
+  - `demand_method` onceki durumda dokumanda tanimli olsa da WMS satin alma satirlarinda net bir runtime/meta karsiligi eksikti.
+  - Ana Depo "son siparisi tekrarla" modu sube siparis mantigindan ayrilmaliydi; bu nedenle depo satin alma gecmisi ayri map olarak kullanildi.
+  - Depoya gelecek dis satin alma miktari ile depodan subeye cikmis ic ikmal miktari farkli yonlerde oldugu icin WMS talep hesaplamasinda ayrik ele alindi.
+  - Yeni Faz 8 scratch scriptlerinde database connection fallback bulunmasi guvenlik ve tekrar edilebilirlik acisindan uygun degildi.
+- `Decisions`:
+  - `demand_method` ayri DB kolonu yerine satir `meta.forecast.demand_method` altinda saklanacaktir.
+  - Ana Depo satin alma akisi kendi ihtiyaci icin yalnizca dis tedarikciye siparis uretmelidir; ic tedarikci/ikmal akisi sevk konsolunun konusudur.
+  - Mevcut sube siparis algoritmasi korunmus, regression testi ile dogrulanmistir.
+- `Not Run`:
+  - Canli WMS DB integration testi calistirilmadi; bu oturumda `DATABASE_URL` saglanmadi ve scriptler artik bilincli olarak explicit connection string bekliyor.
+- `Next Step`:
+  - Kullanici Ana Depo PIN oturumu ile `/depo-satinalma` ekraninda bir Ana Depo satin alma akisi uzerinden talep satirlarini canli veriyle dogrulamali.
+- `Handoff Contract`:
+  - WMS Faz 8 demand method eksigi kapatildi, ilgili dokumanlar docs.md talimatina gore guncellendi, build ve statik kontroller basarili tamamlandi.

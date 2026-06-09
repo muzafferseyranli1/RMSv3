@@ -8,22 +8,28 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
    ManualReader — E-Learning Knowledge Base
    ════════════════════════════════════════════════════════════════ */
 
-const CATEGORY_ICONS = {
-  'Ürünler': 'fa-utensils',
-  'Hammaddeler': 'fa-wheat-awn',
-  'Ekipmanlar': 'fa-gears',
-  'Operasyon': 'fa-clipboard-check',
-  'Hizmet Standartları': 'fa-star',
-}
-const CATEGORY_COLORS = {
-  'Ürünler': '#f59e0b',
-  'Hammaddeler': '#10b981',
-  'Ekipmanlar': '#6366f1',
-  'Operasyon': '#0ea5e9',
-  'Hizmet Standartları': '#ec4899',
-}
 const DEFAULT_ICON = 'fa-book'
 const DEFAULT_COLOR = '#64748b'
+
+const getCategoryIcon = (name) => {
+  const n = (name || '').toLowerCase();
+  if (n.includes('ürün') || n.includes('urun')) return 'fa-utensils';
+  if (n.includes('hammad')) return 'fa-wheat-awn';
+  if (n.includes('ekipman')) return 'fa-gears';
+  if (n.includes('operasyon')) return 'fa-clipboard-check';
+  if (n.includes('hizmet')) return 'fa-star';
+  return DEFAULT_ICON;
+};
+
+const getCategoryColor = (name) => {
+  const n = (name || '').toLowerCase();
+  if (n.includes('ürün') || n.includes('urun')) return '#f59e0b';
+  if (n.includes('hammad')) return '#10b981';
+  if (n.includes('ekipman')) return '#6366f1';
+  if (n.includes('operasyon')) return '#0ea5e9';
+  if (n.includes('hizmet')) return '#ec4899';
+  return DEFAULT_COLOR;
+};
 
 function renderFormattedDescription(text) {
   if (!text) return null;
@@ -132,6 +138,76 @@ function parseStepText(description, idx) {
 
 function getSpecTheme(label) {
   const l = (label || '').toLowerCase();
+  if (l.includes('barcode') || l.includes('erp') || l.includes('kod')) {
+    return {
+      icon: 'fa-barcode fa-pulse',
+      iconStyle: { color: '#0f172a' },
+      bgTop: '#f1f5f9',
+      bgBottom: '#ffffff',
+      border: 'rgba(15, 23, 42, 0.12)',
+      valColor: '#0f172a'
+    };
+  }
+  if (l.includes('kategori') || l.includes('alt kategori')) {
+    return {
+      icon: 'fa-folder-open fa-bounce',
+      iconStyle: { color: '#8b5cf6' },
+      bgTop: '#f5f3ff',
+      bgBottom: '#ffffff',
+      border: 'rgba(139, 92, 246, 0.15)',
+      valColor: '#7c3aed'
+    };
+  }
+  if (l.includes('tedarik') || l.includes('onaylı') || l.includes('supplier')) {
+    return {
+      icon: 'fa-truck-field fa-beat',
+      iconStyle: { color: '#0284c7' },
+      bgTop: '#f0f9ff',
+      bgBottom: '#ffffff',
+      border: 'rgba(2, 132, 199, 0.15)',
+      valColor: '#0369a1'
+    };
+  }
+  if (l.includes('tat') || l.includes('koku') || l.includes('lezzet') || l.includes('kesim') || l.includes('slicing')) {
+    return {
+      icon: 'fa-utensils fa-bounce',
+      iconStyle: { color: '#10b981' },
+      bgTop: '#f0fdf4',
+      bgBottom: '#ffffff',
+      border: 'rgba(16, 185, 129, 0.15)',
+      valColor: '#15803d'
+    };
+  }
+  if (l.includes('doku') || l.includes('görünüm') || l.includes('spesifikasyon') || l.includes('texture') || l.includes('spes')) {
+    return {
+      icon: 'fa-certificate fa-spin',
+      iconStyle: { color: '#a855f7', animationDuration: '6s' },
+      bgTop: '#faf5ff',
+      bgBottom: '#ffffff',
+      border: 'rgba(168, 85, 247, 0.15)',
+      valColor: '#9333ea'
+    };
+  }
+  if (l.includes('ambalaj') || l.includes('paket') || l.includes('kutu') || l.includes('packaging')) {
+    return {
+      icon: 'fa-box-open fa-bounce',
+      iconStyle: { color: '#f59e0b' },
+      bgTop: '#fffbeb',
+      bgBottom: '#ffffff',
+      border: 'rgba(245, 158, 11, 0.15)',
+      valColor: '#d97706'
+    };
+  }
+  if (l.includes('sıcaklık') || l.includes('temp') || l.includes('derece')) {
+    return {
+      icon: 'fa-temperature-half fa-fade',
+      iconStyle: { color: '#ef4444' },
+      bgTop: '#fef2f2',
+      bgBottom: '#ffffff',
+      border: 'rgba(239, 68, 68, 0.15)',
+      valColor: '#b91c1c'
+    };
+  }
   if (l.includes('hazır') || l.includes('prep') || l.includes('süre')) {
     return {
       icon: 'fa-clock fa-spin',
@@ -162,7 +238,7 @@ function getSpecTheme(label) {
       valColor: '#16a34a'
     };
   }
-  if (l.includes('ağırlık') || l.includes('porsiyon') || l.includes('gram') || l.includes('gr') || l.includes('weight') || l.includes('boyut')) {
+  if (l.includes('ağırlık') || l.includes('porsiyon') || l.includes('gram') || l.includes('gr') || l.includes('weight') || l.includes('boyut') || l.includes('çap') || l.includes('ebat') || l.includes('dimen')) {
     return {
       icon: 'fa-scale-balanced fa-beat',
       iconStyle: { color: '#eab308' },
@@ -452,8 +528,8 @@ export default function ManualReader() {
   const activeCategoryName = pageDetails
     ? categories.find(c => c.id === pageDetails.category_id)?.name || ''
     : ''
-  const activeCategoryIcon = CATEGORY_ICONS[activeCategoryName] || DEFAULT_ICON
-  const activeCategoryColor = CATEGORY_COLORS[activeCategoryName] || DEFAULT_COLOR
+  const activeCategoryIcon = getCategoryIcon(activeCategoryName)
+  const activeCategoryColor = getCategoryColor(activeCategoryName)
 
   const recentPages = useMemo(() =>
     [...pages].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)).slice(0, 6)
@@ -2006,6 +2082,91 @@ export default function ManualReader() {
           }
         }
 
+        /* ─── PREMIUM COMPARISONS (READER) ─── */
+        .mr-comp-premium-card {
+          position: relative;
+          background: var(--surface);
+          margin: 20px 24px;
+          padding: 0;
+        }
+        .mr-comp-premium-grid {
+          display: grid;
+          gap: 0;
+          min-height: 120px;
+        }
+        .mr-comp-premium-img-box {
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          background: var(--surface-2);
+          aspect-ratio: 4 / 3;
+          height: 5cm;
+          align-self: center;
+          flex-shrink: 0;
+        }
+        .mr-comp-premium-img-box.correct {
+          border-radius: 6px 0 0 6px;
+          border-left: 3px solid #10b981;
+        }
+        .mr-comp-premium-img-box.wrong {
+          border-radius: 0 6px 6px 0;
+          border-right: 3px solid #ef4444;
+        }
+        .mr-comp-premium-img-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .mr-comp-premium-img-box.correct img {
+          border-radius: 6px 0 0 6px;
+        }
+        .mr-comp-premium-img-box.wrong img {
+          border-radius: 0 6px 6px 0;
+        }
+        .mr-comp-premium-content-box {
+          padding: 16px 20px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          text-align: center;
+        }
+        .mr-comp-premium-title {
+          margin: 0 0 8px 0;
+          font-size: 1rem;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .mr-comp-premium-desc {
+          margin: 0;
+          font-size: 0.84rem;
+          line-height: 1.6;
+          color: var(--text-strong);
+        }
+        .mr-sketch-line-middle-left {
+          position: absolute;
+          top: -24px;
+          bottom: -24px;
+          left: calc(5cm * 4 / 3);
+          width: 3px;
+          border-radius: 1px;
+          z-index: 2;
+        }
+        .mr-sketch-line-middle-right {
+          position: absolute;
+          top: -24px;
+          bottom: -24px;
+          right: calc(5cm * 4 / 3);
+          width: 3px;
+          border-radius: 1px;
+          z-index: 2;
+        }
+
         /* ─── MARKDOWN CONTENT ─── */
         .mr-content {
           line-height: 1.8;
@@ -2451,8 +2612,8 @@ export default function ManualReader() {
           <nav className="mr-header-nav">
             {categories.map(cat => {
               const catPages = pages.filter(p => p.category_id === cat.id)
-              const icon = CATEGORY_ICONS[cat.name] || DEFAULT_ICON
-              const color = CATEGORY_COLORS[cat.name] || DEFAULT_COLOR
+              const icon = getCategoryIcon(cat.name)
+              const color = getCategoryColor(cat.name)
               const isActiveCat = pageDetails?.category_id === cat.id
               
               return (
@@ -2514,8 +2675,8 @@ export default function ManualReader() {
                 ) : searchResults.map(r => (
                   <button key={r.id} className="mr-search-item"
                     onMouseDown={() => navigateToPage(r.id)}>
-                    <i className={`fa-solid ${CATEGORY_ICONS[r.categoryName] || DEFAULT_ICON}`}
-                       style={{ fontSize: '.7rem', color: CATEGORY_COLORS[r.categoryName] || DEFAULT_COLOR }} />
+                    <i className={`fa-solid ${getCategoryIcon(r.categoryName)}`}
+                       style={{ fontSize: '.7rem', color: getCategoryColor(r.categoryName) }} />
                     <span className="mr-search-item-title">{r.title}</span>
                     <span className="mr-search-item-cat">{r.categoryName}</span>
                   </button>
@@ -2565,8 +2726,8 @@ export default function ManualReader() {
                 ) : searchResults.map(r => (
                   <button key={r.id} className="mr-search-item"
                     onMouseDown={() => navigateToPage(r.id)}>
-                    <i className={`fa-solid ${CATEGORY_ICONS[r.categoryName] || DEFAULT_ICON}`}
-                       style={{ fontSize: '.7rem', color: CATEGORY_COLORS[r.categoryName] || DEFAULT_COLOR }} />
+                    <i className={`fa-solid ${getCategoryIcon(r.categoryName)}`}
+                       style={{ fontSize: '.7rem', color: getCategoryColor(r.categoryName) }} />
                     <span className="mr-search-item-title">{r.title}</span>
                     <span className="mr-search-item-cat">{r.categoryName}</span>
                   </button>
@@ -2585,8 +2746,8 @@ export default function ManualReader() {
           ) : categories.map(cat => {
             const catPages = pages.filter(p => p.category_id === cat.id)
             const isExpanded = !!expandedCategories[cat.id]
-            const icon = CATEGORY_ICONS[cat.name] || DEFAULT_ICON
-            const color = CATEGORY_COLORS[cat.name] || DEFAULT_COLOR
+            const icon = getCategoryIcon(cat.name)
+            const color = getCategoryColor(cat.name)
             const isActiveCat = pageDetails?.category_id === cat.id
 
             return (
@@ -2697,7 +2858,7 @@ export default function ManualReader() {
                 <div className="mr-recent-grid">
                   {recentPages.map(p => {
                     const catName = categories.find(c => c.id === p.category_id)?.name || ''
-                    const color = CATEGORY_COLORS[catName] || DEFAULT_COLOR
+                    const color = getCategoryColor(catName)
                     return (
                       <div key={p.id} className="mr-recent-card" onClick={() => navigateToPage(p.id)}>
                         <div className="mr-recent-card-title">{p.title}</div>
@@ -3040,13 +3201,29 @@ export default function ManualReader() {
                                 return (
                                   <tr key={i}>
                                     <td style={{ width: 'auto', textAlign: 'left' }}>
-                                      {targetPageId ? (
-                                        <button className={`mr-recipe-link ${itemClass}`} onClick={() => navigateToPage(targetPageId)}>
-                                          {r.name}
-                                        </button>
-                                      ) : (
-                                        <span className={itemClass}>{r.name}</span>
-                                      )}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {r.image_url && (
+                                          <img
+                                            src={resolveImageUrl(r.image_url)}
+                                            alt={r.name}
+                                            style={{
+                                              height: '2cm',
+                                              maxHeight: '2cm',
+                                              width: 'auto',
+                                              objectFit: 'contain',
+                                              borderRadius: '4px',
+                                              flexShrink: 0
+                                            }}
+                                          />
+                                        )}
+                                        {targetPageId ? (
+                                          <button className={`mr-recipe-link ${itemClass}`} onClick={() => navigateToPage(targetPageId)}>
+                                            {r.name}
+                                          </button>
+                                        ) : (
+                                          <span className={itemClass}>{r.name}</span>
+                                        )}
+                                      </div>
                                     </td>
                                     <td style={{ width: '100px', textAlign: 'right', fontWeight: 600 }}>
                                       {renderChannelsTooltipInline(r, globalChannels)}
@@ -3082,7 +3259,23 @@ export default function ManualReader() {
                     {pageDetails.equipments.map(eq => (
                       <tr key={eq.id}>
                         <td style={{ textAlign: 'left', fontWeight: 500 }}>
-                          {eq.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {eq.image_url && (
+                              <img
+                                src={resolveImageUrl(eq.image_url)}
+                                alt={eq.name}
+                                style={{
+                                  height: '2cm',
+                                  maxHeight: '2cm',
+                                  width: 'auto',
+                                  objectFit: 'contain',
+                                  borderRadius: '4px',
+                                  flexShrink: 0
+                                }}
+                              />
+                            )}
+                            <span>{eq.name}</span>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -3153,11 +3346,350 @@ export default function ManualReader() {
               )
             })()}
 
-            {/* Markdown content */}
+            {/* Markdown content or Premium Raw Material Spec Sheet */}
             {(() => {
               const categoryName = categories.find(c => c.id === pageDetails.category_id)?.name || '';
-              const isUrunler = categoryName === 'Ürünler';
-              return pageDetails.content && !isUrunler ? (
+              const isHammaddeler = categoryName.toLowerCase().includes('hammad');
+              const isUrunler = categoryName.toLowerCase().includes('ürün') || categoryName.toLowerCase().includes('urun');
+
+              if (isHammaddeler) {
+                const meta = pageDetails.metadata || {};
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
+                    
+                    {/* Hammadde Özellikleri Banner Grid */}
+                    <div className="mr-specs" style={{ margin: 0 }}>
+                      <div className="mr-specs-title" style={{ marginBottom: 20 }}>
+                        <i className="fa-solid fa-circle-info" /> Hammadde Spesifikasyonları
+                      </div>
+                      
+                      <div className="mr-specs-banner">
+                        <div className="mr-specs-banner-strip">
+                          {meta.ideal_product_photo && (
+                            <div className="mr-specs-banner-bg" style={{ backgroundImage: `url(${resolveImageUrl(meta.ideal_product_photo)})` }} />
+                          )}
+                        </div>
+                        
+                        <div className="mr-specs-banner-grid">
+                          {[
+                            { label: 'Sistem / ERP Kodu', val: meta.erp_code, desc: 'Sistem tanımlayıcı kodu' },
+                            { label: 'Kategori', val: meta.subcategory, desc: 'Hammadde alt kategorisi' },
+                            { label: 'Onaylı Tedarikçi(ler)', val: meta.approved_suppliers, desc: 'Onaylanmış üretici listesi' },
+                            { label: 'Çap ve Yükseklik', val: meta.dimensions, desc: 'Fiziksel boyut spesifikasyonu' },
+                            { label: 'Gramaj', val: meta.weight, desc: 'Standart porsiyon gramajı' },
+                            { label: 'Tat - Koku', val: meta.slicing_standard, desc: 'Organoleptik lezzet kriteri' },
+                            { label: 'Doku / Görünüm', val: meta.texture, desc: 'Görsel kalite spesifikasyonu' },
+                            { label: 'Sevkiyat Sıcaklığı', val: meta.delivery_temp, desc: 'Lojistik sıcaklık toleransı' },
+                            { label: 'Ambalajlama Miktarı/Düzeni', val: meta.packaging_qty, desc: 'Koli/paket içi adet yerleşimi' },
+                            { label: 'Kutu Kondisyonu', val: meta.box_condition, desc: 'Karton/ambalaj fiziksel durumu' }
+                          ].map((spec, index) => {
+                            if (!spec.val) return null;
+                            const theme = getSpecTheme(spec.label);
+                            return (
+                              <div key={index} className="mr-spec-art-card" style={{
+                                '--card-border': theme.border,
+                                '--card-bg-top': theme.bgTop,
+                                '--card-bg-bottom': theme.bgBottom,
+                                '--card-val-color': theme.valColor
+                              }}>
+                                <div className="mr-spec-art-top">
+                                  <div className="mr-spec-art-label">
+                                    <i className={`fa-solid ${theme.icon}`} style={theme.iconStyle} />
+                                    {spec.label}
+                                  </div>
+                                  <div className="mr-spec-art-val">{spec.val}</div>
+                                </div>
+                                <div className="mr-spec-art-bottom">
+                                  {spec.desc}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Storage & Shelf Life */}
+                    <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: 16, fontSize: '.84rem' }}>
+                      <h4 style={{ margin: '0 0 10px', color: '#92400e', fontWeight: 700, fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <i className="fa-solid fa-temperature-arrow-down" /> Depolama ve Raf Ömrü
+                      </h4>
+                      <div style={{ color: '#78350f', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        
+                        {/* Dynamic Shelf Lives Table */}
+                        {meta.shelf_lives && meta.shelf_lives.length > 0 ? (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontSize: '.78rem' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid #d97706', color: '#92400e', textAlign: 'left' }}>
+                                <th style={{ padding: '4px', fontWeight: 700 }}>Durum</th>
+                                <th style={{ padding: '4px', fontWeight: 700 }}>Saklama Alanı</th>
+                                <th style={{ padding: '4px', fontWeight: 700 }}>Raf Ömrü</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {meta.shelf_lives.map((item, i) => (
+                                <tr key={i} style={{ borderBottom: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                  <td style={{ padding: '4px' }}>{item.status || '-'}</td>
+                                  <td style={{ padding: '4px' }}>{item.storage_area || '-'}</td>
+                                  <td style={{ padding: '4px', fontWeight: 700 }}>{item.duration || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <ul style={{ margin: 0, paddingLeft: 16, listStyleType: 'disc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <li>Birincil Raf Ömrü (Kapalı): <strong>{meta.primary_shelf_life || '-'}</strong></li>
+                            <li>İkincil Raf Ömrü (Açık/Çözünmüş): <strong>{meta.secondary_shelf_life || '-'}</strong></li>
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dynamic parameters grid (Esnek) */}
+                    {meta.custom_parameters && meta.custom_parameters.length > 0 && (
+                      <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: 14, fontSize: '.84rem' }}>
+                        <h4 style={{ margin: '0 0 10px', color: '#5b21b6', fontWeight: 700, fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <i className="fa-solid fa-circle-exclamation" /> Ek Depolama ve İstifleme Kuralları
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                          {meta.custom_parameters.map((param, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #ede9fe', paddingBottom: 4 }}>
+                              <span style={{ color: '#7c3aed', fontWeight: 500 }}>{param.label}:</span>
+                              <strong style={{ color: '#4c1d95', wordBreak: 'break-all' }}>{param.value}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 6. Kullanıma Hazırlık */}
+                    {(() => {
+                      const hammadSteps = meta.steps && meta.steps.length > 0 
+                        ? meta.steps 
+                        : [
+                            {
+                              description: 'bu stok malı kullanım için herhangi bir ön hazırlığa gerek yoktur doğrudan kullanılabilir.',
+                              imageUrl: '__default_check__'
+                            }
+                          ];
+                      const validSteps = hammadSteps.filter(s => s.description?.trim() || s.imageUrl);
+                      if (validSteps.length === 0) return null;
+                      return (
+                        <div className="mr-steps" style={{ margin: '16px 0 0 0' }}>
+                          <div className="mr-section-head">
+                            <div className="mr-section-bar" style={{ background: activeCategoryColor }} />
+                            <span className="mr-section-label">Kullanıma Hazırlık</span>
+                          </div>
+                          
+                          <div className="mr-steps-premium-container">
+                            {hammadSteps.map((step, idx) => {
+                              const { stepNumber, title, body } = parseStepText(step.description, idx)
+                              const isAlternate = idx % 2 === 1
+                              const hasImage = !!step.imageUrl
+                              
+                              return (
+                                <div key={idx} className={`mr-step-premium-card ${isAlternate ? 'alternate' : ''} ${!hasImage ? 'no-image' : ''}`}>
+                                  {/* Sketch border lines */}
+                                  <div className="mr-sketch-line mr-sketch-line-top"></div>
+                                  <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                                  <div className="mr-sketch-line mr-sketch-line-left"></div>
+                                  <div className="mr-sketch-line mr-sketch-line-right"></div>
+                                  {hasImage && (
+                                    <div className="mr-sketch-line mr-sketch-line-middle"></div>
+                                  )}
+                                  
+                                  {/* Animated Badge */}
+                                  <div className="mr-step-badge" style={{ background: 'linear-gradient(135deg, #10b981, #047857)' }}>
+                                    <i className="fa-solid fa-circle-check" />
+                                    <span>Adım {stepNumber}</span>
+                                  </div>
+                                  
+                                  <div className="mr-step-premium-grid">
+                                    {hasImage && (
+                                      <div className="mr-step-premium-img-box" style={step.imageUrl === '__default_check__' ? { display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ecfdf5' } : {}}>
+                                        {step.imageUrl === '__default_check__' ? (
+                                          <i className="fa-solid fa-circle-check" style={{ fontSize: '2.5rem', color: '#10b981' }} />
+                                        ) : (
+                                          <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${idx + 1}`} />
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="mr-step-premium-content-box">
+                                      {title && (
+                                        <h3 className="mr-step-premium-title" style={{ color: '#047857' }}>
+                                          <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.8rem', opacity: 0.8 }} />
+                                          {title}
+                                        </h3>
+                                      )}
+                                      <div className="mr-step-premium-desc">
+                                        {body ? renderFormattedDescription(body) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* 6. Kusurlar ve Red Kriterleri */}
+                    <div style={{ background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 8, padding: 16, fontSize: '.84rem' }}>
+                      <h4 style={{ margin: '0 0 12px', color: '#c53030', fontWeight: 700, fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <i className="fa-solid fa-triangle-exclamation" /> Red Kriterleri & Kusurlar
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {meta.rejection_logistics && (
+                          <div><strong style={{ color: '#9b2c2c' }}>Lojistik Kusurları:</strong> <span style={{ color: '#742a2a' }}>{meta.rejection_logistics}</span></div>
+                        )}
+                        {meta.rejection_cutting && (
+                          <div><strong style={{ color: '#9b2c2c' }}>Kesim/Form Kusurları:</strong> <span style={{ color: '#742a2a' }}>{meta.rejection_cutting}</span></div>
+                        )}
+                        {meta.rejection_cold_chain && (
+                          <div><strong style={{ color: '#9b2c2c' }}>Soğuk Zincir/Nem:</strong> <span style={{ color: '#742a2a' }}>{meta.rejection_cold_chain}</span></div>
+                        )}
+                        {meta.rejection_visual && (
+                          <div><strong style={{ color: '#9b2c2c' }}>Görsel/Renk Kusurları:</strong> <span style={{ color: '#742a2a' }}>{meta.rejection_visual}</span></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Görsel Karşılaştırma Rehberleri — yeni dinamik yapı */}
+                    {(() => {
+                      // Yeni format: visual_comparisons dizisi
+                      const newComps = Array.isArray(meta.visual_comparisons) ? meta.visual_comparisons.filter(c => c.correct_image || c.wrong_image) : [];
+                      // Eski format: geriye dönük uyum
+                      const legacyComps = [];
+                      if (meta.compare_caramelization_correct || meta.compare_caramelization_incorrect) {
+                        legacyComps.push({ title: 'Karamelizasyon Standardı', description: meta.compare_caramelization_desc || '', correct_image: meta.compare_caramelization_correct || '', wrong_image: meta.compare_caramelization_incorrect || '' });
+                      }
+                      if (meta.compare_cutting_correct || meta.compare_cutting_incorrect) {
+                        legacyComps.push({ title: 'Tat - Koku Standardı', description: meta.compare_cutting_desc || '', correct_image: meta.compare_cutting_correct || '', wrong_image: meta.compare_cutting_incorrect || '' });
+                      }
+                      const allComps = [...newComps, ...legacyComps];
+                      if (allComps.length === 0) return null;
+                      return allComps.map((comp, i) => (
+                        <div key={i} className="mr-comp-premium-card mr-step-premium-card">
+                          {/* Sketch border lines */}
+                          <div className="mr-sketch-line mr-sketch-line-top"></div>
+                          <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                          <div className="mr-sketch-line mr-sketch-line-left"></div>
+                          <div className="mr-sketch-line mr-sketch-line-right"></div>
+                          {comp.correct_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-left"></div>
+                          )}
+                          {comp.wrong_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-right"></div>
+                          )}
+                          
+                          <div className="mr-comp-premium-grid" style={{ 
+                            display: 'grid',
+                            gridTemplateColumns: `${comp.correct_image ? 'calc(5cm * 4 / 3)' : '0px'} 1fr ${comp.wrong_image ? 'calc(5cm * 4 / 3)' : '0px'}`,
+                            alignItems: 'stretch'
+                          }}>
+                            {comp.correct_image ? (
+                              <div className="mr-comp-premium-img-box correct">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#10b981', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✓ DOĞRU</span>
+                                <img src={resolveImageUrl(comp.correct_image)} alt="Correct" />
+                              </div>
+                            ) : <div />}
+                            
+                            <div className="mr-comp-premium-content-box">
+                              {comp.title && (
+                                <h3 className="mr-comp-premium-title" style={{ color: activeCategoryColor }}>
+                                  <i className="fa-solid fa-images" style={{ fontSize: '0.85rem' }} />
+                                  {comp.title}
+                                </h3>
+                              )}
+                              {comp.description && (
+                                <div className="mr-comp-premium-desc">
+                                  {renderFormattedDescription(comp.description)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {comp.wrong_image ? (
+                              <div className="mr-comp-premium-img-box wrong">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#ef4444', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✗ YANLIŞ</span>
+                                <img src={resolveImageUrl(comp.wrong_image)} alt="Incorrect" />
+                              </div>
+                            ) : <div />}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+
+                  </div>
+                );
+              }
+
+              if (isUrunler) {
+                const meta = pageDetails.metadata || {};
+                const comps = Array.isArray(meta.visual_comparisons) ? meta.visual_comparisons.filter(c => c.correct_image || c.wrong_image) : [];
+                if (comps.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                      <div className="mr-section-head" style={{ marginBottom: 4 }}>
+                        <div className="mr-section-bar" style={{ background: activeCategoryColor }} />
+                        <span className="mr-section-label">Görsel Karşılaştırma Rehberleri</span>
+                      </div>
+                      {comps.map((comp, i) => (
+                        <div key={i} className="mr-comp-premium-card mr-step-premium-card">
+                          {/* Sketch border lines */}
+                          <div className="mr-sketch-line mr-sketch-line-top"></div>
+                          <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                          <div className="mr-sketch-line mr-sketch-line-left"></div>
+                          <div className="mr-sketch-line mr-sketch-line-right"></div>
+                          {comp.correct_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-left"></div>
+                          )}
+                          {comp.wrong_image && (
+                            <div className="mr-sketch-line mr-sketch-line-middle-right"></div>
+                          )}
+                          
+                          <div className="mr-comp-premium-grid" style={{ 
+                            display: 'grid',
+                            gridTemplateColumns: `${comp.correct_image ? 'calc(5cm * 4 / 3)' : '0px'} 1fr ${comp.wrong_image ? 'calc(5cm * 4 / 3)' : '0px'}`,
+                            alignItems: 'stretch'
+                          }}>
+                            {comp.correct_image ? (
+                              <div className="mr-comp-premium-img-box correct">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#10b981', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✓ DOĞRU</span>
+                                <img src={resolveImageUrl(comp.correct_image)} alt="Correct" />
+                              </div>
+                            ) : <div />}
+                            
+                            <div className="mr-comp-premium-content-box">
+                              {comp.title && (
+                                <h3 className="mr-comp-premium-title" style={{ color: activeCategoryColor }}>
+                                  <i className="fa-solid fa-images" style={{ fontSize: '0.85rem' }} />
+                                  {comp.title}
+                                </h3>
+                              )}
+                              {comp.description && (
+                                <div className="mr-comp-premium-desc">
+                                  {renderFormattedDescription(comp.description)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {comp.wrong_image ? (
+                              <div className="mr-comp-premium-img-box wrong">
+                                <span style={{ position: 'absolute', top: 8, left: 8, background: '#ef4444', color: '#fff', fontSize: '.65rem', fontWeight: 800, padding: '3px 8px', borderRadius: 12, zIndex: 1 }}>✗ YANLIŞ</span>
+                                <img src={resolveImageUrl(comp.wrong_image)} alt="Incorrect" />
+                              </div>
+                            ) : <div />}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return pageDetails.content ? (
                 <div className="mr-content" dangerouslySetInnerHTML={{ __html: pageDetails.content
                   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                   .replace(/^# (.*)$/gm, '<h1>$1</h1>')

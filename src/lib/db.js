@@ -280,7 +280,7 @@ class QueryBuilder {
     })
 
     if (result && result.data && this._operation === 'select') {
-      if (this._table === 'sale_items' || this._table === 'sale_categories') {
+      if (this._table === 'sale_items' || this._table === 'sale_categories' || this._table === 'stock_items' || this._table === 'semi_items') {
         if (Array.isArray(result.data)) {
           for (const row of result.data) {
             if (row && row.pos_image !== undefined) row.pos_image = resolveImageUrl(row.pos_image);
@@ -324,7 +324,7 @@ export function resolveImageUrl(url) {
   if (s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://')) {
     return s;
   }
-  const base = 'https://rms-api-production-219d.up.railway.app';
+  const base = getApiBaseUrl();
   return `${base}${s.startsWith('/') ? s : `/${s}`}`;
 }
 
