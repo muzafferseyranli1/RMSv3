@@ -8,7 +8,7 @@ import { WorkspaceBranchScope, WorkspaceGate, WorkspaceProvider, useWorkspace } 
 import { ToastProvider } from '@/hooks/useToast'
 import { logActivity } from '@/lib/activityLogger'
 import { isPublicDisplayPath } from '@/lib/publicDisplayRoutes'
-import { canAccessPath, getDefaultPathForScope } from '@/lib/workspace'
+import { WORKSPACE_SCOPE, canAccessPath, getDefaultPathForScope } from '@/lib/workspace'
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext'
 import { isDesktopMode } from '@/lib/terminalIdentity'
 import { useParams, useSearchParams } from 'react-router-dom'
@@ -77,6 +77,7 @@ const Count = lazy(() => import('@/components/pages/Count'))
 const POS = lazy(() => import('@/components/pages/POS'))
 const Garson = lazy(() => import('@/components/pages/Garson'))
 const Orders = lazy(() => import('@/components/pages/Orders'))
+const DepoOrders = lazy(() => import('@/components/pages/DepoOrders'))
 const CustomerAppAdminSettings = lazy(() => import('@/components/pages/CustomerAppAdminSettings'))
 const CustomerMobileAppPage = lazy(() => import('@/components/pages/CustomerMobileAppPage'))
 const QrMenuStandalone = lazy(() => import('@/components/pages/QrMenuStandalone'))
@@ -105,6 +106,7 @@ const Workflows = lazy(() => import('@/components/pages/Workflows'))
 const WmsLocations = lazy(() => import('@/components/pages/WmsLocations'))
 const WmsLpns = lazy(() => import('@/components/pages/WmsLpns'))
 const WmsStockParams = lazy(() => import('@/components/pages/WmsStockParams'))
+const WmsInternalTransfer = lazy(() => import('@/components/pages/WmsInternalTransfer'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -137,17 +139,32 @@ function QrRedirector() {
   return <Navigate to={`/mobil-app/qr-menu?branch=${branch}&tableToken=${token}`} replace />
 }
 
-function WarehouseBranchRoute({ title, children }) {
-  const { branchId, branchName, openWorkspacePicker } = useWorkspace()
+function WarehouseBranchRoute({ title, expectedScope = WORKSPACE_SCOPE.anadepo, children }) {
+  const { branchId, branchName, branches, loadingBranches, openWorkspacePicker } = useWorkspace()
+  const selectedBranch = branches.find(branch => branch.id === branchId) || null
+  const expectedLabel = expectedScope === WORKSPACE_SCOPE.merkezmutfak ? 'Merkez Mutfak' : 'Ana Depo'
+  const branchMatchesScope = selectedBranch?.workspaceScope === expectedScope
 
-  if (branchId) return children
+  if (branchMatchesScope) return children
+
+  if (loadingBranches) {
+    return (
+      <div className="card" style={{ padding: 24, borderColor: '#bfdbfe', background: '#eff6ff' }}>
+        <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: '.85rem', color: '#1e40af', lineHeight: 1.6 }}>
+          {expectedLabel} baglami yukleniyor...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="card" style={{ padding: 24, borderColor: '#bfdbfe', background: '#eff6ff' }}>
       <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 8 }}>{title}</div>
       <div style={{ fontSize: '.85rem', color: '#1e40af', lineHeight: 1.6 }}>
-        Bu ekran branch baglami ile calisir. Merkez depo / mutfak alaninda devam etmek icin once bir sube secin.
-        {branchName ? ` Mevcut secili sube: ${branchName}.` : ''}
+        Bu ekran {expectedLabel} baglami ile calisir.
+        {branchName ? ` Mevcut secim: ${branchName}.` : ''}
+        {' '}Devam etmek icin calisma baglamindan uygun {expectedLabel.toLowerCase()} kaydini secin.
       </div>
       <button
         type="button"
@@ -155,7 +172,7 @@ function WarehouseBranchRoute({ title, children }) {
         onClick={openWorkspacePicker}
         style={{ marginTop: 16 }}
       >
-        <i className="fa-solid fa-store" /> Sube Sec
+        <i className="fa-solid fa-warehouse" /> {expectedLabel} Sec
       </button>
     </div>
   )
@@ -461,9 +478,9 @@ function AppShell() {
               <Route path="/depo-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/depo-tasks" replace /></WarehouseBranchRoute>} />
               <Route path="/depo-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/depo-tasks" replace /></WarehouseBranchRoute>} />
               <Route path="/depo-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions scopeVariant="anadepo" /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler"><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-formlar" element={<WarehouseBranchRoute title="Formlar"><FormSubmissions scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-geribildirimler" element={<WarehouseBranchRoute title="Geribildirimler" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-geribildirimler/:ticketId" element={<WarehouseBranchRoute title="Geribildirimler" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Navigate to="/merkezmutfak-tasks" replace /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-formlar" element={<WarehouseBranchRoute title="Formlar" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><FormSubmissions scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/form-sablonlari" element={<FormTemplates />} />
               <Route path="/formlar" element={<FormSubmissions />} />
               <Route path="/manual-yonetimi" element={<ManualManagement />} />
@@ -472,7 +489,7 @@ function AppShell() {
               <Route path="/geribildirim-kategorileri" element={<TicketCategories />} />
               <Route path="/kiosk-management-desktop" element={<Navigate to="/kiosk-management" replace />} />
               {/* Ana Depo İşlemleri */}
-              <Route path="/depo-orders" element={<WarehouseBranchRoute title="Siparişler"><Orders /></WarehouseBranchRoute>} />
+              <Route path="/depo-orders" element={<WarehouseBranchRoute title="Siparişler"><DepoOrders /></WarehouseBranchRoute>} />
               <Route path="/depo-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="anadepo" /></WarehouseBranchRoute>} />
@@ -485,17 +502,18 @@ function AppShell() {
               <Route path="/wms-lpns" element={<WarehouseBranchRoute title="LPN / Paletler"><WmsLpns /></WarehouseBranchRoute>} />
               <Route path="/wms-stock-params" element={<WarehouseBranchRoute title="Stok Parametreleri"><WmsStockParams /></WarehouseBranchRoute>} />
               <Route path="/depo-mal-kabul" element={<WarehouseBranchRoute title="Mal Kabul"><MalKabul /></WarehouseBranchRoute>} />
+              <Route path="/depo-iclokasyon-tasima" element={<WarehouseBranchRoute title="Depo İçi Lokasyon Taşıma"><WmsInternalTransfer /></WarehouseBranchRoute>} />
 
               {/* Merkez Mutfak İşlemleri */}
-              <Route path="/merkezmutfak-uretim" element={<Production />} />
-              <Route path="/merkezmutfak-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="merkezmutfak" /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="merkezmutfak" /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-uretim" element={<WarehouseBranchRoute title="Uretim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Production /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-documents" element={<WarehouseBranchRoute title="Belge Girisi" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Documents mode="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-tasks" element={<WarehouseBranchRoute title="Gorevler" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Tasks scope="merkezmutfak" /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-count" element={<WarehouseBranchRoute title="Sayim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Count scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="merkezmutfak" />} />
               <Route path="/merkezmutfak-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="merkezmutfak" />} />
               <Route path="/merkezmutfak-transfer" element={<InventoryTransfer scopeVariant="merkezmutfak" />} />
-              <Route path="/merkezmutfak-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari"><TimerManager /></WarehouseBranchRoute>} />
-              <Route path="/merkezmutfak-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari"><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-time-tracking/timers" element={<WarehouseBranchRoute title="Zaman Sayaclari" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><TimerManager /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-time-tracking/timers/presets" element={<WarehouseBranchRoute title="Zaman Sayaclari On Ayarlari" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><TimeTrackingTimerPresets /></WarehouseBranchRoute>} />
               <Route path="/gorev-yoneticisi" element={<TaskManager />} />
               <Route path="/is-akisleri" element={<Workflows />} />
               <Route path="*" element={<Navigate to={defaultPath} replace />} />

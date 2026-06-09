@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
@@ -72,6 +72,8 @@ function createDefaultFilters(branchId = '') {
     dateFrom: isoDateOffset(-DEFAULT_LOOKBACK_DAYS),
     dateTo: isoDateOffset(0),
     search: '',
+    locationId: '',
+    lpnId: '',
   }
 }
 
@@ -96,6 +98,10 @@ const INVENTORY_MOVEMENT_SELECT = [
   'avg_unit_cost_after',
   'sales_channel_name',
   'portion_name',
+  'location_id',
+  'lpn_id',
+  'lot_number',
+  'expiration_date',
   'notes',
 ].join(',')
 
@@ -113,6 +119,8 @@ const EMPTY_FILTERS = {
   dateFrom: isoDateOffset(-DEFAULT_LOOKBACK_DAYS),
   dateTo: isoDateOffset(0),
   search: '',
+  locationId: '',
+  lpnId: '',
 }
 
 function formatDateTime(value) {
@@ -214,10 +222,13 @@ export default function InventoryMovements() {
   const toast = useToast()
   const { scope, branchId: workspaceBranchId, branches: workspaceBranches } = useWorkspace()
   const branchLocked = isBranchScopedScope(scope) && !!workspaceBranchId
+  const isWmsMode = scope === 'anadepo'
   const [filters, setFilters] = useState(() => createDefaultFilters(branchLocked ? workspaceBranchId : ''))
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState([])
   const [branches, setBranches] = useState([])
+  const [wmsLocations, setWmsLocations] = useState([])
+  const [wmsLpns, setWmsLpns] = useState([])
   const [columnFilters, setColumnFilters] = useState({
     date: '',
     branch: '',
@@ -268,6 +279,16 @@ export default function InventoryMovements() {
 
       setBranches(resolvedBranches)
 
+      // Load WMS locations and LPNs for WMS filter dropdowns
+      if (isWmsMode) {
+        const [{ data: locData }, { data: lpnData }] = await Promise.all([
+          db.from('warehouse_locations').select('id,zone_code,aisle,rack,level,bin,branch_id').eq('is_active', true).order('zone_code'),
+          db.from('warehouse_lpns').select('id,lpn_code,branch_id').eq('status', 'active').order('lpn_code'),
+        ])
+        setWmsLocations(locData || [])
+        setWmsLpns(lpnData || [])
+      }
+
       if (!branchLocked && !filters.branchId) {
         setRows([])
         setLoading(false)
@@ -286,7 +307,11 @@ export default function InventoryMovements() {
           throw movementsResult.error
         }
 
-        const batchRows = (movementsResult.data || []).filter(row => branchMatchesRecord(row, selectedBranch))
+        let batchRows = (movementsResult.data || []).filter(row => branchMatchesRecord(row, selectedBranch))
+
+        // Client-side WMS filters (location_id / lpn_id)
+        if (filters.locationId) batchRows = batchRows.filter(r => r.location_id === filters.locationId)
+        if (filters.lpnId) batchRows = batchRows.filter(r => r.lpn_id === filters.lpnId)
 
         if (batchRows.length > DEFAULT_ROW_LIMIT) {
           toast('Gosterim son hareketlerle sinirlandi. Daha eski kayitlar icin tarih araligini daraltin.', 'info')
@@ -303,7 +328,7 @@ export default function InventoryMovements() {
     } finally {
       setLoading(false)
     }
-  }, [buildMovementParams, filters, toast, workspaceBranches])
+  }, [buildMovementParams, filters, isWmsMode, toast, workspaceBranches])
 
   useEffect(() => {
     load()
@@ -545,6 +570,34 @@ export default function InventoryMovements() {
               <input className="f-input" type="date" value={filters.dateTo} onChange={e => updateFilter('dateTo', e.target.value)} />
             </div>
           </div>
+          {isWmsMode && (
+            <>
+              <div>
+                <div className="f-label">Lokasyon</div>
+                <select className="f-input" style={selectStyle()} value={filters.locationId} onChange={e => updateFilter('locationId', e.target.value)}>
+                  <option value="">Tüm Lokasyonlar</option>
+                  {wmsLocations
+                    .filter(l => !filters.branchId || l.branch_id === filters.branchId)
+                    .map(l => {
+                      const parts = [l.zone_code, l.aisle ? `K${l.aisle}` : null, l.rack ? `R${l.rack}` : null, l.level ? `S${l.level}` : null, l.bin ? `G${l.bin}` : null].filter(Boolean)
+                      const addr = parts.join('-') || l.id
+                      return <option key={l.id} value={l.id}>{addr}</option>
+                    })
+                  }
+                </select>
+              </div>
+              <div>
+                <div className="f-label">LPN / Palet</div>
+                <select className="f-input" style={selectStyle()} value={filters.lpnId} onChange={e => updateFilter('lpnId', e.target.value)}>
+                  <option value="">Tüm LPN'ler</option>
+                  {wmsLpns
+                    .filter(l => !filters.branchId || l.branch_id === filters.branchId)
+                    .map(l => <option key={l.id} value={l.id}>{l.lpn_code}</option>)
+                  }
+                </select>
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>

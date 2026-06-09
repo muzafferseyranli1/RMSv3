@@ -82,7 +82,7 @@ export function getAllBranches(treeValue) {
   function walk(nodes) {
     for (const node of nodes || []) {
       if (node?.type === 'sube' || node?.type === 'anadepo' || node?.type === 'mutfak') {
-        result.push({ id: node.id, name: node.name })
+        result.push({ id: node.id, name: node.name, type: node.type })
       }
       walk(node?.children || [])
     }
@@ -127,6 +127,36 @@ export function applyBranchFilter(query, branch) {
 }
 
 export function buildInventoryBalanceRows(movementRows) {
+  // 1. Group movements by stock_item_id to calculate aggregates
+  const aggregates = new Map()
+
+  for (const row of movementRows || []) {
+    const stockItemId = row?.stock_item_id
+    if (!stockItemId) continue
+
+    const qty = Number(row.quantity || 0)
+    const direction = row.direction || 'in'
+    const signedQty = direction === 'in' ? qty : -qty
+
+    const meta = typeof row.meta === 'string' ? parseJsonValue(row.meta, {}) : (row.meta || {})
+    const status = meta.availability_status || 'available'
+
+    if (!aggregates.has(stockItemId)) {
+      aggregates.set(stockItemId, {
+        quarantine: 0,
+        putaway_pending: 0,
+      })
+    }
+
+    const agg = aggregates.get(stockItemId)
+    if (status === 'quarantine') {
+      agg.quarantine += signedQty
+    } else if (status === 'putaway_pending') {
+      agg.putaway_pending += signedQty
+    }
+  }
+
+  // 2. Build rows using the latest movement row for WAC/total balance
   const rows = []
   const seen = new Set()
 
@@ -134,14 +164,23 @@ export function buildInventoryBalanceRows(movementRows) {
     const stockItemId = row?.stock_item_id
     if (!stockItemId || seen.has(stockItemId)) continue
     seen.add(stockItemId)
+
+    const agg = aggregates.get(stockItemId) || { quarantine: 0, putaway_pending: 0 }
+    const totalQty = Number(row?.balance_qty_after || 0)
+    // Available (usable) stock = total physical stock minus quarantine and putaway pending
+    const availableQty = Math.max(totalQty - agg.quarantine - agg.putaway_pending, 0)
+
     rows.push({
       stock_item_id: stockItemId,
       branch_id: row?.branch_id || null,
       branch_name: row?.branch_name || null,
-      balance_qty_after: Number(row?.balance_qty_after || 0),
+      balance_qty_after: totalQty, // Keep balance_qty_after as total physical stock for ledger/cost calculations
       balance_total_cost_after: Number(row?.balance_total_cost_after || 0),
       avg_unit_cost_after: Number(row?.avg_unit_cost_after || 0),
       last_movement_at: row?.movement_at || null,
+      available_qty: availableQty, // Available/usable stock
+      quarantine_qty: agg.quarantine,
+      putaway_pending_qty: agg.putaway_pending,
     })
   }
 
@@ -710,16 +749,22 @@ export function summarizeLines(lines, vatRate = 0.1) {
 export function resolveLineSupplierId(item, flowSupplierId, allSuppliers = []) {
   if (!item) return flowSupplierId
   const list = parseJsonValue(item.suppliers_list, [])
-  const def = list.find(s => s.is_default || s.is_default === true)?.supp_id
-  if (def && allSuppliers.some(s => String(s.id).toLowerCase() === String(def).toLowerCase())) return def
-  if (item.supp_id && allSuppliers.some(s => String(s.id).toLowerCase() === String(item.supp_id).toLowerCase())) return item.supp_id
 
+  // 1. Eşleşen akış tedarikçisi ürünün tedarikçi listesinde (suppliers_list) varsa en öncelikli olarak seçilir
   if (flowSupplierId && list.some(s => String(s.supp_id).toLowerCase() === String(flowSupplierId).toLowerCase())) {
     if (allSuppliers.some(s => String(s.id).toLowerCase() === String(flowSupplierId).toLowerCase())) {
       return flowSupplierId
     }
   }
 
+  // 2. default tedarikçi
+  const def = list.find(s => s.is_default || s.is_default === true)?.supp_id
+  if (def && allSuppliers.some(s => String(s.id).toLowerCase() === String(def).toLowerCase())) return def
+
+  // 3. stok kartındaki birincil supp_id
+  if (item.supp_id && allSuppliers.some(s => String(s.id).toLowerCase() === String(item.supp_id).toLowerCase())) return item.supp_id
+
+  // 4. listedeki ilk geçerli aktif tedarikçi
   const firstValid = list.find(s => allSuppliers.some(x => String(x.id).toLowerCase() === String(s.supp_id).toLowerCase()))?.supp_id
   if (firstValid) return firstValid
 

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -190,6 +190,10 @@ function normalizeRow(row) {
     itemId: row?.itemId || '',
     quantity: row?.quantity ?? '',
     portionId: row?.portionId || STANDARD_PORTION_ID,
+    location_id: row?.location_id || '',
+    lpn_id: row?.lpn_id || '',
+    lot_number: row?.lot_number || '',
+    expiration_date: row?.expiration_date || '',
   }
 }
 
@@ -428,6 +432,10 @@ function buildMovementPayload({
     balance_qty_after: nextQty,
     balance_total_cost_after: nextTotalCost,
     calc_status: 'calculated',
+    location_id: documentLine.location_id || null,
+    lpn_id: documentLine.lpn_id || null,
+    lot_number: documentLine.lot_number || null,
+    expiration_date: documentLine.expiration_date || null,
     notes: note || null,
     meta: {
       operation_key: operation.sourceDocType,
@@ -453,13 +461,115 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
     branches = [],
   } = useWorkspace()
 
+  const isWmsMode = scope === 'anadepo' || scopeVariant === 'anadepo'
   const operation = OPERATION_CONFIG[operationKey] || OPERATION_CONFIG.waste
-  const branchLocked = isBranchScopedScope(scope) && !!workspaceBranchId
+  const branchLocked = (isBranchScopedScope(scope) || isWmsMode) && !!workspaceBranchId
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
   const [loadingDocuments, setLoadingDocuments] = useState(false)
+  const [locations, setLocations] = useState([])
+  const [lpns, setLpns] = useState([])
+  const [rowBalances, setRowBalances] = useState({})
+
+  useEffect(() => {
+    if (!isWmsMode || !workspaceBranchId) {
+      setLocations([])
+      setLpns([])
+      return
+    }
+    async function loadWms() {
+      try {
+        const [{ data: locData }, { data: lpnData }] = await Promise.all([
+          db.from('warehouse_locations').select('*').eq('branch_id', workspaceBranchId).eq('is_active', true).order('zone_code'),
+          db.from('warehouse_lpns').select('*').eq('branch_id', workspaceBranchId)
+        ])
+        setLocations(locData || [])
+        setLpns(lpnData || [])
+      } catch (e) {
+        toast('WMS verileri yüklenemedi: ' + e.message, 'error')
+      }
+    }
+    loadWms()
+  }, [isWmsMode, workspaceBranchId, toast])
+
+  function formatAddress(loc) {
+    if (!loc) return '—'
+    const parts = [
+      loc.zone_code,
+      loc.aisle ? `K${loc.aisle}` : null,
+      loc.rack ? `R${loc.rack}` : null,
+      loc.level ? `S${loc.level}` : null,
+      loc.bin ? `G${loc.bin}` : null,
+    ].filter(Boolean)
+    return parts.join('-') || '—'
+  }
+
+  async function fetchItemBalances(rowId, itemId, itemType) {
+    if (!isWmsMode || !workspaceBranchId || !itemId || itemType === 'sale_item') {
+      setRowBalances(prev => ({ ...prev, [rowId]: [] }))
+      return
+    }
+
+    try {
+      const { data, error } = await db
+        .from('inventory_movements')
+        .select('quantity, direction, location_id, lpn_id, lot_number, expiration_date, avg_unit_cost_after, unit_cost, meta')
+        .eq('branch_id', workspaceBranchId)
+        .eq('item_type', itemType)
+        .eq(itemType === 'stock_item' ? 'stock_item_id' : 'semi_item_id', itemId)
+        .is('deleted_at', null)
+        .eq('is_cancelled', false)
+
+      if (error) throw error
+
+      // Aggregate balances
+      const balancesMap = new Map()
+      for (const m of data || []) {
+        const qty = Number(m.quantity || 0)
+        const signed = m.direction === 'in' ? qty : -qty
+
+        const meta = typeof m.meta === 'string' ? parseJsonValue(m.meta, {}) : (m.meta || {})
+        const status = meta.availability_status || 'available'
+        if (status === 'quarantine' || status === 'putaway_pending') continue
+
+        const loc = m.location_id || ''
+        const lpn = m.lpn_id || ''
+        const lot = m.lot_number || ''
+        const exp = m.expiration_date || ''
+
+        const comboKey = `${loc}__${lpn}__${lot}__${exp}`
+        if (!balancesMap.has(comboKey)) {
+          balancesMap.set(comboKey, {
+            location_id: loc || null,
+            lpn_id: lpn || null,
+            lot_number: lot || null,
+            expiration_date: exp || null,
+            qty: 0,
+          })
+        }
+        balancesMap.get(comboKey).qty += signed
+      }
+
+      const activeBalances = Array.from(balancesMap.values())
+        .filter(b => b.qty > 0.0001)
+
+      setRowBalances(prev => ({ ...prev, [rowId]: activeBalances }))
+    } catch (e) {
+      toast('Bakiye yüklenemedi: ' + e.message, 'error')
+    }
+  }
+
+  useEffect(() => {
+    if (!editorOpen || !isWmsMode) return
+    const rows = form.rows || []
+    rows.forEach(row => {
+      if (row.itemId && !rowBalances[row.id]) {
+        fetchItemBalances(row.id, row.itemId, row.itemType)
+      }
+    })
+  }, [editorOpen, form.rows, isWmsMode])
   const [stockItems, setStockItems] = useState([])
   const [semiItems, setSemiItems] = useState([])
   const [saleItems, setSaleItems] = useState([])
@@ -649,16 +759,30 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
         if (row.id !== rowId) return row
 
         if (field === 'itemType') {
+          setRowBalances(prev => {
+            const next = { ...prev }
+            delete next[rowId]
+            return next
+          })
           return {
             ...row,
             itemType: value || 'stock_item',
             itemId: '',
             quantity: '',
             portionId: STANDARD_PORTION_ID,
+            location_id: '',
+            lpn_id: '',
+            lot_number: '',
+            expiration_date: '',
           }
         }
 
         if (field === 'itemId') {
+          setRowBalances(prev => {
+            const next = { ...prev }
+            delete next[rowId]
+            return next
+          })
           if (row.itemType === 'sale_item') {
             const saleItem = saleItemsById.get(String(value))
             const portionOptions = getSalePortionOptions(saleItem)
@@ -667,6 +791,10 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
               ...row,
               itemId: value,
               portionId: portionOptions[0]?.value || STANDARD_PORTION_ID,
+              location_id: '',
+              lpn_id: '',
+              lot_number: '',
+              expiration_date: '',
             }
           }
 
@@ -674,6 +802,10 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
             ...row,
             itemId: value,
             portionId: STANDARD_PORTION_ID,
+            location_id: '',
+            lpn_id: '',
+            lot_number: '',
+            expiration_date: '',
           }
         }
 
@@ -785,6 +917,10 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
           itemId: String(meta.row_item_id || movement.stock_item_id || movement.semi_item_id || ''),
           quantity: meta.row_quantity_original ?? movement.quantity ?? '',
           portionId: meta.sale_item_portion_id || STANDARD_PORTION_ID,
+          location_id: movement.location_id || '',
+          lpn_id: movement.lpn_id || '',
+          lot_number: movement.lot_number || '',
+          expiration_date: movement.expiration_date || '',
         }
 
         if (existing.itemType === 'sale_item') {
@@ -870,6 +1006,13 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
       if (safeNumber(row.quantity) <= 0) {
         toast('Tum satirlarda miktar sifirdan buyuk olmali.', 'error')
         return null
+      }
+
+      if (isWmsMode) {
+        if (!row.location_id) {
+          toast('WMS modunda tüm satırlarda lokasyon seçilmesi zorunludur.', 'error')
+          return null
+        }
       }
     }
 
@@ -1000,7 +1143,14 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
       for (const row of validatedRows) {
         if (row.itemType === 'sale_item') {
           const expandedRows = await expandSaleItemRow(row)
-          documentLines.push(...expandedRows)
+          const mappedExpanded = expandedRows.map(er => ({
+            ...er,
+            location_id: row.location_id || null,
+            lpn_id: row.lpn_id || null,
+            lot_number: row.lot_number || null,
+            expiration_date: row.expiration_date || null,
+          }))
+          documentLines.push(...mappedExpanded)
           continue
         }
 
@@ -1025,6 +1175,10 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
           saleItemName: null,
           saleItemPortionId: null,
           saleItemPortionName: null,
+          location_id: row.location_id || null,
+          lpn_id: row.lpn_id || null,
+          lot_number: row.lot_number || null,
+          expiration_date: row.expiration_date || null,
         })
       }
 
@@ -1310,20 +1464,29 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
 
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#fff', overflow: 'visible' }}>
               <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-                <table className="tbl" style={{ minWidth: 980, marginBottom: 0 }}>
+                <table className="tbl" style={{ minWidth: isWmsMode ? 1280 : 980, marginBottom: 0 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: '19%' }}>Malzeme Tipi</th>
-                      <th style={{ width: '36%' }}>Malzeme</th>
-                      <th style={{ width: '18%' }}>Porsiyon</th>
-                      <th style={{ width: '15%' }}>Miktar</th>
-                      <th style={{ width: '12%' }}>Islem</th>
+                      <th style={{ width: isWmsMode ? '10%' : '19%' }}>Malzeme Tipi</th>
+                      <th style={{ width: isWmsMode ? '20%' : '36%' }}>Malzeme</th>
+                      {isWmsMode && (
+                        <>
+                          <th style={{ width: '18%' }}>Mevcut Stoklar</th>
+                          <th style={{ width: '12%' }}>Lokasyon *</th>
+                          <th style={{ width: '10%' }}>LPN</th>
+                          <th style={{ width: '12%' }}>Lot / SKT</th>
+                        </>
+                      )}
+                      <th style={{ width: isWmsMode ? '10%' : '18%' }}>Porsiyon</th>
+                      <th style={{ width: isWmsMode ? '8%' : '15%' }}>Miktar</th>
+                      <th style={{ width: isWmsMode ? '5%' : '12%' }}>Islem</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(form.rows || []).map(row => {
                       const selectedItem = getRowSelectedItem(row)
                       const salePortionOptions = row.itemType === 'sale_item' ? getSalePortionOptions(selectedItem) : []
+                      const balancesList = rowBalances[row.id] || []
 
                       return (
                         <tr key={row.id}>
@@ -1350,6 +1513,93 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
                               disabled={loading}
                             />
                           </td>
+
+                          {isWmsMode && (
+                            <>
+                              {/* Mevcut Stoklar Select */}
+                              <td style={{ verticalAlign: 'top' }}>
+                                <select
+                                  className="f-input"
+                                  style={{ padding: '6px', fontSize: '.8rem' }}
+                                  value=""
+                                  onChange={e => {
+                                    if (!e.target.value) return
+                                    const selectedBal = balancesList[Number(e.target.value)]
+                                    if (selectedBal) {
+                                      updateRow(row.id, 'location_id', selectedBal.location_id || '')
+                                      updateRow(row.id, 'lpn_id', selectedBal.lpn_id || '')
+                                      updateRow(row.id, 'lot_number', selectedBal.lot_number || '')
+                                      updateRow(row.id, 'expiration_date', selectedBal.expiration_date || '')
+                                    }
+                                  }}
+                                  disabled={balancesList.length === 0}
+                                >
+                                  <option value="">
+                                    {balancesList.length === 0 ? 'Stok Yok' : `Seçiniz (${balancesList.length} bky)`}
+                                  </option>
+                                  {balancesList.map((bal, idx) => {
+                                    const locName = formatAddress(locations.find(l => l.id === bal.location_id))
+                                    const lpnName = lpns.find(lp => lp.id === bal.lpn_id)?.lpn_code || 'Yok'
+                                    return (
+                                      <option key={idx} value={idx}>
+                                        {`${locName} | LPN: ${lpnName} | Lot: ${bal.lot_number || 'Yok'} | SKT: ${bal.expiration_date || 'Yok'} | Bky: ${bal.qty}`}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                              </td>
+
+                              {/* Lokasyon Select */}
+                              <td style={{ verticalAlign: 'top' }}>
+                                <select
+                                  className="f-input"
+                                  style={{ padding: '6px', fontSize: '.8rem' }}
+                                  value={row.location_id || ''}
+                                  onChange={e => updateRow(row.id, 'location_id', e.target.value)}
+                                >
+                                  <option value="">Seçiniz *</option>
+                                  {locations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>{formatAddress(loc)}</option>
+                                  ))}
+                                </select>
+                              </td>
+
+                              {/* LPN Select */}
+                              <td style={{ verticalAlign: 'top' }}>
+                                <select
+                                  className="f-input"
+                                  style={{ padding: '6px', fontSize: '.8rem' }}
+                                  value={row.lpn_id || ''}
+                                  onChange={e => updateRow(row.id, 'lpn_id', e.target.value)}
+                                >
+                                  <option value="">Yok</option>
+                                  {lpns.map(lpn => (
+                                    <option key={lpn.id} value={lpn.id}>{lpn.lpn_code}</option>
+                                  ))}
+                                </select>
+                              </td>
+
+                              {/* Lot & SKT Inputs */}
+                              <td style={{ verticalAlign: 'top' }}>
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <input
+                                    className="f-input"
+                                    style={{ padding: '4px 6px', fontSize: '.78rem' }}
+                                    placeholder="Lot No"
+                                    value={row.lot_number || ''}
+                                    onChange={e => updateRow(row.id, 'lot_number', e.target.value)}
+                                  />
+                                  <input
+                                    type="date"
+                                    className="f-input"
+                                    style={{ padding: '4px 6px', fontSize: '.78rem' }}
+                                    value={row.expiration_date || ''}
+                                    onChange={e => updateRow(row.id, 'expiration_date', e.target.value)}
+                                  />
+                                </div>
+                              </td>
+                            </>
+                          )}
 
                           <td style={{ verticalAlign: 'top' }}>
                             {row.itemType === 'sale_item' && salePortionOptions.length > 0 ? (

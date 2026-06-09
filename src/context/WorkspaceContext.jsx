@@ -69,6 +69,26 @@ function writeLocalStorage(key, value) {
   }
 }
 
+function getRequiredWorkspaceBranchScope(scope) {
+  const normalizedScope = normalizeWorkspaceScope(scope)
+  if (normalizedScope === WORKSPACE_SCOPE.anadepo) return WORKSPACE_SCOPE.anadepo
+  if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) return WORKSPACE_SCOPE.merkezmutfak
+  return ''
+}
+
+function findWorkspaceBranchByScope(branches, workspaceScope) {
+  if (!workspaceScope) return null
+  return branches.find(branch => branch.workspaceScope === workspaceScope) || null
+}
+
+function branchMatchesSelectionScope(branch, scope) {
+  if (!branch) return false
+  const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(scope)
+  if (requiredWorkspaceScope) return branch.workspaceScope === requiredWorkspaceScope
+  if (isBranchScopedScope(scope)) return !getRequiredWorkspaceBranchScope(branch.workspaceScope)
+  return true
+}
+
 function overlayStyle(isBlocking) {
   return {
     position: 'fixed',
@@ -541,8 +561,13 @@ export function WorkspaceProvider({
 
   useEffect(() => {
     writeLocalStorage(WORKSPACE_BRANCH_STORAGE_KEY, branchId)
-    if (branchId) writeLocalStorage(POS_BRANCH_KEY, branchId)
-  }, [branchId])
+    const selectedBranch = branches.find(branch => branch.id === branchId)
+    if (branchMatchesSelectionScope(selectedBranch, WORKSPACE_SCOPE.branch)) {
+      writeLocalStorage(POS_BRANCH_KEY, branchId)
+    } else if (selectedBranch && getRequiredWorkspaceBranchScope(selectedBranch.workspaceScope)) {
+      writeLocalStorage(POS_BRANCH_KEY, '')
+    }
+  }, [branchId, branches])
 
   useEffect(() => {
     const resolvedBranchName = branches.find(branch => branch.id === branchId)?.name || ''
@@ -584,10 +609,54 @@ export function WorkspaceProvider({
       setPickerOpen(true)
       return
     }
-    if (isBranchScopedScope(scope) && !branchId) {
+    const selectedBranch = branches.find(branch => branch.id === branchId)
+    const branchSelectionRequired = isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope)
+    if (branchSelectionRequired && !branchMatchesSelectionScope(selectedBranch, scope)) {
       setPickerOpen(true)
     }
-  }, [scope, branchId, publicKioskPath, forcedBranchId, terminalLocked])
+  }, [scope, branchId, branches, publicKioskPath, forcedBranchId, terminalLocked])
+
+  useEffect(() => {
+    if (terminalLocked) return
+    if (publicKioskPath) return
+    if (forcedBranchId) return
+    if (loadingBranches) return
+    if (!scope) return
+
+    const selectedBranch = branches.find(branch => branch.id === branchId)
+
+    if (branchMatchesSelectionScope(selectedBranch, scope)) {
+      if (isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope)) {
+        setPickerOpen(false)
+      }
+      return
+    }
+
+    if (isBranchScopedScope(scope)) {
+      const fallbackBranch = branches.find(branch => !getRequiredWorkspaceBranchScope(branch.workspaceScope))
+      if (fallbackBranch) {
+        setBranchId(fallbackBranch.id)
+        setPickerOpen(false)
+      } else {
+        setBranchId('')
+        setPickerOpen(true)
+      }
+      return
+    }
+
+    const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(scope)
+    if (!requiredWorkspaceScope) return
+
+    const fallbackBranch = findWorkspaceBranchByScope(branches, requiredWorkspaceScope)
+    if (fallbackBranch) {
+      setBranchId(fallbackBranch.id)
+      setPickerOpen(false)
+      return
+    }
+
+    setBranchId('')
+    setPickerOpen(true)
+  }, [scope, branchId, branches, loadingBranches, publicKioskPath, forcedBranchId, terminalLocked])
 
   useEffect(() => {
     if (scope) return
@@ -612,6 +681,17 @@ export function WorkspaceProvider({
       return
     }
 
+    const requiredWorkspaceScope = getRequiredWorkspaceBranchScope(nextScope)
+    if (requiredWorkspaceScope) {
+      if (loadingBranches) return
+      const resolvedBranch = findWorkspaceBranchByScope(branches, requiredWorkspaceScope)
+      if (!resolvedBranch) return
+      setScope(nextScope)
+      setBranchId(resolvedBranch.id)
+      setPickerOpen(false)
+      return
+    }
+
     setScope(nextScope)
     setPickerOpen(false)
   }, [
@@ -625,13 +705,22 @@ export function WorkspaceProvider({
     terminalLocked,
   ])
 
-  const branchName = useMemo(
-    () => branches.find(branch => branch.id === branchId)?.name
-      || (persistedBranchMeta.id === branchId ? persistedBranchMeta.name || '' : ''),
-    [branches, branchId, persistedBranchMeta],
+  const selectedBranch = useMemo(
+    () => branches.find(branch => branch.id === branchId) || null,
+    [branches, branchId],
   )
 
-  const hasSelection = !!scope && (!isBranchScopedScope(scope) || !!branchId)
+  const branchName = useMemo(
+    () => selectedBranch?.name
+      || (persistedBranchMeta.id === branchId ? persistedBranchMeta.name || '' : ''),
+    [selectedBranch, branchId, persistedBranchMeta],
+  )
+
+  const hasSelection = !!scope && (
+    (isBranchScopedScope(scope) || getRequiredWorkspaceBranchScope(scope))
+      ? branchMatchesSelectionScope(selectedBranch, scope)
+      : true
+  )
 
   const saveSelection = useCallback(({ scope: nextScope, branchId: nextBranchId }) => {
     const normalizedScope = normalizedForcedScope || normalizeWorkspaceScope(nextScope)
@@ -641,16 +730,20 @@ export function WorkspaceProvider({
     let resolvedBranchId = nextBranchId || branchId || ''
     
     if (normalizedScope === WORKSPACE_SCOPE.branch) {
-      resolvedBranchId = nextBranchId || branchId || findPreferredBranchContext(branches, branchId)?.branchId || ''
+      const requestedBranch = branches.find(branch => branch.id === (nextBranchId || branchId))
+      const fallbackBranch = branches.find(branch => !getRequiredWorkspaceBranchScope(branch.workspaceScope))
+      resolvedBranchId = branchMatchesSelectionScope(requestedBranch, normalizedScope)
+        ? requestedBranch.id
+        : fallbackBranch?.id || ''
     } else if (normalizedScope === WORKSPACE_SCOPE.anadepo) {
       const adBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.anadepo)
-      if (adBranch) resolvedBranchId = adBranch.id
+      resolvedBranchId = adBranch?.id || ''
     } else if (normalizedScope === WORKSPACE_SCOPE.merkezmutfak) {
       const mmBranch = branches.find(b => b.workspaceScope === WORKSPACE_SCOPE.merkezmutfak)
-      if (mmBranch) resolvedBranchId = mmBranch.id
+      resolvedBranchId = mmBranch?.id || ''
     }
 
-    if (normalizedScope === WORKSPACE_SCOPE.branch && !resolvedBranchId) return
+    if ((isBranchScopedScope(normalizedScope) || getRequiredWorkspaceBranchScope(normalizedScope)) && !resolvedBranchId) return
 
     setScope(normalizedScope)
     setBranchId(resolvedBranchId)
@@ -669,7 +762,7 @@ export function WorkspaceProvider({
     loadingBranches,
     pickerOpen,
     hasSelection,
-    branchLocked: isBranchScopedScope(scope) && !!branchId,
+    branchLocked: (isBranchScopedScope(scope) || !!getRequiredWorkspaceBranchScope(scope)) && !!branchId,
     openWorkspacePicker: () => setPickerOpen(true),
     closeWorkspacePicker: closePicker,
     setWorkspaceSelection: saveSelection,

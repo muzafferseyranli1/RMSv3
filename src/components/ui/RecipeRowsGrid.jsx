@@ -120,7 +120,8 @@ export default function RecipeRowsGrid({
               {rows.map((row, index) => {
                 const used = calcUsed(row.qty, row.waste_pct)
                 const cost = calcCost(row.cost, used)
-                const portionValue = (row.portions || [])[0] || '__standart__'
+                const isAll = activePorts.length > 0 && (row.portions || []).length > 1
+                const portionValue = isAll ? '__all__' : ((row.portions || [])[0] || '__standart__')
                 const channelText = summarizeChannels(row.channels, activeChannels)
 
                 return (
@@ -164,8 +165,18 @@ export default function RecipeRowsGrid({
                         className="f-input"
                         style={inputStyle({ cursor: 'pointer' })}
                         value={portionValue}
-                        onChange={event => onUpdateRow(index, 'portions', [event.target.value])}
+                        onChange={event => {
+                          const val = event.target.value
+                          let nextPortions = [val]
+                          if (val === '__all__') {
+                            nextPortions = ['__standart__', ...activePorts.map(p => p.id)]
+                          }
+                          onUpdateRow(index, 'portions', nextPortions)
+                        }}
                       >
+                        {activePorts.length > 0 && (
+                          <option value="__all__">Tümü</option>
+                        )}
                         <option value="__standart__">Standart</option>
                         {activePorts.map(portion => (
                           <option key={portion.id} value={portion.id}>{portion.name}</option>

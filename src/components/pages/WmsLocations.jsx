@@ -108,6 +108,42 @@ export default function WmsLocations() {
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
 
+  // Stok Raporu
+  const [stockReportModal, setStockReportModal] = useState(false)
+  const [stockReportLoc, setStockReportLoc] = useState(null)
+  const [stockReportRows, setStockReportRows] = useState([])
+  const [stockReportLoading, setStockReportLoading] = useState(false)
+
+  async function openStockReport(loc) {
+    setStockReportLoc(loc)
+    setStockReportModal(true)
+    setStockReportLoading(true)
+    setStockReportRows([])
+    try {
+      const { data, error } = await db
+        .from('inventory_movements')
+        .select('stock_item_id, item_name, item_sku, unit, quantity, direction, lpn_id, lot_number, expiration_date')
+        .eq('location_id', loc.id)
+        .is('deleted_at', null)
+        .eq('is_cancelled', false)
+        .eq('item_type', 'stock_item')
+      if (error) throw error
+      const map = new Map()
+      for (const m of data || []) {
+        const qty = Number(m.quantity || 0)
+        const signed = m.direction === 'in' ? qty : -qty
+        const key = `${m.stock_item_id}__${m.lpn_id || ''}__${m.lot_number || ''}__${m.expiration_date || ''}`
+        if (!map.has(key)) map.set(key, { item_name: m.item_name, item_sku: m.item_sku, unit: m.unit, lpn_id: m.lpn_id, lot_number: m.lot_number, expiration_date: m.expiration_date, qty: 0 })
+        map.get(key).qty += signed
+      }
+      setStockReportRows(Array.from(map.values()).filter(r => r.qty > 0.0001).sort((a, b) => (a.item_name || '').localeCompare(b.item_name || '', 'tr')))
+    } catch (e) {
+      toast('Stok raporu yüklenemedi: ' + e.message, 'error')
+    } finally {
+      setStockReportLoading(false)
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -311,6 +347,7 @@ export default function WmsLocations() {
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="ico-btn" onClick={() => openStockReport(loc)} title="Stok Raporu" style={{ color: '#0d9488' }}><i className="fa-solid fa-chart-bar" /></button>
                         <button className="ico-btn" onClick={() => openEdit(loc)} title="Düzenle"><i className="fa-solid fa-pen" /></button>
                         <button className="ico-btn del" onClick={() => setConfirm(loc)} title="Sil"><i className="fa-solid fa-trash" /></button>
                       </div>
@@ -410,6 +447,47 @@ export default function WmsLocations() {
         onConfirm={() => remove(confirm)}
         onCancel={() => setConfirm(null)}
       />
+
+      {/* Stok Raporu */}
+      <Modal
+        open={stockReportModal}
+        onClose={() => setStockReportModal(false)}
+        title={stockReportLoc ? `Stok Raporu: ${formatAddress(stockReportLoc)}` : 'Stok Raporu'}
+        width={700}
+      >
+        {stockReportLoading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}><i className="fa-solid fa-spinner fa-spin" /> Yükleniyor…</div>
+        ) : stockReportRows.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: '.85rem' }}>Bu lokasyonda aktif stok bulunmuyor.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['Ürün', 'SKU', 'LPN', 'Lot No', 'SKT', 'Miktar', 'Birim'].map((h, i) => (
+                    <th key={i} style={{ padding: '8px 12px', textAlign: i >= 5 ? 'right' : 'left', fontWeight: 700, color: '#64748b', borderBottom: '1px solid #e2e8f0', fontSize: '.72rem', textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stockReportRows.map((r, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f172a' }}>{r.item_name}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '.78rem', color: '#64748b' }}>{r.item_sku || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '.78rem', color: '#6366f1' }}>{r.lpn_id || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontSize: '.78rem', color: '#475569' }}>{r.lot_number || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontSize: '.78rem', color: '#475569' }}>{r.expiration_date || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#166534', textAlign: 'right' }}>
+                      {Number(r.qty).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                    </td>
+                    <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '.78rem' }}>{r.unit || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

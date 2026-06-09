@@ -7,6 +7,7 @@ import { CHANGELOG, VERSION } from '@/version'
 import { getTheme, toggleTheme as doToggleTheme } from '@/lib/theme'
 import { getDisplayMode, setDisplayMode } from '@/lib/displayMode'
 import { useSidebar } from '@/context/SidebarContext'
+import { db } from '@/lib/db'
 
 const NAV = [
   {
@@ -206,8 +207,8 @@ const NAV = [
     section: 'Ana Depo / WMS',
     icon: 'fa-warehouse',
     items: [
-      { label: 'Siparişler', path: '/depo-orders', icon: 'fa-receipt', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
-      { label: 'Mal Kabul', path: '/depo-mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
+      { label: 'WMS Sipariş Konsolu', path: '/depo-orders', icon: 'fa-warehouse', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+      { label: 'Mal Kabul & Putaway', path: '/depo-mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
       {
         label: 'İşlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
         group: 'anadepo-islemler',
@@ -215,6 +216,7 @@ const NAV = [
           { label: 'Belge Girişi', path: '/depo-documents', icon: 'fa-file-arrow-down', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
           { label: 'Sayım', path: '/depo-count', icon: 'fa-clipboard-check', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
           { label: 'Transfer', path: '/depo-transfer', icon: 'fa-right-left', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
+          { label: 'Lokasyon Taşıma', path: '/depo-iclokasyon-tasima', icon: 'fa-arrows-left-right', color: '#a78bfa', bg: 'rgba(167,139,250,.18)' },
           { label: 'Zayi Kaydı', path: '/depo-zayi-kaydi', icon: 'fa-trash-can', color: '#f87171', bg: 'rgba(248,113,113,.18)' },
           { label: 'Serbest Kullanım Kaydı', path: '/depo-serbest-kullanim-kaydi', icon: 'fa-hand-holding', color: '#60a5fa', bg: 'rgba(96,165,250,.18)' },
           { label: 'Formlar', path: '/depo-formlar', icon: 'fa-file-lines', color: '#22d3ee', bg: 'rgba(34,211,238,.18)' },
@@ -386,6 +388,82 @@ export default function Sidebar() {
   const { user, authBusy, signOut } = useAuth()
   const { scope, branchId, branchName, openWorkspacePicker } = useWorkspace()
   const { mode, mobileOpen, setMobileOpen, togglePin, isPinned, autoMode } = useSidebar()
+
+  const [wmsPendingOrdersCount, setWmsPendingOrdersCount] = useState(0)
+  const [wmsIncomingShipmentsCount, setWmsIncomingShipmentsCount] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    if (!branchId) {
+      setWmsPendingOrdersCount(0)
+      setWmsIncomingShipmentsCount(0)
+      return
+    }
+
+    async function fetchWmsCounts() {
+      try {
+        // 1. Fetch outgoing pending orders count for WMS console
+        // First find synced internal supplier for this depot branch
+        const { data: supplierData } = await db
+          .from('suppliers')
+          .select('id')
+          .eq('supplier_kind', 'internal_warehouse')
+          .eq('source_branch_id', branchId)
+          .is('deleted_at', null)
+          .limit(1)
+
+        if (active && supplierData && supplierData.length > 0) {
+          const supplierId = supplierData[0].id
+          const { data: outgoingOrders } = await db
+            .from('purchase_orders')
+            .select('meta')
+            .eq('supplier_id', supplierId)
+            .eq('flow_channel', 'warehouse_replenishment')
+            .eq('status', 'submitted')
+            .is('deleted_at', null)
+
+          if (active && outgoingOrders) {
+            const pending = outgoingOrders.filter(o => {
+              const parsed = typeof o.meta === 'string' ? JSON.parse(o.meta) : (o.meta || {})
+              return !parsed.supplier_marked_sent && !parsed.supplier_sent_at
+            })
+            setWmsPendingOrdersCount(pending.length)
+          }
+        } else if (active) {
+          setWmsPendingOrdersCount(0)
+        }
+
+        // 2. Fetch incoming WMS shipments count for Mal Kabul (where current branch is receiver)
+        const { data: incomingOrders } = await db
+          .from('purchase_orders')
+          .select('meta')
+          .eq('branch_id', branchId)
+          .eq('flow_channel', 'warehouse_replenishment')
+          .in('status', ['submitted', 'partially_received'])
+          .is('deleted_at', null)
+
+        if (active && incomingOrders) {
+          const incoming = incomingOrders.filter(o => {
+            const parsed = typeof o.meta === 'string' ? JSON.parse(o.meta) : (o.meta || {})
+            return parsed.supplier_marked_sent || parsed.supplier_sent_at
+          })
+          setWmsIncomingShipmentsCount(incoming.length)
+        } else if (active) {
+          setWmsIncomingShipmentsCount(0)
+        }
+      } catch (err) {
+        console.error('Error fetching WMS counts for sidebar:', err)
+      }
+    }
+
+    fetchWmsCounts()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchWmsCounts, 30000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [branchId, scope])
   const scopeOption = getWorkspaceScopeOption(scope)
   const isIconOnly = mode === 'icon'
   const isMobileMode = mode === 'closed'
@@ -850,7 +928,35 @@ export default function Sidebar() {
                     </span>
                     {!isIconOnly && (
                       <>
-                        <span style={{ flex: 1, color: 'inherit' }}>{fixMojibakeText(item.label)}</span>
+                        <span style={{ flex: 1, color: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>{fixMojibakeText(item.label)}</span>
+                          {item.path === '/depo-orders' && wmsPendingOrdersCount > 0 && (
+                            <span style={{
+                              background: '#38bdf8',
+                              color: '#0f172a',
+                              fontSize: '.7rem',
+                              fontWeight: 900,
+                              borderRadius: 6,
+                              padding: '2px 6px',
+                              lineHeight: 1
+                            }}>
+                              {wmsPendingOrdersCount}
+                            </span>
+                          )}
+                          {item.path === '/depo-mal-kabul' && wmsIncomingShipmentsCount > 0 && (
+                            <span style={{
+                              background: '#34d399',
+                              color: '#064e3b',
+                              fontSize: '.7rem',
+                              fontWeight: 900,
+                              borderRadius: 6,
+                              padding: '2px 6px',
+                              lineHeight: 1
+                            }}>
+                              {wmsIncomingShipmentsCount}
+                            </span>
+                          )}
+                        </span>
                         {item.screenPath && (
                           <button type="button" title="Ekran modunda aç (4:3)" onClick={e => { e.stopPropagation(); window.open(item.screenPath, '_blank') }}
                             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontSize: '.6rem', lineHeight: 1, flexShrink: 0 }}>

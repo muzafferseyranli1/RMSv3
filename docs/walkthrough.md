@@ -1,86 +1,121 @@
-# WMS Faz 3 ve Faz 4 Geliştirmeleri - Walkthrough
+# WMS Faz 6: Toplama, Paketleme, Sevk ve Araç/Plaka - Walkthrough
 
-Bu belgede, WMS Faz 3 sonrasında yapılan düzeltmeler ile WMS Faz 4 kapsamında gerçekleştirilen Depo Mal Kabul ve Putaway geliştirmeleri ile doğrulama sonuçları özetlenmiştir.
-
----
-
-## 1. WMS Faz 3 Düzeltmeleri ve Geliştirmeleri
-
-### WMS Sevk-Gate Koruması (`src/components/pages/MalKabul.jsx`)
-- **Bulgu (P1):** docs/wms_faz0_karar_notu.md (line 31) uyarınca, `warehouse_replenishment` ikmal siparişlerinin şube mal kabul ekranına düşmesi için depodan sevk onayı almış olması gerekiyordu.
-- **Çözüm:** `branchOrders` filtresi güncellendi. Eğer siparişin `flow_channel` değeri `'warehouse_replenishment'` ise, siparişin `meta.supplier_marked_sent === true` sevk kanıtı kontrol edilmektedir. Bu sevk işareti yoksa sipariş şube mal kabul listesinde listelenmemektedir.
-
-### Satır Tedarikçi Çözümleme Önceliği (`src/lib/branchPurchasing.js`)
-- **Bulgu (P2-1):** Planda belirtilen "akış tedarikçisi `suppliers_list` içindeyse o seçilmeli" kuralı kodda eksikti.
-- **Çözüm:** `resolveLineSupplierId` fonksiyonu güncellendi. Artık:
-  1. `suppliers_list` dizisindeki `is_default === true` olan tedarikçi.
-  2. Stok kartının birincil tedarikçisi `supp_id`.
-  3. Akışın (flow) `supplier_id` değeri stok kartının `suppliers_list` dizisinde mevcutsa, bu değer.
-  4. Yukarıdakiler yoksa listedeki ilk aktif tedarikçi.
-  5. Fallback olarak stok kartındaki `supp_id` veya `flowSupplierId` seçilmektedir.
-
-### Kısmi Başarısızlık ve Sipariş Tekrarlama Riski (`src/components/pages/Orders.jsx`)
-- **Bulgu (P2-3):** Aynı akış/şube/tarih için herhangi bir sipariş bulunduğunda akışın tamamen atlanması, kısmi sipariş bölünmelerinde veya yeni eklenen ürünlerde eksik grupların oluşmamasına yol açıyordu.
-- **Çözüm:** 
-  - `collectMissingDueFlows` fonksiyonu güncellendi. Artık akışın `resolveFlowItems` ile tüm ürünleri taranarak bu akışta olması gereken tüm tedarikçi grupları (`expectedSupplierIds`) hesaplanır. Bu tedarikçilerden en az biri için o gün aktif sipariş oluşturulmamışsa akış tetiklenir.
-  - `createOrdersForToday` içindeki kaydetme döngüsünde, her bir bölünen tedarikçi grubu için o güne ait aktif bir sipariş olup olmadığı `orders.find(...)` ile kontrol edilir. Zaten oluşturulmuş gruplar atlanırken eksik olanlar oluşturulur.
+Bu belgede, WMS Faz 6 (Toplama, Paketleme, Sevk ve Araç/Plaka) kapsamında gerçekleştirilen geliştirmeler, veritabanı şeması ve entegrasyon test sonuçları özetlenmiştir.
 
 ---
 
-## 2. WMS Faz 4: Depo Mal Kabul ve Putaway
+## 1. WMS Faz 6 Geliştirmeleri
 
-### Arayüz ve WMS Modu Yönetimi (`src/components/pages/MalKabul.jsx`)
-- `useWorkspace()` hook'undan dönen `scope === 'anadepo'` değerine göre `isWmsMode` bayrağı tanımlandı.
-- WMS modunda, mal kabul esnasında her bir ürün satırının altında dynamic ve premium görünümlü bir **WMS Detayları** alt satırı render edilir.
-- Toplanan alanlar:
-  - **Lokasyon Seçici:** Depodaki aktif lokasyonlar (`warehouse_locations`).
-  - **LPN / Palet Seçici:** Depodaki aktif LPN'ler (`warehouse_lpns`).
-  - **Lot Numarası:** Serbest metin girişi.
-  - **Son Kullanma Tarihi (SKT):** Date input alanı.
-  - **Kullanılabilirlik Durumu:** `Kullanılabilir` (`available`), `Karantina` (`quarantine`), `Putaway Bekliyor` (`putaway_pending`) durum dropdown'ı.
+Faz 6 kapsamında, WMS ikmal taleplerinin fiziksel sevkiyata dönüştürülmesi, araç/plaka takibi, çoklu şube sipariş konsolidasyonu, kısmi sevk ve sevk onayı verildiğinde depo stok çıkışlarının yapılması sağlanmıştır.
 
-### Validasyon Kontrolü
-- WMS modunda kabul edilen miktarı (`received_qty > 0`) olan her ürün satırı için lokasyon seçimi (`location_id`) zorunlu kılınmıştır. Lokasyon seçilmemişse kayıt işlemi durdurularak kullanıcıya hata bildirimi (toast) gösterilir.
+### A. Veritabanı Şeması ve Modeller
+Sevkiyat süreçlerini yönetmek için `migrations/031_wms_shipments.sql` dosyasında aşağıdaki tablolar oluşturulmuş ve Railway veritabanına uygulanmıştır:
+- **`vehicles`**: WMS araç tanımlarını (plaka, model, şoför adı, telefonu ve aktiflik durumu) tutar.
+- **`warehouse_shipments`**: Fiziksel sevk partilerini (durum: `draft`, `in_transit`, `delivered`, `cancelled`, atanan araç/plaka, sevk zamanları ve genel notlar) tutar.
+- **`warehouse_shipment_orders`**: Tek bir sevkiyat partisinin birden fazla şube siparişini (`purchase_orders`) kapsayabilmesi için çoktan-çoğa ilişki sağlar.
+- **`warehouse_shipment_lines`**: Kısmi sevk durumunda hangi sipariş satırından ne kadar ürünün yüklendiğini (`shipped_qty`, birim fiyat ve satır toplamı ile) takip eder.
 
-### Stok Hareketi Yazımında WMS Alanları
-- Kabul kaydedildiğinde `purchase_receipt_lines` tablosuna yapılan eklemelerde WMS detayları satırın `meta` JSONB nesnesine kaydedilir.
-- `inventory_movements` tablosuna yapılan eklemelerde ise `location_id`, `lpn_id`, `lot_number` ve `expiration_date` kolonları doğrudan (first-class columns) doldurulur; kalite/putaway durumu ise `meta.availability_status` olarak saklanır.
+Bu tablo ve indeks tanımları tek kaynak kuralı gereğince `schema-railway-master.sql` dosyasına da eklenmiştir.
+
+### B. Arayüz Entegrasyonu (`DepoOrders.jsx`)
+- **Yeni Sekme ("Sevkiyatlar / Araç Yükleme"):** `/depo-orders` ekranına yeni bir çalışma sekmesi olarak eklenmiştir.
+- **Çoklu Sipariş Seçimi (Checkbox):** "Bekleyen Talepler" listesinde her satırın soluna checkbox'lar eklenmiş, bekleyen siparişlerin seçilerek tek bir sevkiyat partisine konsolide edilmesi sağlanmıştır.
+- **Sevk Partisi Oluşturma Modalı:** Seçilen siparişlerin ürünlerini konsolide ederek gösterir. Bu modal üzerinden:
+  - Kayıtlı araçlar listesinden (`vehicles` tablosu) seçim yapılabilir veya plaka/şoför bilgileri serbest metin olarak girilebilir.
+  - Serbest metinle girilen yeni aracın sonraki sevkiyatlar için kalıcı olarak `vehicles` tablosuna kaydedilmesi seçeneği sunulur.
+  - Her ürünün sevk edilecek miktarı (`shipped_qty`) düzenlenebilir (varsayılan: sipariş edilen miktar).
+  - Kaydedildiğinde sevkiyat partisi `draft` (taslak) statüsünde veritabanına yazılır.
+
+### C. Kısmi Sevk ve Sipariş Güncelleme
+Sevkiyat partisi oluşturulurken operatör miktar kıstığında:
+- Yüklenen miktar (`shipped_qty`) ilgili sipariş satırlarına FIFO usulü dağıtılır.
+- Orijinal talep miktarları `purchase_order_lines.meta.original_ordered_qty` alanına yedeklenir.
+- `purchase_order_lines.ordered_qty` ve siparişin toplam tutarları fiili sevk miktarına göre otomatik olarak güncellenir. Bu sayede şube mal kabul yaparken sadece fiziksel olarak yola çıkan miktar üzerinden kabul yapabilir.
+- Draft sevkiyat iptal edilirse, orijinal miktarlar PO satırlarına geri yüklenir ve sipariş tutarları eski haline döndürülür.
+
+### D. Sevk Onayı ve Depo Stok Çıkışları
+Taslak halindeki bir sevkiyat onaylanıp "Sevk Et (Onayla)" tetiklendiğinde:
+1. Sevkiyat durumu `'in_transit'` (Yolda) olarak güncellenir.
+2. Sevkiyat satırlarındaki her bir ürün için depoda (`branch_id = activeDepotId`) `direction = 'out'`, `movement_type = 'transfer_out'`, `source_doc_type = 'transfer'` olacak şekilde stok çıkış hareketleri (`inventory_movements`) otomatik oluşturulur.
+3. Bağlı siparişler `supplier_marked_sent = true` ve irsaliye/plaka detayları ile güncellenerek şube mal kabul ekranına aktarılır.
+4. Faz 0 kararına uygun olarak şube stoğuna otomatik giriş yapılmaz; şube kendi mal kabulüyle stoğu içeri alır.
 
 ---
 
-## 3. Doğrulama ve Test Sonuçları
+## 2. Doğrulama ve Entegrasyon Test Sonuçları
 
-### 1. WMS Veritabanı Entegrasyon Testi (`scratch/test_wms_mal_kabul.cjs`)
-WMS veri yazımının doğruluğunu onaylamak için yazılan entegrasyon testi çalıştırılmış ve veritabanı seviyesinde first-class kolon atamaları başarıyla doğrulanmıştır:
+### A. WMS Faz 6 Entegrasyon Testi (`scratch/test_wms_shipments.cjs`)
+Sevkiyat oluşturma, araç atama, kısmi sevk miktarları, sevk onayı verildiğinde depo stok çıkış hareketlerinin yazılması ve PO sevk durum güncellemelerini test eden transaction rollback korumalı test başarıyla çalıştırılmıştır.
+
+**Çalıştırılan Komut:**
+```bash
+$env:DATABASE_URL="[DATABASE_URL]"; node scratch/test_wms_shipments.cjs
+```
+
+**Test Çıktısı:**
 ```text
 Connected to DB successfully.
-Selected metadata for test:
-      Branch: "Pendik Merkez Depo" (ID: 302bd195-3b79-4f14-a60b-4668c36a12c1)
-      Supplier: "Pendik Merkez Depo" (ID: f2e16624-f10a-4a2b-9cf9-3a746c631e4a)
-      Item: "Pizza Hamuru (250g)" (ID: b0e10002-0000-4000-8000-000000000002)
-      Location ID: 61eda94b-c634-4229-ae00-ea14ae5c595b
-      LPN ID: 36740d78-b841-4a92-84e1-57f694622d0d
-    
-Inserted mock purchase_receipt ID: 134e6f6f-8bd7-4e89-89ce-bee69acbbe12
-Inserted mock purchase_receipt_line ID: 6c66a8b8-1bea-42bb-ad8e-043d1e70ea4d
-Inserted mock inventory_movement ID: 72d4ed89-086a-4a30-b04a-4088591973d0
+Started transaction (BEGIN).
+Warehouse node: Pendik Merkez Depo (ID: 302bd195-3b79-4f14-a60b-4668c36a12c1)
+Requesting branch node: Ankara Etimesgut Şubesi (ID: 475960cc-bd6a-4b02-9587-df45b39a4cc5)
+Stock Item for test: Pizza Hamuru (250g) (ID: b0e10002-0000-4000-8000-000000000002)
+Internal supplier configured: Test İç Depo P6 (Pendik Merkez Depo) (ID: 11c8ac7f-c200-4378-88c4-c76e0203e201)
+Inserted replenishment purchase_order ID: 0c02e745-fb92-466b-8852-c5f52a1f4968 (No: PO-REPL-P6-1780960342498)
+Inserted line ID: 5efb72ea-5205-46cd-825e-fbbedfec7823 (Ordered Qty: 15.0)
+Configured vehicle plate: 34 WMS 666 (ID: 0da49174-4c77-43d1-86e8-ed85244d38c5)
+Created draft shipment ID: 12439c99-9e82-4730-93e1-fb1ea0d32d07 (No: SH-TEST-P6-1780960342640)
+Linked order PO-REPL-P6-1780960342498 to shipment SH-TEST-P6-1780960342640.
+Added shipment line for Pizza Hamuru (250g) with quantity: 12 (Partial shipping: 12.0/15.0)
+Updated PO line quantity to 12 and recalculated order totals.
 
---- VERIFICATION DETAILS ---
-Inserted Movement ID: 72d4ed89-086a-4a30-b04a-4088591973d0
-Direct location_id: 61eda94b-c634-4229-ae00-ea14ae5c595b (Expected: 61eda94b-c634-4229-ae00-ea14ae5c595b)
-Direct lpn_id: 36740d78-b841-4a92-84e1-57f694622d0d (Expected: 36740d78-b841-4a92-84e1-57f694622d0d)
-Direct lot_number: LOT-999-WMS (Expected: 'LOT-999-WMS')
-Direct expiration_date: 2027-12-31 (Expected: '2027-12-31')
-Meta Availability Status: quarantine (Expected: 'quarantine')
+--- DRAFT SHIPMENT STATE ---
+Shipment Status: draft (Expected: draft)
+Generated stock exit movement ID: 4c8e3a12-75f2-4153-b74b-cf68f9aec747 (direction: out, quantity: -12.0)
+Updated PO metadata to trigger awaiting_receipt status.
 
-✅ WMS Mal Kabul Database Columns Verification SUCCESSFUL!
+--- VERIFICATION RESULTS ---
+Shipment status in transit? YES (in_transit)
+Shipment plate: 34 WMS 666
+Inventory movement direction: out (Expected: out)
+Inventory movement type: transfer_out (Expected: transfer_out)
+Inventory movement quantity: 12 (Expected: 12)
+PO supplier_marked_sent: true (Expected: true)
+PO doc_no matches shipment_no: YES
 
-Cleaned up mock database records successfully.
+✅ WMS Phase 6 Integration Test SUCCESSFUL!
+Transaction rolled back successfully. Database remains clean.
 ```
 
-### 2. Proje Derleme (Production Build) Doğrulaması
-MalKabul sayfasındaki WMS geliştirmeleri sonrasında `npm run build` komutu çalıştırılmış ve Vite derlemesi **0 hata** ile tamamlanmıştır.
+### B. Vite Üretim Derlemesi (Production Build)
+`npm run build` komutu çalıştırılmış ve yeni Faz 6 kodları Vite tarafından sıfır hata ile başarıyla derlenmiştir.
 ```text
-✓ built in 18.05s
+dist/assets/DepoOrders-BEWnQZC0.js                   50.20 kB │ gzip:  11.18 kB
+✓ built in 15.51s
 ```
-Bu sayede şube mal kabul akışının geriye dönük uyumluluğunun korunduğu ve depo mal kabulü sırasında WMS parametrelerinin başarıyla toplandığı kanıtlanmıştır.
+
+---
+
+## 3. WMS UI Polish (Görünürlük Cilası)
+
+Kullanıcı deneyimini güçlendirmek ve WMS modülünün yeni kimliğini yansıtmak amacıyla aşağıdaki görsel ve yönlendirici iyileştirmeler yapılmıştır:
+
+### A. Sidebar Menü Güncellemeleri ve Dinamik Sayaçlar (`Sidebar.jsx`)
+- **İsim Değişiklikleri:** WMS menüsündeki "Siparişler" başlığı **"WMS Sipariş Konsolu"** olarak güncellenmiş; "Mal Kabul" ise **"Mal Kabul & Putaway"** olarak daha net tanımlanmıştır. Ayrıca WMS işlemleri altına **"Lokasyon Taşıma"** bağlantısı entegre edilmiştir.
+- **Dinamik Sayaçlar (Badges):**
+  - **WMS Sipariş Konsolu** menü kaleminin yanına, o depodan sevk edilmeyi bekleyen yeni siparişlerin sayısını gösteren mavi bir sayaç eklenmiştir.
+  - **Mal Kabul & Putaway** menü kaleminin yanına, yolda olan ve şubeye teslim edilip kabul edilmeyi bekleyen sevkiyatların sayısını gösteren yeşil bir sayaç eklenmiştir.
+  - Bu sayaçlar, arka planda 30 saniyede bir veritabanını sorgulayarak otomatik olarak güncellenir.
+
+### B. Ana Depo Bağlam Rozeti ve Süreç Stepper'ı (`DepoOrders.jsx`)
+- **Ana Depo Rozeti:** Sayfa başlığına (Header) eklenen şık, koyu mavi gradyan arka planlı ve mavi çerçeveli rozet, kullanıcının o anda hangi depoda işlem yaptığını (`{branchName} — ANA DEPO`) net bir şekilde gösterir.
+- **Süreç Adımları Göstergesi:** Ekranın üst kısmına `Talepler` → `Toplama` → `Sevkiyat` → `Mal Kabul` adımlarını içeren interaktif bir süreç stepper'ı yerleştirilmiştir. Bu sayede warehouse personeli, siparişlerin hangi aşamada olduğunu (örneğin kaç talep bekliyor, kaç sevkiyat hazırlıkta) anlık olarak görebilir ve tıklayarak ilgili sekmeye geçiş yapabilir.
+
+### C. Zenginleştirilmiş ve Yönlendirici Boş Durum Tasarımları (`DepoOrders.jsx`)
+Varsayılan sade gri metinler yerine, tüm sekmeler için yönlendirici ve aksiyona teşvik edici yeni boş durum tasarımları (`EmptyState` bileşeni) uygulanmıştır:
+1. **Bekleyen Talepler Boş:** Mavi ikonlu panel; şubelerden yeni talep geldiğinde buraya düşeceğini anlatır ve yeni ikmal talebi başlatmak için ipucu verir.
+2. **Toplama Listesi Boş:** Mor ikonlu panel; listenin oluşması için öncelikle sevk bekleyen siparişlerin seçilmesi gerektiğini belirtir.
+3. **Dağıtım Detayları Boş:** Dağıtım kırılımının henüz seçili bir sipariş olmadığı için gösterilemediğini açıklar.
+4. **Sevkiyatlar Boş:** Sarı ikonlu panel; yeni bir araç yükleme başlatmak için bekleyen siparişleri seçip sağ üstteki "Sevk Et" butonunun kullanılacağını belirten rehber metin içerir.
+
+### D. Derleme Doğrulaması
+Yapılan tüm görsel cilalamalar sonrasında Vite production build başarıyla tamamlanmış ve `dist/assets/DepoOrders-D5QYQZrm.js` (56.41 kB) hatasız derlenmiştir.

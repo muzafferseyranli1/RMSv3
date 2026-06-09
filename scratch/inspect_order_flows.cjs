@@ -1,6 +1,10 @@
 const { Client } = require('pg');
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway';
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error("DATABASE_URL is missing. Please define it in environment variables.");
+  process.exit(1);
+}
 
 async function main() {
   const client = new Client({

@@ -101,6 +101,7 @@ export default function Suppliers() {
   const [loading,setLoading] = useState(true)
   const [search,setSearch] = useState('')
   const [statusFilter,setStatusFilter] = useState('')
+  const [kindFilter,setKindFilter] = useState('')
   const [showDeleted,setShowDeleted] = useState(false)
   const [modal,setModal] = useState(false)
   const [tab,setTab] = useState(0)
@@ -122,6 +123,7 @@ export default function Suppliers() {
     const q=search.toLowerCase()
     return (!q||i.name?.toLowerCase().includes(q)||i.cari_kodu?.toLowerCase().includes(q)||i.marka_kisa_adi?.toLowerCase().includes(q))
       && (!statusFilter||String(i.active)===statusFilter)
+      && (!kindFilter||i.supplier_kind===kindFilter)
   })
 
   function openAdd(){setForm(EMPTY);setEditId(null);setTab(0);setModal(true)}
@@ -217,8 +219,8 @@ export default function Suppliers() {
           <AddButton onClick={openAdd} label="Tedarikçi Ekle" />
         </>}/>
 
-      <div className="card" style={{padding:14,display:'flex',gap:10,marginBottom:14}}>
-        <div style={{position:'relative',flex:1}}>
+      <div className="card" style={{padding:14,display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div style={{position:'relative',flex:1,minWidth:200}}>
           <i className="fa-solid fa-search" style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'#94a3b8',fontSize:'.75rem'}}/>
           <input className="f-input" placeholder="Ad, cari kodu veya marka ara…" style={{paddingLeft:30}}
             value={search} onChange={e=>setSearch(e.target.value)}/>
@@ -234,6 +236,27 @@ export default function Suppliers() {
             ]}
             allowClear={false}
           />
+        </div>
+        {/* Tedarikçi tipi chip filtreleri */}
+        <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+          {[
+            {value:'',label:'Tümü',bg:'#f1f5f9',color:'#475569',activeBg:'#334155',activeColor:'#fff'},
+            {value:'external',label:'Dış Tedarikçi',bg:'#fef3c7',color:'#b45309',activeBg:'#d97706',activeColor:'#fff'},
+            {value:'internal_warehouse',label:'İç Depo',bg:'#ecfdf5',color:'#047857',activeBg:'#059669',activeColor:'#fff'},
+            {value:'internal_kitchen',label:'Merkez Mutfak',bg:'#f5f3ff',color:'#6d28d9',activeBg:'#7c3aed',activeColor:'#fff'},
+          ].map(chip=>{
+            const active = kindFilter === chip.value
+            return (
+              <button key={chip.value} onClick={()=>setKindFilter(chip.value)}
+                style={{padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
+                  fontWeight:700,fontSize:'.74rem',transition:'.15s',
+                  background: active ? chip.activeBg : chip.bg,
+                  color: active ? chip.activeColor : chip.color,
+                  boxShadow: active ? '0 1px 4px rgba(0,0,0,.15)' : 'none'}}>
+                {chip.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 

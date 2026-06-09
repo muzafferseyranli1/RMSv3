@@ -25,11 +25,247 @@ const CATEGORY_COLORS = {
 const DEFAULT_ICON = 'fa-book'
 const DEFAULT_COLOR = '#64748b'
 
+function renderFormattedDescription(text) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  
+  let currentListType = null; // 'ul', 'ol', or null
+  const elements = [];
+  let listItems = [];
+  
+  const flushList = (key) => {
+    if (listItems.length > 0) {
+      if (currentListType === 'ul') {
+        elements.push(
+          <ul key={key} style={{ margin: '8px 0 8px 24px', paddingLeft: 0, listStyleType: 'disc', textAlign: 'left' }}>
+            {listItems.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: '4px', lineHeight: '1.5', fontSize: 'inherit' }}>{item}</li>
+            ))}
+          </ul>
+        );
+      } else if (currentListType === 'ol') {
+        elements.push(
+          <ol key={key} style={{ margin: '8px 0 8px 24px', paddingLeft: 0, listStyleType: 'decimal', textAlign: 'left' }}>
+            {listItems.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: '4px', lineHeight: '1.5', fontSize: 'inherit' }}>{item}</li>
+            ))}
+          </ol>
+        );
+      }
+      listItems = [];
+      currentListType = null;
+    }
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const bulletMatch = line.match(/^\s*([-\*•])\s+(.*)$/);
+    const numberMatch = line.match(/^\s*(\d+)[\.\)]\s+(.*)$/);
+
+    if (bulletMatch) {
+      if (currentListType !== 'ul') {
+        flushList(`list-before-${index}`);
+        currentListType = 'ul';
+      }
+      listItems.push(bulletMatch[2]);
+    } else if (numberMatch) {
+      if (currentListType !== 'ol') {
+        flushList(`list-before-${index}`);
+        currentListType = 'ol';
+      }
+      listItems.push(numberMatch[2]);
+    } else {
+      flushList(`list-before-${index}`);
+      if (trimmed === '') {
+        elements.push(<div key={index} style={{ height: '8px' }} />);
+      } else {
+        elements.push(
+          <p key={index} style={{ margin: '6px 0', lineHeight: '1.6', fontSize: 'inherit', textAlign: 'inherit' }}>
+            {line}
+          </p>
+        );
+      }
+    }
+  });
+  
+  flushList('list-final');
+  return <div className="mr-formatted-desc" style={{ display: 'inline-block', width: '100%', textAlign: 'inherit' }}>{elements}</div>;
+}
+
+function parseStepText(description, idx) {
+  if (!description) return { title: `Adım ${idx + 1}`, body: '' };
+  
+  // Try to match patterns like "Adım 1: Malzemelerin Hazırlanması (Mizanplas)" at the start
+  const match = description.match(/^(Adım\s+\d+[:.-]?\s*[^.\n]+)(.*)$/i) ||
+                description.match(/^([^.\n]+)(.*)$/); // fallback: first sentence/line as title
+                
+  if (match) {
+    let title = match[1].trim();
+    let body = match[2].trim();
+    
+    // Clean up title (remove double spaces, extra whitespace)
+    title = title.replace(/\s+/g, ' ');
+    
+    // If body is empty or too short, let's keep the whole description as body and use a default title
+    if (body.length < 5) {
+      return {
+        title: `Adım ${idx + 1}`,
+        body: description
+      };
+    }
+    
+    // If title doesn't start with "Adım", prefix it for consistency
+    if (!title.toLowerCase().startsWith('adım')) {
+      title = `Adım ${idx + 1}: ${title}`;
+    }
+    
+    // Clean up body (strip leading punctuation and spaces)
+    body = body.replace(/^[.:\-\s]+/, '').trim();
+    
+    return { title, body };
+  }
+  
+  return {
+    title: `Adım ${idx + 1}`,
+    body: description
+  };
+}
+
+function getSpecTheme(label) {
+  const l = (label || '').toLowerCase();
+  if (l.includes('hazır') || l.includes('prep') || l.includes('süre')) {
+    return {
+      icon: 'fa-clock fa-spin',
+      iconStyle: { color: '#f97316', animationDuration: '8s' },
+      bgTop: '#fff7ed',
+      bgBottom: '#ffffff',
+      border: 'rgba(249, 115, 22, 0.15)',
+      valColor: '#ea580c'
+    };
+  }
+  if (l.includes('çöz') || l.includes('thaw')) {
+    return {
+      icon: 'fa-snowflake fa-spin',
+      iconStyle: { color: '#38bdf8', animationDuration: '10s' },
+      bgTop: '#f0f9ff',
+      bgBottom: '#ffffff',
+      border: 'rgba(56, 189, 248, 0.15)',
+      valColor: '#0284c7'
+    };
+  }
+  if (l.includes('ılık') || l.includes('ılın') || l.includes('soğu') || l.includes('cool')) {
+    return {
+      icon: 'fa-temperature-arrow-down fa-bounce',
+      iconStyle: { color: '#10b981' },
+      bgTop: '#f0fdf4',
+      bgBottom: '#ffffff',
+      border: 'rgba(16, 185, 129, 0.15)',
+      valColor: '#16a34a'
+    };
+  }
+  if (l.includes('ağırlık') || l.includes('porsiyon') || l.includes('gram') || l.includes('gr') || l.includes('weight') || l.includes('boyut')) {
+    return {
+      icon: 'fa-scale-balanced fa-beat',
+      iconStyle: { color: '#eab308' },
+      bgTop: '#fefce8',
+      bgBottom: '#ffffff',
+      border: 'rgba(234, 179, 8, 0.15)',
+      valColor: '#ca8a04'
+    };
+  }
+  if (l.includes('raf') || l.includes('ömür') || l.includes('shelf')) {
+    return {
+      icon: 'fa-hourglass-half fa-flip',
+      iconStyle: { color: '#ec4899', animationDuration: '3s' },
+      bgTop: '#fdf2f8',
+      bgBottom: '#ffffff',
+      border: 'rgba(236, 72, 153, 0.15)',
+      valColor: '#db2777'
+    };
+  }
+  if (l.includes('piş') || l.includes('fırın') || l.includes('ızgara') || l.includes('cook')) {
+    return {
+      icon: 'fa-fire-burner fa-fade',
+      iconStyle: { color: '#ef4444' },
+      bgTop: '#fef2f2',
+      bgBottom: '#ffffff',
+      border: 'rgba(239, 68, 68, 0.15)',
+      valColor: '#dc2626'
+    };
+  }
+  // Default fallback
+  return {
+    icon: 'fa-circle-info fa-beat',
+    iconStyle: { color: '#6366f1' },
+    bgTop: '#f5f3ff',
+    bgBottom: '#ffffff',
+    border: 'rgba(99, 102, 241, 0.15)',
+    valColor: '#4f46e5'
+  };
+}
+
 function estimateReadingTime(page) {
   let words = 0
   if (page.content) words += page.content.split(/\s+/).length
   if (page.metadata?.steps) words += page.metadata.steps.reduce((s, st) => s + (st.description?.split(/\s+/).length || 0), 0)
   return Math.max(1, Math.ceil(words / 180))
+}
+
+function renderChannelsBadge(r, globalChannels) {
+  const rowChannels = r.channels || [];
+  const allChannels = globalChannels || [];
+  
+  if (allChannels.length === 0) return null;
+
+  const isActiveAll = rowChannels.length === 0 || rowChannels.length === allChannels.length;
+  const activeChannels = isActiveAll ? allChannels : allChannels.filter(c => rowChannels.includes(c.id));
+
+  // Determine trigger icon and color class
+  const triggerClass = isActiveAll ? 'mr-channel-tooltip-trigger all-channels' : 'mr-channel-tooltip-trigger';
+  const triggerIcon = isActiveAll ? 'fa-globe' : 'fa-shop';
+
+  // Helper to resolve channel icon
+  const getChannelIcon = (c) => {
+    if (c.icon) return c.icon;
+    const nameLower = (c.name || '').toLowerCase();
+    if (nameLower.includes('hızlı') || nameLower.includes('pos')) return 'fa-bolt';
+    if (nameLower.includes('gel al') || nameLower.includes('paket')) return 'fa-bag-shopping';
+    if (nameLower.includes('masa')) return 'fa-chair';
+    if (nameLower.includes('qr')) return 'fa-qrcode';
+    if (nameLower.includes('kiosk')) return 'fa-desktop';
+    if (nameLower.includes('yemeksepeti') || nameLower.includes('yemek sepeti')) return 'fa-basket-shopping';
+    if (nameLower.includes('getir')) return 'fa-motorcycle';
+    if (nameLower.includes('trendyol')) return 'fa-shop';
+    if (nameLower.includes('çağrı') || nameLower.includes('call')) return 'fa-phone';
+    return 'fa-circle-nodes'; // fallback
+  };
+
+  return (
+    <div className="mr-channel-tooltip-container">
+      <div className={triggerClass}>
+        <i className={`fa-solid ${triggerIcon}`} style={{ fontSize: '.72rem' }} />
+      </div>
+      <div className="mr-channel-tooltip-content">
+        <div className="mr-channel-tooltip-arrow-border" />
+        <div className="mr-channel-tooltip-arrow" />
+        <div className="mr-channel-tooltip-title">
+          {isActiveAll ? 'Tüm Kanallar' : 'Geçerli Kanallar'}
+        </div>
+        <ul className="mr-channel-list">
+          {allChannels.map(c => {
+            const isActive = isActiveAll || rowChannels.includes(c.id);
+            if (!isActive) return null; // Only show active channels in the list
+            return (
+              <li key={c.id} className={`mr-channel-item active ${isActiveAll ? 'all' : ''}`}>
+                <i className={`fa-solid ${getChannelIcon(c)}`} style={{ color: isActiveAll ? '#10b981' : '#4f46e5' }} />
+                <span>{c.name}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
 }
 
 export default function ManualReader() {
@@ -43,6 +279,9 @@ export default function ManualReader() {
   const [selectedPageId, setSelectedPageId] = useState(null)
   const [pageDetails, setPageDetails] = useState(null)
   const [recipeContext, setRecipeContext] = useState([])
+  const [recipeMeta, setRecipeMeta] = useState({ portionNames: { '__standart__': 'Standart' }, allChannels: [] })
+  const [globalChannels, setGlobalChannels] = useState([])
+  const [globalPortionNames, setGlobalPortionNames] = useState({ '__standart__': 'Standart' })
   const [loadingList, setLoadingList] = useState(false)
   const [loadingDetails, setLoadingDetails] = useState(false)
 
@@ -71,18 +310,52 @@ export default function ManualReader() {
   const loadSidebarData = async () => {
     setLoadingList(true)
     try {
-      const [catsRes, pagesRes] = await Promise.all([
+      const [catsRes, pagesRes, channelsRes, salesRes, semisRes] = await Promise.all([
         fetch(buildApiUrl('/api/manual/categories')).then(r => r.json()),
-        fetch(buildApiUrl('/api/manual/pages')).then(r => r.json())
+        fetch(buildApiUrl('/api/manual/pages')).then(r => r.json()),
+        db.from('sales_channels').select('id, name, icon').is('deleted_at', null).order('sort_order'),
+        db.from('sale_items').select('portions'),
+        db.from('semi_items').select('portions')
       ])
       if (catsRes.error) throw new Error(catsRes.error.message)
       if (pagesRes.error) throw new Error(pagesRes.error.message)
       setCategories(catsRes.data || [])
       setPages(pagesRes.data || [])
+      
       // expand all categories by default for knowledge-base feel
       const expanded = {}
       ;(catsRes.data || []).forEach(c => { expanded[c.id] = true })
       setExpandedCategories(expanded)
+
+      // Set global channels
+      setGlobalChannels(channelsRes.data || [])
+
+      // Build global portionNames map
+      const portionNames = { '__standart__': 'Standart' }
+      if (salesRes.data) {
+        salesRes.data.forEach(item => {
+          let ports = item.portions
+          if (typeof ports === 'string') {
+            try { ports = JSON.parse(ports); } catch (e) { ports = []; }
+          }
+          if (Array.isArray(ports)) {
+            ports.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; })
+          }
+        })
+      }
+      if (semisRes.data) {
+        semisRes.data.forEach(item => {
+          let ports = item.portions
+          if (typeof ports === 'string') {
+            try { ports = JSON.parse(ports); } catch (e) { ports = []; }
+          }
+          if (Array.isArray(ports)) {
+            ports.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; })
+          }
+        })
+      }
+      setGlobalPortionNames(portionNames)
+
     } catch (err) {
       toast('Menü yüklenirken hata: ' + err.message, 'error')
     } finally {
@@ -100,6 +373,10 @@ export default function ManualReader() {
       if (res.error) throw new Error(res.error.message)
       setPageDetails(res.data)
       setRecipeContext(ctxRes.data?.recipe || [])
+      setRecipeMeta({
+        portionNames: ctxRes.data?.portionNames || { '__standart__': 'Standart' },
+        allChannels: ctxRes.data?.allChannels || []
+      })
     } catch (err) {
       toast('Sayfa yüklenemedi: ' + err.message, 'error')
     } finally {
@@ -244,26 +521,249 @@ export default function ManualReader() {
       <style>{`
         /* ─── LAYOUT ─── */
         .mr-root {
-          display: grid;
-          grid-template-columns: 280px minmax(0, 1fr);
-          gap: 0;
-          max-width: 1440px;
-          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
           min-height: calc(100vh - 60px);
         }
 
-        /* ─── SIDEBAR ─── */
+        /* ─── HEADER (TOP NAV) ─── */
+        .mr-header {
+          position: sticky;
+          top: 0;
+          left: 0;
+          right: 0;
+          background: var(--surface);
+          border-bottom: 1px solid var(--border);
+          z-index: 100;
+          backdrop-filter: blur(8px);
+        }
+        .mr-header-container {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          max-width: 100%;
+          margin: 0 auto;
+          padding: 0 40px;
+          height: 64px;
+          gap: 20px;
+        }
+        .mr-header-brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: none;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          text-align: left;
+          font-family: inherit;
+        }
+        .mr-header-brand-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #f59e0b, #f97316);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          font-size: .8rem;
+        }
+        .mr-header-brand-text h2 {
+          margin: 0;
+          font-size: .84rem;
+          font-weight: 800;
+          color: var(--text-strong);
+          line-height: 1.2;
+        }
+        .mr-header-brand-text span {
+          font-size: .6rem;
+          color: var(--text-muted);
+          font-weight: 500;
+        }
+        
+        .mr-header-nav {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          height: 100%;
+        }
+        .mr-nav-item {
+          position: relative;
+          height: 100%;
+          display: flex;
+          align-items: center;
+        }
+        .mr-nav-btn {
+          background: none;
+          border: none;
+          font-family: inherit;
+          font-size: .82rem;
+          font-weight: 600;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          height: 100%;
+          padding: 0 14px;
+          transition: all .15s;
+          border-bottom: 2px solid transparent;
+        }
+        .mr-nav-btn:hover {
+          color: var(--text-strong);
+        }
+        .mr-nav-btn.active {
+          color: var(--accent-primary);
+          border-bottom-color: var(--accent-primary);
+        }
+        .mr-nav-item:hover .mr-nav-btn {
+          color: var(--accent-primary);
+          border-bottom-color: var(--accent-primary);
+        }
+        .mr-nav-chevron {
+          font-size: .55rem;
+          margin-left: 6px;
+          opacity: .5;
+          transition: transform .15s;
+        }
+        .mr-nav-item:hover .mr-nav-chevron {
+          transform: rotate(180deg);
+        }
+        
+        .mr-nav-dropdown {
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%) translateY(10px);
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0,0,0,.15);
+          padding: 16px;
+          z-index: 110;
+          visibility: hidden;
+          opacity: 0;
+          transition: opacity .15s, transform .15s, visibility .15s;
+        }
+        .mr-nav-item:hover .mr-nav-dropdown {
+          visibility: visible;
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+        
+        .mr-dropdown-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+          gap: 8px;
+          width: 460px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+        .mr-dropdown-empty {
+          grid-column: 1 / -1;
+          padding: 16px;
+          text-align: center;
+          color: var(--text-muted);
+          font-size: .78rem;
+        }
+        .mr-dropdown-card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 12px;
+          border-radius: 8px;
+          border: 1.5px solid transparent;
+          background: var(--surface-2);
+          cursor: pointer;
+          transition: all .15s;
+          text-align: left;
+          width: 100%;
+          font-family: inherit;
+        }
+        .mr-dropdown-card:hover {
+          border-color: var(--accent-primary);
+          background: rgba(245, 166, 35, 0.04);
+        }
+        .mr-dropdown-card.active {
+          border-color: var(--accent-primary);
+          background: rgba(245, 166, 35, 0.08);
+        }
+        .mr-dropdown-card-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          background: var(--surface);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: .7rem;
+          color: var(--text-muted);
+          flex-shrink: 0;
+        }
+        .mr-dropdown-card.active .mr-dropdown-card-icon {
+          color: var(--accent-primary);
+        }
+        .mr-dropdown-card-content {
+          min-width: 0;
+          flex: 1;
+        }
+        .mr-dropdown-card-title {
+          display: block;
+          font-size: .76rem;
+          font-weight: 700;
+          color: var(--text-strong);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .mr-dropdown-card-desc {
+          display: block;
+          font-size: .6rem;
+          color: var(--text-muted);
+          margin-top: 1px;
+        }
+        
+        .mr-header-search-wrap {
+          position: relative;
+          width: 220px;
+        }
+        .mr-header-search-wrap .mr-search-dropdown {
+          left: auto;
+          right: 0;
+          width: 320px;
+        }
+        
+        .mr-header-hamburger {
+          display: none;
+          background: none;
+          border: none;
+          font-size: 1.2rem;
+          color: var(--text-strong);
+          cursor: pointer;
+          padding: 8px;
+        }
+
+        /* ─── SIDEBAR (MOBILE ONLY) ─── */
         .mr-sidebar {
           background: var(--surface);
           border-right: 1px solid var(--border);
-          height: calc(100vh - 60px);
-          position: sticky;
+          height: 100vh;
+          position: fixed;
+          left: 0;
           top: 0;
+          bottom: 0;
+          width: 300px;
+          z-index: 295;
           overflow-y: auto;
           display: flex;
           flex-direction: column;
           scrollbar-width: thin;
           scrollbar-color: var(--border) transparent;
+        }
+        @media (min-width: 769px) {
+          .mr-sidebar {
+            display: none !important;
+          }
         }
         .mr-sidebar::-webkit-scrollbar { width: 4px; }
         .mr-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -523,8 +1023,11 @@ export default function ManualReader() {
 
         /* ─── MAIN CONTENT ─── */
         .mr-main {
-          padding: 28px 36px;
-          min-height: calc(100vh - 60px);
+          padding: 40px 40px;
+          max-width: 100%;
+          width: 100%;
+          margin: 0 auto;
+          min-height: calc(100vh - 124px);
         }
 
         /* ─── PAGE ANIMATION ─── */
@@ -721,7 +1224,10 @@ export default function ManualReader() {
         }
 
         /* ─── PAGE DETAIL ─── */
-        .mr-detail { max-width: 820px; }
+        .mr-detail {
+          max-width: 100%;
+          margin: 0 auto;
+        }
 
         /* Breadcrumb */
         .mr-breadcrumb {
@@ -826,20 +1332,69 @@ export default function ManualReader() {
         }
 
         /* ─── HERO IMAGE ─── */
+        /* ─── HERO ROW (Side-by-Side) ─── */
+        .mr-hero-row {
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          gap: 32px;
+          margin: 0 auto 32px;
+          max-width: 1000px;
+          width: 100%;
+        }
         .mr-hero-img {
+          flex: 1;
+          max-width: 440px;
           width: 100%;
           border-radius: 14px;
           overflow: hidden;
-          margin-bottom: 24px;
-          aspect-ratio: 16/7;
+          aspect-ratio: 4/3;
           background: var(--surface-2);
           border: 1px solid var(--border);
+          box-shadow: 0 8px 30px rgba(0,0,0,.08);
         }
         .mr-hero-img img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
+        }
+
+        /* ─── PRODUCT STORY ─── */
+        .mr-product-story {
+          flex: 1.2;
+          max-width: 520px;
+          background: linear-gradient(135deg, rgba(45, 106, 79, 0.04), rgba(82, 183, 136, 0.04));
+          border-left: 4px solid #2d6a4f;
+          border-right: 4px solid #2d6a4f;
+          border-radius: 12px;
+          padding: 24px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        [data-theme="dark"] .mr-product-story {
+          background: linear-gradient(135deg, rgba(82, 183, 136, 0.06), rgba(45, 106, 79, 0.06));
+          border-color: #52b788;
+        }
+        .mr-story-quote-icon {
+          color: rgba(45, 106, 79, 0.15);
+          font-size: 1.6rem;
+          line-height: 1;
+        }
+        [data-theme="dark"] .mr-story-quote-icon {
+          color: rgba(82, 183, 136, 0.2);
+        }
+        .mr-story-text {
+          font-style: italic;
+          font-size: 1.05rem; /* ~1pt larger than standard 0.88rem/14px */
+          line-height: 1.7;
+          color: var(--text-strong);
+          font-weight: 500;
+          text-align: center;
+          padding: 0 10px;
         }
 
         /* ─── PRODUCT SPECS ─── */
@@ -865,39 +1420,142 @@ export default function ManualReader() {
           font-size: .7rem;
           color: var(--accent-primary);
         }
-        .mr-specs-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-          gap: 10px;
+        .mr-specs-banner {
+          position: relative;
+          width: 100%;
+          height: 180px;
+          margin: 40px 0;
         }
-        .mr-spec-card {
-          background: var(--surface-2);
-          border-radius: 10px;
+        .mr-specs-banner-strip {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 80px;
+          height: 100px;
+          border-top: 2px solid #000;
+          border-bottom: 2px solid #000;
+          background: #ffffff;
+          overflow: hidden;
+          z-index: 1;
+        }
+        [data-theme="dark"] .mr-specs-banner-strip {
+          background: #111827;
+          border-top-color: #374151;
+          border-bottom-color: #374151;
+        }
+        .mr-specs-banner-bg {
+          position: absolute;
+          top: -10px; left: -10px; right: -10px; bottom: -10px;
+          background-size: cover;
+          background-position: center;
+          filter: blur(4px) brightness(1.05) contrast(1.05) saturate(1.1);
+          opacity: 0.9;
+        }
+        [data-theme="dark"] .mr-specs-banner-bg {
+          opacity: 0.45;
+          filter: blur(6px) brightness(0.7) contrast(1.1);
+        }
+        .mr-specs-banner-grid {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 2;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 20px;
+          justify-content: center;
+          align-items: flex-start;
+          width: 100%;
+          padding: 0 24px;
+        }
+        .mr-spec-art-card {
+          width: 220px;
+          background: var(--card-bg-bottom, #ffffff);
+          border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .mr-spec-art-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        }
+        .mr-spec-art-top {
+          background: var(--card-bg-top, #f8fafc);
+          border-bottom: 1px solid var(--card-border, rgba(0,0,0,0.08));
           padding: 10px 12px;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+          height: 80px;
+          box-sizing: border-box;
+        }
+        .mr-spec-art-label {
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #475569;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 5px;
         }
-        .mr-spec-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          background: var(--surface);
+        .mr-spec-art-val {
+          font-size: 0.95rem;
+          font-weight: 800;
+          color: var(--card-val-color, #1e293b);
+        }
+        .mr-spec-art-bottom {
+          background: var(--card-bg-bottom, #ffffff);
+          padding: 10px 12px;
+          font-size: 0.7rem;
+          color: #334155;
+          line-height: 1.4;
+          text-align: center;
+          flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: .7rem;
-          flex-shrink: 0;
+          height: 80px;
+          box-sizing: border-box;
         }
-        .mr-spec-label {
-          font-size: .58rem;
-          color: var(--text-muted);
-          font-weight: 500;
+        [data-theme="dark"] .mr-spec-art-card {
+          --card-bg-top: rgba(30, 41, 59, 0.8) !important;
+          --card-bg-bottom: rgba(15, 23, 42, 0.8) !important;
+          --card-border: rgba(255, 255, 255, 0.1) !important;
+          --card-val-color: var(--accent-primary) !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
         }
-        .mr-spec-value {
-          font-size: .78rem;
-          font-weight: 700;
-          color: var(--text-strong);
+        [data-theme="dark"] .mr-spec-art-label {
+          color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .mr-spec-art-bottom {
+          color: #cbd5e1 !important;
+        }
+        @media (max-width: 768px) {
+          .mr-specs-banner {
+            height: auto !important;
+            margin: 20px 0 !important;
+          }
+          .mr-specs-banner-strip {
+            display: none !important;
+          }
+          .mr-specs-banner-grid {
+            position: relative !important;
+            padding: 0 !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 16px !important;
+          }
+          .mr-spec-art-card {
+            width: 100% !important;
+            max-width: 340px !important;
+          }
         }
 
         /* ─── SHELF LIFE ─── */
@@ -982,8 +1640,20 @@ export default function ManualReader() {
           font-size: .8rem;
           border: 1px solid var(--border);
           border-radius: 12px;
-          overflow: hidden;
+          overflow: visible;
           margin-bottom: 24px;
+        }
+        .mr-recipe-table thead tr:first-child th:first-child {
+          border-top-left-radius: 11px;
+        }
+        .mr-recipe-table thead tr:first-child th:last-child {
+          border-top-right-radius: 11px;
+        }
+        .mr-recipe-table tbody tr:last-child td:first-child {
+          border-bottom-left-radius: 11px;
+        }
+        .mr-recipe-table tbody tr:last-child td:last-child {
+          border-bottom-right-radius: 11px;
         }
         .mr-recipe-table thead th {
           background: var(--surface-2);
@@ -1074,57 +1744,211 @@ export default function ManualReader() {
 
         /* ─── STEPS TIMELINE ─── */
         .mr-steps { margin-bottom: 28px; }
-        .mr-step {
+        
+        .mr-steps-premium-container {
           display: flex;
-          gap: 16px;
+          flex-direction: column;
+          gap: 48px;
+          margin-top: 24px;
+          margin-bottom: 40px;
+        }
+        
+        .mr-step-premium-card {
           position: relative;
-          padding-bottom: 18px;
+          background: var(--surface);
+          margin: 20px 24px;
+          padding: 0;
         }
-        .mr-step:last-child { padding-bottom: 0; }
-        .mr-step:not(:last-child)::after {
-          content: '';
+
+        /* The sketch lines */
+        .mr-sketch-line {
           position: absolute;
-          left: 17px;
-          top: 40px;
-          bottom: 0;
-          width: 2px;
-          background: var(--border);
+          background: #2d6a4f; /* Forest green sketch line color */
+          opacity: 0.85;
+          z-index: 2;
+          pointer-events: none;
+          filter: url(#hand-drawn-filter);
         }
-        .mr-step-num {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent-primary), #f97316);
-          color: #fff;
+        
+        [data-theme="dark"] .mr-sketch-line {
+          background: #52b788; /* Dark theme bright/mint green */
+        }
+        
+        .mr-sketch-line-top {
+          top: 0;
+          left: -24px;
+          right: -24px;
+          height: 3px;
+          border-radius: 1px;
+        }
+        .mr-sketch-line-bottom {
+          bottom: 0;
+          left: -24px;
+          right: -24px;
+          height: 3px;
+          border-radius: 1px;
+        }
+        .mr-sketch-line-left {
+          left: 0;
+          top: -24px;
+          bottom: -24px;
+          width: 3px;
+          border-radius: 1px;
+        }
+        .mr-sketch-line-right {
+          right: 0;
+          top: -24px;
+          bottom: -24px;
+          width: 3px;
+          border-radius: 1px;
+        }
+        .mr-sketch-line-middle {
+          position: absolute;
+          top: -24px;
+          bottom: -24px;
+          left: calc(5cm * 4 / 3);
+          width: 3px;
+          border-radius: 1px;
+          z-index: 2;
+        }
+        .mr-step-premium-card.alternate .mr-sketch-line-middle {
+          left: auto;
+          right: calc(5cm * 4 / 3);
+        }
+
+        .mr-step-premium-grid {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0;
+          min-height: 150px;
+        }
+
+        .mr-step-premium-card.no-image .mr-step-premium-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .mr-step-premium-img-box {
+          position: relative;
+          overflow: hidden;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: .78rem;
-          font-weight: 800;
+          padding: 0;
+          background: var(--surface-2);
+          border-radius: 6px 0 0 6px;
+          aspect-ratio: 4 / 3;
+          height: 5cm;
+          align-self: center;
           flex-shrink: 0;
-          z-index: 1;
-          box-shadow: 0 2px 8px rgba(245,166,35,.25);
         }
-        .mr-step-body {
-          flex: 1;
-          min-width: 0;
-        }
-        .mr-step-text {
-          font-size: .86rem;
-          color: var(--text-strong);
-          line-height: 1.7;
-          padding-top: 6px;
-        }
-        .mr-step-img {
-          margin-top: 10px;
-          border-radius: 10px;
-          overflow: hidden;
-          border: 1px solid var(--border);
-          max-width: 360px;
-        }
-        .mr-step-img img {
+        
+        .mr-step-premium-img-box img {
           width: 100%;
-          display: block;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 6px 0 0 6px;
+        }
+
+        .mr-step-premium-content-box {
+          padding: 24px 28px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          text-align: left;
+        }
+
+        .mr-step-premium-title {
+          margin: 0 0 12px 0;
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #2d6a4f;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        [data-theme="dark"] .mr-step-premium-title {
+          color: #52b788;
+        }
+        
+        .mr-step-premium-desc {
+          margin: 0;
+          font-size: 0.88rem;
+          line-height: 1.65;
+          color: var(--text-strong);
+        }
+
+        .mr-step-premium-card.alternate .mr-step-premium-grid {
+          grid-template-columns: 1fr auto;
+        }
+        .mr-step-premium-card.alternate .mr-step-premium-img-box {
+          order: 2;
+          border-radius: 0 6px 6px 0;
+        }
+        .mr-step-premium-card.alternate .mr-step-premium-img-box img {
+          border-radius: 0 6px 6px 0;
+        }
+        .mr-step-premium-card.alternate .mr-step-premium-content-box {
+          order: 1;
+        }
+
+        /* Responsive behavior */
+        @media (max-width: 576px) {
+          .mr-hero-row {
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 20px !important;
+          }
+          .mr-hero-img {
+            max-width: 100% !important;
+            aspect-ratio: 4/3 !important;
+          }
+          .mr-product-story {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .mr-step-premium-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .mr-sketch-line-middle {
+            display: none !important;
+          }
+          .mr-step-premium-img-box {
+            height: 200px;
+            padding: 0 !important;
+            order: 1 !important;
+            border-radius: 6px 6px 0 0 !important;
+            aspect-ratio: auto;
+            align-self: stretch !important;
+          }
+          .mr-step-premium-img-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px 6px 0 0 !important;
+          }
+          .mr-step-premium-content-box {
+            order: 2 !important;
+          }
+          .mr-sketch-line-left {
+            top: -12px;
+            bottom: -12px;
+          }
+          .mr-sketch-line-right {
+            top: -12px;
+            bottom: -12px;
+          }
+          .mr-sketch-line-top {
+            left: -12px;
+            right: -12px;
+          }
+          .mr-sketch-line-bottom {
+            left: -12px;
+            right: -12px;
+          }
         }
 
         /* ─── MARKDOWN CONTENT ─── */
@@ -1313,6 +2137,8 @@ export default function ManualReader() {
           .mr-main {
             padding: 0 !important;
             min-height: auto !important;
+            max-width: 100% !important;
+            width: 100% !important;
           }
           .mr-detail { max-width: 100% !important; }
 
@@ -1352,17 +2178,274 @@ export default function ManualReader() {
           img { max-width: 100% !important; }
 
           /* Clean backgrounds */
-          .mr-spec-card, .mr-shelf-warning, .mr-step-num {
+          .mr-spec-card, .mr-shelf-warning, .mr-step-num, .mr-specs-banner-strip, .mr-spec-art-card, .mr-spec-art-top, .mr-spec-art-bottom {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+
+          /* Force hero row side-by-side during print */
+          .mr-hero-row {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: stretch !important;
+            gap: 24px !important;
+            width: 100% !important;
+            margin-bottom: 24px !important;
+          }
+          .mr-hero-img {
+            flex: 1 !important;
+            max-width: 44% !important;
+            aspect-ratio: 4/3 !important;
+            height: auto !important;
+          }
+          .mr-product-story {
+            flex: 1.2 !important;
+            max-width: 56% !important;
+            height: auto !important;
+          }
+        }
+
+        /* ─── CHANNEL TOOLTIP ─── */
+        .mr-channel-tooltip-container {
+          position: relative;
+          display: inline-block;
+        }
+
+        .mr-channel-tooltip-trigger {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: rgba(99, 102, 241, 0.08);
+          color: #4f46e5;
+          border: 1px solid rgba(99, 102, 241, 0.18);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .mr-channel-tooltip-trigger:hover {
+          background: #4f46e5;
+          color: #ffffff;
+          transform: scale(1.05);
+          box-shadow: 0 4px 10px rgba(99, 102, 241, 0.25);
+        }
+
+        .mr-channel-tooltip-trigger.all-channels {
+          background: rgba(16, 185, 129, 0.08);
+          color: #10b981;
+          border-color: rgba(16, 185, 129, 0.18);
+        }
+
+        .mr-channel-tooltip-trigger.all-channels:hover {
+          background: #10b981;
+          color: #ffffff;
+          box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
+        }
+
+        .mr-channel-tooltip-content {
+          visibility: hidden;
+          opacity: 0;
+          position: absolute;
+          bottom: 125%;
+          left: 50%;
+          transform: translateX(-50%) translateY(4px);
+          background: #ffffff;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+          padding: 8px 12px;
+          min-width: 170px;
+          z-index: 100;
+          pointer-events: none;
+          transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.2s;
+        }
+
+        .mr-channel-tooltip-container:hover .mr-channel-tooltip-content {
+          visibility: visible;
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+          pointer-events: auto;
+        }
+
+        .mr-channel-tooltip-arrow {
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+          border-width: 6px;
+          border-style: solid;
+          border-color: #ffffff transparent transparent transparent;
+        }
+        
+        .mr-channel-tooltip-arrow-border {
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+          border-width: 7px;
+          border-style: solid;
+          border-color: var(--border) transparent transparent transparent;
+          z-index: -1;
+        }
+
+        .mr-channel-tooltip-title {
+          font-size: 0.7rem;
+          font-weight: 800;
+          color: var(--text-strong);
+          border-bottom: 1px solid var(--border);
+          padding-bottom: 6px;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          text-align: left;
+        }
+
+        .mr-channel-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .mr-channel-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          color: var(--text-muted);
+          padding: 3px 6px;
+          border-radius: 6px;
+          transition: background 0.15s ease;
+          text-align: left;
+        }
+        
+        .mr-channel-item:hover {
+          background: var(--surface-hover);
+          color: var(--text-strong);
+        }
+
+        .mr-channel-item.active {
+          color: #4f46e5;
+        }
+        .mr-channel-item.active.all {
+          color: #10b981;
+        }
+
+        .mr-channel-item i {
+          font-size: 0.8rem;
+          width: 14px;
+          text-align: center;
+          display: inline-block;
         }
 
         /* Hidden on screen, visible on print */
         .mr-print-header, .mr-print-footer { display: none; }
       `}</style>
 
-      {/* ══════ SIDEBAR ══════ */}
+      {/* ══════ HEADER (TOP NAV) ══════ */}
+      <header className="mr-header">
+        <div className="mr-header-container">
+          {/* Logo / Brand */}
+          <button className="mr-header-brand" onClick={() => { setSelectedPageId(null); setPageDetails(null); setAnimKey(k => k + 1) }}>
+            <div className="mr-header-brand-icon">
+              <i className="fa-solid fa-book-open" />
+            </div>
+            <div className="mr-header-brand-text">
+              <h2>Operasyon El Kitabı</h2>
+              <span>{pages.length} Sayfa</span>
+            </div>
+          </button>
+
+          {/* Navigation Categories Menu */}
+          <nav className="mr-header-nav">
+            {categories.map(cat => {
+              const catPages = pages.filter(p => p.category_id === cat.id)
+              const icon = CATEGORY_ICONS[cat.name] || DEFAULT_ICON
+              const color = CATEGORY_COLORS[cat.name] || DEFAULT_COLOR
+              const isActiveCat = pageDetails?.category_id === cat.id
+              
+              return (
+                <div key={cat.id} className="mr-nav-item">
+                  <button className={`mr-nav-btn${isActiveCat ? ' active' : ''}`}>
+                    <i className={`fa-solid ${icon}`} style={{ color, marginRight: 6 }} />
+                    {cat.name}
+                    <i className="fa-solid fa-chevron-down mr-nav-chevron" />
+                  </button>
+                  
+                  {/* Dropdown Menu */}
+                  <div className="mr-nav-dropdown">
+                    <div className="mr-dropdown-grid">
+                      {catPages.length === 0 ? (
+                        <div className="mr-dropdown-empty">Bu kategoride henüz sayfa yok.</div>
+                      ) : (
+                        catPages.map(page => (
+                          <button
+                            key={page.id}
+                            className={`mr-dropdown-card ${selectedPageId === page.id ? 'active' : ''}`}
+                            onClick={() => navigateToPage(page.id)}
+                          >
+                            <div className="mr-dropdown-card-icon">
+                              <i className="fa-regular fa-file-lines" />
+                            </div>
+                            <div className="mr-dropdown-card-content">
+                              <span className="mr-dropdown-card-title">{page.title}</span>
+                              <span className="mr-dropdown-card-desc">Görüntülemek için tıklayın</span>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </nav>
+
+          {/* Search bar on the right */}
+          <div className="mr-header-search-wrap">
+            <i className="fa-solid fa-magnifying-glass mr-search-icon" />
+            <input
+              ref={globalSearchRef}
+              className="mr-search-input"
+              placeholder="Ara... (Ctrl+K)"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+            />
+            {searchFocused && searchQuery.trim() && (
+              <div className="mr-search-dropdown">
+                {searchResults.length === 0 ? (
+                  <div className="mr-search-empty">
+                    <i className="fa-solid fa-magnifying-glass" style={{ marginRight: 6, opacity: .5 }} />
+                    Sonuç bulunamadı
+                  </div>
+                ) : searchResults.map(r => (
+                  <button key={r.id} className="mr-search-item"
+                    onMouseDown={() => navigateToPage(r.id)}>
+                    <i className={`fa-solid ${CATEGORY_ICONS[r.categoryName] || DEFAULT_ICON}`}
+                       style={{ fontSize: '.7rem', color: CATEGORY_COLORS[r.categoryName] || DEFAULT_COLOR }} />
+                    <span className="mr-search-item-title">{r.title}</span>
+                    <span className="mr-search-item-cat">{r.categoryName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Hamburger button for mobile header */}
+          <button className="mr-header-hamburger" onClick={() => setMobileSidebarOpen(v => !v)}>
+            <i className={`fa-solid ${mobileSidebarOpen ? 'fa-xmark' : 'fa-bars'}`} />
+          </button>
+        </div>
+      </header>
+
+      {/* ══════ SIDEBAR (MOBILE DRAWER ONLY) ══════ */}
       <aside className={`mr-sidebar${mobileSidebarOpen ? ' open' : ''}`}>
         <div className="mr-sidebar-header">
           <div className="mr-sidebar-brand">
@@ -1386,10 +2469,6 @@ export default function ManualReader() {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
             />
-            {!searchFocused && !searchQuery && (
-              <span className="mr-search-kbd">Ctrl+K</span>
-            )}
-
             {searchFocused && searchQuery.trim() && (
               <div className="mr-search-dropdown">
                 {searchResults.length === 0 ? (
@@ -1459,10 +2538,7 @@ export default function ManualReader() {
         </nav>
       </aside>
 
-      {/* ══════ MOBILE TOGGLE ══════ */}
-      <button className="mr-mobile-toggle" onClick={() => setMobileSidebarOpen(v => !v)}>
-        <i className={`fa-solid ${mobileSidebarOpen ? 'fa-xmark' : 'fa-bars'}`} />
-      </button>
+      {/* ══════ MOBILE OVERLAY ══════ */}
       <div className={`mr-mobile-overlay${mobileSidebarOpen ? ' open' : ''}`}
            onClick={() => setMobileSidebarOpen(false)} />
 
@@ -1614,162 +2690,290 @@ export default function ManualReader() {
               </div>
             </div>
 
-            {/* Hero image */}
-            {pageDetails.metadata?.product_image && (
-              <div className="mr-hero-img">
-                <img src={resolveImageUrl(pageDetails.metadata.product_image)} alt={pageDetails.title} />
-              </div>
-            )}
-
-            {/* Product specs */}
-            {(pageDetails.metadata?.prep_time || pageDetails.metadata?.thaw_time || pageDetails.metadata?.cooling_time ||
-              pageDetails.metadata?.portion_qty || pageDetails.metadata?.allergens || pageDetails.metadata?.storage_temp) && (
-              <div className="mr-specs">
-                <div className="mr-specs-title">
-                  <i className="fa-solid fa-circle-info" /> Ürün Özellikleri
-                </div>
-                <div className="mr-specs-grid">
-                  {pageDetails.metadata.prep_time && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#0ea5e9' }}><i className="fa-solid fa-clock" /></div>
-                      <div>
-                        <div className="mr-spec-label">Hazırlama</div>
-                        <div className="mr-spec-value">{pageDetails.metadata.prep_time}</div>
-                      </div>
+            {/* Hero row: Image & Story side-by-side */}
+            {(pageDetails.metadata?.product_image || pageDetails.metadata?.description) && (
+              <div className="mr-hero-row">
+                {pageDetails.metadata?.product_image && (
+                  <div className="mr-hero-img">
+                    <img src={resolveImageUrl(pageDetails.metadata.product_image)} alt={pageDetails.title} />
+                  </div>
+                )}
+                {pageDetails.metadata?.description && (
+                  <div className="mr-product-story">
+                    <div className="mr-story-quote-icon">
+                      <i className="fa-solid fa-quote-left" />
                     </div>
-                  )}
-                  {pageDetails.metadata.thaw_time && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#0284c7' }}><i className="fa-solid fa-snowflake" /></div>
-                      <div>
-                        <div className="mr-spec-label">Çözünme</div>
-                        <div className="mr-spec-value">{pageDetails.metadata.thaw_time}</div>
-                      </div>
+                    <div className="mr-story-text">
+                      {renderFormattedDescription(pageDetails.metadata.description)}
                     </div>
-                  )}
-                  {pageDetails.metadata.cooling_time && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#f59e0b' }}><i className="fa-solid fa-temperature-arrow-down" /></div>
-                      <div>
-                        <div className="mr-spec-label">Ilınma / Soğuma</div>
-                        <div className="mr-spec-value">{pageDetails.metadata.cooling_time}</div>
-                      </div>
+                    <div className="mr-story-quote-icon" style={{ textAlign: 'right', marginTop: -8 }}>
+                      <i className="fa-solid fa-quote-right" />
                     </div>
-                  )}
-                  {pageDetails.metadata.portion_qty && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#10b981' }}><i className="fa-solid fa-scale-balanced" /></div>
-                      <div>
-                        <div className="mr-spec-label">Porsiyon</div>
-                        <div className="mr-spec-value">{pageDetails.metadata.portion_qty}</div>
-                      </div>
-                    </div>
-                  )}
-                  {pageDetails.metadata.storage_temp && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#6366f1' }}><i className="fa-solid fa-temperature-three-quarters" /></div>
-                      <div>
-                        <div className="mr-spec-label">Saklama</div>
-                        <div className="mr-spec-value">{pageDetails.metadata.storage_temp}</div>
-                      </div>
-                    </div>
-                  )}
-                  {pageDetails.metadata.allergens && (
-                    <div className="mr-spec-card">
-                      <div className="mr-spec-icon" style={{ color: '#ef4444' }}><i className="fa-solid fa-triangle-exclamation" /></div>
-                      <div>
-                        <div className="mr-spec-label">Alerjenler</div>
-                        <div className="mr-spec-value" style={{ color: '#ef4444' }}>{pageDetails.metadata.allergens}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Shelf life */}
-                {(pageDetails.metadata.primary_shelf_life || pageDetails.metadata.secondary_shelf_life_1 || pageDetails.metadata.secondary_shelf_life_2) && (
-                  <div className="mr-shelf">
-                    <div className="mr-shelf-title">Raf Ömrü Standartları</div>
-                    {pageDetails.metadata.primary_shelf_life && (
-                      <div className="mr-shelf-row">
-                        <span className="mr-shelf-row-label">1. Raf Ömrü (Kapalı Ambalaj)</span>
-                        <span className="mr-shelf-row-value">
-                          {pageDetails.metadata.primary_shelf_life}
-                          {pageDetails.metadata.primary_storage_cond ? ` (${pageDetails.metadata.primary_storage_cond})` : ''}
-                        </span>
-                      </div>
-                    )}
-                    {(pageDetails.metadata.secondary_shelf_life_1 || pageDetails.metadata.secondary_shelf_life_2) && (
-                      <div className="mr-shelf-warning">
-                        <div className="mr-shelf-warning-title">
-                          <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 5, fontSize: '.6rem' }} />
-                          2. Raf Ömrü (Açıldıktan / Çözündükten Sonra)
-                        </div>
-                        {pageDetails.metadata.secondary_shelf_life_1 && (
-                          <div className="mr-shelf-warning-row">
-                            <span>Koşul 1 {pageDetails.metadata.secondary_storage_cond_1 ? `(${pageDetails.metadata.secondary_storage_cond_1})` : ''}</span>
-                            <span>{pageDetails.metadata.secondary_shelf_life_1}</span>
-                          </div>
-                        )}
-                        {pageDetails.metadata.secondary_shelf_life_2 && (
-                          <div className="mr-shelf-warning-row">
-                            <span>Koşul 2 {pageDetails.metadata.secondary_storage_cond_2 ? `(${pageDetails.metadata.secondary_storage_cond_2})` : ''}</span>
-                            <span>{pageDetails.metadata.secondary_shelf_life_2}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Recipe */}
-            {recipeContext.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <div className="mr-section-head">
-                  <div className="mr-section-bar" style={{ background: activeCategoryColor }} />
-                  <span className="mr-section-label">Reçete</span>
+            {/* Product specs */}
+            {(() => {
+              const spec1Label = pageDetails.metadata?.spec_1_label !== undefined ? pageDetails.metadata.spec_1_label : (pageDetails.metadata?.prep_time_label || 'Hazırlanma Süresi');
+              const spec1Val = pageDetails.metadata?.spec_1_val !== undefined ? pageDetails.metadata.spec_1_val : (pageDetails.metadata?.prep_time || '');
+              const spec1Desc = pageDetails.metadata?.spec_1_desc || '';
+              
+              const spec2Label = pageDetails.metadata?.spec_2_label !== undefined ? pageDetails.metadata.spec_2_label : (pageDetails.metadata?.thaw_time_label || 'Çözünme Süresi');
+              const spec2Val = pageDetails.metadata?.spec_2_val !== undefined ? pageDetails.metadata.spec_2_val : (pageDetails.metadata?.thaw_time || '');
+              const spec2Desc = pageDetails.metadata?.spec_2_desc || '';
+              
+              const spec3Label = pageDetails.metadata?.spec_3_label !== undefined ? pageDetails.metadata.spec_3_label : (pageDetails.metadata?.cooling_time_label || 'Ilınma/Soğuma');
+              const spec3Val = pageDetails.metadata?.spec_3_val !== undefined ? pageDetails.metadata.spec_3_val : (pageDetails.metadata?.cooling_time || '');
+              const spec3Desc = pageDetails.metadata?.spec_3_desc || '';
+              
+              const spec4Label = pageDetails.metadata?.spec_4_label || 'Özellik 4';
+              const spec4Val = pageDetails.metadata?.spec_4_val || '';
+              const spec4Desc = pageDetails.metadata?.spec_4_desc || '';
+              
+              const spec5Label = pageDetails.metadata?.spec_5_label || 'Özellik 5';
+              const spec5Val = pageDetails.metadata?.spec_5_val || '';
+              const spec5Desc = pageDetails.metadata?.spec_5_desc || '';
+              
+              const spec6Label = pageDetails.metadata?.spec_6_label || 'Özellik 6';
+              const spec6Val = pageDetails.metadata?.spec_6_val || '';
+              const spec6Desc = pageDetails.metadata?.spec_6_desc || '';
+
+              const shelf1Label = pageDetails.metadata?.shelf_1_label !== undefined ? pageDetails.metadata.shelf_1_label : (pageDetails.metadata?.primary_shelf_life_label || '1. Raf Ömrü (Kapalı)');
+              const shelf1Val = pageDetails.metadata?.shelf_1_val !== undefined ? pageDetails.metadata.shelf_1_val : (pageDetails.metadata?.primary_shelf_life ? `${pageDetails.metadata.primary_shelf_life}${pageDetails.metadata.primary_storage_cond ? ` (${pageDetails.metadata.primary_storage_cond})` : ''}` : '');
+              const shelf2Label = pageDetails.metadata?.shelf_2_label !== undefined ? pageDetails.metadata.shelf_2_label : (pageDetails.metadata?.secondary_shelf_life_1_label || 'Durum 1');
+              const shelf2Val = pageDetails.metadata?.shelf_2_val !== undefined ? pageDetails.metadata.shelf_2_val : (pageDetails.metadata?.secondary_shelf_life_1 ? `${pageDetails.metadata.secondary_shelf_life_1}${pageDetails.metadata.secondary_storage_cond_1 ? ` (${pageDetails.metadata.secondary_storage_cond_1})` : ''}` : '');
+              const shelf3Label = pageDetails.metadata?.shelf_3_label !== undefined ? pageDetails.metadata.shelf_3_label : (pageDetails.metadata?.secondary_shelf_life_2_label || 'Durum 2');
+              const shelf3Val = pageDetails.metadata?.shelf_3_val !== undefined ? pageDetails.metadata.shelf_3_val : (pageDetails.metadata?.secondary_shelf_life_2 ? `${pageDetails.metadata.secondary_shelf_life_2}${pageDetails.metadata.secondary_storage_cond_2 ? ` (${pageDetails.metadata.secondary_storage_cond_2})` : ''}` : '');
+              const shelf4Label = pageDetails.metadata?.shelf_4_label || 'Durum 3';
+              const shelf4Val = pageDetails.metadata?.shelf_4_val || '';
+              const shelf5Label = pageDetails.metadata?.shelf_5_label || 'Durum 4';
+              const shelf5Val = pageDetails.metadata?.shelf_5_val || '';
+              const shelf6Label = pageDetails.metadata?.shelf_6_label || 'Durum 5';
+              const shelf6Val = pageDetails.metadata?.shelf_6_val || '';
+
+              const hasSpecs = spec1Val || spec2Val || spec3Val || spec4Val || spec5Val || spec6Val;
+              const hasShelf = shelf1Val || shelf2Val || shelf3Val || shelf4Val || shelf5Val || shelf6Val;
+
+              if (!hasSpecs && !hasShelf) return null;
+
+              return (
+                <div className="mr-specs">
+                  {hasSpecs && (
+                    <>
+                      <div className="mr-specs-title" style={{ marginBottom: 20 }}>
+                        <i className="fa-solid fa-circle-info" /> Ürün Özellikleri
+                      </div>
+                      
+                      <div className="mr-specs-banner">
+                        <div className="mr-specs-banner-strip">
+                          {pageDetails.metadata?.product_image && (
+                            <div className="mr-specs-banner-bg" style={{ backgroundImage: `url(${resolveImageUrl(pageDetails.metadata.product_image)})` }} />
+                          )}
+                        </div>
+                        
+                        <div className="mr-specs-banner-grid">
+                          {[
+                            { label: spec1Label, val: spec1Val, desc: spec1Desc },
+                            { label: spec2Label, val: spec2Val, desc: spec2Desc },
+                            { label: spec3Label, val: spec3Val, desc: spec3Desc },
+                            { label: spec4Label, val: spec4Val, desc: spec4Desc },
+                            { label: spec5Label, val: spec5Val, desc: spec5Desc },
+                            { label: spec6Label, val: spec6Val, desc: spec6Desc }
+                          ].map((spec, index) => {
+                            if (!spec.val) return null;
+                            const theme = getSpecTheme(spec.label);
+                            return (
+                              <div key={index} className="mr-spec-art-card" style={{
+                                '--card-border': theme.border,
+                                '--card-bg-top': theme.bgTop,
+                                '--card-bg-bottom': theme.bgBottom,
+                                '--card-val-color': theme.valColor
+                              }}>
+                                <div className="mr-spec-art-top">
+                                  <div className="mr-spec-art-label">
+                                    <i className={`fa-solid ${theme.icon}`} style={theme.iconStyle} />
+                                    {spec.label}
+                                  </div>
+                                  <div className="mr-spec-art-val">{spec.val}</div>
+                                </div>
+                                <div className="mr-spec-art-bottom">
+                                  {spec.desc || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {hasShelf && (
+                    <div className="mr-shelf" style={{ borderTop: hasSpecs ? '1px dashed var(--border)' : 'none', marginTop: hasSpecs ? 16 : 0, paddingTop: hasSpecs ? 16 : 0 }}>
+                      <div className="mr-shelf-title">Raf Ömrü Standartları</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {shelf1Val && (
+                          <div className="mr-shelf-row">
+                            <span className="mr-shelf-row-label">{shelf1Label}</span>
+                            <span className="mr-shelf-row-value">{shelf1Val}</span>
+                          </div>
+                        )}
+                        {shelf2Val && (
+                          <div className="mr-shelf-row mr-shelf-warning-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6 }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: 600, color: '#b45309' }}>{shelf2Label}</span>
+                            <span style={{ fontSize: '.7rem', fontWeight: 800, color: '#b45309' }}>{shelf2Val}</span>
+                          </div>
+                        )}
+                        {shelf3Val && (
+                          <div className="mr-shelf-row mr-shelf-warning-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6 }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: 600, color: '#b45309' }}>{shelf3Label}</span>
+                            <span style={{ fontSize: '.7rem', fontWeight: 800, color: '#b45309' }}>{shelf3Val}</span>
+                          </div>
+                        )}
+                        {shelf4Val && (
+                          <div className="mr-shelf-row mr-shelf-warning-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6 }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: 600, color: '#b45309' }}>{shelf4Label}</span>
+                            <span style={{ fontSize: '.7rem', fontWeight: 800, color: '#b45309' }}>{shelf4Val}</span>
+                          </div>
+                        )}
+                        {shelf5Val && (
+                          <div className="mr-shelf-row mr-shelf-warning-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6 }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: 600, color: '#b45309' }}>{shelf5Label}</span>
+                            <span style={{ fontSize: '.7rem', fontWeight: 800, color: '#b45309' }}>{shelf5Val}</span>
+                          </div>
+                        )}
+                        {shelf6Val && (
+                          <div className="mr-shelf-row mr-shelf-warning-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6 }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: 600, color: '#b45309' }}>{shelf6Label}</span>
+                            <span style={{ fontSize: '.7rem', fontWeight: 800, color: '#b45309' }}>{shelf6Val}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <table className="mr-recipe-table">
-                  <thead>
-                    <tr>
-                      <th>Malzeme</th>
-                      <th>Miktar</th>
-                      <th>Kılavuz</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recipeContext.map((r, i) => {
-                      const targetPageId = r.linked_page_id || pages.find(p => p.title?.toLowerCase().trim() === r.name?.toLowerCase().trim())?.id
+              );
+            })()}
+
+            {/* Recipe — Boyuta Göre Gruplandırılmış */}
+            {recipeContext.length > 0 && (() => {
+              // Tüm kanal ID'leri
+              const allChannelIds = [...new Set(recipeContext.flatMap(r => r.channels || []))]
+              // Porsiyon grupları: __standart__ önce
+              const portionGroups = {}
+              recipeContext.forEach(r => {
+                const ports = (r.portions || []).length > 0 ? r.portions : ['__standart__']
+                ports.forEach(p => {
+                  if (!portionGroups[p]) portionGroups[p] = []
+                  portionGroups[p].push(r)
+                })
+              })
+              const groupKeys = Object.keys(portionGroups).sort((a, b) => {
+                if (a === '__standart__') return -1
+                if (b === '__standart__') return 1
+                return a.localeCompare(b, 'tr')
+              })
+              const hasMultipleGroups = groupKeys.length > 1 || (groupKeys.length === 1 && groupKeys[0] !== '__standart__')
+              const hasChannelFilter = allChannelIds.length > 1
+
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  <div className="mr-section-head">
+                    <div className="mr-section-bar" style={{ background: activeCategoryColor }} />
+                    <span className="mr-section-label">Reçete</span>
+                    {hasMultipleGroups && (
+                      <span style={{ marginLeft: 8, fontSize: '.62rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                        {groupKeys.length} boyut grubu
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: hasMultipleGroups ? 12 : 0 }}>
+                    {groupKeys.map((portKey, gi) => {
+                      const groupRows = portionGroups[portKey]
+                      const isStandart = portKey === '__standart__'
+                      const groupLabel = globalPortionNames[portKey] || recipeMeta.portionNames?.[portKey] || (isStandart ? 'Standart' : portKey)
+
                       return (
-                        <tr key={i}>
-                          <td>
-                            {targetPageId ? (
-                              <button className="mr-recipe-link" onClick={() => navigateToPage(targetPageId)}>
-                                {r.name}
-                              </button>
-                            ) : (
-                              <span>{r.name}</span>
+                        <div key={portKey}>
+                          {/* Boyut başlığı */}
+                          {hasMultipleGroups && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{
+                                fontSize: '.65rem', fontWeight: 800,
+                                padding: '3px 12px', borderRadius: 20,
+                                background: isStandart ? 'rgba(245,166,35,.12)' : 'rgba(99,102,241,.1)',
+                                color: isStandart ? 'var(--accent-primary)' : '#6366f1',
+                                border: `1px solid ${isStandart ? 'rgba(245,166,35,.25)' : 'rgba(99,102,241,.2)'}`,
+                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                              }}>
+                                <i className={`fa-solid ${isStandart ? 'fa-circle-check' : 'fa-expand'}`} style={{ fontSize: '.55rem' }} />
+                                {groupLabel}
+                              </span>
+                              {!isStandart && (
+                                <span style={{ fontSize: '.6rem', color: 'var(--text-muted)' }}>
+                                  Standart'tan farklı malzemeler
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <table className="mr-recipe-table" style={{ marginBottom: 0, tableLayout: 'fixed' }}>
+                            {gi === 0 && (
+                              <thead>
+                                <tr>
+                                  <th style={{ width: 'auto', textAlign: 'left' }}>Malzeme</th>
+                                  <th style={{ width: '140px', textAlign: 'right' }}>Miktar</th>
+                                  {hasChannelFilter && <th style={{ width: '90px', textAlign: 'center' }}>Kanal</th>}
+                                  <th style={{ width: '130px', textAlign: 'center' }}>Kılavuz</th>
+                                </tr>
+                              </thead>
                             )}
-                          </td>
-                          <td>{r.qty} {r.unit}</td>
-                          <td>
-                            {targetPageId ? (
-                              <button className="mr-recipe-go-btn" onClick={() => navigateToPage(targetPageId)}>
-                                <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, fontSize: '.55rem' }} />
-                                Kılavuza Git
-                              </button>
-                            ) : (
-                              <span style={{ color: 'var(--border)' }}>—</span>
-                            )}
-                          </td>
-                        </tr>
+                            <tbody>
+                              {groupRows.map((r, i) => {
+                                const targetPageId = r.linked_page_id || pages.find(p => p.title?.toLowerCase().trim() === r.name?.toLowerCase().trim())?.id
+                                return (
+                                  <tr key={i}>
+                                    <td style={{ width: 'auto', textAlign: 'left' }}>
+                                      {targetPageId ? (
+                                        <button className="mr-recipe-link" onClick={() => navigateToPage(targetPageId)}>
+                                          {r.name}
+                                        </button>
+                                      ) : (
+                                        <span>{r.name}</span>
+                                      )}
+                                    </td>
+                                    <td style={{ width: '140px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                      {parseFloat(r.qty || 0)} {r.unit}
+                                    </td>
+                                    {hasChannelFilter && (
+                                      <td style={{ width: '90px', textAlign: 'center' }}>
+                                        {renderChannelsBadge(r, globalChannels)}
+                                      </td>
+                                    )}
+                                    <td style={{ width: '130px', textAlign: 'center' }}>
+                                      {targetPageId ? (
+                                        <button className="mr-recipe-go-btn" onClick={() => navigateToPage(targetPageId)}>
+                                          <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, fontSize: '.55rem' }} />
+                                          Kılavuza Git
+                                        </button>
+                                      ) : (
+                                        <span style={{ color: 'var(--border)' }}>—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       )
                     })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Equipment pills */}
             {pageDetails.equipments?.length > 0 && (
@@ -1803,39 +3007,66 @@ export default function ManualReader() {
                       {validSteps.length > 1 ? 'Hazırlık Adımları' : 'Hazırlık Prosedürü'}
                     </span>
                   </div>
-                  {pageDetails.metadata.steps.map((step, idx) => (
-                    <div key={idx} className="mr-step">
-                      <div className="mr-step-num">{idx + 1}</div>
-                      <div className="mr-step-body">
-                        <div className="mr-step-text">
-                          {step.description || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
-                        </div>
-                        {step.imageUrl && (
-                          <div className="mr-step-img">
-                            <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${idx + 1}`} />
+                  
+                  <div className="mr-steps-premium-container">
+                    {pageDetails.metadata.steps.map((step, idx) => {
+                      const { title, body } = parseStepText(step.description, idx)
+                      const isAlternate = idx % 2 === 1
+                      const hasImage = !!step.imageUrl
+                      
+                      return (
+                        <div key={idx} className={`mr-step-premium-card ${isAlternate ? 'alternate' : ''} ${!hasImage ? 'no-image' : ''}`}>
+                          {/* Sketch border lines */}
+                          <div className="mr-sketch-line mr-sketch-line-top"></div>
+                          <div className="mr-sketch-line mr-sketch-line-bottom"></div>
+                          <div className="mr-sketch-line mr-sketch-line-left"></div>
+                          <div className="mr-sketch-line mr-sketch-line-right"></div>
+                          {hasImage && (
+                            <div className="mr-sketch-line mr-sketch-line-middle"></div>
+                          )}
+                          
+                          <div className="mr-step-premium-grid">
+                            {hasImage && (
+                              <div className="mr-step-premium-img-box">
+                                <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${idx + 1}`} />
+                              </div>
+                            )}
+                            <div className="mr-step-premium-content-box">
+                              <h3 className="mr-step-premium-title">
+                                <i className="fa-solid fa-cookie-bite" style={{ fontSize: '0.8rem', opacity: 0.8 }} />
+                                {title}
+                              </h3>
+                              <div className="mr-step-premium-desc">
+                                {body ? renderFormattedDescription(body) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )
             })()}
 
             {/* Markdown content */}
-            {pageDetails.content && (
-              <div className="mr-content" dangerouslySetInnerHTML={{ __html: pageDetails.content
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-                .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-                .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/^- (.*)$/gm, '<li style="list-style-type:disc">$1</li>')
-                .replace(/^\d+\.\s(.*)$/gm, '<li style="list-style-type:decimal">$1</li>')
-                .replace(/\n/g, '<br />')
-              }} />
-            )}
+            {(() => {
+              const categoryName = categories.find(c => c.id === pageDetails.category_id)?.name || '';
+              const isUrunler = categoryName === 'Ürünler';
+              return pageDetails.content && !isUrunler ? (
+                <div className="mr-content" dangerouslySetInnerHTML={{ __html: pageDetails.content
+                  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+                  .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+                  .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  .replace(/^- (.*)$/gm, '<li style="list-style-type:disc">$1</li>')
+                  .replace(/^\d+\.\s(.*)$/gm, '<li style="list-style-type:decimal">$1</li>')
+                  .replace(/\n/g, '<br />')
+                }} />
+              ) : null;
+            })()}
 
             {/* Prev/Next navigation */}
             <div className="mr-page-nav">
@@ -1913,6 +3144,14 @@ export default function ManualReader() {
           </div>
         </div>
       )}
+      
+      {/* Hand-drawn SVG Filter for sketch borders */}
+      <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true" focusable="false">
+        <filter id="hand-drawn-filter" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
     </div>
   )
 }

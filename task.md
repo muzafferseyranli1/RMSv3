@@ -1,21 +1,29 @@
-# WMS Faz 1 Görev Takibi (İç Tedarikçi Veri Modeli ve Senkron)
+# WMS Faz 7: Depo Operasyon Derinleştirme - Görev Listesi
 
-- `[x]` Veritabanı Şeması ve Migrations Güncellemeleri
-  - `[x]` Railway Postgres'te SQL sorgularını çalıştırarak kolon ve constraint'leri eklemek
-  - `[x]` `wms-migration.sql` dosyasını güncellemek
-  - `[x]` `schema-railway-master.sql` dosyasını güncellemek
-  - `[x]` `server/wms_migration.js` script'ini güncellemek
-- `[x]` Şirket Ağacı Senkronizasyonu (Company Tree Sync Hook)
-  - `[x]` `Company (1).jsx` içinde `anadepo` düğümlerini taranması ve `suppliers` tablosuna `sync_key` ile senkron edilmesi
-  - `[x]` Silinen depolar için pasife alma (`active = false`, `deleted_at = now()`) mantığı
-- `[x]` Tedarikçiler Ekranı (Suppliers UI) Düzenlemeleri
-  - `[x]` `Suppliers.jsx` içinde iç tedarikçiler için visual badge'ler eklenmesi
-  - `[x]` İç tedarikçilerin silinmesini (`remove`) ve geri alınmasını (`restore`) engelleme kısıtları
-  - `[x]` Düzenleme modalında ünvan ve aktiflik durumunu salt-okunur yapmak ve uyarı bilgi kutusu eklemek
-- `[x]` Stok Kartları Tedarikçi Listesi Güncellemesi (`StockItems.jsx`)
-  - `[x]` Tedarikçi yükleme query'sine `supplier_kind` alanının eklenmesi
-  - `[x]` Çoklu tedarikçi listesinde ve dropdown seçeneklerinde iç depolar için `[İç Depo]` / `[Mutfak]` etiketlerinin gösterilmesi
-- `[x]` Doğrulama ve Testler
-  - `[x]` `scratch/verify_sync.js` senkron testinin çalıştırılması
-  - `[x]` Frontend derlemesinin test edilmesi (`npm run build`)
-  - `[x]` Değişikliklerin `walkthrough.md` ile belgelenmesi
+- `[x]` 1. Sayım Ekranı Güncellemesi (`Count.jsx`)
+  - `[x]` `isWmsMode` bayrağını ve WMS için lokasyon/LPN yüklemelerini eklemek.
+  - `[x]` movements tablosundan lokasyon bazlı son stok bakiyelerini hesaplamak.
+  - `[x]` Sayım listesini lokasyon/LPN satırı kırılımında göstermek.
+  - `[x]` "Raf Satırı Ekle" arayüzünü tasarlayıp uygulamak.
+  - `[x]` WMS sayım satırlarında lokasyon seçimini zorunlu kılmak.
+  - `[x]` Fark hareketlerini lokasyon, LPN, lot ve SKT verileriyle `inventory_movements`'a yazmak.
+- `[x]` 2. Zayi ve Serbest Kullanım Ekranı Güncellemesi (`InventoryOperationRecord.jsx`)
+  - `[x]` WMS modunda şube seçimini kilitlemek ve lokasyon/LPN verilerini yüklemek.
+  - `[x]` Ürün bazlı mevcut stok lokasyon/LPN/lot bakiye seçim dropdown'ını eklemek.
+  - `[x]` Zayi/serbest kullanım hareketlerini seçilen lokasyon, LPN, lot ve SKT ile `inventory_movements`'a kaydetmek.
+- `[x]` 3. Depo İçi Lokasyon Taşıma (`WmsInternalTransfer.jsx` — yeni bileşen)
+  - `[x]` Yeni `WmsInternalTransfer.jsx` bileşeni oluşturuldu.
+  - `[x]` Kaynak ve hedef lokasyon/LPN formu tasarlandı.
+  - `[x]` `transfer_out` + `transfer_in` çifti `wms_transfer_pair_id` ile birlikte yazılıyor.
+  - `[x]` `/depo-iclokasyon-tasima` route'u App.jsx'e eklendi.
+- `[x]` 4. WMS Lokasyon & LPN Stok Rapor Modalları
+  - `[x]` `WmsLocations.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
+  - `[x]` `WmsLpns.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
+- `[x]` 5. Stok Hareketleri Sayfası Filtreleri (`InventoryMovements.jsx`)
+  - `[x]` Filtre state'lerine `locationId` ve `lpnId` eklendi.
+  - `[x]` WMS modunda (`scope === 'anadepo'`) Lokasyon ve LPN filtre dropdown'ları gösteriliyor.
+  - `[x]` `location_id`, `lpn_id`, `lot_number`, `expiration_date` SELECT'e dahil edildi.
+  - `[x]` Client-side filtreleme (RPC sonrasında) eklendi.
+- `[x]` 6. Derleme Doğrulaması
+  - `[x]` `npm run build` — 19.27s içinde hatasız tamamlandı.
+- `[ ]` 7. OperationSync.md güncellenmesi

@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 
 const DEFAULT_BRANCH_NAME = 'Kadikoy Subesi'
-const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v1'
+const BRANCH_CONTEXT_CACHE_KEY = 'suitable-rms:branch-contexts-v2'
 const BRANCH_CONTEXT_CACHE_TTL_MS = 5 * 60 * 1000
 let branchContextLoadPromise = null
 
@@ -107,7 +107,7 @@ export function buildBranchContextsFromCompanyNodes(nodes = []) {
   const nodeMap = new Map(normalizedNodes.map(node => [String(node.id), node]))
 
   return normalizedNodes
-    .filter(node => node?.can_sell === true)
+    .filter(node => node?.can_sell === true || node?.type === 'anadepo' || node?.type === 'mutfak')
     .sort(compareNodeOrder)
     .map(branchNode => {
       let current = branchNode
@@ -134,7 +134,7 @@ export function buildBranchContextsFromCompanyNodes(nodes = []) {
         legalEntityName: legalEntity?.name || null,
         orgUnitId: orgUnit?.id ? String(orgUnit.id) : null,
         orgUnitName: orgUnit?.name || null,
-        workspaceScope: branchNode.workspace_scope || null,
+        workspaceScope: branchNode.workspace_scope || (branchNode.type === 'anadepo' ? 'anadepo' : (branchNode.type === 'mutfak' ? 'merkezmutfak' : null)),
       }
     })
 }
@@ -197,7 +197,7 @@ export async function loadBranchContextsFromDb() {
     branchContextLoadPromise = (async () => {
       const { data: companyNodes, error: companyNodesError } = await db
         .from('company_nodes')
-        .select('id,type,name,parent_id,sort_order,can_sell')
+        .select('id,type,name,parent_id,sort_order,can_sell,workspace_scope')
         .order('sort_order')
         .order('name')
 

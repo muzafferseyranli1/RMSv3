@@ -19,6 +19,83 @@ import { ensureCallCenterChannelPrice } from '@/lib/saleItemChannelPricing'
 // ── Helpers ──────────────────────────────────────────────────
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 
+function getSemiProductUnitCost(semiId, semiItemsList, stockItemsList, visited = new Set()) {
+  if (visited.has(semiId)) return 0
+  visited.add(semiId)
+
+  const semi = semiItemsList.find(x => x.id === semiId)
+  if (!semi) return 0
+
+  const recipeRows = parseArrayValue(semi.recipe_rows)
+  if (!recipeRows || recipeRows.length === 0) return 0
+
+  let totalCost = 0
+  for (const row of recipeRows) {
+    const qty = parseFloat(row.qty) || 0
+    const waste = parseFloat(row.waste_pct) || 0
+    const usedQty = qty * (1 + waste / 100)
+
+    const itemId = row.stock_item_id || row.semi_item_id || row.ingredient_id
+    if (!itemId) continue
+
+    const stockItem = stockItemsList.find(x => x.id === itemId)
+    let itemUnitCost = 0
+    if (stockItem) {
+      itemUnitCost = parseFloat(stockItem.purchase_price) || 0
+    } else {
+      const nestedSemi = semiItemsList.find(x => x.id === itemId)
+      if (nestedSemi) {
+        itemUnitCost = getSemiProductUnitCost(itemId, semiItemsList, stockItemsList, visited)
+      }
+    }
+    totalCost += itemUnitCost * usedQty
+  }
+
+  const outputQty = parseFloat(semi.recipe_output_qty) || 1
+  return totalCost / (outputQty || 1)
+}
+
+function resolveRecipeRowsWithCosts(rowsInput, stockItems, semiItems) {
+  let rows = []
+  if (rowsInput) {
+    if (typeof rowsInput === 'string') {
+      try {
+        rows = JSON.parse(rowsInput || '[]')
+      } catch (e) {
+        rows = []
+      }
+    } else if (Array.isArray(rowsInput)) {
+      rows = rowsInput
+    }
+  }
+
+  return rows.map(row => {
+    const itemId = row.stock_item_id || row.semi_item_id || row.ingredient_id
+    if (!itemId) return row
+
+    const currentCost = parseFloat(row.cost) || 0
+    if (currentCost > 0) return row
+
+    const stockItem = stockItems.find(x => x.id === itemId)
+    if (stockItem) {
+      return {
+        ...row,
+        cost: (parseFloat(stockItem.purchase_price) || 0).toFixed(4)
+      }
+    }
+
+    const semiItem = semiItems.find(x => x.id === itemId)
+    if (semiItem) {
+      return {
+        ...row,
+        cost: (getSemiProductUnitCost(itemId, semiItems, stockItems) || 0).toFixed(4)
+      }
+    }
+
+    return row
+  })
+}
+
 function getAllBranches(tree) {
   const r = []
   function walk(n) { for (const x of n||[]) { if(x.type==='sube' || x.type === 'anadepo' || x.type === 'mutfak') r.push({id:x.id,name:x.name}); walk(x.children||[]) } }
@@ -419,8 +496,8 @@ export default function SaleItems() {
         db.from('units').select('*').order('is_system',{ascending:false}).order('sort_order').order('label'),
         db.from('sales_channels').select('*').is('deleted_at',null).eq('active',true).order('sort_order'),
         db.from('taxes').select('*').is('deleted_at',null).order('rate'),
-        db.from('stock_items').select('id,name,sku,unit').is('deleted_at',null).order('name'),
-        db.from('semi_items').select('id,name,sku,recipe_output_unit').is('deleted_at',null).order('name'),
+        db.from('stock_items').select('id,name,sku,unit,purchase_price').is('deleted_at',null).order('name'),
+        db.from('semi_items').select('id,name,sku,recipe_output_unit,recipe_rows,recipe_output_qty').is('deleted_at',null).order('name'),
         db.from('settings').select('value').eq('key','company_tree').single(),
         db.from('branch_templates').select('*').order('name'),
         db.from('sale_options').select('id,name,channel_prices').is('deleted_at',null).order('name'),
@@ -617,7 +694,7 @@ export default function SaleItems() {
       channel_prices: channelPrices,
       portions: parseArrayValue(fullItem.portions),
       option_groups: parseArrayValue(fullItem.option_groups),
-      recipe_rows: parseArrayValue(fullItem.recipe_rows),
+      recipe_rows: resolveRecipeRowsWithCosts(fullItem.recipe_rows, stockItems, semiItems),
       recipe_output_qty: fullItem.recipe_output_qty||1,
       recipe_output_unit: fullItem.recipe_output_unit||'',
       recipe_is_template: fullItem.recipe_is_template||false,
@@ -1643,6 +1720,7 @@ export default function SaleItems() {
                       semi_item_id: null,
                       sku: stockItem.sku || '',
                       unit: stockItem.unit || '',
+                      cost: (parseFloat(stockItem.purchase_price) || 0).toFixed(4),
                     }
                   } else if (semiItem) {
                     arr[i] = {
@@ -1653,6 +1731,7 @@ export default function SaleItems() {
                       semi_item_id: itemId,
                       sku: semiItem.sku || '',
                       unit: semiItem.unit || '',
+                      cost: (getSemiProductUnitCost(itemId, semiItems, stockItems) || 0).toFixed(4),
                     }
                   } else {
                     arr[i] = {
@@ -1663,6 +1742,7 @@ export default function SaleItems() {
                       semi_item_id: '',
                       sku: '',
                       unit: '',
+                      cost: '0.0000',
                     }
                   }
                   set('recipe_rows', arr)

@@ -1,23 +1,29 @@
-# WMS Faz 4: Depo Mal Kabul ve Putaway - Görev Listesi
+# WMS Faz 7: Depo Operasyon Derinleştirme - Görev Listesi
 
-- `[x]` 1. Veri Okuma ve State Hazırlığı (`MalKabul.jsx`)
-  - `[x]` `useWorkspace()` üzerinden `scope` değerini çekerek `isWmsMode` bayrağını tanımlamak (`scope === 'anadepo'`).
-  - `[x]` Seçilen şube/depo değiştiğinde (`selectedBranch`) eğer `isWmsMode` aktifse `warehouse_locations`, `warehouse_lpns` ve `stock_item_warehouse_settings` verilerini DB'den çekmek.
-- `[x]` 2. Taslak Çözümleme (`MalKabul.jsx`)
-  - `[x]` `buildOrderDraft` ve `buildManualDraft` içinde ürünlerin varsayılan lokasyonlarını (`default_location_id`) `stock_item_warehouse_settings` üzerinden çözüp `line.location_id` alanına atamak.
-  - `[x]` `lpn_id`, `lot_number`, `expiration_date` ve `availability_status` (varsayılan: `'available'`) alanlarını satırlarda başlatmak.
-- `[x]` 3. Modal Arayüzü ve Giriş Alanları (`MalKabul.jsx`)
-  - `[x]` `ReceiptEditorModal` bileşenine `isWmsMode`, `warehouseLocations` ve `warehouseLpns` verilerini prop olarak geçmek.
-  - `[x]` WMS modunda ürün tablosundaki her satırın hemen altına katlanabilir/açık bir WMS Detay paneli eklemek.
-  - `[x]` Bu panelde Lokasyon seçici (dropdown), LPN seçici (dropdown), Lot No (text), SKT (date) ve Durum seçici (dropdown) kontrollerini sunmak.
-- `[x]` 4. Validasyon Kontrolleri (`MalKabul.jsx`)
-  - `[x]` WMS modunda kabul edilen (`received_qty > 0`) her ürün için lokasyon (`location_id`) girildiğini doğrulamak.
-  - `[x]` Eksik varsa uyarı vererek kaydı durdurmak.
-- `[x]` 5. Veritabanı Kaydı (`MalKabul.jsx`)
-  - `[x]` `persistReceipt` fonksiyonunda `purchase_receipt_lines` meta JSONB alanına WMS detaylarını yazmak.
-  - `[x]` `inventory_movements` tablosuna `location_id`, `lpn_id`, `lot_number` ve `expiration_date` kolonlarını kaydetmek.
-  - `[x]` Stok hareketinin `meta.availability_status` alanında kalite/putaway durumunu saklamak.
-- `[x]` 6. Derleme ve Manuel Doğrulama
-  - `[x]` `npm run build` ile projeyi hatasız derlemek.
-  - `[x]` Şube mal kabulünün ve depo mal kabulünün ayrı ayrı sorunsuz çalıştığını, veritabanına doğru verilerin yazıldığını kontrol etmek (doğrulandı).
-  - `[x]` `OperationSync.md` dosyasını Faz 4 tamamlama detayları ile güncellemek.
+- `[x]` 1. Sayım Ekranı Güncellemesi (`Count.jsx`)
+  - `[x]` `isWmsMode` bayrağını ve WMS için lokasyon/LPN yüklemelerini eklemek.
+  - `[x]` movements tablosundan lokasyon bazlı son stok bakiyelerini hesaplamak.
+  - `[x]` Sayım listesini lokasyon/LPN satırı kırılımında göstermek.
+  - `[x]` "Raf Satırı Ekle" arayüzünü tasarlayıp uygulamak.
+  - `[x]` WMS sayım satırlarında lokasyon seçimini zorunlu kılmak.
+  - `[x]` Fark hareketlerini lokasyon, LPN, lot ve SKT verileriyle `inventory_movements`'a yazmak.
+- `[x]` 2. Zayi ve Serbest Kullanım Ekranı Güncellemesi (`InventoryOperationRecord.jsx`)
+  - `[x]` WMS modunda şube seçimini kilitlemek ve lokasyon/LPN verilerini yüklemek.
+  - `[x]` Ürün bazlı mevcut stok lokasyon/LPN/lot bakiye seçim dropdown'ını eklemek.
+  - `[x]` Zayi/serbest kullanım hareketlerini seçilen lokasyon, LPN, lot ve SKT ile `inventory_movements`'a kaydetmek.
+- `[x]` 3. Depo İçi Lokasyon Taşıma (`WmsInternalTransfer.jsx` — yeni bileşen)
+  - `[x]` Yeni `WmsInternalTransfer.jsx` bileşeni oluşturuldu.
+  - `[x]` Kaynak ve hedef lokasyon/LPN formu tasarlandı.
+  - `[x]` `transfer_out` + `transfer_in` çifti `wms_transfer_pair_id` ile birlikte yazılıyor.
+  - `[x]` `/depo-iclokasyon-tasima` route'u App.jsx'e eklendi.
+- `[x]` 4. WMS Lokasyon & LPN Stok Rapor Modalları
+  - `[x]` `WmsLocations.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
+  - `[x]` `WmsLpns.jsx` için "Stok Raporu" modalı eklendi (chart-bar butonu).
+- `[x]` 5. Stok Hareketleri Sayfası Filtreleri (`InventoryMovements.jsx`)
+  - `[x]` Filtre state'lerine `locationId` ve `lpnId` eklendi.
+  - `[x]` WMS modunda (`scope === 'anadepo'`) Lokasyon ve LPN filtre dropdown'ları gösteriliyor.
+  - `[x]` `location_id`, `lpn_id`, `lot_number`, `expiration_date` SELECT'e dahil edildi.
+  - `[x]` Client-side filtreleme (RPC sonrasında) eklendi.
+- `[x]` 6. Derleme Doğrulaması
+  - `[x]` `npm run build` — 19.27s içinde hatasız tamamlandı.
+- `[ ]` 7. OperationSync.md güncellenmesi

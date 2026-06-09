@@ -1201,21 +1201,65 @@ app.get('/api/manual/context-by-item', async (req, res) => {
   try {
     const { linked_item_id, linked_item_type } = req.query;
     if (!linked_item_id || !linked_item_type) {
-      return res.json({ data: { recipe: [] }, error: null });
+      return res.json({ data: { recipe: [], portionNames: {}, allChannels: [] }, error: null });
     }
     
     let recipeRows = [];
+    let portionsArr = [];
+    let channelPrices = [];
     if (linked_item_type === 'sale_item') {
-      const itemRes = await pool.query('SELECT recipe_rows FROM public.sale_items WHERE id = $1', [linked_item_id]);
-      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+      const itemRes = await pool.query('SELECT recipe_rows, portions, channel_prices FROM public.sale_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) {
+        recipeRows = itemRes.rows[0].recipe_rows || [];
+        portionsArr = itemRes.rows[0].portions || [];
+        channelPrices = itemRes.rows[0].channel_prices || [];
+      }
     } else if (linked_item_type === 'semi_product') {
-      const itemRes = await pool.query('SELECT recipe_rows FROM public.semi_items WHERE id = $1', [linked_item_id]);
-      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+      const itemRes = await pool.query('SELECT recipe_rows, portions, channel_prices FROM public.semi_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) {
+        recipeRows = itemRes.rows[0].recipe_rows || [];
+        portionsArr = itemRes.rows[0].portions || [];
+        channelPrices = itemRes.rows[0].channel_prices || [];
+      }
     }
     
     if (typeof recipeRows === 'string') {
       try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
     }
+    if (typeof portionsArr === 'string') {
+      try { portionsArr = JSON.parse(portionsArr); } catch (e) { portionsArr = []; }
+    }
+    if (typeof channelPrices === 'string') {
+      try { channelPrices = JSON.parse(channelPrices); } catch (e) { channelPrices = []; }
+    }
+
+    // Build portionNames map: id -> name from all items globally to ensure no codes are displayed
+    const portionNames = { '__standart__': 'Standart' };
+    try {
+      const allPortionsRes = await pool.query(`
+        SELECT portions FROM public.sale_items WHERE portions IS NOT NULL
+        UNION ALL
+        SELECT portions FROM public.semi_items WHERE portions IS NOT NULL
+      `);
+      for (const r of allPortionsRes.rows) {
+        let ports = r.portions;
+        if (typeof ports === 'string') {
+          try { ports = JSON.parse(ports); } catch (e) { ports = []; }
+        }
+        if (Array.isArray(ports)) {
+          ports.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; });
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching global portions:', e.message);
+      if (Array.isArray(portionsArr)) {
+        portionsArr.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; });
+      }
+    }
+
+    // Build allChannels list from public.sales_channels table to get correct names and icons
+    const channelsRes = await pool.query('SELECT id, name, icon FROM public.sales_channels WHERE deleted_at IS NULL ORDER BY sort_order');
+    const allChannels = channelsRes.rows;
     
     const enrichedRecipe = [];
     for (const row of recipeRows) {
@@ -1243,7 +1287,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
       });
     }
     
-    return res.json({ data: { recipe: enrichedRecipe }, error: null });
+    return res.json({ data: { recipe: enrichedRecipe, portionNames, allChannels }, error: null });
   } catch (err) {
     console.error('[GET /api/manual/context-by-item]', err.message);
     return res.status(500).json({ data: null, error: { message: err.message } });
@@ -1262,21 +1306,65 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
     const { linked_item_id, linked_item_type } = pageRes.rows[0];
     
     if (!linked_item_id || !linked_item_type) {
-      return res.json({ data: { recipe: [] }, error: null });
+      return res.json({ data: { recipe: [], portionNames: {}, allChannels: [] }, error: null });
     }
     
     let recipeRows = [];
+    let portionsArr = [];
+    let channelPrices = [];
     if (linked_item_type === 'sale_item') {
-      const itemRes = await pool.query('SELECT recipe_rows FROM public.sale_items WHERE id = $1', [linked_item_id]);
-      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+      const itemRes = await pool.query('SELECT recipe_rows, portions, channel_prices FROM public.sale_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) {
+        recipeRows = itemRes.rows[0].recipe_rows || [];
+        portionsArr = itemRes.rows[0].portions || [];
+        channelPrices = itemRes.rows[0].channel_prices || [];
+      }
     } else if (linked_item_type === 'semi_product') {
-      const itemRes = await pool.query('SELECT recipe_rows FROM public.semi_items WHERE id = $1', [linked_item_id]);
-      if (itemRes.rows.length) recipeRows = itemRes.rows[0].recipe_rows || [];
+      const itemRes = await pool.query('SELECT recipe_rows, portions, channel_prices FROM public.semi_items WHERE id = $1', [linked_item_id]);
+      if (itemRes.rows.length) {
+        recipeRows = itemRes.rows[0].recipe_rows || [];
+        portionsArr = itemRes.rows[0].portions || [];
+        channelPrices = itemRes.rows[0].channel_prices || [];
+      }
     }
     
     if (typeof recipeRows === 'string') {
       try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
     }
+    if (typeof portionsArr === 'string') {
+      try { portionsArr = JSON.parse(portionsArr); } catch (e) { portionsArr = []; }
+    }
+    if (typeof channelPrices === 'string') {
+      try { channelPrices = JSON.parse(channelPrices); } catch (e) { channelPrices = []; }
+    }
+
+    // Build portionNames map: id -> name from all items globally to ensure no codes are displayed
+    const portionNames = { '__standart__': 'Standart' };
+    try {
+      const allPortionsRes = await pool.query(`
+        SELECT portions FROM public.sale_items WHERE portions IS NOT NULL
+        UNION ALL
+        SELECT portions FROM public.semi_items WHERE portions IS NOT NULL
+      `);
+      for (const r of allPortionsRes.rows) {
+        let ports = r.portions;
+        if (typeof ports === 'string') {
+          try { ports = JSON.parse(ports); } catch (e) { ports = []; }
+        }
+        if (Array.isArray(ports)) {
+          ports.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; });
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching global portions:', e.message);
+      if (Array.isArray(portionsArr)) {
+        portionsArr.forEach(p => { if (p && p.id && p.name) portionNames[p.id] = p.name; });
+      }
+    }
+
+    // Build allChannels list from public.sales_channels table to get correct names and icons
+    const channelsRes = await pool.query('SELECT id, name, icon FROM public.sales_channels WHERE deleted_at IS NULL ORDER BY sort_order');
+    const allChannels = channelsRes.rows;
     
     const enrichedRecipe = [];
     for (const row of recipeRows) {
@@ -1304,7 +1392,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
       });
     }
     
-    return res.json({ data: { recipe: enrichedRecipe }, error: null });
+    return res.json({ data: { recipe: enrichedRecipe, portionNames, allChannels }, error: null });
   } catch (err) {
     console.error('[GET /api/manual/pages/:id/context]', err.message);
     return res.status(500).json({ data: null, error: { message: err.message } });

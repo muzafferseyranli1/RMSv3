@@ -1,6 +1,10 @@
 const { Client } = require('pg');
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway';
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error("DATABASE_URL is missing. Please define it in environment variables.");
+  process.exit(1);
+}
 
 async function main() {
   const client = new Client({
@@ -11,6 +15,8 @@ async function main() {
   try {
     await client.connect();
     console.log('Connected to DB successfully.');
+    await client.query('BEGIN;');
+    console.log('Started transaction (BEGIN).');
 
     // 1. Get a mock branch, supplier, stock item, location and LPN
     const branchRes = await client.query("SELECT id, name FROM public.company_nodes WHERE type IN ('sube', 'anadepo', 'branch') LIMIT 1;");
@@ -237,19 +243,15 @@ async function main() {
       console.log('\n❌ WMS Mal Kabul Database Columns Verification FAILED!');
     }
 
-    // 6. Clean up mock records
-    try {
-      await client.query(`UPDATE public.inventory_movements SET deleted_at = now() WHERE id = $1;`, [movementId]);
-      await client.query(`DELETE FROM public.purchase_receipt_lines WHERE id = $1;`, [lineId]);
-      await client.query(`DELETE FROM public.purchase_receipts WHERE id = $1;`, [receiptId]);
-      console.log('\nCleaned up mock database records successfully.');
-    } catch (cleanupErr) {
-      console.log('\nWarning: Cleanup failed but test verification was successful:', cleanupErr.message);
-    }
-
   } catch (err) {
     console.error('Error during WMS mal kabul DB verification:', err);
   } finally {
+    try {
+      await client.query('ROLLBACK;');
+      console.log('Transaction rolled back successfully. No permanent changes were made to the database.');
+    } catch (rollbackErr) {
+      console.error('Failed to rollback transaction:', rollbackErr.message);
+    }
     await client.end();
   }
 }

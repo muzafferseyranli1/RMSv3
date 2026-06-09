@@ -1611,7 +1611,7 @@ export default function Tasks({ scope = 'center', isMobile = false }) {
           // Maliyet yazma: gorev bir maintenance_ticket'a bagliysa repair_cost guncelle
           if (success && payload.cost != null && selectedTask?.linked_entity_table === 'maintenance_tickets' && selectedTask?.linked_entity_id) {
             try {
-              const apiBase = import.meta.env.VITE_API_URL || ''
+              const apiBase = import.meta.env.VITE_API_URL || 'https://rms-api-production-219d.up.railway.app'
               await fetch(`${apiBase}/api/maintenance-tickets/${selectedTask.linked_entity_id}/resolve`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = import.meta.env.VITE_API_URL || 'https://rms-api-production-219d.up.railway.app'
 
 // ── Küçük yardımcılar ────────────────────────────────────────────
 const fmt = (n, decimals = 2) =>

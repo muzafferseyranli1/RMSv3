@@ -507,7 +507,7 @@ export default function MalKabul() {
   const toast = useToast()
   const { user } = useAuth()
   const { scope, branchId: workspaceBranchId } = useWorkspace()
-  const branchLocked = isBranchScopedScope(scope) && !!workspaceBranchId
+  const branchLocked = (isBranchScopedScope(scope) || scope === 'anadepo') && !!workspaceBranchId
   const [loading, setLoading] = useState(true)
   const [inventoryLoading, setInventoryLoading] = useState(false)
   const [orders, setOrders] = useState([])
@@ -571,7 +571,10 @@ export default function MalKabul() {
       if (taxesResult.error) throw taxesResult.error
       if (settingsResult.error) throw settingsResult.error
 
-      const nextBranches = getAllBranches(settingsResult.data?.value)
+      const allTreeNodes = getAllBranches(settingsResult.data?.value)
+      const nextBranches = isWmsMode
+        ? allTreeNodes.filter(b => b.type === 'anadepo')
+        : allTreeNodes.filter(b => b.type !== 'anadepo')
       const rememberedBranch = branchLocked ? workspaceBranchId : getStoredBranchId()
       const initialBranch = nextBranches.find(branch => branch.id === rememberedBranch)?.id || nextBranches[0]?.id || ''
 
@@ -608,7 +611,7 @@ export default function MalKabul() {
       const movementQuery = applyBranchFilter(
         db
           .from('inventory_movements')
-          .select('stock_item_id,unit_cost,movement_at,ledger_seq,branch_id,branch_name,movement_type,balance_qty_after,balance_total_cost_after,avg_unit_cost_after')
+          .select('stock_item_id,unit_cost,movement_at,ledger_seq,branch_id,branch_name,movement_type,balance_qty_after,balance_total_cost_after,avg_unit_cost_after,quantity,direction,meta')
           .eq('item_type', 'stock_item')
           .is('deleted_at', null)
           .eq('is_cancelled', false)

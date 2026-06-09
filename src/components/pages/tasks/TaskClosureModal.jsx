@@ -21,7 +21,7 @@ export default function TaskClosureModal({ open, task, onClose, onSubmit }) {
     }
     setExchangeRateLoading(true)
     try {
-      const apiOrigin = import.meta.env.VITE_API_URL || window.location.origin
+      const apiOrigin = import.meta.env.VITE_API_URL || 'https://rms-api-production-219d.up.railway.app'
       const response = await fetch(`${apiOrigin}/api/exchange-rate?currency=${curr}&date=${dt}`)
       const result = await response.json()
       if (result.data && result.data.rate) {

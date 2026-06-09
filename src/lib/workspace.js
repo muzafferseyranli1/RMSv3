@@ -196,6 +196,7 @@ const ANADEPO_PATHS = new Set([
   '/wms-lpns',
   '/wms-stock-params',
   '/depo-mal-kabul',
+  '/depo-iclokasyon-tasima',
 ])
 
 const MERKEZMUTFAK_PATHS = new Set([

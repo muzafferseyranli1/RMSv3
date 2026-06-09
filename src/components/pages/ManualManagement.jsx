@@ -11,8 +11,168 @@ const SYSTEM_CATEGORIES = [
 ]
 const SYSTEM_CATEGORY_NAMES = SYSTEM_CATEGORIES.map(c => c.name)
 
+function getSpecTheme(label) {
+  const l = (label || '').toLowerCase();
+  if (l.includes('hazır') || l.includes('prep') || l.includes('süre')) {
+    return {
+      icon: 'fa-clock fa-spin',
+      iconStyle: { color: '#f97316', animationDuration: '8s' },
+      bgTop: '#fff7ed',
+      bgBottom: '#ffffff',
+      border: 'rgba(249, 115, 22, 0.15)',
+      valColor: '#ea580c'
+    };
+  }
+  if (l.includes('çöz') || l.includes('thaw')) {
+    return {
+      icon: 'fa-snowflake fa-spin',
+      iconStyle: { color: '#38bdf8', animationDuration: '10s' },
+      bgTop: '#f0f9ff',
+      bgBottom: '#ffffff',
+      border: 'rgba(56, 189, 248, 0.15)',
+      valColor: '#0284c7'
+    };
+  }
+  if (l.includes('ılık') || l.includes('ılın') || l.includes('soğu') || l.includes('cool')) {
+    return {
+      icon: 'fa-temperature-arrow-down fa-bounce',
+      iconStyle: { color: '#10b981' },
+      bgTop: '#f0fdf4',
+      bgBottom: '#ffffff',
+      border: 'rgba(16, 185, 129, 0.15)',
+      valColor: '#16a34a'
+    };
+  }
+  if (l.includes('ağırlık') || l.includes('porsiyon') || l.includes('gram') || l.includes('gr') || l.includes('weight') || l.includes('boyut')) {
+    return {
+      icon: 'fa-scale-balanced fa-beat',
+      iconStyle: { color: '#eab308' },
+      bgTop: '#fefce8',
+      bgBottom: '#ffffff',
+      border: 'rgba(234, 179, 8, 0.15)',
+      valColor: '#ca8a04'
+    };
+  }
+  if (l.includes('raf') || l.includes('ömür') || l.includes('shelf')) {
+    return {
+      icon: 'fa-hourglass-half fa-flip',
+      iconStyle: { color: '#ec4899', animationDuration: '3s' },
+      bgTop: '#fdf2f8',
+      bgBottom: '#ffffff',
+      border: 'rgba(236, 72, 153, 0.15)',
+      valColor: '#db2777'
+    };
+  }
+  if (l.includes('piş') || l.includes('fırın') || l.includes('ızgara') || l.includes('cook')) {
+    return {
+      icon: 'fa-fire-burner fa-fade',
+      iconStyle: { color: '#ef4444' },
+      bgTop: '#fef2f2',
+      bgBottom: '#ffffff',
+      border: 'rgba(239, 68, 68, 0.15)',
+      valColor: '#dc2626'
+    };
+  }
+  // Default fallback
+  return {
+    icon: 'fa-circle-info fa-beat',
+    iconStyle: { color: '#6366f1' },
+    bgTop: '#f5f3ff',
+    bgBottom: '#ffffff',
+    border: 'rgba(99, 102, 241, 0.15)',
+    valColor: '#4f46e5'
+  };
+}
+
+function renderFormattedDescription(text) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  
+  let currentListType = null; // 'ul', 'ol', or null
+  const elements = [];
+  let listItems = [];
+  
+  const flushList = (key) => {
+    if (listItems.length > 0) {
+      if (currentListType === 'ul') {
+        elements.push(
+          <ul key={key} style={{ margin: '8px 0 8px 24px', paddingLeft: 0, listStyleType: 'disc', textAlign: 'left' }}>
+            {listItems.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: '4px', lineHeight: '1.5', fontSize: 'inherit' }}>{item}</li>
+            ))}
+          </ul>
+        );
+      } else if (currentListType === 'ol') {
+        elements.push(
+          <ol key={key} style={{ margin: '8px 0 8px 24px', paddingLeft: 0, listStyleType: 'decimal', textAlign: 'left' }}>
+            {listItems.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: '4px', lineHeight: '1.5', fontSize: 'inherit' }}>{item}</li>
+            ))}
+          </ol>
+        );
+      }
+      listItems = [];
+      currentListType = null;
+    }
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const bulletMatch = line.match(/^\s*([-\*•])\s+(.*)$/);
+    const numberMatch = line.match(/^\s*(\d+)[\.\)]\s+(.*)$/);
+
+    if (bulletMatch) {
+      if (currentListType !== 'ul') {
+        flushList(`list-before-${index}`);
+        currentListType = 'ul';
+      }
+      listItems.push(bulletMatch[2]);
+    } else if (numberMatch) {
+      if (currentListType !== 'ol') {
+        flushList(`list-before-${index}`);
+        currentListType = 'ol';
+      }
+      listItems.push(numberMatch[2]);
+    } else {
+      flushList(`list-before-${index}`);
+      if (trimmed === '') {
+        elements.push(<div key={index} style={{ height: '8px' }} />);
+      } else {
+        elements.push(
+          <p key={index} style={{ margin: '6px 0', lineHeight: '1.6', fontSize: 'inherit', textAlign: 'inherit' }}>
+            {line}
+          </p>
+        );
+      }
+    }
+  });
+  
+  flushList('list-final');
+  return <div className="mr-formatted-desc" style={{ display: 'inline-block', width: '100%', textAlign: 'inherit' }}>{elements}</div>;
+}
+
 export default function ManualManagement() {
   const toast = useToast()
+
+  const handleInsertFormat = (id, format, setter) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = el.value;
+    const before = text.substring(0, start);
+    const after  = text.substring(end, text.length);
+    const prefix = (start === 0 || text.charAt(start - 1) === '\n') ? '' : '\n';
+    const textToInsert = prefix + format;
+    const newValue = before + textToInsert + after;
+    
+    setter(newValue);
+    
+    setTimeout(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + textToInsert.length;
+    }, 0);
+  };
   
   // States
   const [activeTab, setActiveTab] = useState('categories') // UUID of category or 'categories' for management
@@ -29,7 +189,8 @@ export default function ManualManagement() {
 
   // Page Form State
   const [editingPage, setEditingPage] = useState(null) // null or {...}
-  const [recipeContext, setRecipeContext] = useState([]) // For displaying recipe when editing
+  const [recipeContext, setRecipeContext] = useState([])
+  const [recipeMeta, setRecipeMeta] = useState({ portionNames: { '__standart__': 'Standart' }, allChannels: [] })
   const [showOpsDetails, setShowOpsDetails] = useState(false)
   const [pageForm, setPageForm] = useState({
     category_id: '',
@@ -40,12 +201,90 @@ export default function ManualManagement() {
     linked_item_id: '',
     linked_item_type: '',
     is_draft: false,
-    metadata: { product_image: '', steps: [] }
+    metadata: { product_image: '', description: '', steps: [] }
   })
 
-  const uploadImage = async (file) => {
+  // ── Akıllı Kırpma + Boyut Sınırlama ─────────────────────────
+  // Hedef en-boy oranına göre resmi canvas'ta kırpar ve sıkıştırır.
+  // Odak noktası: resmin yoğun (parlak) piksel bölgesini bulur.
+  const cropAndResizeImage = (file, targetAspect = 16 / 9, maxWidth = 1200) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        img.onload = () => {
+          const srcW = img.naturalWidth
+          const srcH = img.naturalHeight
+          const srcAspect = srcW / srcH
+
+          // Kırpma alanı hesapla
+          let cropW, cropH, cropX, cropY
+          if (srcAspect > targetAspect) {
+            // Kaynak daha geniş → yatay kırp
+            cropH = srcH
+            cropW = Math.round(srcH * targetAspect)
+            // Yatay odak: piksel yoğunluğu merkezine kaydır
+            const offscreen = document.createElement('canvas')
+            offscreen.width = srcW; offscreen.height = 1
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, srcW, 1)
+            const data2 = ctx2.getImageData(0, 0, srcW, 1).data
+            let totalBrightness = 0, weightedX = 0
+            for (let x = 0; x < srcW; x++) {
+              const brightness = data2[x * 4] * 0.299 + data2[x * 4 + 1] * 0.587 + data2[x * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedX += brightness * x
+            }
+            const focusX = totalBrightness > 0 ? weightedX / totalBrightness : srcW / 2
+            cropX = Math.max(0, Math.min(srcW - cropW, Math.round(focusX - cropW / 2)))
+            cropY = 0
+          } else {
+            // Kaynak daha dar → dikey kırp
+            cropW = srcW
+            cropH = Math.round(srcW / targetAspect)
+            // Dikey odak: piksel yoğunluğu merkezine kaydır
+            const offscreen = document.createElement('canvas')
+            offscreen.width = 1; offscreen.height = srcH
+            const ctx2 = offscreen.getContext('2d')
+            ctx2.drawImage(img, 0, 0, srcW, srcH, 0, 0, 1, srcH)
+            const data2 = ctx2.getImageData(0, 0, 1, srcH).data
+            let totalBrightness = 0, weightedY = 0
+            for (let y = 0; y < srcH; y++) {
+              const brightness = data2[y * 4] * 0.299 + data2[y * 4 + 1] * 0.587 + data2[y * 4 + 2] * 0.114
+              totalBrightness += brightness
+              weightedY += brightness * y
+            }
+            const focusY = totalBrightness > 0 ? weightedY / totalBrightness : srcH / 2
+            cropX = 0
+            cropY = Math.max(0, Math.min(srcH - cropH, Math.round(focusY - cropH / 2)))
+          }
+
+          // Hedef canvas boyutu
+          const outW = Math.min(maxWidth, cropW)
+          const outH = Math.round(outW / targetAspect)
+
+          const canvas = document.createElement('canvas')
+          canvas.width = outW; canvas.height = outH
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, outW, outH)
+
+          canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error('Canvas kırpma başarısız'))
+            resolve(blob)
+          }, 'image/jpeg', 0.88)
+        }
+        img.onerror = reject
+        img.src = ev.target.result
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const uploadImage = async (file, aspectRatio = 16 / 9) => {
+    const croppedBlob = await cropAndResizeImage(file, aspectRatio)
     const formData = new FormData()
-    formData.append('file', file)
+    formData.append('file', croppedBlob, file.name.replace(/\.[^.]+$/, '.jpg'))
     const res = await fetch(buildApiUrl('/api/upload'), { method: 'POST', body: formData })
     const data = await res.json()
     if (data.error) throw new Error(data.error.message)
@@ -246,6 +485,10 @@ export default function ManualManagement() {
       const details = res.data
       setEditingPage(details)
       setRecipeContext(ctxRes.data?.recipe || [])
+      setRecipeMeta({
+        portionNames: ctxRes.data?.portionNames || { '__standart__': 'Standart' },
+        allChannels: ctxRes.data?.allChannels || []
+      })
       setPageForm({
         category_id: details.category_id || '',
         title: details.title || '',
@@ -255,7 +498,7 @@ export default function ManualManagement() {
         linked_item_id: details.linked_item_id || '',
         linked_item_type: details.linked_item_type || '',
         is_draft: details.is_draft || false,
-        metadata: details.metadata || { product_image: '', steps: [] }
+        metadata: details.metadata || { product_image: '', description: '', steps: [] }
       })
     } catch (err) {
       toast('Sayfa detayları yüklenemedi: ' + err.message, 'error')
@@ -294,9 +537,10 @@ export default function ManualManagement() {
       linked_item_id: '',
       linked_item_type: '',
       is_draft: false,
-      metadata: { product_image: '', steps: [] }
+      metadata: { product_image: '', description: '', steps: [] }
     })
     setRecipeContext([])
+    setRecipeMeta({ portionNames: { '__standart__': 'Standart' }, allChannels: [] })
   }
 
   // Lightweight Regex-based Markdown Parser with Image support
@@ -354,6 +598,146 @@ export default function ManualManagement() {
 
   return (
     <div className="page-enter" style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <style>{`
+        /* ─── ARTISTIC SPECS BANNER ─── */
+        .mr-specs-banner {
+          position: relative;
+          width: 100%;
+          height: 180px;
+          margin: 30px 0;
+        }
+        .mr-specs-banner-strip {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 80px;
+          height: 100px;
+          border-top: 2px solid #000;
+          border-bottom: 2px solid #000;
+          background: #ffffff;
+          overflow: hidden;
+          z-index: 1;
+        }
+        [data-theme="dark"] .mr-specs-banner-strip {
+          background: #111827;
+          border-top-color: #374151;
+          border-bottom-color: #374151;
+        }
+        .mr-specs-banner-bg {
+          position: absolute;
+          top: -10px; left: -10px; right: -10px; bottom: -10px;
+          background-size: cover;
+          background-position: center;
+          filter: blur(4px) brightness(1.05) contrast(1.05) saturate(1.1);
+          opacity: 0.9;
+        }
+        [data-theme="dark"] .mr-specs-banner-bg {
+          opacity: 0.45;
+          filter: blur(6px) brightness(0.7) contrast(1.1);
+        }
+        .mr-specs-banner-grid {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 2;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          justify-content: center;
+          align-items: flex-start;
+          width: 100%;
+          padding: 0 16px;
+        }
+        .mr-spec-art-card {
+          width: 180px;
+          background: var(--card-bg-bottom, #ffffff);
+          border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .mr-spec-art-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+        }
+        .mr-spec-art-top {
+          background: var(--card-bg-top, #f8fafc);
+          border-bottom: 1px solid var(--card-border, rgba(0,0,0,0.08));
+          padding: 10px 8px;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          align-items: center;
+          justify-content: center;
+          height: 80px;
+          box-sizing: border-box;
+        }
+        .mr-spec-art-label {
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: #475569;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .mr-spec-art-val {
+          font-size: 0.88rem;
+          font-weight: 800;
+          color: var(--card-val-color, #1e293b);
+        }
+        .mr-spec-art-bottom {
+          background: var(--card-bg-bottom, #ffffff);
+          padding: 10px 8px;
+          font-size: 0.66rem;
+          color: #334155;
+          line-height: 1.4;
+          text-align: center;
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 80px;
+          box-sizing: border-box;
+        }
+        [data-theme="dark"] .mr-spec-art-card {
+          --card-bg-top: rgba(30, 41, 59, 0.8) !important;
+          --card-bg-bottom: rgba(15, 23, 42, 0.8) !important;
+          --card-border: rgba(255, 255, 255, 0.1) !important;
+          --card-val-color: var(--accent-primary) !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+        }
+        [data-theme="dark"] .mr-spec-art-label {
+          color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .mr-spec-art-bottom {
+          color: #cbd5e1 !important;
+        }
+        @media (max-width: 768px) {
+          .mr-specs-banner {
+            height: auto !important;
+            margin: 20px 0 !important;
+          }
+          .mr-specs-banner-strip {
+            display: none !important;
+          }
+          .mr-specs-banner-grid {
+            position: relative !important;
+            padding: 0 !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 16px !important;
+          }
+          .mr-spec-art-card {
+            width: 100% !important;
+            max-width: 280px !important;
+          }
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
@@ -416,11 +800,11 @@ export default function ManualManagement() {
                   <div style={{ width: 38, height: 38, borderRadius: 6, background: '#14496b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.55rem', fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>LOGO</div>
                 </div>
 
-                {/* ── HERO ROW: Image + Recipe ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18, marginBottom: 26, alignItems: 'start' }}>
-                  {/* Product Image + Details */}
-                  <div>
-                    <div style={{ borderRadius: 8, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* ── HERO ROW: Image + Description side-by-side ── */}
+                {(pageForm.metadata?.product_image || pageForm.metadata?.description) && (
+                  <div style={{ display: 'flex', gap: 18, marginBottom: 20, alignItems: 'stretch' }}>
+                    {/* Product Image */}
+                    <div style={{ flex: 1, maxWidth: '280px', borderRadius: 8, overflow: 'hidden', background: '#f5f6f8', border: '1px solid #e8e8e8', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {pageForm.metadata?.product_image ? (
                         <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       ) : (
@@ -431,136 +815,280 @@ export default function ManualManagement() {
                       )}
                     </div>
 
-                    {/* Product Details & Shelf Life */}
-                    {(pageForm.metadata?.prep_time || pageForm.metadata?.thaw_time || pageForm.metadata?.cooling_time || pageForm.metadata?.portion_qty || pageForm.metadata?.allergens || pageForm.metadata?.storage_temp || pageForm.metadata?.primary_shelf_life || pageForm.metadata?.secondary_shelf_life_1 || pageForm.metadata?.secondary_shelf_life_2) && (
-                      <div style={{ marginTop: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <i className="fa-solid fa-circle-info" style={{ color: '#14496b', fontSize: '.8rem' }} />
-                          <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Ürün Özellikleri</span>
-                        </div>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6, marginBottom: 10 }}>
-                          {pageForm.metadata.prep_time && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-clock" style={{ color: '#14496b', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Hazırlama</div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.prep_time}</div>
-                              </div>
-                            </div>
-                          )}
-                          {pageForm.metadata.thaw_time && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-snowflake" style={{ color: '#0284c7', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Çözünme</div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.thaw_time}</div>
-                              </div>
-                            </div>
-                          )}
-                          {pageForm.metadata.cooling_time && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-temperature-arrow-down" style={{ color: '#f59e0b', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Ilınma/Soğuma</div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.cooling_time}</div>
-                              </div>
-                            </div>
-                          )}
-                          {pageForm.metadata.portion_qty && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-scale-balanced" style={{ color: '#10b981', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Porsiyon</div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.portion_qty}</div>
-                              </div>
-                            </div>
-                          )}
-                          {pageForm.metadata.storage_temp && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-temperature-three-quarters" style={{ color: '#6366f1', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Saklama</div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>{pageForm.metadata.storage_temp}</div>
-                              </div>
-                            </div>
-                          )}
-                          {pageForm.metadata.allergens && (
-                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ef4444', opacity: 0.8 }} />
-                              <div>
-                                <div style={{ fontSize: '.55rem', color: '#888' }}>Alerjenler</div>
-                                <div style={{ fontWeight: 600, color: '#ef4444' }}>{pageForm.metadata.allergens}</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {(pageForm.metadata.primary_shelf_life || pageForm.metadata.secondary_shelf_life_1 || pageForm.metadata.secondary_shelf_life_2) && (
-                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 8, marginTop: 8 }}>
-                            <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
-                              Raf Ömrü Standartları
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                              {pageForm.metadata.primary_shelf_life && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
-                                  <span style={{ color: '#666', fontWeight: 500 }}>1. Raf Ömrü (Kapalı)</span>
-                                  <span style={{ fontWeight: 700, color: '#333' }}>{pageForm.metadata.primary_shelf_life} {pageForm.metadata.primary_storage_cond ? `(${pageForm.metadata.primary_storage_cond})` : ''}</span>
-                                </div>
-                              )}
-                              
-                              {(pageForm.metadata.secondary_shelf_life_1 || pageForm.metadata.secondary_shelf_life_2) && (
-                                <div style={{ background: '#fef08a', padding: '6px 8px', borderRadius: 6, border: '1px solid #fde047' }}>
-                                  <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#854d0e', textTransform: 'uppercase', marginBottom: 3 }}>
-                                    2. Raf Ömrü (Açıldıktan Sonra)
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                    {pageForm.metadata.secondary_shelf_life_1 && (
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.68rem', color: '#713f12', borderBottom: pageForm.metadata.secondary_shelf_life_2 ? '1px solid rgba(133, 77, 14, 0.08)' : 'none', paddingBottom: pageForm.metadata.secondary_shelf_life_2 ? 2 : 0 }}>
-                                        <span>Koşul 1 {pageForm.metadata.secondary_storage_cond_1 ? `(${pageForm.metadata.secondary_storage_cond_1})` : ''}</span>
-                                        <span style={{ fontWeight: 800 }}>{pageForm.metadata.secondary_shelf_life_1}</span>
-                                      </div>
-                                    )}
-                                    {pageForm.metadata.secondary_shelf_life_2 && (
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.68rem', color: '#713f12', paddingTop: pageForm.metadata.secondary_shelf_life_1 ? 2 : 0 }}>
-                                        <span>Koşul 2 {pageForm.metadata.secondary_storage_cond_2 ? `(${pageForm.metadata.secondary_storage_cond_2})` : ''}</span>
-                                        <span style={{ fontWeight: 800 }}>{pageForm.metadata.secondary_shelf_life_2}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                    {/* Ürün Hikayesi/Açıklaması Önizleme */}
+                    {pageForm.metadata?.description ? (
+                      <div style={{
+                        flex: 1.2,
+                        padding: '10px 14px',
+                        background: '#fcf8f2',
+                        borderLeft: '3px solid #f5a623',
+                        borderRight: '3px solid #f5a623',
+                        borderRadius: 8,
+                        fontSize: '.74rem',
+                        color: '#666',
+                        fontStyle: 'italic',
+                        lineHeight: 1.5,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        textAlign: 'center'
+                      }}>
+                        {renderFormattedDescription(pageForm.metadata.description)}
                       </div>
+                    ) : (
+                      <div style={{ flex: 1.2 }} />
                     )}
                   </div>
+                )}
 
-                  {/* Recipe */}
+                {/* Product Details & Shelf Life */}
+                    {/* Product Details & Shelf Life */}
+                    {(() => {
+                      const spec1Label = pageForm.metadata?.spec_1_label !== undefined ? pageForm.metadata.spec_1_label : (pageForm.metadata?.prep_time_label || 'Hazırlanma Süresi');
+                      const spec1Val = pageForm.metadata?.spec_1_val !== undefined ? pageForm.metadata.spec_1_val : (pageForm.metadata?.prep_time || '');
+                      const spec1Desc = pageForm.metadata?.spec_1_desc || '';
+
+                      const spec2Label = pageForm.metadata?.spec_2_label !== undefined ? pageForm.metadata.spec_2_label : (pageForm.metadata?.thaw_time_label || 'Çözünme Süresi');
+                      const spec2Val = pageForm.metadata?.spec_2_val !== undefined ? pageForm.metadata.spec_2_val : (pageForm.metadata?.thaw_time || '');
+                      const spec2Desc = pageForm.metadata?.spec_2_desc || '';
+
+                      const spec3Label = pageForm.metadata?.spec_3_label !== undefined ? pageForm.metadata.spec_3_label : (pageForm.metadata?.cooling_time_label || 'Ilınma/Soğuma');
+                      const spec3Val = pageForm.metadata?.spec_3_val !== undefined ? pageForm.metadata.spec_3_val : (pageForm.metadata?.cooling_time || '');
+                      const spec3Desc = pageForm.metadata?.spec_3_desc || '';
+
+                      const spec4Label = pageForm.metadata?.spec_4_label || 'Özellik 4';
+                      const spec4Val = pageForm.metadata?.spec_4_val || '';
+                      const spec4Desc = pageForm.metadata?.spec_4_desc || '';
+
+                      const spec5Label = pageForm.metadata?.spec_5_label || 'Özellik 5';
+                      const spec5Val = pageForm.metadata?.spec_5_val || '';
+                      const spec5Desc = pageForm.metadata?.spec_5_desc || '';
+
+                      const spec6Label = pageForm.metadata?.spec_6_label || 'Özellik 6';
+                      const spec6Val = pageForm.metadata?.spec_6_val || '';
+                      const spec6Desc = pageForm.metadata?.spec_6_desc || '';
+
+                      const shelf1Label = pageForm.metadata?.shelf_1_label !== undefined ? pageForm.metadata.shelf_1_label : (pageForm.metadata?.primary_shelf_life_label || '1. Raf Ömrü (Kapalı)');
+                      const shelf1Val = pageForm.metadata?.shelf_1_val !== undefined ? pageForm.metadata.shelf_1_val : (pageForm.metadata?.primary_shelf_life ? `${pageForm.metadata.primary_shelf_life}${pageForm.metadata.primary_storage_cond ? ` (${pageForm.metadata.primary_storage_cond})` : ''}` : '');
+                      const shelf2Label = pageForm.metadata?.shelf_2_label !== undefined ? pageForm.metadata.shelf_2_label : (pageForm.metadata?.secondary_shelf_life_1_label || 'Durum 1');
+                      const shelf2Val = pageForm.metadata?.shelf_2_val !== undefined ? pageForm.metadata.shelf_2_val : (pageForm.metadata?.secondary_shelf_life_1 ? `${pageForm.metadata.secondary_shelf_life_1}${pageForm.metadata.secondary_storage_cond_1 ? ` (${pageForm.metadata.secondary_storage_cond_1})` : ''}` : '');
+                      const shelf3Label = pageForm.metadata?.shelf_3_label !== undefined ? pageForm.metadata.shelf_3_label : (pageForm.metadata?.secondary_shelf_life_2_label || 'Durum 2');
+                      const shelf3Val = pageForm.metadata?.shelf_3_val !== undefined ? pageForm.metadata.shelf_3_val : (pageForm.metadata?.secondary_shelf_life_2 ? `${pageForm.metadata.secondary_shelf_life_2}${pageForm.metadata.secondary_storage_cond_2 ? ` (${pageForm.metadata.secondary_storage_cond_2})` : ''}` : '');
+                      const shelf4Label = pageForm.metadata?.shelf_4_label || 'Durum 3';
+                      const shelf4Val = pageForm.metadata?.shelf_4_val || '';
+                      const shelf5Label = pageForm.metadata?.shelf_5_label || 'Durum 4';
+                      const shelf5Val = pageForm.metadata?.shelf_5_val || '';
+                      const shelf6Label = pageForm.metadata?.shelf_6_label || 'Durum 5';
+                      const shelf6Val = pageForm.metadata?.shelf_6_val || '';
+
+                      const hasSpecs = spec1Val || spec2Val || spec3Val || spec4Val || spec5Val || spec6Val;
+                      const hasShelf = shelf1Val || shelf2Val || shelf3Val || shelf4Val || shelf5Val || shelf6Val;
+
+                      if (!hasSpecs && !hasShelf) return null;
+
+                      return (
+                        <div style={{ marginTop: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                          {hasSpecs && (
+                            <>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <i className="fa-solid fa-circle-info" style={{ color: '#14496b', fontSize: '.8rem' }} />
+                                <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Ürün Özellikleri</span>
+                              </div>
+                              
+                              <div className="mr-specs-banner" style={{ margin: '15px 0' }}>
+                                <div className="mr-specs-banner-strip">
+                                  {pageForm.metadata?.product_image && (
+                                    <div className="mr-specs-banner-bg" style={{ backgroundImage: `url(${resolveImageUrl(pageForm.metadata.product_image)})` }} />
+                                  )}
+                                </div>
+                                <div className="mr-specs-banner-grid">
+                                  {[
+                                    { label: spec1Label, val: spec1Val, desc: spec1Desc },
+                                    { label: spec2Label, val: spec2Val, desc: spec2Desc },
+                                    { label: spec3Label, val: spec3Val, desc: spec3Desc },
+                                    { label: spec4Label, val: spec4Val, desc: spec4Desc },
+                                    { label: spec5Label, val: spec5Val, desc: spec5Desc },
+                                    { label: spec6Label, val: spec6Val, desc: spec6Desc }
+                                  ].map((spec, index) => {
+                                    if (!spec.val) return null;
+                                    const theme = getSpecTheme(spec.label);
+                                    return (
+                                      <div key={index} className="mr-spec-art-card" style={{
+                                        '--card-border': theme.border,
+                                        '--card-bg-top': theme.bgTop,
+                                        '--card-bg-bottom': theme.bgBottom,
+                                        '--card-val-color': theme.valColor
+                                      }}>
+                                        <div className="mr-spec-art-top">
+                                          <div className="mr-spec-art-label">
+                                            <i className={`fa-solid ${theme.icon}`} style={theme.iconStyle} />
+                                            {spec.label}
+                                          </div>
+                                          <div className="mr-spec-art-val">{spec.val}</div>
+                                        </div>
+                                        <div className="mr-spec-art-bottom">
+                                          {spec.desc || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Açıklama girilmedi</span>}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {hasShelf && (
+                            <div style={{ borderTop: hasSpecs ? '1px dashed #cbd5e1' : 'none', paddingTop: hasSpecs ? 8 : 0, marginTop: hasSpecs ? 8 : 0 }}>
+                              <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>
+                                Raf Ömrü Standartları
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                {shelf1Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf1Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf1Val}</span>
+                                  </div>
+                                )}
+                                {shelf2Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf2Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf2Val}</span>
+                                  </div>
+                                )}
+                                {shelf3Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf3Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf3Val}</span>
+                                  </div>
+                                )}
+                                {shelf4Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf4Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf4Val}</span>
+                                  </div>
+                                )}
+                                {shelf5Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf5Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf5Val}</span>
+                                  </div>
+                                )}
+                                {shelf6Val && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: '.7rem' }}>
+                                    <span style={{ color: '#666', fontWeight: 500 }}>{shelf6Label}</span>
+                                    <span style={{ fontWeight: 700, color: '#333' }}>{shelf6Val}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                  {/* Recipe — Boyuta Göre Gruplandırılmış */}
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                       <div style={{ width: 3, height: 14, background: '#14496b', borderRadius: 2, flexShrink: 0 }} />
                       <span style={{ fontSize: '.72rem', fontWeight: 700, color: '#14496b', textTransform: 'uppercase', letterSpacing: '.6px' }}>Reçete</span>
                     </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1.5px solid #14496b' }}>
-                          <th style={{ padding: '4px 6px', textAlign: 'left', color: '#666', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Malzeme</th>
-                          <th style={{ padding: '4px 6px', textAlign: 'right', color: '#666', fontWeight: 600, fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Miktar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recipeContext.length > 0 ? recipeContext.map((r, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
-                            <td style={{ padding: '4px 6px', color: '#333' }}>{r.name}</td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
-                          </tr>
-                        )) : (
-                          <tr><td colSpan="2" style={{ padding: '10px 6px', color: '#ccc', textAlign: 'center', fontStyle: 'italic', fontSize: '.72rem' }}>Ürün seçilince buraya yüklenir</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+                    {recipeContext.length > 0 ? (() => {
+                      const portionNames = recipeMeta.portionNames || { '__standart__': 'Standart' }
+                      const allCh = recipeMeta.allChannels || []
+                      const allChIds = new Set(allCh.map(c => c.id))
+
+                      // Boyutlara göre gruplandır: boş portions → Standart, önce Standart sonra diğerleri
+                      const portionGroups = {}
+                      recipeContext.forEach(r => {
+                        const ports = (Array.isArray(r.portions) && r.portions.length > 0) ? r.portions : ['__standart__']
+                        ports.forEach(p => {
+                          if (!portionGroups[p]) portionGroups[p] = []
+                          portionGroups[p].push(r)
+                        })
+                      })
+                      const groupKeys = Object.keys(portionGroups).sort((a, b) => {
+                        if (a === '__standart__') return -1
+                        if (b === '__standart__') return 1
+                        return (portionNames[a] || a).localeCompare(portionNames[b] || b, 'tr')
+                      })
+
+                      // Kanal rozeti hesapla: hangi kanalların eksik olduğunu bul
+                      const getChannelBadge = (rowChannels) => {
+                        if (!Array.isArray(rowChannels) || rowChannels.length === 0) return null // Tümü
+                        if (allCh.length === 0) return null // kanal verisi yok
+                        const rowChSet = new Set(rowChannels)
+                        const excluded = allCh.filter(c => !rowChSet.has(c.id))
+                        if (excluded.length === 0) return null // Tümü var
+                        // 1-2 kanal hariç: "X Hariç" göster
+                        if (excluded.length <= 2) {
+                          return (
+                            <span style={{ fontSize: '.52rem', background: '#fee2e2', color: '#991b1b', padding: '1px 5px', borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                              {excluded.map(c => c.name).join(', ')} hariç
+                            </span>
+                          )
+                        }
+                        // Çok kanal hariç: kaç kanalda var göster
+                        return (
+                          <span style={{ fontSize: '.52rem', background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {rowChannels.length}/{allCh.length} Kanal
+                          </span>
+                        )
+                      }
+
+                      const hasAnyChannelDiff = recipeContext.some(r => {
+                        if (!Array.isArray(r.channels) || r.channels.length === 0) return false
+                        if (allCh.length === 0) return false
+                        return r.channels.length !== allCh.length
+                      })
+
+                      return groupKeys.map((portKey, gi) => {
+                        const groupRows = portionGroups[portKey]
+                        const groupLabel = portionNames[portKey] || portKey
+                        const isStandart = portKey === '__standart__'
+                        return (
+                          <div key={portKey} style={{ marginBottom: gi < groupKeys.length - 1 ? 8 : 0 }}>
+                            {groupKeys.length > 1 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                                <span style={{
+                                  fontSize: '.6rem', fontWeight: 800, padding: '1px 7px', borderRadius: 20,
+                                  background: isStandart ? '#dbeafe' : '#ede9fe',
+                                  color: isStandart ? '#1d4ed8' : '#7c3aed'
+                                }}>{groupLabel}</span>
+                              </div>
+                            )}
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.72rem' }}>
+                              {gi === 0 && (
+                                <thead>
+                                  <tr style={{ borderBottom: '1.5px solid #14496b' }}>
+                                    <th style={{ padding: '3px 5px', textAlign: 'left', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Malzeme</th>
+                                    <th style={{ padding: '3px 5px', textAlign: 'right', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.4px' }}>Miktar</th>
+                                    {hasAnyChannelDiff && <th style={{ padding: '3px 5px', textAlign: 'center', color: '#666', fontWeight: 600, fontSize: '.62rem', textTransform: 'uppercase' }}>Kanal</th>}
+                                  </tr>
+                                </thead>
+                              )}
+                              <tbody>
+                                {groupRows.map((r, i) => {
+                                  const badge = getChannelBadge(r.channels)
+                                  return (
+                                    <tr key={i} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                                      <td style={{ padding: '3px 5px', color: '#333' }}>{r.name}</td>
+                                      <td style={{ padding: '3px 5px', textAlign: 'right', color: '#555', fontWeight: 600 }}>{r.qty} {r.unit}</td>
+                                      {hasAnyChannelDiff && (
+                                        <td style={{ padding: '3px 5px', textAlign: 'center' }}>
+                                          {badge || <span style={{ fontSize: '.52rem', color: '#ccc' }}>✓</span>}
+                                        </td>
+                                      )}
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      })
+                    })() : (
+                      <div style={{ padding: '10px 6px', color: '#ccc', textAlign: 'center', fontStyle: 'italic', fontSize: '.72rem' }}>Ürün seçilince buraya yüklenir</div>
+                    )}
 
                     {/* Ekipmanlar as pills */}
                     {pageForm.equipment_ids.length > 0 && (
@@ -579,7 +1107,6 @@ export default function ManualManagement() {
                       </div>
                     )}
                   </div>
-                </div>
 
                 {/* ── STEPS ── */}
                 {pageForm.metadata?.steps?.length > 0 && (() => {
@@ -611,6 +1138,8 @@ export default function ManualManagement() {
                             {/* Image / Number Block */}
                             <div style={{
                               width: hasImg ? 140 : 44,
+                              height: hasImg ? '5cm' : 'auto',
+                              alignSelf: 'center',
                               flexShrink: 0,
                               background: hasImg ? '#f5f6f8' : '#14496b',
                               display: 'flex',
@@ -644,7 +1173,7 @@ export default function ManualManagement() {
                               borderLeft: isEven ? '3px solid #14496b' : 'none',
                               borderRight: isEven ? 'none' : '3px solid #14496b',
                             }}>
-                              {step.description || <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
+                              {step.description ? renderFormattedDescription(step.description) : <span style={{ color: '#ccc', fontStyle: 'italic' }}>Açıklama girilmedi...</span>}
                             </div>
                           </div>
                         );
@@ -662,7 +1191,7 @@ export default function ManualManagement() {
                             </div>
             </div>
           ) : (
-          /* Page List Card */
+          // Page List Card
           <div className="card" style={{ padding: 20 }}>
             <h2 className="text-primary" style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 16px', display: 'flex', justifyContent: 'space-between' }}>
               <span>Bu Kategorideki Sayfalar</span>
@@ -778,6 +1307,10 @@ export default function ManualManagement() {
                         try {
                           const ctxRes = await fetch(buildApiUrl(`/api/manual/context-by-item?linked_item_id=${id}&linked_item_type=${type}`)).then(r => r.json());
                           setRecipeContext(ctxRes.data?.recipe || []);
+                          setRecipeMeta({
+                            portionNames: ctxRes.data?.portionNames || { '__standart__': 'Standart' },
+                            allChannels: ctxRes.data?.allChannels || []
+                          });
                         } catch (err) {
                           console.error('Recipe fetch error', err);
                         }
@@ -818,30 +1351,104 @@ export default function ManualManagement() {
                 <>
                   <div>
                     <label className="f-label">Ürün Resmi Yükleyin</label>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="f-input"
-                      onChange={async (e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        try {
-                          const url = await uploadImage(file);
-                          setPageForm(prev => ({ 
-                            ...prev, 
-                            metadata: { ...prev.metadata, product_image: url } 
-                          }));
-                          toast('Ürün resmi yüklendi', 'success');
-                        } catch (err) {
-                          toast('Resim yüklenemedi: ' + err.message, 'error');
-                        }
-                      }}
-                    />
-                    {pageForm.metadata?.product_image && (
-                      <div style={{ marginTop: 8 }}>
-                        <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Preview" style={{ height: 60, borderRadius: 6, objectFit: 'cover' }} />
+                    <div style={{ background: 'var(--surface-2)', border: '1.5px dashed var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Kural bilgisi */}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '.68rem', color: 'var(--text-muted)' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 8px' }}>
+                          <i className="fa-solid fa-crop" style={{ fontSize: '.55rem', color: '#f59e0b' }} />
+                          En-Boy: <strong style={{ color: 'var(--text-strong)' }}>16:9</strong>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 8px' }}>
+                          <i className="fa-solid fa-compress" style={{ fontSize: '.55rem', color: '#6366f1' }} />
+                          Maks: <strong style={{ color: 'var(--text-strong)' }}>1200px</strong>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 8px' }}>
+                          <i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: '.55rem', color: '#10b981' }} />
+                          Akıllı kırpma otomatik uygulanır
+                        </span>
                       </div>
-                    )}
+                      <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: 'fit-content' }}>
+                        <span className="btn-o" style={{ fontSize: '.8rem', padding: '7px 14px', margin: 0 }}>
+                          <i className="fa-solid fa-cloud-arrow-up" style={{ marginRight: 5 }} />
+                          Resim Seç
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={async (e) => {
+                            const file = e.target.files[0];
+                            if (!file) return;
+                            try {
+                              toast('Resim işleniyor...', 'info');
+                              const url = await uploadImage(file, 16 / 9);
+                              setPageForm(prev => ({
+                                ...prev,
+                                metadata: { ...prev.metadata, product_image: url }
+                              }));
+                              toast('Ürün resmi yüklendi (16:9)', 'success');
+                            } catch (err) {
+                              toast('Resim yüklenemedi: ' + err.message, 'error');
+                            }
+                          }}
+                        />
+                      </label>
+                      {pageForm.metadata?.product_image && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                          <div style={{ position: 'relative', aspectRatio: '16/9', width: 160, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
+                            <img src={resolveImageUrl(pageForm.metadata.product_image)} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: '.5rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4 }}>16:9</div>
+                          </div>
+                          <button type="button" className="ico-btn del" style={{ marginTop: 4 }}
+                            onClick={() => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, product_image: '' } }))}>
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ürün Hikayesi / Açıklaması */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label className="f-label" style={{ margin: 0 }}>Ürün Hikayesi / Açıklaması</label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-o"
+                          style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                          onClick={() => handleInsertFormat('editor-page-description', '- ', (val) => {
+                            setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, description: val } }));
+                          })}
+                          title="Madde İşareti Ekle"
+                        >
+                          <i className="fa-solid fa-list-ul" /> Liste
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-o"
+                          style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                          onClick={() => handleInsertFormat('editor-page-description', '1. ', (val) => {
+                            setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, description: val } }));
+                          })}
+                          title="Numaralı Liste Ekle"
+                        >
+                          <i className="fa-solid fa-list-ol" /> Numaralandırma
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      id="editor-page-description"
+                      className="f-input"
+                      rows={3}
+                      style={{ resize: 'vertical', fontSize: '.84rem', lineHeight: '1.5' }}
+                      value={pageForm.metadata?.description || ''}
+                      onChange={(e) => setPageForm(prev => ({
+                        ...prev,
+                        metadata: { ...prev.metadata, description: e.target.value }
+                      }))}
+                      placeholder="Ürünün hikayesini, kökenini veya öne çıkan lezzet sırlarını buraya yazın..."
+                    />
                   </div>
 
                   <div>
@@ -884,8 +1491,39 @@ export default function ManualManagement() {
                             <i className="fa-solid fa-xmark" />
                           </button>
 
-                          <h5 style={{ margin: '0 0 8px', fontSize: '.85rem' }}>{index + 1}. Adım</h5>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <h5 style={{ margin: 0, fontSize: '.85rem' }}>{index + 1}. Adım</h5>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                className="btn-o"
+                                style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                                onClick={() => handleInsertFormat(`editor-step-${index}`, '- ', (val) => {
+                                  const newSteps = [...pageForm.metadata.steps];
+                                  newSteps[index].description = val;
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                })}
+                                title="Madde İşareti Ekle"
+                              >
+                                <i className="fa-solid fa-list-ul" /> Liste
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-o"
+                                style={{ padding: '2px 8px', fontSize: '.68rem', display: 'flex', alignItems: 'center', gap: 4, height: 24 }}
+                                onClick={() => handleInsertFormat(`editor-step-${index}`, '1. ', (val) => {
+                                  const newSteps = [...pageForm.metadata.steps];
+                                  newSteps[index].description = val;
+                                  setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                })}
+                                title="Numaralı Liste Ekle"
+                              >
+                                <i className="fa-solid fa-list-ol" /> Numaralandırma
+                              </button>
+                            </div>
+                          </div>
                           <textarea
+                            id={`editor-step-${index}`}
                             className="f-input"
                             rows={2}
                             placeholder="Bu adımda ne yapılması gerektiğini açıklayın..."
@@ -900,31 +1538,51 @@ export default function ManualManagement() {
                             }}
                             style={{ marginBottom: 8 }}
                           />
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="f-input"
-                            style={{ fontSize: '.75rem', padding: '6px' }}
-                            onChange={async (e) => {
-                              const file = e.target.files[0];
-                              if (!file) return;
-                              try {
-                                const url = await uploadImage(file);
-                                const newSteps = [...pageForm.metadata.steps];
-                                newSteps[index].imageUrl = url;
-                                setPageForm(prev => ({
-                                  ...prev,
-                                  metadata: { ...prev.metadata, steps: newSteps }
-                                }));
-                                toast('Adım resmi yüklendi', 'success');
-                              } catch (err) {
-                                toast('Resim yüklenemedi: ' + err.message, 'error');
-                              }
-                            }}
-                          />
-                          {step.imageUrl && (
-                            <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${index + 1}`} style={{ height: 60, borderRadius: 6, objectFit: 'cover', marginTop: 8 }} />
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                            <label style={{ cursor: 'pointer' }}>
+                              <span className="btn-o" style={{ fontSize: '.72rem', padding: '5px 10px' }}>
+                                <i className="fa-solid fa-camera" style={{ marginRight: 4 }} />
+                                Adım Resmi (4:3)
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={async (e) => {
+                                  const file = e.target.files[0];
+                                  if (!file) return;
+                                  try {
+                                    const url = await uploadImage(file, 4 / 3);
+                                    const newSteps = [...pageForm.metadata.steps];
+                                    newSteps[index].imageUrl = url;
+                                    setPageForm(prev => ({
+                                      ...prev,
+                                      metadata: { ...prev.metadata, steps: newSteps }
+                                    }));
+                                    toast('Adım resmi yüklendi (4:3)', 'success');
+                                  } catch (err) {
+                                    toast('Resim yüklenemedi: ' + err.message, 'error');
+                                  }
+                                }}
+                              />
+                            </label>
+                            {step.imageUrl && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ position: 'relative', aspectRatio: '4/3', height: 60, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                  <img src={resolveImageUrl(step.imageUrl)} alt={`Adım ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                  <div style={{ position: 'absolute', top: 2, left: 2, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: '.45rem', fontWeight: 700, padding: '1px 4px', borderRadius: 3 }}>4:3</div>
+                                </div>
+                                <button type="button" className="ico-btn del" style={{ padding: '4px 6px' }}
+                                  onClick={() => {
+                                    const newSteps = [...pageForm.metadata.steps];
+                                    newSteps[index].imageUrl = '';
+                                    setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, steps: newSteps } }));
+                                  }}>
+                                  <i className="fa-solid fa-xmark" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -972,88 +1630,168 @@ export default function ManualManagement() {
                 
                 {showOpsDetails && (
                   <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16, background: '#fff', borderTop: '1px solid var(--border)' }}>
-                    {/* First Row: Prep Time, Thaw Time, Cooling Time */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Hazırlanma Süresi</label>
+                    {/* Custom Specs (Operation Details) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                      {/* SPEC 1 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Özellik Başlığı 1"
+                          value={pageForm.metadata?.spec_1_label !== undefined ? pageForm.metadata.spec_1_label : (pageForm.metadata?.prep_time_label || 'Hazırlanma Süresi')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_1_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
+                        />
                         <input
                           type="text"
                           className="f-input"
                           placeholder="Örn: 5 dk"
-                          value={pageForm.metadata?.prep_time || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, prep_time: e.target.value }
-                          }))}
+                          value={pageForm.metadata?.spec_1_val !== undefined ? pageForm.metadata.spec_1_val : (pageForm.metadata?.prep_time || '')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_1_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama (Örn: Hazırlanırken oda sıcaklığında...)"
+                          value={pageForm.metadata?.spec_1_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_1_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
                         />
                       </div>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Çözünme Süresi (Thawing)</label>
+                      {/* SPEC 2 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Özellik Başlığı 2"
+                          value={pageForm.metadata?.spec_2_label !== undefined ? pageForm.metadata.spec_2_label : (pageForm.metadata?.thaw_time_label || 'Çözünme Süresi')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_2_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
+                        />
                         <input
                           type="text"
                           className="f-input"
                           placeholder="Örn: 4 saat"
-                          value={pageForm.metadata?.thaw_time || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, thaw_time: e.target.value }
-                          }))}
+                          value={pageForm.metadata?.spec_2_val !== undefined ? pageForm.metadata.spec_2_val : (pageForm.metadata?.thaw_time || '')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_2_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama (Örn: -18 dereceden çıkınca...)"
+                          value={pageForm.metadata?.spec_2_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_2_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
                         />
                       </div>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Ilınma/Soğuma Süresi</label>
+                      {/* SPEC 3 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Özellik Başlığı 3"
+                          value={pageForm.metadata?.spec_3_label !== undefined ? pageForm.metadata.spec_3_label : (pageForm.metadata?.cooling_time_label || 'Ilınma/Soğuma')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_3_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
+                        />
                         <input
                           type="text"
                           className="f-input"
                           placeholder="Örn: 10 dk"
-                          value={pageForm.metadata?.cooling_time || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, cooling_time: e.target.value }
-                          }))}
+                          value={pageForm.metadata?.spec_3_val !== undefined ? pageForm.metadata.spec_3_val : (pageForm.metadata?.cooling_time || '')}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_3_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama (Örn: Ilınmaya bırakılır...)"
+                          value={pageForm.metadata?.spec_3_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_3_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
                         />
                       </div>
-                    </div>
-
-                    {/* Second Row: Portion Weight, Allergens, Storage Temperature */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Porsiyon Gramajı / Çıktı</label>
+                      {/* SPEC 4 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <input
                           type="text"
                           className="f-input"
-                          placeholder="Örn: 150 gr"
-                          value={pageForm.metadata?.portion_qty || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, portion_qty: e.target.value }
-                          }))}
+                          placeholder="Özellik Başlığı 4"
+                          value={pageForm.metadata?.spec_4_label !== undefined ? pageForm.metadata.spec_4_label : 'Özellik 4'}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_4_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
                         />
-                      </div>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Alerjen Bilgileri</label>
                         <input
                           type="text"
                           className="f-input"
-                          placeholder="Örn: Glüten, Soya"
-                          value={pageForm.metadata?.allergens || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, allergens: e.target.value }
-                          }))}
+                          placeholder="Örn: Değer"
+                          value={pageForm.metadata?.spec_4_val || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_4_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama detayları..."
+                          value={pageForm.metadata?.spec_4_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_4_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
                         />
                       </div>
-                      <div>
-                        <label className="f-label" style={{ fontSize: '.75rem', marginBottom: 4 }}>Saklama Sıcaklığı</label>
+                      {/* SPEC 5 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <input
                           type="text"
                           className="f-input"
-                          placeholder="Örn: +4°C Dolap"
-                          value={pageForm.metadata?.storage_temp || ''}
-                          onChange={e => setPageForm(prev => ({
-                            ...prev,
-                            metadata: { ...prev.metadata, storage_temp: e.target.value }
-                          }))}
+                          placeholder="Özellik Başlığı 5"
+                          value={pageForm.metadata?.spec_5_label !== undefined ? pageForm.metadata.spec_5_label : 'Özellik 5'}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_5_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
+                        />
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: Değer"
+                          value={pageForm.metadata?.spec_5_val || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_5_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama detayları..."
+                          value={pageForm.metadata?.spec_5_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_5_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
+                        />
+                      </div>
+                      {/* SPEC 6 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Özellik Başlığı 6"
+                          value={pageForm.metadata?.spec_6_label !== undefined ? pageForm.metadata.spec_6_label : 'Özellik 6'}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_6_label: e.target.value } }))}
+                          style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', background: 'var(--surface-2)', color: 'var(--accent-primary)', border: '1.5px solid var(--accent-primary)', borderRadius: 7, opacity: .85 }}
+                          title="Bu alanın başlığını özelleştir"
+                        />
+                        <input
+                          type="text"
+                          className="f-input"
+                          placeholder="Örn: Değer"
+                          value={pageForm.metadata?.spec_6_val || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_6_val: e.target.value } }))}
+                        />
+                        <textarea
+                          className="f-input"
+                          rows={2}
+                          placeholder="Açıklama detayları..."
+                          value={pageForm.metadata?.spec_6_desc || ''}
+                          onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, spec_6_desc: e.target.value } }))}
+                          style={{ fontSize: '.74rem', padding: '4px 8px', resize: 'vertical' }}
                         />
                       </div>
                     </div>
@@ -1061,95 +1799,121 @@ export default function ManualManagement() {
                     <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
                       <h4 style={{ margin: '0 0 10px', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)' }}>Raf Ömrü Bilgileri</h4>
                       
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {/* Primary Shelf Life */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>1. Raf Ömrü (Kapalı Ambalaj / Depolama)</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: 3 ay"
-                              value={pageForm.metadata?.primary_shelf_life || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, primary_shelf_life: e.target.value }
-                              }))}
-                            />
-                          </div>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Depolama Koşulu</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: Oda Sıcaklığı"
-                              value={pageForm.metadata?.primary_storage_cond || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, primary_storage_cond: e.target.value }
-                              }))}
-                            />
-                          </div>
+                      {/* Shelf Life Details */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                        {/* SHELF 1 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 1"
+                            value={pageForm.metadata?.shelf_1_label !== undefined ? pageForm.metadata.shelf_1_label : (pageForm.metadata?.primary_shelf_life_label || '1. Raf Ömrü (Kapalı)')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_1_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#0ea5e9', border: '1.5px solid #bae6fd', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: 3 ay (Oda Sıcaklığı)"
+                            value={pageForm.metadata?.shelf_1_val !== undefined ? pageForm.metadata.shelf_1_val : (pageForm.metadata?.primary_shelf_life ? `${pageForm.metadata.primary_shelf_life}${pageForm.metadata.primary_storage_cond ? ` (${pageForm.metadata.primary_storage_cond})` : ''}` : '')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_1_val: e.target.value } }))}
+                          />
                         </div>
-
-                        {/* Secondary Shelf Life 1 */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>2. Raf Ömrü (Açıldıktan/Çözündükten Sonra - Durum 1)</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: 1 hafta"
-                              value={pageForm.metadata?.secondary_shelf_life_1 || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, secondary_shelf_life_1: e.target.value }
-                              }))}
-                            />
-                          </div>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Saklama Koşulu (Durum 1)</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: +4°C Dolap"
-                              value={pageForm.metadata?.secondary_storage_cond_1 || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, secondary_storage_cond_1: e.target.value }
-                              }))}
-                            />
-                          </div>
+                        {/* SHELF 2 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 2"
+                            value={pageForm.metadata?.shelf_2_label !== undefined ? pageForm.metadata.shelf_2_label : (pageForm.metadata?.secondary_shelf_life_1_label || 'Durum 1')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_2_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#f59e0b', border: '1.5px solid #fde68a', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: 1 hafta (+4°C Dolap)"
+                            value={pageForm.metadata?.shelf_2_val !== undefined ? pageForm.metadata.shelf_2_val : (pageForm.metadata?.secondary_shelf_life_1 ? `${pageForm.metadata.secondary_shelf_life_1}${pageForm.metadata.secondary_storage_cond_1 ? ` (${pageForm.metadata.secondary_storage_cond_1})` : ''}` : '')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_2_val: e.target.value } }))}
+                          />
                         </div>
-
-                        {/* Secondary Shelf Life 2 */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--surface-1)', padding: 10, borderRadius: 8 }}>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>2. Raf Ömrü (Açıldıktan/Çözündükten Sonra - Durum 2)</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: 4 saat"
-                              value={pageForm.metadata?.secondary_shelf_life_2 || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, secondary_shelf_life_2: e.target.value }
-                              }))}
-                            />
-                          </div>
-                          <div>
-                            <label className="f-label" style={{ fontSize: '.72rem', margin: 0 }}>Saklama Koşulu (Durum 2)</label>
-                            <input
-                              type="text"
-                              className="f-input"
-                              placeholder="Örn: Oda Sıcaklığı"
-                              value={pageForm.metadata?.secondary_storage_cond_2 || ''}
-                              onChange={e => setPageForm(prev => ({
-                                ...prev,
-                                metadata: { ...prev.metadata, secondary_storage_cond_2: e.target.value }
-                              }))}
-                            />
-                          </div>
+                        {/* SHELF 3 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 3"
+                            value={pageForm.metadata?.shelf_3_label !== undefined ? pageForm.metadata.shelf_3_label : (pageForm.metadata?.secondary_shelf_life_2_label || 'Durum 2')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_3_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#f59e0b', border: '1.5px solid #fde68a', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: 4 saat (+4°C Dolap)"
+                            value={pageForm.metadata?.shelf_3_val !== undefined ? pageForm.metadata.shelf_3_val : (pageForm.metadata?.secondary_shelf_life_2 ? `${pageForm.metadata.secondary_shelf_life_2}${pageForm.metadata.secondary_storage_cond_2 ? ` (${pageForm.metadata.secondary_storage_cond_2})` : ''}` : '')}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_3_val: e.target.value } }))}
+                          />
+                        </div>
+                        {/* SHELF 4 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 4"
+                            value={pageForm.metadata?.shelf_4_label !== undefined ? pageForm.metadata.shelf_4_label : 'Durum 3'}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_4_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#f59e0b', border: '1.5px solid #fde68a', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: Durum 3 Raf Ömrü"
+                            value={pageForm.metadata?.shelf_4_val || ''}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_4_val: e.target.value } }))}
+                          />
+                        </div>
+                        {/* SHELF 5 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 5"
+                            value={pageForm.metadata?.shelf_5_label !== undefined ? pageForm.metadata.shelf_5_label : 'Durum 4'}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_5_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#f59e0b', border: '1.5px solid #fde68a', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: Durum 4 Raf Ömrü"
+                            value={pageForm.metadata?.shelf_5_val || ''}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_5_val: e.target.value } }))}
+                          />
+                        </div>
+                        {/* SHELF 6 */}
+                        <div>
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Raf Ömrü Başlığı 6"
+                            value={pageForm.metadata?.shelf_6_label !== undefined ? pageForm.metadata.shelf_6_label : 'Durum 5'}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_6_label: e.target.value } }))}
+                            style={{ fontSize: '.68rem', fontWeight: 700, padding: '4px 8px', marginBottom: 4, background: 'var(--surface-2)', color: '#f59e0b', border: '1.5px solid #fde68a', borderRadius: 7 }}
+                            title="Bu alanın başlığını özelleştir"
+                          />
+                          <input
+                            type="text"
+                            className="f-input"
+                            placeholder="Örn: Durum 5 Raf Ömrü"
+                            value={pageForm.metadata?.shelf_6_val || ''}
+                            onChange={e => setPageForm(prev => ({ ...prev, metadata: { ...prev.metadata, shelf_6_val: e.target.value } }))}
+                          />
                         </div>
                       </div>
                     </div>

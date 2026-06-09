@@ -1265,7 +1265,7 @@ function createDraftLines({
   })
 
   return items.map((item, index) => {
-    const rawCurrentStock = Number(balanceMap.get(item.id)?.balance_qty_after || 0)
+    const rawCurrentStock = Number(balanceMap.get(item.id)?.available_qty ?? balanceMap.get(item.id)?.balance_qty_after ?? 0)
     const assumedInboundQty = safeNumber(inboundSummary.qtyByStockId.get(item.id))
     const effectiveCurrentStock = rawCurrentStock + assumedInboundQty
     let calculatedNeed = 0
@@ -1887,7 +1887,7 @@ export default function Orders() {
     const movementQuery = applyBranchFilter(
       db
         .from('inventory_movements')
-        .select('stock_item_id,unit_cost,quantity,direction,quantity_signed,movement_at,ledger_seq,branch_id,branch_name,movement_type,balance_qty_after,balance_total_cost_after,avg_unit_cost_after')
+        .select('stock_item_id,unit_cost,quantity,direction,quantity_signed,movement_at,ledger_seq,branch_id,branch_name,movement_type,balance_qty_after,balance_total_cost_after,avg_unit_cost_after,meta')
         .eq('item_type', 'stock_item')
         .is('deleted_at', null)
         .eq('is_cancelled', false)
