@@ -37,9 +37,11 @@ import {
   isFlowDueOnDate,
   nextDocumentNo,
   parseJsonValue,
+  resolveWarehouseTransferPrice,
   roundOrderQuantity,
+  resolveBranchLineSupplierId,
   resolveFlowItems,
-  resolveLineSupplierId,
+  stockItemHasInternalWarehouseSupplier,
   summarizeLines,
   todayStr,
   resolveSelectionIds,
@@ -1079,6 +1081,19 @@ function buildAssumedInboundSummary({
   }
 }
 
+function resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, suppliers) {
+  const items = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
+  const receiverScope = flow?.receiver_scope || 'branch'
+  if (receiverScope !== 'branch') return items
+
+  const flowSupplier = (suppliers || []).find(
+    supplier => String(supplier?.id || '').toLowerCase() === String(flow?.supplier_id || '').toLowerCase(),
+  )
+  if (flowSupplier?.supplier_kind === 'internal_warehouse') return items
+
+  return items.filter(item => !stockItemHasInternalWarehouseSupplier(item, suppliers))
+}
+
 function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate, stockItems, suppliers, stockTemplates, contracts }) {
   return (flows || []).filter(flow => {
     if (!isFlowDueOnDate(flow, targetDate)) return false
@@ -1088,10 +1103,13 @@ function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate, s
     const expectedSupplierIds = new Set()
     if (flow.supplier_id) expectedSupplierIds.add(String(flow.supplier_id).toLowerCase())
 
-    const matchedItems = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
+    const matchedItems = resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, suppliers)
+    if (matchedItems.length === 0) return false
 
     for (const item of matchedItems) {
-      const supId = resolveLineSupplierId(item, flow.supplier_id, suppliers)
+      const supId = flow.receiver_scope === 'warehouse'
+        ? flow.supplier_id
+        : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
       if (supId) expectedSupplierIds.add(String(supId).toLowerCase())
     }
 
@@ -1228,6 +1246,7 @@ function createDraftLines({
   targetSupplierId,
   allSuppliers = [],
   allReceiptLines = [],
+  allWarehouseSettings = [],
   // WMS parameters
   isDepoSiparis = false,
   connectedBranches = [],
@@ -1240,18 +1259,26 @@ function createDraftLines({
 }) {
   if (!flow || !branch) return []
 
-  let items = resolveFlowItems(flow, stockItems, stockTemplates, contracts)
+  let items = resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, allSuppliers)
     .filter(item => stockVisibleInBranch(item, branch.id))
 
   if (targetSupplierId) {
     items = items.filter(item => {
-      const resolvedSuppId = resolveLineSupplierId(item, flow.supplier_id, allSuppliers)
+      const resolvedSuppId = flow.receiver_scope === 'warehouse'
+        ? flow.supplier_id
+        : resolveBranchLineSupplierId(item, flow.supplier_id, allSuppliers)
       return String(resolvedSuppId).toLowerCase() === String(targetSupplierId).toLowerCase()
     })
   }
 
   const balanceMap = buildBalanceMap(balanceRows)
   const priceMap = buildLatestPurchasePriceMap(purchaseMovementRows, asUuidOrNull(branch.id) || '')
+  const supplierMap = new Map((allSuppliers || []).map(supplier => [String(supplier?.id || '').toLowerCase(), supplier]))
+  const warehouseSettingsMapForPricing = new Map()
+  for (const setting of [...(allWarehouseSettings || []), ...(wmsWarehouseSettings || [])]) {
+    if (!setting?.stock_item_id || !setting?.branch_id) continue
+    warehouseSettingsMapForPricing.set(`${setting.stock_item_id}:${setting.branch_id}`, setting)
+  }
   
   const contractPriceMaps = new Map()
   const getContractPrice = (supplierId, itemId) => {
@@ -1266,6 +1293,41 @@ function createDraftLines({
   const dates = getFlowDates(flow, order.order_date)
   const planningEndDate = dates.nextDeliveryDate || dates.deliveryDate || order.order_date
   const planningDates = buildInclusiveDates(order.order_date, planningEndDate)
+  const resolveLinePrice = (item, supplierId) => {
+    const supplier = supplierMap.get(String(supplierId || '').toLowerCase())
+    const contractPrice = getContractPrice(supplierId, item.id)
+    const cardPrice = Number(item?.purchase_price || 0)
+    const fallbackPrice = priceMap.get(item.id)
+    const defaultPrice = Number(contractPrice?.price || fallbackPrice || cardPrice || 0)
+
+    if (supplier?.supplier_kind === 'internal_warehouse' && supplier?.source_branch_id) {
+      const setting = warehouseSettingsMapForPricing.get(`${item.id}:${supplier.source_branch_id}`)
+      const transferPrice = resolveWarehouseTransferPrice(cardPrice || defaultPrice, setting)
+      if (transferPrice.applied) {
+        return {
+          unitPrice: transferPrice.unit_price,
+          priceSource: 'warehouse_transfer_price',
+          contractPrice: null,
+          meta: {
+            warehouse_transfer_price: {
+              base_price: transferPrice.base_price,
+              type: transferPrice.type,
+              value: transferPrice.value,
+              warehouse_branch_id: supplier.source_branch_id,
+              supplier_id: supplier.id,
+            },
+          },
+        }
+      }
+    }
+
+    return {
+      unitPrice: defaultPrice,
+      priceSource: contractPrice ? 'contract' : (fallbackPrice ? 'last_receipt' : 'stock_card'),
+      contractPrice,
+      meta: {},
+    }
+  }
 
   if (flow.receiver_scope === 'warehouse') {
     const receivedByOrderLine = buildReceivedQtyByOrderLine(allReceiptLines)
@@ -1396,10 +1458,8 @@ function createDraftLines({
     return demandLines.map((line, idx) => {
       const item = items.find(it => it.id === line.stock_item_id)
       const itemSupplierId = flow.supplier_id
-      const contractPrice = getContractPrice(itemSupplierId, line.stock_item_id)
-      const cardPrice = Number(item?.purchase_price || 0)
-      const fallbackPrice = priceMap.get(line.stock_item_id)
-      const unitPrice = Number(contractPrice?.price || fallbackPrice || cardPrice || 0)
+      const itemForPrice = item || { ...line, id: line.stock_item_id, purchase_price: line.unit_price }
+      const { unitPrice, contractPrice, priceSource, meta: priceMeta } = resolveLinePrice(itemForPrice, itemSupplierId)
       const orderedQty = Number(line.suggested_qty || 0)
 
       return {
@@ -1414,9 +1474,11 @@ function createDraftLines({
         unit_price: unitPrice,
         line_total: Number((orderedQty * unitPrice).toFixed(4)),
         contract_id: asUuidOrNull(contractPrice?.contractId),
+        price_source: priceSource,
         notes: null,
         meta: {
           ...line.meta,
+          ...priceMeta,
           contract_no: contractPrice?.contractNo || null,
           warnings: getOrderWarnings(item || line, orderedQty),
           assumed_inbound_orders: [],
@@ -1492,11 +1554,8 @@ function createDraftLines({
       forecastRatio = suggestion.forecastRatio
     }
 
-    const itemSupplierId = resolveLineSupplierId(item, flow.supplier_id, allSuppliers)
-    const contractPrice = getContractPrice(itemSupplierId, item.id)
-    const cardPrice = Number(item.purchase_price || 0)
-    const fallbackPrice = priceMap.get(item.id)
-    const unitPrice = Number(contractPrice?.price || fallbackPrice || cardPrice || 0)
+    const itemSupplierId = resolveBranchLineSupplierId(item, flow.supplier_id, allSuppliers)
+    const { unitPrice, contractPrice, priceSource, meta: priceMeta } = resolveLinePrice(item, itemSupplierId)
     const orderedQty = Number(suggestedQty || 0)
 
     return {
@@ -1516,12 +1575,13 @@ function createDraftLines({
       calculated_need: calculatedNeed,
       suggested_qty: suggestedQty,
       ordered_qty: orderedQty,
-      price_source: contractPrice ? 'contract' : (fallbackPrice ? 'last_receipt' : 'stock_card'),
+      price_source: priceSource,
       unit_price: unitPrice,
       line_total: Number((orderedQty * unitPrice).toFixed(4)),
       contract_id: asUuidOrNull(contractPrice?.contractId),
       notes: null,
       meta: {
+        ...priceMeta,
         contract_no: contractPrice?.contractNo || null,
         warnings: getOrderWarnings(item, orderedQty),
         forecast: flow.qty_mode === 'tahmin'
@@ -1836,7 +1896,7 @@ function OrderDetailModal({
               <tbody>
                 {draftLines.map(line => {
                   const warnings = parseJsonValue(line.meta?.warnings, line.meta?.warnings || [])
-                  const contractLocked = line.price_source === 'contract'
+                  const priceLocked = line.price_source === 'contract' || line.price_source === 'warehouse_transfer_price'
                   const lineId = line.id || line.line_no
                   const forecastDetails = line.meta?.forecast?.detail_rows || []
                   const hasForecastDetails = flow?.receiver_scope === 'warehouse'
@@ -1993,16 +2053,18 @@ function OrderDetailModal({
                           step="any"
                           min="0"
                           value={line.unit_price}
-                          disabled={!editable || contractLocked}
+                          disabled={!editable || priceLocked}
                           onChange={e => updateLine(lineId, 'unit_price', e.target.value)}
                           style={{ width: 120, marginLeft: 'auto', textAlign: 'right', fontWeight: 700 }}
                         />
-                        <div style={{ fontSize: '.65rem', color: contractLocked ? '#7c3aed' : '#94a3b8', marginTop: 4 }}>
+                        <div style={{ fontSize: '.65rem', color: priceLocked ? '#7c3aed' : '#94a3b8', marginTop: 4 }}>
                           {line.price_source === 'contract'
                             ? `Kontrat: ${line.meta?.contract_no || 'aktif'}`
-                            : line.price_source === 'last_receipt'
-                              ? 'Son mal kabul fiyati'
-                              : 'Stok karti fiyati'}
+                            : line.price_source === 'warehouse_transfer_price'
+                              ? `Ana depo sevk fiyati (${line.meta?.warehouse_transfer_price?.type === 'percent' ? `%${line.meta?.warehouse_transfer_price?.value}` : `+${formatMoney(line.meta?.warehouse_transfer_price?.value || 0)}`})`
+                              : line.price_source === 'last_receipt'
+                                ? 'Son mal kabul fiyati'
+                                : 'Stok karti fiyati'}
                         </div>
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
@@ -2090,6 +2152,7 @@ export default function Orders() {
   const [wmsMultiBranchForecasts, setWmsMultiBranchForecasts] = useState(new Map())
   const [wmsMultiBranchSaleLines, setWmsMultiBranchSaleLines] = useState(new Map())
   const [wmsWarehouseSettings, setWmsWarehouseSettings] = useState([])
+  const [allWarehouseSettings, setAllWarehouseSettings] = useState([])
 
   const [activeTab, setActiveTab] = useState('pending')
   const [search, setSearch] = useState('')
@@ -2372,6 +2435,7 @@ export default function Orders() {
         stockTemplatesResult,
         contractsResult,
         suppliersResult,
+        warehouseSettingsResult,
         settingsResult,
       ] = await Promise.all([
         db.from('purchase_orders').select('*').is('deleted_at', null).order('order_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -2384,6 +2448,7 @@ export default function Orders() {
         db.from('stock_templates').select('*').order('name'),
         db.from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         db.from('suppliers').select('id,name,supplier_kind,source_branch_id').eq('active', true).order('name'),
+        db.from('stock_item_warehouse_settings').select('*'),
         db.from('settings').select('value').eq('key', 'company_tree').single(),
       ])
 
@@ -2397,6 +2462,7 @@ export default function Orders() {
       if (stockTemplatesResult.error) throw stockTemplatesResult.error
       if (contractsResult.error) throw contractsResult.error
       if (suppliersResult.error) throw suppliersResult.error
+      if (warehouseSettingsResult.error) throw warehouseSettingsResult.error
       if (settingsResult.error) throw settingsResult.error
 
       const allTreeNodes = getAllBranches(settingsResult.data?.value)
@@ -2423,6 +2489,7 @@ export default function Orders() {
       setStockTemplates(stockTemplatesResult.data || [])
       setContracts(contractsResult.data || [])
       setSuppliers(suppliersResult.data || [])
+      setAllWarehouseSettings(warehouseSettingsResult.data || [])
       setBranches(nextBranches)
       setSelectedBranch(prev => (
         branchLocked
@@ -2559,6 +2626,7 @@ export default function Orders() {
         saleLineRows: branchSnapshot.saleLineRows,
         forecastLookbackWeeks: forecastSettings.lookbackWeeks,
         allSuppliers: suppliers,
+        allWarehouseSettings,
         isDepoSiparis: flow.receiver_scope === 'warehouse',
         connectedBranches: flow.receiver_scope === 'warehouse' ? getConnectedBranches(branch.id) : [],
         ...wmsData,
@@ -2570,7 +2638,7 @@ export default function Orders() {
         const item = stockItems.find(x => x.id === line.stock_item_id)
         const resolvedSupId = flow.receiver_scope === 'warehouse'
           ? flow.supplier_id
-          : resolveLineSupplierId(item, flow.supplier_id, suppliers)
+          : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
         if (!linesBySupplier[resolvedSupId]) {
           linesBySupplier[resolvedSupId] = []
         }
@@ -2687,6 +2755,7 @@ export default function Orders() {
     saleOptions,
     stockTemplates,
     contracts,
+    allWarehouseSettings,
     orderLines,
     receiptLines,
     balanceRows,
@@ -2833,6 +2902,7 @@ export default function Orders() {
       assumedInboundOrderIds: options.assumedInboundOrderIds,
       targetSupplierId: order.supplier_id,
       allSuppliers: suppliers,
+      allWarehouseSettings,
       isDepoSiparis: flow.receiver_scope === 'warehouse',
       connectedBranches: flow.receiver_scope === 'warehouse' ? getConnectedBranches(branch.id) : [],
       ...wmsData,

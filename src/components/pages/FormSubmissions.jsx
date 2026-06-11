@@ -644,12 +644,17 @@ export default function FormSubmissions() {
       activeBranch = branchId || ''
     }
 
-    setMetaBranchId(activeBranch)
+    if (template.form_type === 'inspection' && !template.schema_json?.require_branch_selection) {
+      const foundBranch = branches.find(b => String(b.id) === String(activeBranch))
+      setMetaBranchId(foundBranch ? foundBranch.name : activeBranch)
+    } else {
+      setMetaBranchId(activeBranch)
+    }
     setMetaAuthorizedId('')
     setMetaSendToAuthorized(false)
     setMetaShiftOfficerId('')
     setMetaSendToShiftOfficer(false)
-    setAutoDateTime(true)
+    setAutoDateTime(!!template.schema_json?.auto_date_time)
     
     const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
     setMetaFormDate(todayStr)
@@ -764,12 +769,19 @@ export default function FormSubmissions() {
 
     // Validation
     if (template.form_type === 'inspection' && !metaBranchId) {
-      return toast('Lütfen denetim noktasını (şubeyi) seçin', 'warning')
+      if (template.schema_json?.require_branch_selection) {
+        return toast('Lütfen denetim noktasını (şubeyi) seçin', 'warning')
+      } else {
+        return toast('Lütfen denetim noktasını (şubeyi) giriniz', 'warning')
+      }
     }
     if (template.form_type === 'notification_form' && template.linked_entity_table !== 'maintenance_tickets' && !metaBranchId) {
       return toast('Lütfen bildirim noktasını (şubeyi) seçin', 'warning')
     }
     if (template.form_type === 'checklist' && (scope === 'center' || scope === 'admin') && template.schema_json?.require_branch_selection && !metaBranchId) {
+      return toast('Lütfen şubeyi seçin', 'warning')
+    }
+    if (template.schema_json?.require_branch_selection && (scope === 'center' || scope === 'admin') && !metaBranchId) {
       return toast('Lütfen şubeyi seçin', 'warning')
     }
 
@@ -783,6 +795,16 @@ export default function FormSubmissions() {
         submitBranchId = metaBranchId || branchId
       }
     } else if (template.form_type === 'checklist') {
+      if (scope === 'center' || scope === 'admin') {
+        if (template.schema_json?.require_branch_selection) {
+          submitBranchId = metaBranchId
+        } else {
+          submitBranchId = null
+        }
+      } else {
+        submitBranchId = branchId || activeUser?.defaultBranchId || null
+      }
+    } else {
       if (scope === 'center' || scope === 'admin') {
         if (template.schema_json?.require_branch_selection) {
           submitBranchId = metaBranchId
@@ -809,7 +831,7 @@ export default function FormSubmissions() {
     // Form-specific metadata
     const metadata = {
       creator_name: inspectorName,
-      branch_name: branches.find(b => b.id === submitBranchId)?.name || '',
+      branch_name: branches.find(b => String(b.id) === String(submitBranchId))?.name || submitBranchId || '',
       form_date: finalFormDate,
       start_time: metaStartTime,
       end_time: finalEndTime,
@@ -1477,30 +1499,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Denetim Formu Bilgileri
             </div>
 
-            {/* Otomatik Sistem Tarih Saat Checkbox */}
-            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={autoDateTime}
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setAutoDateTime(checked)
-                    if (checked) {
-                      const todayStr = new Date().toLocaleDateString('en-CA')
-                      setMetaFormDate(todayStr)
-                      const now = new Date()
-                      const pad = (n) => String(n).padStart(2, '0')
-                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
-                      const later = new Date(now.getTime() + 15 * 60 * 1000)
-                      setMetaEndTime(`${pad(later.getHours())}:${pad(later.getMinutes())}`)
-                    }
-                  }}
-                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
-                />
-                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
-              </label>
-            </div>
+
             
             <div className="form-info-grid">
               {/* Denetimi Yapan */}
@@ -1524,18 +1523,28 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               {/* Denetim Noktası (Şube) */}
               <div>
                 <label className="f-label">Denetim Noktası</label>
-                <div className="sel-wrap">
-                  <select
-                    value={metaBranchId}
-                    onChange={e => handleMetaBranchChange(e.target.value)}
+                {template.schema_json?.require_branch_selection ? (
+                  <div className="sel-wrap">
+                    <select
+                      value={metaBranchId}
+                      onChange={e => handleMetaBranchChange(e.target.value)}
+                      className="f-input"
+                    >
+                      <option value="">Şube Seçiniz</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Denetim noktasını (şubeyi) giriniz"
                     className="f-input"
-                  >
-                    <option value="">Şube Seçiniz</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
+                    value={metaBranchId || ''}
+                    onChange={e => handleMetaBranchChange(e.target.value)}
+                  />
+                )}
               </div>
 
               {/* Tarih */}
@@ -1617,30 +1626,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Checklist Bilgileri
             </div>
 
-            {/* Otomatik Sistem Tarih Saat Checkbox */}
-            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={autoDateTime}
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setAutoDateTime(checked)
-                    if (checked) {
-                      const todayStr = new Date().toLocaleDateString('en-CA')
-                      setMetaFormDate(todayStr)
-                      const now = new Date()
-                      const pad = (n) => String(n).padStart(2, '0')
-                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
-                      const later = new Date(now.getTime() + 15 * 60 * 1000)
-                      setMetaEndTime(`${pad(later.getHours())}:${pad(later.getMinutes())}`)
-                    }
-                  }}
-                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
-                />
-                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
-              </label>
-            </div>
+
 
             <div className="form-info-grid">
               {/* Formu Dolduran */}
@@ -1738,28 +1724,7 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
               <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Bildirim Formu Bilgileri
             </div>
 
-            {/* Otomatik Sistem Tarih Saat Checkbox */}
-            <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', fontWeight: 600, color: 'var(--text-strong)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={autoDateTime}
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setAutoDateTime(checked)
-                    if (checked) {
-                      const todayStr = new Date().toLocaleDateString('en-CA')
-                      setMetaFormDate(todayStr)
-                      const now = new Date()
-                      const pad = (n) => String(n).padStart(2, '0')
-                      setMetaStartTime(`${pad(now.getHours())}:${pad(now.getMinutes())}`)
-                    }
-                  }}
-                  style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
-                />
-                <span>Sistem Tarih ve Saatini Otomatik Kullan</span>
-              </label>
-            </div>
+
 
             <div className="form-info-grid">
               {/* Bildirimi Yapan */}
@@ -1828,7 +1793,93 @@ const overallPercentage = totalMaxPoints > 0 ? Math.round((totalScoredPoints / t
           </div>
         )}
 
+        {template.form_type !== 'inspection' && template.form_type !== 'checklist' && template.form_type !== 'notification_form' && template.schema_json?.require_branch_selection && (
+          <div className="card" style={{ padding: 18, marginBottom: 16, borderLeft: '4px solid #8b5cf6', background: 'var(--surface)' }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: '#8b5cf6', marginBottom: 14 }}>
+              <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }} /> Form Bilgileri
+            </div>
+
+
+
+            <div className="form-info-grid">
+              {/* Formu Dolduran */}
+              <div>
+                <label className="f-label">Formu Dolduran</label>
+                <input
+                  type="text"
+                  className="f-input"
+                  value={
+                    (() => {
+                      const activeUserRaw = sessionStorage.getItem('rms_active_user')
+                      const activeUser = activeUserRaw ? JSON.parse(activeUserRaw) : null
+                      return activeUser ? `${activeUser.firstName} ${activeUser.lastName}`.trim() : 'Bilinmeyen Kullanıcı'
+                    })()
+                  }
+                  disabled
+                  style={{ background: 'var(--surface-2)' }}
+                />
+              </div>
+
+              {/* Şube Seçimi */}
+              {((scope === 'center' || scope === 'admin') ? template.schema_json?.require_branch_selection : true) && (
+                <div>
+                  <label className="f-label">Şube</label>
+                  {(scope === 'center' || scope === 'admin') ? (
+                    <div className="sel-wrap">
+                      <select
+                        value={metaBranchId}
+                        onChange={e => handleMetaBranchChange(e.target.value)}
+                        className="f-input"
+                      >
+                        <option value="">Şube Seçiniz</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      className="f-input"
+                      value={branches.find(b => b.id === metaBranchId)?.name || branchName || 'Şubem'}
+                      disabled
+                      style={{ background: 'var(--surface-2)' }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Tarih */}
+              <div>
+                <label className="f-label">Tarih</label>
+                <input
+                  type="date"
+                  className="f-input"
+                  value={metaFormDate}
+                  onChange={e => setMetaFormDate(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                />
+              </div>
+
+              {/* Saat */}
+              <div>
+                <label className="f-label">Saat</label>
+                <input
+                  type="time"
+                  className="f-input"
+                  value={metaStartTime}
+                  onChange={e => setMetaStartTime(e.target.value)}
+                  disabled={autoDateTime}
+                  style={autoDateTime ? { background: 'var(--surface-2)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {(template.schema_json?.sections || []).map((section, sIdx) => {
+
           let sectionScoredPoints = 0
           let sectionMaxPoints = 0
           for (const field of (section.fields || [])) {

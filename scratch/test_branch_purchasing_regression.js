@@ -1,4 +1,9 @@
-import { computeSuggestedQuantity } from '../src/lib/branchPurchasing.js';
+import {
+  computeSuggestedQuantity,
+  resolveBranchLineSupplierId,
+  resolveWarehouseTransferPrice,
+  stockItemHasInternalWarehouseSupplier,
+} from '../src/lib/branchPurchasing.js';
 
 const testCases = [
   // 1. Tahmin mode - target based (stockTarget > 0)
@@ -126,6 +131,81 @@ for (const tc of testCases) {
     console.error(`  Actual:`, output);
     failed = true;
   }
+}
+
+const suppliers = [
+  { id: 'supplier-unmas', name: 'Unmaş', supplier_kind: 'external' },
+  { id: 'supplier-main-warehouse', name: 'Merkez Depo', supplier_kind: 'internal_warehouse' },
+];
+
+const warehouseManagedItem = {
+  id: 'hamburger-bun',
+  name: 'Hamburger Ekmeği',
+  supp_id: 'supplier-unmas',
+  suppliers_list: [
+    { supp_id: 'supplier-unmas', is_default: true },
+    { supp_id: 'supplier-main-warehouse' },
+  ],
+};
+
+const externalOnlyItem = {
+  id: 'paper-cup',
+  name: 'Karton Bardak',
+  supp_id: 'supplier-unmas',
+  suppliers_list: [{ supp_id: 'supplier-unmas', is_default: true }],
+};
+
+if (!stockItemHasInternalWarehouseSupplier(warehouseManagedItem, suppliers)) {
+  console.error('❌ [FAIL] Warehouse supplier detection');
+  failed = true;
+} else {
+  console.log('✅ [PASS] Warehouse supplier detection');
+}
+
+const resolvedWarehouseSupplier = resolveBranchLineSupplierId(warehouseManagedItem, 'supplier-unmas', suppliers);
+if (resolvedWarehouseSupplier !== 'supplier-main-warehouse') {
+  console.error('❌ [FAIL] Branch supplier routing prefers internal warehouse');
+  console.error(`  Expected: supplier-main-warehouse`);
+  console.error(`  Actual: ${resolvedWarehouseSupplier}`);
+  failed = true;
+} else {
+  console.log('✅ [PASS] Branch supplier routing prefers internal warehouse');
+}
+
+const resolvedExternalSupplier = resolveBranchLineSupplierId(externalOnlyItem, 'supplier-unmas', suppliers);
+if (resolvedExternalSupplier !== 'supplier-unmas') {
+  console.error('❌ [FAIL] External-only supplier routing stays external');
+  console.error(`  Expected: supplier-unmas`);
+  console.error(`  Actual: ${resolvedExternalSupplier}`);
+  failed = true;
+} else {
+  console.log('✅ [PASS] External-only supplier routing stays external');
+}
+
+const percentTransferPrice = resolveWarehouseTransferPrice(10, {
+  transfer_price_adjustment_type: 'percent',
+  transfer_price_adjustment_value: 10,
+});
+if (!percentTransferPrice.applied || Math.abs(percentTransferPrice.unit_price - 11) > 0.0001) {
+  console.error('FAIL Warehouse transfer percent margin price');
+  console.error(`  Expected: 11`);
+  console.error(`  Actual: ${percentTransferPrice.unit_price}`);
+  failed = true;
+} else {
+  console.log('PASS Warehouse transfer percent margin price');
+}
+
+const amountTransferPrice = resolveWarehouseTransferPrice(10, {
+  transfer_price_adjustment_type: 'amount',
+  transfer_price_adjustment_value: 1,
+});
+if (!amountTransferPrice.applied || Math.abs(amountTransferPrice.unit_price - 11) > 0.0001) {
+  console.error('FAIL Warehouse transfer amount margin price');
+  console.error(`  Expected: 11`);
+  console.error(`  Actual: ${amountTransferPrice.unit_price}`);
+  failed = true;
+} else {
+  console.log('PASS Warehouse transfer amount margin price');
 }
 
 if (failed) {

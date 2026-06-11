@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS public.stock_item_warehouse_settings (
   max_order NUMERIC(10,3),
   min_stock NUMERIC(10,3),
   safety_stock NUMERIC(10,3),
+  transfer_price_adjustment_type TEXT DEFAULT 'none',
+  transfer_price_adjustment_value NUMERIC(18,4) DEFAULT 0,
   default_location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -83,6 +85,8 @@ ALTER TABLE public.warehouse_lpns
 
 ALTER TABLE public.stock_item_warehouse_settings
   ADD COLUMN IF NOT EXISTS default_location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS transfer_price_adjustment_type TEXT DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS transfer_price_adjustment_value NUMERIC(18,4) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
 ALTER TABLE public.inventory_movements
@@ -123,4 +127,3 @@ ALTER TABLE public.order_flows
 
 ALTER TABLE public.order_flows DROP CONSTRAINT IF EXISTS order_flows_flow_channel_check;
 ALTER TABLE public.order_flows ADD CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'));
-

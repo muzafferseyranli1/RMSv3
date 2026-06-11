@@ -1967,6 +1967,8 @@ CREATE TABLE IF NOT EXISTS public.stock_item_warehouse_settings (
   max_order NUMERIC(10,3),
   min_stock NUMERIC(10,3),
   safety_stock NUMERIC(10,3),
+  transfer_price_adjustment_type TEXT DEFAULT 'none',
+  transfer_price_adjustment_value NUMERIC(18,4) DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   CONSTRAINT stock_item_warehouse_settings_pkey PRIMARY KEY (id),
   CONSTRAINT stock_item_warehouse_settings_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE,
@@ -4139,6 +4141,8 @@ CREATE INDEX IF NOT EXISTS idx_warehouse_lpns_status   ON public.warehouse_lpns(
 -- stock_item_warehouse_settings: varsayılan lokasyon bağlantısı ve updated_at
 ALTER TABLE public.stock_item_warehouse_settings
   ADD COLUMN IF NOT EXISTS default_location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS transfer_price_adjustment_type TEXT DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS transfer_price_adjustment_value NUMERIC(18,4) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_stock_item_wh_settings_item   ON public.stock_item_warehouse_settings(stock_item_id);
 CREATE INDEX IF NOT EXISTS idx_stock_item_wh_settings_branch ON public.stock_item_warehouse_settings(branch_id);
@@ -4399,4 +4403,3 @@ BEGIN
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;
-

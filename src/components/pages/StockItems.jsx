@@ -359,6 +359,19 @@ const EMPTY = {
   image_url: ''
 }
 
+function getSelectedWarehouseSuppliers(form, suppliers) {
+  const supplierIds = new Set()
+  if (form?.supp_id) supplierIds.add(String(form.supp_id).toLowerCase())
+  for (const row of parseJsonArray(form?.suppliers_list)) {
+    if (row?.supp_id) supplierIds.add(String(row.supp_id).toLowerCase())
+  }
+  return (suppliers || []).filter(supplier => (
+    supplier?.supplier_kind === 'internal_warehouse' &&
+    supplierIds.has(String(supplier.id).toLowerCase()) &&
+    supplier.source_branch_id
+  ))
+}
+
 // ── Main component ────────────────────────────────────────────
 export default function StockItems() {
   const toast = useToast()
@@ -480,7 +493,7 @@ export default function StockItems() {
       db.from('stock_items').select('*').order('name'),
       db.from('categories').select('*').order('name'),
       db.from('units').select('*').order('is_system',{ascending:false}).order('sort_order').order('label'),
-      db.from('suppliers').select('id,name,supplier_kind').eq('active',true).order('name'),
+      db.from('suppliers').select('id,name,supplier_kind,source_branch_id').eq('active',true).order('name'),
       db.from('settings').select('value').eq('key','company_tree').single(),
       db.from('branch_templates').select('*').order('name'),
       db.from('sale_items').select('id,recipe_rows').is('deleted_at', null),
@@ -612,6 +625,8 @@ export default function StockItems() {
         max_order: w.max_order || '',
         min_stock: w.min_stock || '',
         safety_stock: w.safety_stock || '',
+        transfer_price_adjustment_type: w.transfer_price_adjustment_type || 'none',
+        transfer_price_adjustment_value: w.transfer_price_adjustment_value || '',
         default_location_id: w.default_location_id || '',
       }
     }
@@ -704,9 +719,8 @@ export default function StockItems() {
 
     // Save warehouse settings
     if (finalId) {
-      const whBranches = branches.filter(b => b.workspace_scope === 'anadepo')
       const whPayloads = []
-      for (const branch of whBranches) {
+      for (const branch of warehouseBranchesForForm) {
         const setg = form.warehouse_settings?.[branch.id]
         if (setg) {
           whPayloads.push({
@@ -717,17 +731,17 @@ export default function StockItems() {
             max_order: parseFloat(setg.max_order) || null,
             min_stock: parseFloat(setg.min_stock) || null,
             safety_stock: parseFloat(setg.safety_stock) || null,
+            transfer_price_adjustment_type: setg.transfer_price_adjustment_type || 'none',
+            transfer_price_adjustment_value: parseFloat(setg.transfer_price_adjustment_value) || 0,
             default_location_id: setg.default_location_id || null,
             updated_at: new Date().toISOString(),
           })
         }
       }
       
-      // Upsert
+      await db.from('stock_item_warehouse_settings').delete().eq('stock_item_id', finalId)
       if (whPayloads.length > 0) {
         await db.from('stock_item_warehouse_settings').upsert(whPayloads, { onConflict: 'stock_item_id,branch_id' })
-      } else {
-        await db.from('stock_item_warehouse_settings').delete().eq('stock_item_id', finalId)
       }
     }
 
@@ -743,6 +757,16 @@ export default function StockItems() {
 
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const recipeLinked = form.recipe_linked || (editId ? recipeLinkedIds.has(editId) : false)
+  const selectedWarehouseSuppliers = getSelectedWarehouseSuppliers(form, suppliers)
+  const allowedWarehouseBranchIds = new Set(selectedWarehouseSuppliers.map(supplier => String(supplier.source_branch_id)))
+  const warehouseBranchesForForm = branches.filter(branch => (
+    branch.workspace_scope === 'anadepo' && allowedWarehouseBranchIds.has(String(branch.id))
+  ))
+  const hasWarehouseSupplier = selectedWarehouseSuppliers.length > 0
+
+  useEffect(() => {
+    if (modal && tab === 3 && !hasWarehouseSupplier) setTab(2)
+  }, [hasWarehouseSupplier, modal, tab])
 
   // Packaging units
   function addPkg()    { set('packaging_units',[...form.packaging_units,{id:uid(),unit:'',qty:1}]) }
@@ -753,7 +777,12 @@ export default function StockItems() {
     { label:'Temel Bilgiler',   icon:'fa-circle-info' },
     { label:'Ölçüm & Stok',    icon:'fa-ruler' },
     { label:'Tedarikçi & Satış', icon:'fa-handshake' },
-    { label:'Depo Ayarları', icon:'fa-warehouse' },
+    {
+      label:'Depo Ayarları',
+      icon:'fa-warehouse',
+      disabled: !hasWarehouseSupplier,
+      disabledReason: 'Depo Ayarları için Tedarikçi & Satış sekmesinde en az bir İç Depo tedarikçisi seçilmelidir.',
+    },
   ]
 
   // Find deepest cat for display in table
@@ -886,10 +915,18 @@ export default function StockItems() {
               </div>
               <div style={{display:'flex',gap:2,background:'#dde3ec',borderRadius:10,padding:3}}>
                 {tabs.map((t,i)=>(
-                  <button key={i} onClick={()=>setTab(i)} style={{flex:1,padding:'8px 4px',border:'none',
-                    borderRadius:8,fontSize:'.8rem',fontWeight:700,cursor:'pointer',transition:'.15s',
-                    background:tab===i?'linear-gradient(135deg,#f59e0b,#fbbf24)':'transparent',
-                    color:tab===i?'#0f172a':'#64748b'}}>
+                  <button key={i} title={t.disabled ? t.disabledReason : t.label} onClick={()=>{
+                    if (t.disabled) {
+                      toast(t.disabledReason, 'warning')
+                      setTab(2)
+                      return
+                    }
+                    setTab(i)
+                  }} style={{flex:1,padding:'8px 4px',border:'none',
+                    borderRadius:8,fontSize:'.8rem',fontWeight:700,cursor:t.disabled?'not-allowed':'pointer',transition:'.15s',
+                    background:tab===i?'linear-gradient(135deg,#f59e0b,#fbbf24)':t.disabled?'rgba(148,163,184,.16)':'transparent',
+                    color:tab===i?'#0f172a':t.disabled?'#94a3b8':'#64748b',
+                    opacity:t.disabled ? .75 : 1}}>
                     <i className={`fa-solid ${t.icon}`} style={{marginRight:5}}/>{t.label}
                   </button>
                 ))}
@@ -1244,20 +1281,20 @@ export default function StockItems() {
                 <div style={{padding:'10px 14px',background:'rgba(99,102,241,.06)',borderRadius:10,border:'1px solid rgba(99,102,241,.15)',marginBottom:18,display:'flex',gap:10,alignItems:'flex-start'}}>
                   <i className="fa-solid fa-circle-info" style={{color:'#6366f1',marginTop:2,flexShrink:0}}/>
                   <div style={{fontSize:'.8rem',color:'#334155',lineHeight:1.6}}>
-                    <strong>Bu sekmedeki değerler, her Ana Depo için ayrı ayrı tanımlanabilir.</strong>{' '}
+                    <strong>Bu sekmedeki değerler, yalnızca bu stok malında tedarikçi olarak seçilen Ana Depolar için tanımlanabilir.</strong>{' '}
                     Boş bırakılan alanlar için Ölçüm &amp; Stok sekmesindeki global değerler geçerli olur.
                     <br/>Varsayılan Lokasyon ataması için Ana Depo &gt; Depo Ayarları &gt; <strong>Stok Parametreleri</strong> sayfasını kullanın.
                   </div>
                 </div>
                 <SectionHead label="Ana Depo Parametreleri"/>
-                {branches.filter(b=>b.workspace_scope==='anadepo').length === 0 ? (
+                {warehouseBranchesForForm.length === 0 ? (
                   <div style={{padding:16,background:'#f8fafc',borderRadius:8,color:'#64748b',fontSize:'.83rem',textAlign:'center'}}>
-                    Sistemde tanımlı hiçbir "Ana Depo" türünde şube bulunmuyor.
+                    Bu stok malında tedarikçi olarak seçilmiş Ana Depo bulunmuyor.
                   </div>
                 ) : (
                   <div style={{display:'flex',flexDirection:'column',gap:16}}>
-                    {branches.filter(b=>b.workspace_scope==='anadepo').map(branch => {
-                      const wset = form.warehouse_settings?.[branch.id] || { order_unit:'ana', min_order:'', max_order:'', min_stock:'', safety_stock:'' }
+                    {warehouseBranchesForForm.map(branch => {
+                      const wset = form.warehouse_settings?.[branch.id] || { order_unit:'ana', min_order:'', max_order:'', min_stock:'', safety_stock:'', transfer_price_adjustment_type:'none', transfer_price_adjustment_value:'' }
                       const setW = (k,v) => {
                         const newWs = { ...form.warehouse_settings, [branch.id]: { ...wset, [k]: v } }
                         set('warehouse_settings', newWs)
@@ -1299,6 +1336,35 @@ export default function StockItems() {
                               <input className="f-input" type="number" min="0" value={wset.max_order} onChange={e=>setW('max_order',e.target.value)} placeholder="(global default)"/>
                             </div>
                           </div>
+
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginTop:14}}>
+                            <div>
+                              <label className="f-label">Şubeye Sevk Fiyatı</label>
+                              <SearchableSelect
+                                value={wset.transfer_price_adjustment_type || 'none'}
+                                onChange={v=>setW('transfer_price_adjustment_type',v)}
+                                options={[
+                                  {value:'none',label:'Alış fiyatı'},
+                                  {value:'percent',label:'% marj'},
+                                  {value:'amount',label:'Tutar marj'},
+                                ]}
+                                allowClear={false}
+                              />
+                            </div>
+                            <div>
+                              <label className="f-label">Marj Değeri</label>
+                              <input
+                                className="f-input"
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={wset.transfer_price_adjustment_value}
+                                onChange={e=>setW('transfer_price_adjustment_value',e.target.value)}
+                                disabled={(wset.transfer_price_adjustment_type || 'none') === 'none'}
+                                placeholder={wset.transfer_price_adjustment_type === 'percent' ? 'Ör: 10' : 'Ör: 1'}
+                              />
+                            </div>
+                          </div>
                         </div>
                       )
                     })}
@@ -1315,7 +1381,7 @@ export default function StockItems() {
                 {tab>0 && <button className="btn-o" onClick={()=>setTab(t=>t-1)} style={{fontSize:'.83rem'}}>
                   <i className="fa-solid fa-chevron-left"/> Geri
                 </button>}
-                {tab<3 && <button className="btn-o" onClick={()=>setTab(t=>t+1)} style={{fontSize:'.83rem'}}>
+                {tab<3 && !(tab===2 && !hasWarehouseSupplier) && <button className="btn-o" onClick={()=>setTab(t=>t+1)} style={{fontSize:'.83rem'}}>
                   <i className="fa-solid fa-chevron-right"/> İleri
                 </button>}
               </div>

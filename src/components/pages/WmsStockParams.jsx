@@ -4,6 +4,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/hooks/useToast'
 import { db } from '@/lib/db'
 import { useWorkspace } from '@/context/WorkspaceContext'
+import { stockItemMatchesSupplier } from '@/lib/branchPurchasing'
 
 // Lokasyon adresini kısa etiket olarak formatla
 function fmtLoc(loc) {
@@ -27,6 +28,8 @@ export default function WmsStockParams() {
   const [locations, setLocations] = useState([])
   const [settings,  setSettings]  = useState({}) // { stock_item_id: {id, min_stock, safety_stock, default_location_id, ...} }
   const [units,     setUnits]     = useState([])
+  const [warehouseSupplier, setWarehouseSupplier] = useState(null)
+  const [allItemsCount, setAllItemsCount] = useState(0)
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [dirty,     setDirty]     = useState({}) // { stock_item_id: rowData }
@@ -35,23 +38,46 @@ export default function WmsStockParams() {
   const load = useCallback(async () => {
     if (!branchId) return
     setLoading(true)
-    const [{ data: si }, { data: locs }, { data: ws }, { data: un }] = await Promise.all([
-      db.from('stock_items').select('id,name,sku,unit').order('name'),
+    const [
+      { data: si, error: stockError },
+      { data: locs, error: locError },
+      { data: ws, error: settingsError },
+      { data: un, error: unitError },
+      { data: suppliers, error: supplierError },
+    ] = await Promise.all([
+      db.from('stock_items').select('id,name,sku,unit,supp_id,suppliers_list').is('deleted_at', null).order('name'),
       db.from('warehouse_locations').select('id,zone_code,aisle,rack,level,bin').eq('branch_id', branchId).eq('is_active', true).order('zone_code'),
       db.from('stock_item_warehouse_settings').select('*').eq('branch_id', branchId),
       db.from('units').select('name,label').order('label'),
+      db.from('suppliers').select('id,name,supplier_kind,source_branch_id,active').eq('supplier_kind', 'internal_warehouse').eq('source_branch_id', branchId).eq('active', true).is('deleted_at', null).limit(1),
     ])
-    setItems(si || [])
+
+    const firstError = stockError || locError || settingsError || unitError || supplierError
+    if (firstError) {
+      toast('Stok parametreleri yüklenemedi: ' + firstError.message, 'error')
+      setLoading(false)
+      return
+    }
+
+    const supplier = (suppliers || [])[0] || null
+    const scopedItems = supplier
+      ? (si || []).filter(item => stockItemMatchesSupplier(item, supplier.id))
+      : []
+    const scopedItemIds = new Set(scopedItems.map(item => item.id))
+
+    setWarehouseSupplier(supplier)
+    setAllItemsCount((si || []).length)
+    setItems(scopedItems)
     setLocations(locs || [])
     setUnits(un || [])
     const map = {}
     for (const row of (ws || [])) {
-      map[row.stock_item_id] = row
+      if (scopedItemIds.has(row.stock_item_id)) map[row.stock_item_id] = row
     }
     setSettings(map)
     setDirty({})
     setLoading(false)
-  }, [branchId])
+  }, [branchId, toast])
 
   useEffect(() => { load() }, [load])
 
@@ -79,6 +105,12 @@ export default function WmsStockParams() {
     if (!branchId) return
     const itemIds = Object.keys(dirty)
     if (itemIds.length === 0) { toast('Değişiklik yok', 'info'); return }
+    const scopedItemIds = new Set(items.map(item => item.id))
+    const outOfScope = itemIds.filter(itemId => !scopedItemIds.has(itemId))
+    if (outOfScope.length > 0) {
+      toast('Bu Ana Depo kapsamına girmeyen stok malları için WMS parametresi kaydedilemez.', 'error')
+      return
+    }
     setSaving(true)
     try {
       const payloads = itemIds.map(itemId => {
@@ -92,6 +124,8 @@ export default function WmsStockParams() {
           max_order: parseFloat(row.max_order) || null,
           min_stock: parseFloat(row.min_stock) || null,
           safety_stock: parseFloat(row.safety_stock) || null,
+          transfer_price_adjustment_type: row.transfer_price_adjustment_type || 'none',
+          transfer_price_adjustment_value: parseFloat(row.transfer_price_adjustment_value) || 0,
           default_location_id: row.default_location_id || null,
           updated_at: new Date().toISOString(),
         }
@@ -128,7 +162,7 @@ export default function WmsStockParams() {
     <div className="page-enter">
       <Header
         title="Stok Parametreleri"
-        subtitle={`${filtered.length} ürün · ${locations.length} lokasyon`}
+        subtitle={`${filtered.length} kapsam içi ürün · ${locations.length} lokasyon`}
         actions={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {dirtyCount > 0 && (
@@ -149,7 +183,14 @@ export default function WmsStockParams() {
         <i className="fa-solid fa-circle-info" style={{ color: '#6366f1', marginTop: 3, flexShrink: 0 }} />
         <div style={{ fontSize: '.8rem', color: '#334155', lineHeight: 1.6 }}>
           Bu sayfadaki ayarlar yalnızca <strong>{currentBranch?.name}</strong> deposuna aittir.
+          Sadece stok kartında tedarikçi olarak <strong>{warehouseSupplier?.name || 'bu Ana Depo'}</strong> seçilmiş stok malları yönetilebilir.
           Boş bırakılan alanlar için stok malının global değerleri kullanılır.
+          {!warehouseSupplier && (
+            <><br /><span style={{ color: '#ef4444' }}>Bu Ana Depo için aktif iç tedarikçi kaydı bulunamadı. Stok kartı kapsamı belirlenemediği için WMS stok parametresi yönetilemez.</span></>
+          )}
+          {warehouseSupplier && allItemsCount > items.length && (
+            <><br /><span style={{ color: '#64748b' }}>{allItemsCount - items.length} stok malı bu deponun tedarikçi kapsamına girmediği için gizlendi.</span></>
+          )}
           {locations.length === 0 && (
             <><br /><span style={{ color: '#ef4444' }}>⚠️ Bu depoya henüz lokasyon eklenmemiş. Önce <strong>Lokasyonlar</strong> sayfasından raf/göz tanımlayın.</span></>
           )}
@@ -173,7 +214,7 @@ export default function WmsStockParams() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['Ürün', 'Min Stok', 'Güvenlik Stoğu', 'Sipariş Birimi', 'Min Sipariş', 'Max Sipariş', 'Varsayılan Lokasyon', ''].map((h, i) => (
+                {['Ürün', 'Min Stok', 'Güvenlik Stoğu', 'Sipariş Birimi', 'Min Sipariş', 'Max Sipariş', 'Sevk Fiyatı', 'Varsayılan Lokasyon', ''].map((h, i) => (
                   <th key={i} style={{ padding: '9px 12px', textAlign: 'left', fontSize: '.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -235,6 +276,24 @@ export default function WmsStockParams() {
                         placeholder="—" />
                     </td>
 
+                    {/* Sevk Fiyatı */}
+                    <td style={{ padding: '6px 8px', minWidth: 210 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 6 }}>
+                        <select className="f-input" style={{ fontSize: '.78rem', padding: '5px 8px' }}
+                          value={row.transfer_price_adjustment_type || 'none'}
+                          onChange={e => setField(item.id, 'transfer_price_adjustment_type', e.target.value)}>
+                          <option value="none">Alış fiyatı</option>
+                          <option value="percent">% marj</option>
+                          <option value="amount">Tutar marj</option>
+                        </select>
+                        <input className="f-input" type="number" min="0" step="any" style={{ fontSize: '.78rem', padding: '5px 8px' }}
+                          value={row.transfer_price_adjustment_value ?? ''}
+                          onChange={e => setField(item.id, 'transfer_price_adjustment_value', e.target.value)}
+                          disabled={(row.transfer_price_adjustment_type || 'none') === 'none'}
+                          placeholder="0" />
+                      </div>
+                    </td>
+
                     {/* Varsayılan Lokasyon */}
                     <td style={{ padding: '6px 8px', width: 180 }}>
                       <SearchableSelect
@@ -262,7 +321,9 @@ export default function WmsStockParams() {
 
           {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: '.83rem' }}>
-              Arama sonucu bulunamadı
+              {warehouseSupplier
+                ? 'Bu Ana Depo tedarikçi kapsamına giren stok malı bulunamadı'
+                : 'Aktif iç tedarikçi kaydı bulunmadığı için stok malı gösterilemiyor'}
             </div>
           )}
         </div>

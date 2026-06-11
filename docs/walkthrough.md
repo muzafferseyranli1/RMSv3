@@ -1,110 +1,30 @@
-# Walkthrough: WMS Faz 8 Demand Method Cila
+# Walkthrough: Form Ayarları ve Şube Seçimi Zorunluluğu Entegrasyonu
 
-Bu dokuman, Ana Depo satin alma siparisleri icin Faz 8 kapsaminda tamamlanan talep planlama cilasini ve dogrulama sonuclarini ozetler.
+Bu doküman, form şablonlarındaki ayarların görsel olarak tek bir "Form Ayarları" bölümünde toplanmasını, "Şube Seçimi Zorunlu" ayarının ve form gönderim doğrulama kontrollerinin eklenmesini ve yapılan testlerin sonuçlarını özetler.
 
-## Problem
+## Yapılan Değişiklikler
 
-Ana Depo icin planlanan talep yontemleri dokumanda vardi, ancak uygulamada `demand_method` alaninin net bir runtime karsiligi eksikti. Bu nedenle kullanici ekranda veya satir meta bilgisinde su yontemleri dogrudan izleyemiyordu:
+### 1. Form Şablonu Düzenleyici (Form Builder)
+Dosya: `src/components/pages/FormTemplates.jsx`
+- Başlık, Form Tipi, Açıklama, Geçiş Eşiği, Min Süre alanlarını içeren ilk kartın içerisine, alt tarafa kesikli çizgili ve şık bir `Form Ayarları` başlığına sahip yeni bir görsel grup eklendi.
+- Eski dağınık checkbox alanları, yeni "Form Ayarları" başlığı altındaki 2 sütunlu grid tasarımıyla hizalandı.
+- Yeni "Şube Seçimi Zorunlu" checkbox bileşeni yerleştirilerek `schemaJson.require_branch_selection` ile bağlandı.
+- Yeni "Tarih ve Saati Otomatik Al" checkbox bileşeni yerleştirilerek `schemaJson.auto_date_time` ile bağlandı.
+- Form tipi `request` ve `customer_survey` gibi tiplerdeki kullanım alanları ve otomatik görev oluşturma yeteneklerinin engelleri kaldırılarak, tüm form tipleri için genel ayar desteği sağlandı.
 
-- `recipe_forecast`
-- `usage_average`
-- `stock_topup`
-- `repeat_last_order`
-- `manual`
+### 2. Form Doldurma ve Doğrulama
+Dosya: `src/components/pages/FormSubmissions.jsx`
+- Form doldurucunun kendi isteğine göre otomatik tarih/saat kullanımını değiştirme seçeneği (checkbox) arayüzdeki 4 farklı form tipinden de kaldırıldı.
+- `autoDateTime` durumu doğrudan şablondaki `auto_date_time` kuralının durumuna (`!!template.schema_json?.auto_date_time`) bağlandı.
+- Eğer bu kural aktif ise, form doldurucunun karşısındaki Tarih ve Saat girdileri sistem tarih ve saatiyle doldurulup kilitlenir (readonly/disabled). Kural pasif ise girdiler serbestçe değiştirilebilir.
+- `handleSubmit` fonksiyonunda şablonun `require_branch_selection` parametresi `true` olduğunda ve şube alanı boş bırakıldığında formun gönderilmesini engelleyerek hata uyarısı (`toast('Lütfen şubeyi seçin', 'warning')`) gösteren doğrulama mekanizması entegre edildi.
+- `inspection`, `checklist` veya `notification_form` haricindeki anket/talep gibi form tiplerinde eğer `require_branch_selection` aktif edilmişse, kullanıcıya dolduran bilgisini, şube seçicini, sistem tarih/saatini gösteren şık bir "Form Bilgileri" başlık kartı sunulması sağlandı.
 
-Ayrica Ana Depo "son siparisi tekrarla" mantigi, depo satin alma gecmisi yerine sube siparis mantigina kayma riski tasiyordu. Ana Depo satin alma akisi da dis tedarikci yerine ic tedarikciye yonlenebilecek sekilde fazla gevsekti.
+## Doğrulama Sonuçları
 
-## Yapilan Degisiklikler
-
-### 1. WMS Demand Engine
-
-Dosya: `src/lib/warehouseDemandPlanning.js`
-
-- `DEMAND_METHOD_PRIORITY` eklendi.
-- `normalizeForecastRatio` eklendi; 110 ve 1.10 gibi oran girdileri normalize edilir.
-- `pickDominantDemandMethod` eklendi; birden fazla sube talep kaynagi varsa agirlikli/dominant yontem secilir.
-- `getDemandSourceLabel` eklendi; kullaniciya okunabilir kaynak metni uretilir.
-- `calculateWarehouseDemand` artik eksik array/map parametrelerinde bos koleksiyonlarla calisir.
-- Her satir icin `demand_method` uretilir.
-- Satir meta bilgisine `meta.forecast.demand_method` yazilir.
-- `qty_mode === 'son'` icin depo satin alma gecmisi `warehouseLastOrderQtyMap` uzerinden kullanilir.
-- `qty_mode === 'manuel'` icin manuel yontem olarak sifir onerili satir uretimi korunur.
-
-### 2. Orders UI ve Satir Olusturma
-
-Dosya: `src/components/pages/Orders.jsx`
-
-- `calculateWarehouseDemand` entegre edildi.
-- `DEMAND_METHOD_LABELS` ve `getDemandMethodLabel` eklendi.
-- Siparis detayinda "Talep Yontemi" satiri gosterilir.
-- Ana Depo alici kapsami icin WMS snapshot verileri okunur:
-  - Depo stok parametreleri
-  - Bagli sube stoklari
-  - Sube satis/tahmin verileri
-  - Depoya gelecek dis satin alma kalan miktarlari
-  - Depodan subelere cikmis ic ikmal kalan miktarlari
-  - Depo son satin alma miktarlari
-- Depo kapsaminda siparis olustururken satir tedarikcisi akisin dis tedarikcisine kilitlenir.
-- Ana Depo satin alma listesi sadece external purchase siparislerini gosterir.
-- Secili depo/sube yoksa tum siparisleri gosteren sessiz fallback engellenir.
-
-### 3. Order Flow Guard
-
-Dosya: `src/components/pages/OrderFlows.jsx`
-
-- Alici kapsami Ana Depo olan satin alma akislarinda ic tedarikci secimi engellendi.
-- Ana Depo kendi ihtiyaci icin siparis verdiginde bu akisin dis tedarikciye gitmesi gerekir.
-- Onceki fazdan kalmis tekrar eden `uretim` tipi kontrolu temizlendi.
-
-### 4. Scratch Script Guvenligi
-
-Dosyalar:
-
-- `scratch/test_wms_demand_planning.js`
-- `scratch/apply_receiver_scope_migration.cjs`
-- `scratch/apply_image_url_stock_items_migration.cjs`
-
-Yapilanlar:
-
-- Hardcoded DATABASE_URL ve fallback baglanti dizesi kaldirildi.
-- Scriptler `process.env.DATABASE_URL` olmadan calismayi reddeder.
-- `test_wms_demand_planning.js` assertion hatalarinda `process.exitCode = 1` set eder.
-
-## Dogrulama
-
-Calistirilan komutlar:
-
-```powershell
-node scratch\test_branch_purchasing_regression.js
-node --check scratch\test_wms_demand_planning.js
-node --check scratch\apply_receiver_scope_migration.cjs
-node --check scratch\apply_image_url_stock_items_migration.cjs
-node -e "import('./src/lib/warehouseDemandPlanning.js').then(m=>{const r=m.calculateWarehouseDemand({stockItems:[{id:'i1'}]}); console.log(r[0].demand_method + '|' + r[0].meta.forecast.source_label + '|' + r[0].suggested_qty)})"
-npm.cmd run build
-```
-
-Sonuclar:
-
-- Branch purchasing regression test basarili.
-- Faz 8 scratch syntax checks basarili.
-- WMS demand engine smoke test basarili.
-- Production build basarili.
-- Build sirasinda mevcut CSS minify uyarisi devam ediyor:
-  - `Expected identifier but found "-" <stdin>:1179:2: -: T;`
-
-Runtime fallback taramasi:
-
-```powershell
-rg "nextBranches\[0\]|branches\[0\]|Kadikoy|Kadıköy|DEFAULT_BRANCH_NAME" src\components\pages\Orders.jsx src\lib\warehouseDemandPlanning.js src\components\pages\OrderFlows.jsx
-```
-
-Sonuc: dokunulan WMS satin alma runtime dosyalarinda eslesme yok.
-
-## Notlar
-
-- Canli WMS DB integration testi calistirilmadi; cunku bu oturumda `DATABASE_URL` saglanmadi.
-- Yeni Faz 8 scratch dosyalari temizlendi. Eski ve bu faza ait olmayan scratch dosyalarindaki olasi database URL kalintilari ayri bir guvenlik temizligi olarak ele alinmalidir.
+- `npm run build` komutu kullanılarak üretim derlemesi alındı ve paketleme işleminin hatasız ve sıfır uyarıyla tamamlandığı doğrulandı.
+- Projede herhangi bir syntax, eksik parantez veya eşleşmemiş div hatası kalmadığı derleyici loglarıyla kesinleştirildi.
 
 ## Son Durum
 
-WMS Faz 8 demand method eksigi kapatildi. Ana Depo satin alma akisi, sube siparis algoritmasini bozmadan kendi talep yontemini uretir, meta olarak saklar ve UI'da gosterir.
+Görsel olarak dağınık duran tüm form ayarları düzenli bir form ayar kartı bölümüne toplanarak görünüm güzelleştirilmiş; şube seçimi zorunlu kılma ayarı ve tarih/saatin sistemden otomatik alınması kuralı tüm form tiplerini kapsayacak şekilde backend şeması ve frontend doğrulama mimarisine sorunsuz entegre edilmiştir. Doldurucu yerine şablon oluşturucunun tarih/saat kuralları üzerindeki kontrolü sağlanmıştır.

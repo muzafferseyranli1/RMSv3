@@ -1,17 +1,11 @@
-# Task List: WMS Faz 8 Demand Method Cila
+# Task List: Form Ayarları ve Şube Seçimi Zorunluluğu Entegrasyonu
 
-- `[x]` Add real `demand_method` generation to the WMS warehouse demand engine.
-- `[x]` Support `recipe_forecast`, `usage_average`, `stock_topup`, `repeat_last_order`, and `manual`.
-- `[x]` Persist demand method inside purchase order line meta (`meta.forecast.demand_method`).
-- `[x]` Show demand method in the purchase order detail UI.
-- `[x]` Make warehouse repeat-last-order mode use warehouse purchase history instead of branch order history.
-- `[x]` Prevent warehouse purchase flows from creating internal supplier replenishment orders.
-- `[x]` Split inbound warehouse purchase quantities and outbound branch replenishment quantities in the WMS calculation.
-- `[x]` Remove touched runtime first-branch/Kadikoy fallback paths from warehouse purchase flow.
-- `[x]` Remove hardcoded DATABASE_URL fallback from new Faz 8 scratch scripts.
-- `[x]` Run branch purchasing regression test to confirm existing branch algorithm remains intact.
-- `[x]` Run syntax checks, WMS engine smoke test, static fallback scan, and production build.
-
-## Not Run
-
-- `[ ]` Live WMS DB integration test was not run because `DATABASE_URL` was intentionally not present in the environment.
+- `[x]` `FormTemplates.jsx` dosyasında ayarlar alanını "Form Ayarları" başlığı altında birleşik dikey şerit ve kesikli çizgi tasarımıyla tek bölüme topla.
+- `[x]` "Şube Seçimi Zorunlu" checkbox girdisini ekle ve `schemaJson.require_branch_selection` ile bağla.
+- `[x]` "Tarih ve Saati Otomatik Al" checkbox girdisini ekle ve `schemaJson.auto_date_time` ile bağla.
+- `[x]` `FormTemplates.jsx` düzenleyicideki form tipi kısıtlamalarını esneterek bu ayarların tüm form tiplerinde (anket, talep vb.) kullanılmasını sağla.
+- `[x]` `FormSubmissions.jsx` arayüzünden doldurucunun tarih/saat otomatik ayarını değiştirebilmesini sağlayan checkbox'ları tamamen kaldır.
+- `[x]` Doldurucunun karşısındaki tarih/saat alanlarını şablondaki `auto_date_time` kuralı aktif ise kilitle, pasif ise düzenlenebilir yap.
+- `[x]` `FormSubmissions.jsx` gönderim doğrulama mantığına `require_branch_selection` kontrolünü ekle, zorunluysa şube seçilmediğinde hata verdir.
+- `[x]` `FormSubmissions.jsx` arayüzünde standart form tipleri dışındaki anket ve talepler için şube seçimi zorunlu kılındığında şube seçilebilen genel "Form Bilgileri" kartı göster.
+- `[x]` `npm run build` ile üretim derlemesi yapılarak syntax ve derleme hataları olmadığını doğrula.

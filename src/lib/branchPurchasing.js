@@ -512,8 +512,75 @@ function parseSupplierLinks(item) {
 
 export function stockItemMatchesSupplier(item, supplierId) {
   if (!item || !supplierId) return false
-  if (item.supp_id === supplierId) return true
-  return parseSupplierLinks(item).some(link => link?.supp_id === supplierId)
+  const target = String(supplierId).toLowerCase()
+  if (String(item.supp_id || '').toLowerCase() === target) return true
+  return parseSupplierLinks(item).some(link => String(link?.supp_id || '').toLowerCase() === target)
+}
+
+function supplierByIdMap(allSuppliers = []) {
+  return new Map((allSuppliers || []).map(supplier => [String(supplier?.id || '').toLowerCase(), supplier]))
+}
+
+export function getInternalWarehouseSupplierIdsForItem(item, allSuppliers = []) {
+  if (!item) return []
+  const supplierMap = supplierByIdMap(allSuppliers)
+  const orderedIds = []
+  const addIfInternal = supplierId => {
+    const key = String(supplierId || '').toLowerCase()
+    if (!key || orderedIds.includes(supplierId)) return
+    const supplier = supplierMap.get(key)
+    if (supplier?.supplier_kind === 'internal_warehouse') orderedIds.push(supplier.id)
+  }
+
+  const links = parseSupplierLinks(item)
+  for (const link of links.filter(row => row?.is_default)) addIfInternal(link.supp_id)
+  addIfInternal(item.supp_id)
+  for (const link of links) addIfInternal(link.supp_id)
+
+  return orderedIds
+}
+
+export function stockItemHasInternalWarehouseSupplier(item, allSuppliers = []) {
+  return getInternalWarehouseSupplierIdsForItem(item, allSuppliers).length > 0
+}
+
+export function resolveBranchLineSupplierId(item, flowSupplierId, allSuppliers = []) {
+  const warehouseSupplierIds = getInternalWarehouseSupplierIdsForItem(item, allSuppliers)
+  if (warehouseSupplierIds.length > 0) {
+    const flowKey = String(flowSupplierId || '').toLowerCase()
+    return warehouseSupplierIds.find(id => String(id).toLowerCase() === flowKey) || warehouseSupplierIds[0]
+  }
+
+  return resolveLineSupplierId(item, flowSupplierId, allSuppliers)
+}
+
+export function resolveWarehouseTransferPrice(basePrice, warehouseSetting = {}) {
+  const normalizedBase = Number(basePrice || 0)
+  const rawType = String(warehouseSetting?.transfer_price_adjustment_type || 'none').toLowerCase()
+  const type = ['percent', 'amount'].includes(rawType) ? rawType : 'none'
+  const value = Number(warehouseSetting?.transfer_price_adjustment_value || 0)
+
+  if (!normalizedBase || type === 'none' || !Number.isFinite(value) || value === 0) {
+    return {
+      applied: false,
+      type,
+      value: Number.isFinite(value) ? value : 0,
+      base_price: normalizedBase,
+      unit_price: normalizedBase,
+    }
+  }
+
+  const unitPrice = type === 'percent'
+    ? normalizedBase * (1 + (value / 100))
+    : normalizedBase + value
+
+  return {
+    applied: true,
+    type,
+    value,
+    base_price: normalizedBase,
+    unit_price: Number(Math.max(unitPrice, 0).toFixed(4)),
+  }
 }
 
 export function resolveFlowItems(flow, stockItems, stockTemplates, contracts) {
@@ -770,5 +837,3 @@ export function resolveLineSupplierId(item, flowSupplierId, allSuppliers = []) {
 
   return item.supp_id || flowSupplierId
 }
-
-

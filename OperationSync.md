@@ -10041,3 +10041,223 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
   - Kullanici Ana Depo PIN oturumu ile `/depo-satinalma` ekraninda bir Ana Depo satin alma akisi uzerinden talep satirlarini canli veriyle dogrulamali.
 - `Handoff Contract`:
   - WMS Faz 8 demand method eksigi kapatildi, ilgili dokumanlar docs.md talimatina gore guncellendi, build ve statik kontroller basarili tamamlandi.
+
+## Entry 187 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T12:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Form Ayarları Birleştirme ve Şube Seçimi Zorunluluğu Entegrasyonu`
+- `Intent`: `Form şablonlarındaki tüm ayar alanlarını "Form Ayarları" başlığı altında şık bir grupta toplamak, tüm form tiplerinde bu ayarların ve otomatik görev tetikleyicinin kullanılmasını sağlamak, "Şube Seçimi Zorunlu" ayarı eklemek ve form gönderim doğrulamasını tüm form tipleri için uygulamak.`
+- `Files Read`:
+  - `src/components/pages/FormTemplates.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+  - `docs/implementation_plan.md`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - Form builder (`FormTemplates.jsx`) üzerinde GPS Zorunlu, Kullanım Alanı, Görev Oluşturma alanları dağınık bir yapıdaydı ve bazı form tiplerinde kısıtlıydı.
+  - "Şube Seçimi Zorunlu" seçeneği `schemaJson.require_branch_selection` ile şablona bağlandı ve tüm form tiplerinde (anket, talep vb.) kullanılabilir yapıldı.
+  - Form gönderim ekranında (`FormSubmissions.jsx`) şube zorunluluğu aktifse şube seçimi zorunlu kılınarak hata doğrulaması eklendi. Ayrıca anket ve talep gibi standart dışı form tiplerinde şube seçimi gerekiyorsa genel "Form Bilgileri" kartı ile şube seçicinin gösterilmesi sağlandı.
+- `Decisions`:
+  - Form ayarlarının görsel bütünlüğünü artırmak için ilk düzenleme kartı içinde kesikli çizgiyle ayrılmış şık ve iki sütunlu bir "Form Ayarları" grid alanı oluşturuldu.
+  - `require_branch_selection` alanı veritabanına doğrudan gitmeden `schema_json` altında (`schemaJson.require_branch_selection`) saklanarak veritabanı şema değişikliğine gerek bırakmadan esneklik sağlandı.
+- `Next Step`:
+  - Değişiklikleri doğrulamak için uygulamayı çalıştırıp form şablonu oluşturma ve gönderim testlerini gerçekleştirmek.
+- `Handoff Contract`: `Form Ayarları görsel olarak tek bir bölümde toplandı, Şube Seçimi Zorunlu ayarı tüm form tiplerine uygulanarak gönderim doğrulama kontrolleri entegre edildi. Üretim derlemesi sıfır hata ile tamamlanmıştır.`
+
+## Entry 188 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T12:48:34+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo WMS Stok Parametreleri Tedarikçi Kapsam Filtresi`
+- `Intent`: `WMS Stok Parametreleri ekranında yalnızca seçili Ana Depo'nun iç tedarikçi kaydına bağlı stok mallarının yönetilebilmesini sağlamak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `docs/ana_depo_wms_agent_talimatlari.md`
+  - `docs/ana_depo_siparis_modeli.md`
+  - `docs/wms_faz0_karar_notu.md`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/lib/branchPurchasing.js`
+- `Files Changed`:
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm.cmd run build` (Başarılı; mevcut CSS minify uyarısı devam ediyor)
+- `Findings`:
+  - `WmsStockParams.jsx` daha önce tüm aktif stok mallarını getiriyor, stok kartındaki `supp_id` / `suppliers_list` tedarikçi kapsamını okumuyordu.
+  - Bu durum çoklu Ana Depo senaryosunda bir deponun kendi ilgi alanı dışındaki stok mallarına WMS parametresi tanımlayabilmesi riskini doğuruyordu.
+- `Decisions`:
+  - Seçili Ana Depo için `suppliers.supplier_kind = internal_warehouse` ve `source_branch_id = aktif depo id` eşleşmesi zorunlu hale getirildi.
+  - WMS stok parametreleri yalnızca stok kartında `supp_id` veya `suppliers_list` içinde bu iç tedarikçi bulunan stok malları için gösterilir ve kaydedilir.
+  - Kapsam dışı eski parametre kayıtları ekranda gösterilmez; kayıt sırasında kapsam dışı satır yakalanırsa işlem engellenir.
+- `Open Risks`: None.
+- `Next Step`:
+  - Kullanıcı seçili Ana Depo ile `Depo Ayarları > Stok Parametreleri` ekranını açıp yalnızca o depoya tedarikçi olarak bağlı stok mallarının listelendiğini doğrulamalı.
+- `Handoff Contract`: `Ana Depo WMS Stok Parametreleri ekranı artık seçili Ana Depo'nun iç tedarikçi kapsamı dışındaki stok mallarını göstermiyor ve bu mallar için WMS parametresi kaydını engelliyor. Build başarılıdır.`
+
+## Entry 189 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T12:55:11+03:00`
+- `Agent`: `Codex`
+- `Task`: `Stok Kartı Depo Ayarları Sekmesinin İç Depo Tedarikçi Kapsamına Bağlanması`
+- `Intent`: `Stok malı kartında Ana Depo tedarikçisi seçilmemiş ürünlerde Depo Ayarları sekmesini pasifleştirerek WMS ilgi alanı dışı stokların yönetimini engellemek.`
+- `Files Read`:
+  - `src/components/pages/StockItems.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/lib/branchPurchasing.js`
+- `Files Changed`:
+  - `src/components/pages/StockItems.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm.cmd run build` (Başarılı; mevcut CSS minify uyarısı devam ediyor)
+  - `git diff --check -- src/components/pages/StockItems.jsx` (Başarılı)
+- `Findings`:
+  - Stok kartındaki `Depo Ayarları` sekmesi daha önce tüm stok mallarında aktifti ve tüm Ana Depolar için parametre kartı gösterebiliyordu.
+  - Bu durum, stok malının tedarikçi kapsamına girmeyen Ana Depolar için WMS yönetimi yapılabilmesi riskini doğuruyordu.
+- `Decisions`:
+  - `Depo Ayarları` sekmesi yalnızca `Tedarikçi & Satış` sekmesinde en az bir `internal_warehouse` tedarikçisi seçilmişse aktif olur.
+  - Sekme içinde yalnızca seçili iç depo tedarikçilerinin `source_branch_id` değerine karşılık gelen Ana Depolar gösterilir.
+  - Kayıt sırasında stok malının tüm eski WMS parametreleri temizlenir ve yalnızca güncel iç depo tedarikçi kapsamındaki Ana Depolar için yeniden yazılır.
+- `Open Risks`: None.
+- `Next Step`:
+  - Kullanıcı stok kartında Ana Depo tedarikçisi olmayan bir üründe `Depo Ayarları` sekmesinin pasif kaldığını, Ana Depo tedarikçisi eklenince yalnızca ilgili depo kartının açıldığını doğrulamalı.
+- `Handoff Contract`: `Stok kartı Depo Ayarları sekmesi artık Ana Depo tedarikçi seçimine bağlıdır; kapsam dışı WMS parametresi oluşturma yolu kapatılmıştır. Build başarılıdır.`
+
+## Entry 190 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T13:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Tarih ve Saat Otomatikleştirme Kuralının Form Şablonuna Taşınması`
+- `Intent`: `Form doldurucunun seçtiği "Sistem Tarih ve Saatini Otomatik Kullan" tercihini kaldırarak, bunu form şablonu oluşturucusunun belirlediği "Tarih ve Saati Otomatik Al" kuralı haline getirmek; doldurma arayüzündeki onay kutularını temizlemek ve alan kilitlerini şablon kuralına bağlamak.`
+- `Files Read`:
+  - `src/components/pages/FormTemplates.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx` - "Tarih ve Saati Otomatik Al" kuralı checkbox'ı "Form Ayarları" kartına eklendi ve `schemaJson.auto_date_time` parametresi ile ilişkilendirildi.
+  - `src/components/pages/FormSubmissions.jsx` - Doldurucunun tarih/saat kontrolünü değiştirmesini sağlayan tüm checkbox'lar arayüzden (4 farklı kart görünümü) kaldırıldı; `autoDateTime` durumu şablondaki kurala (`!!template.schema_json?.auto_date_time`) bağlandı. Kural aktifse alanlar kilitlendi, pasifse düzenlenebilir yapıldı.
+  - `docs/implementation_plan.md` - Hedefler ve değişiklik detayları güncellendi.
+  - `docs/task.md` - Yapılacaklar listesi güncellendi.
+  - `docs/walkthrough.md` - Geliştirme özeti ve kural davranışları walkthrough dokümanına yansıtıldı.
+- `Commands Run`:
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - Tarih/saat kuralı eskiden formu dolduran kişinin inisiyatifindeydi (istemci tarafı toggle). Bu durum, sahtecilik ve geçmişe yönelik veri girişlerini engelleme kuralının işletilmesini zorlaştırıyordu.
+  - `auto_date_time` kuralının şablona (form builder) taşınmasıyla, bu davranış form bazlı bir iş kuralı haline getirildi.
+- `Decisions`:
+  - İstemci doldurma ekranlarındaki checkbox'lar tamamen kaldırılarak arayüz sadeleştirildi.
+  - Kural aktifken sistem saatinin otomatik çekilme ve submit edilme mantığı (`handleSubmitForm` içerisinde) korunarak kuralın arkasındaki işlevsellik sürdürüldü.
+- `Next Step`:
+  - Kullanıcı şablon ekranında bir form tasarlayıp "Tarih ve Saati Otomatik Al" kuralını test etmeli; ardından formu doldurarak tarih/saat kilitlerinin kurala göre değiştiğini doğrulamalı.
+- `Handoff Contract`: `Tarih ve Saat otomatikleştirme tercihi doldurucu ekranından kaldırılarak şablon kuralı haline getirilmiştir. Kurala göre alanların kilitlenmesi ve otomatik doldurulması dinamik olarak yönetilir. Build başarılıdır.`
+
+## Entry 191 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T13:16:22+03:00`
+- `Agent`: `Codex`
+- `Task`: `Şube Siparişlerinde Ana Depo Tedarikçi Önceliği`
+- `Intent`: `Bir stok malının tedarikçilerinden biri Ana Depo ise şubelerin manuel veya akış bazlı siparişte dış tedarikçiyi seçmesini engellemek; aynı ürünün Ana Depo tarafından dış tedarikçiden satın alınabilmesini korumak.`
+- `Files Read`:
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/test_branch_purchasing_regression.js`
+- `Files Changed`:
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/test_branch_purchasing_regression.js`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `npm.cmd run build` (Başarılı; mevcut CSS minify uyarısı devam ediyor)
+  - `git diff --check -- .\src\lib\branchPurchasing.js .\src\components\pages\Orders.jsx .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+- `Findings`:
+  - Hamburger ekmeği gibi ürünlerde aynı stok kartında hem dış tedarikçi (`Unmaş`) hem de iç tedarikçi (`Ana Depo`) bulunabilir.
+  - Bu durumda Ana Depo ürünü dış tedarikçiden satın almalı; şube ise aynı ürünü dış tedarikçiden değil Ana Depo tedarikçisinden istemelidir.
+  - Mevcut akış yapısı `receiver_scope = warehouse` ve `receiver_scope = branch` ayrımıyla bu modeli destekliyordu; açık kalan risk, şube tarafındaki manuel/akış dışı siparişte dış tedarikçi seçilebilmesiydi.
+- `Decisions`:
+  - Şube kapsamındaki sipariş hesaplamalarında stok malının herhangi bir `internal_warehouse` tedarikçisi varsa satır tedarikçisi Ana Depo tedarikçisine zorlanır.
+  - Şube kapsamındaki dış tedarikçi akışları, Ana Depo tedarikçisi olan stok mallarını kapsam dışı bırakır.
+  - Ana Depo satın alma kapsamı (`receiver_scope = warehouse`) dış tedarikçi davranışını korur; Ana Depo aynı stok malını Unmaş gibi dış tedarikçilerden almaya devam edebilir.
+- `Open Risks`: None.
+- `Next Step`:
+  - Kullanıcı hamburger ekmeği senaryosunda stok kartına hem `Unmaş` hem ilgili `Ana Depo` tedarikçisini ekleyip, şube sipariş ekranında ürünün dış tedarikçi altında görünmediğini ve Ana Depo akışında siparişe düştüğünü doğrulamalı.
+- `Handoff Contract`: `Şube siparişlerinde Ana Depo tedarikçisi olan ürünler dış tedarikçi akışlarından filtrelenir ve satır tedarikçisi Ana Depo'ya çözülür; Ana Depo'nun dış tedarikçiden satın alma akışı korunur. Test ve build başarılıdır.`
+
+## Entry 192 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T13:36:59+03:00`
+- `Agent`: `Codex`
+- `Task`: `Ana Depo Sevk Fiyatı Marj Kuralı`
+- `Intent`: `Ana Depoya alış fiyatıyla giren stok mallarının şubelere zorunlu olarak aynı fiyattan sevk edilmemesini; ürün ve Ana Depo bazında yüzde veya tutar marjıyla sevk fiyatı belirlenmesini sağlamak.`
+- `Files Read`:
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/StockItems.jsx`
+  - `schema-railway-master.sql`
+  - `wms-migration.sql`
+  - `server/wms_migration.js`
+- `Files Changed`:
+  - `src/lib/branchPurchasing.js`
+  - `src/components/pages/Orders.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/StockItems.jsx`
+  - `schema-railway-master.sql`
+  - `wms-migration.sql`
+  - `server/wms_migration.js`
+  - `migrations/035_add_wms_transfer_price_adjustments.sql`
+  - `scratch/test_branch_purchasing_regression.js`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `git diff --check -- ...` (Başarılı)
+  - `npm.cmd run build` (Başarılı; mevcut CSS minify uyarısı devam ediyor)
+- `Findings`:
+  - Şube ikmal siparişi satır fiyatı mevcut yapıda genel `unit_price` alanından ilerliyordu; Ana Depo için ayrı bir sevk fiyatı kuralı yoktu.
+  - Şube son kabul fiyatını marj bazı yapmak fiyatın her siparişte tekrar marjlanması riskini doğurur; bu nedenle marj bazı stok kartındaki alış/baz fiyat olarak ele alındı.
+  - Ana Depo dış tedarikçi satın alma akışı (`receiver_scope = warehouse`) aynı kalmalı; marj sadece şube tarafındaki `internal_warehouse` ikmal satırlarında uygulanmalıdır.
+- `Decisions`:
+  - `stock_item_warehouse_settings` tablosuna `transfer_price_adjustment_type` ve `transfer_price_adjustment_value` alanları eklendi.
+  - Tip değerleri `none`, `percent`, `amount` olarak ele alındı; `none` alış/baz fiyat, `percent` yüzde marj, `amount` sabit tutar marjı anlamına gelir.
+  - WMS Stok Parametreleri ve stok kartı Depo Ayarları sekmesine sevk fiyatı kuralı eklendi.
+  - Şube sipariş satırında tedarikçi Ana Depo ise tanımlı marj kuralı uygulanır ve fiyat `warehouse_transfer_price` kaynağıyla kilitlenir.
+  - Ana Depo satın alma siparişlerinde dış tedarikçi fiyatı/kontrat/son fiyat davranışı korunur.
+- `Open Risks`:
+  - Yeni kolonların canlı veritabanına uygulanması gerekir; bunun için `migrations/035_add_wms_transfer_price_adjustments.sql` hazırlandı.
+- `Next Step`:
+  - Kullanıcı örnek üründe alış fiyatını 10, sevk kuralını `%10` veya `+1` yaparak şube siparişinde satır fiyatının 11 olarak geldiğini doğrulamalı.
+- `Handoff Contract`: `Ana Depo ürün bazlı sevk fiyatı artık alış/baz fiyat üzerine yüzde veya tutar marjı ile belirlenebilir; şube ikmal siparişlerinde uygulanır ve Ana Depo dış satın alma akışı etkilenmez. Test ve build başarılıdır.`
+
+## Entry 193 - 2026-06-10
+
+- `Timestamp`: `2026-06-10T14:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Denetim Formlarında Şube Seçimi ve Otomatik Görev Yönetimi Entegrasyonu`
+- `Intent`: `Denetim formunda şube seçimi zorunlu seçeneğinin durumuna göre otomatik görev oluştur özelliğinin ve şube giriş alanının dinamik/koordineli yönetimi.`
+- `Files Read`:
+  - `src/components/pages/FormTemplates.jsx`
+  - `src/components/pages/FormSubmissions.jsx`
+- `Files Changed`:
+  - `src/components/pages/FormTemplates.jsx` - Şube seçimi zorunlu olmadığında otomatik görev oluşturmanın devre dışı kalması ve uyarı gösterilmesi eklendi.
+  - `src/components/pages/FormSubmissions.jsx` - Şube seçimi zorunlu olmadığında "Denetim Noktası" alanının dropdown yerine input text olarak render edilmesi, varsayılan şube adıyla başlanması, boş bırakıldığında "Lütfen denetim noktasını (şubeyi) giriniz" doğrulama uyarısı gösterilmesi ve metadata'ya manuel şube isminin fallback olarak yazılması sağlandı.
+- `Commands Run`:
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - Denetim formunda şube seçimi zorunlu olmadığında otomatik görev oluşturmak imkansızdır, çünkü atanacak şube bağlamı bulunamaz.
+  - Şube seçimi zorunlu olmadığında serbest metin olarak şube isminin girilebilmesi gerekmektedir.
+- `Decisions`:
+  - Şablon düzenleyicide "Şube Seçimi Zorunlu" kaldırıldığında "Otomatik Görev Oluştur" checkbox'ı kapatılır ve inaktif yapılır.
+  - Doldurucu arayüzünde alanın tipi dinamik olarak değiştirilir; veritabanı kaydı doğrudan `branch_id` ve `metadata.branch_name` alanlarına manuel girilen metin olarak aktarılır.
+- `Next Step`:
+  - Kullanıcı şablon ekranında bir denetim formu oluşturup şube seçimi zorunlu seçeneğini kaldırarak otomatik görev seçeneğinin inaktifleştiğini doğrulamalıdır. Ardından bu formu doldurarak şube adını elle girdiğinde kaydın başarılı şekilde tamamlandığını ve şube adının detaylarda doğru gösterildiğini doğrulamalıdır.
+- `Handoff Contract`: `Denetim formlarında şube seçimi zorunluluğuna bağlı otomatik görev engellemesi ve dinamik serbest metin şube giriş yapısı tamamlanmıştır. Build başarılıdır.`
+

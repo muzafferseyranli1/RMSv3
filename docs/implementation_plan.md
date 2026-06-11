@@ -1,64 +1,37 @@
-# Implementation Plan: WMS Faz 8 Demand Method Cila
+# Implementation Plan: Form Ayarları ve Şube Seçimi Zorunluluğu Entegrasyonu
 
-Bu plan, Ana Depo satin alma siparislerinde Faz 8 talep planlama eksiklerini tamamlamak icin uygulanmistir. Ana hedef, sube siparis algoritmasini bozmadan Ana Depo icin ayri ve izlenebilir bir talep yontemi katmani kurmaktir.
+Bu plan, form şablonlarındaki ayarların (GPS Zorunlu, Kullanım Alanı, Görev Oluşturma) şık ve birleşik bir "Form Ayarları" grubu olarak düzenlenmesi ve "Şube Seçimi Zorunlu" adında yeni bir form ayarının tüm form tiplerine uygulanması amacıyla hazırlanmıştır.
 
 ## Hedefler
 
-- Ana Depo talep motorunda `demand_method` bilgisini gercek veri/meta alanina tasimak.
-- Desteklenen yontemleri standartlastirmak:
-  - `recipe_forecast`
-  - `usage_average`
-  - `stock_topup`
-  - `repeat_last_order`
-  - `manual`
-- Ana Depo "son siparisi tekrarla" modunda sube siparis gecmisi yerine depo satin alma gecmisini kullanmak.
-- Ana Depo satin alma akisini yalnizca dis tedarikci siparislerine kapatmak; ic ikmal tedarikcilerine kaymayi engellemek.
-- Inbound ve outbound "yolda" miktarlarini ayrik ve daha dogru hesaplamak.
-- Kadikoy veya ilk sube gibi sessiz runtime fallback davranislarini dokunulan WMS satin alma yolundan kaldirmak.
-- Faz 8 scratch scriptlerinde hardcoded database URL fallback kalmamasini saglamak.
+1. **Görsel Sadeleştirme:** Form Şablonu Düzenleyici (`FormTemplates.jsx`) ekranında dağınık ve farklı koşullara bağlı olan tüm ayarlar (GPS Zorunlu, Şube Seçimi Zorunlu, Kullanım Bağlamı, Otomatik Görev Oluştur) tek bir "Form Ayarları" kartı altında, kesikli çizgiyle ayrılmış şık bir bölüm olarak birleştirilecek.
+2. **Şube Seçimi Zorunlu Desteği:** Şablon şemasına (`schemaJson.require_branch_selection`) yeni bir boolean ayar eklenecek.
+3. **Tarih/Saat Otomatikleştirme Kuralı:** Şablon şemasına (`schemaJson.auto_date_time`) yeni bir kural eklenecek; dolduran kişinin seçimine bırakılmaksızın sistem tarih/saatinin otomatik alınıp kilitlenmesi sağlanacak.
+4. **Tüm Form Tiplerine Uygulama:** Form ayarları ve otomatik görev oluşturma yeteneği tüm form tiplerinde (inspections, checklists, customer_surveys, personnel_surveys, requests vb.) kullanılabilir olacak.
+5. **Form Gönderim Kontrolleri:** Form Doldurma ekranında (`FormSubmissions.jsx`) eğer şablon için `require_branch_selection` aktifse, kullanıcının şube seçmesi zorunlu kılınacak ve şube seçilmeden form gönderilemeyecek.
 
-## Uygulama Yaklasimi
+## Önerilen Değişiklikler
 
-### 1. Saf WMS talep motoru
+### 1. Şablon Düzenleyici
 
-`src/lib/warehouseDemandPlanning.js` dosyasinda Ana Depo talep hesaplamasi saf fonksiyon olarak guclendirildi. Fonksiyon, eksik parametrelerde bos koleksiyonlarla calisabilecek sekilde toleransli hale getirildi ve `demand_method` kararini uretir hale getirildi.
+Dosya: `src/components/pages/FormTemplates.jsx`
 
-### 2. Orders ekran entegrasyonu
+- Dağınık duran tüm checkbox girdileri ve kullanım bağlamı seçicileri tek bir `Form Ayarları` başlığı altında iki sütunlu grid yapısında görsel olarak birleştirildi.
+- "Şube Seçimi Zorunlu" checkbox'ı eklendi ve `schemaJson.require_branch_selection` ile bağlandı.
+- "Tarih ve Saati Otomatik Al" checkbox'ı eklendi ve `schemaJson.auto_date_time` ile bağlandı.
+- Form tipi `request` olduğunda kullanım alanı ve otomatik görev oluşturma kısıtlamaları kaldırılarak tüm form tiplerinde etkinleştirildi.
 
-`src/components/pages/Orders.jsx` icinde Ana Depo satin alma akisi, WMS verileriyle zenginlestirildi:
+### 2. Form Doldurma ve Gönderim
 
-- Depo stok parametreleri
-- Bagli subelerin stok/satis/tahmin verileri
-- Depoya gelecek dis satin alma kalan miktarlari
-- Depodan subeye cikmis ama henuz tamamlanmamis ic ikmal miktarlari
-- Depo satin alma gecmisi
+Dosya: `src/components/pages/FormSubmissions.jsx`
 
-Satir meta bilgisinde `meta.forecast.demand_method` saklanir ve siparis detayinda kullaniciya "Talep Yontemi" olarak gosterilir.
+- Form doldurma aşamasında `autoDateTime` değeri doğrudan şablondaki `auto_date_time` kuralına bağlandı. Formu dolduran kişinin bu seçimi değiştirmesini sağlayan onay kutuları arayüzden tamamen kaldırıldı.
+- Eğer şablonda `auto_date_time` kuralı aktifse tarih ve saat alanları sistem saatiyle otomatik doldurulup kilitlenir (readonly/disabled), aktif değilse alanlar düzenlenebilir hale gelir.
+- Gönderim doğrulama (`handleSubmit`) fonksiyonuna `require_branch_selection` kontrolü eklenerek şube seçilmediğinde formun gönderilmesi engellendi ve kullanıcıya uyarı gösterilmesi sağlandı.
+- `inspection`, `checklist` ve `notification_form` dışındaki form tipleri (örneğin anketler ve talepler) için eğer `require_branch_selection` aktifse şube seçim kutusunu da içeren genel "Form Bilgileri" başlık kartı render edilmesi sağlandı.
 
-### 3. Siparis akisi korumalari
+## Doğrulama Plani
 
-`src/components/pages/OrderFlows.jsx` icinde Ana Depo alici kapsamina sahip satin alma akislarinda ic tedarikci secimi engellendi. Ana Depo kendi ihtiyaci icin siparis urettiginde hedef dis tedarikci olmalidir.
-
-### 4. Guvenlik ve test scriptleri
-
-Faz 8 scratch scriptlerinde DATABASE_URL hardcoded/fallback kullanimlari temizlendi. Scriptler artik acikca `process.env.DATABASE_URL` bekler; ortam degiskeni yoksa calismayi durdurur.
-
-## Dogrulama Plani
-
-- `node scratch\test_branch_purchasing_regression.js`
-- `node --check scratch\test_wms_demand_planning.js`
-- `node --check scratch\apply_receiver_scope_migration.cjs`
-- `node --check scratch\apply_image_url_stock_items_migration.cjs`
-- WMS demand engine Node smoke import testi
-- `npm.cmd run build`
-- Runtime fallback taramasi:
-  - `nextBranches[0]`
-  - `branches[0]`
-  - `Kadikoy`
-  - `Kadıköy`
-  - `DEFAULT_BRANCH_NAME`
-
-## Kapsam Disi
-
-- Canli Railway DB entegrasyon testi, bu oturumda `DATABASE_URL` verilmedigi icin calistirilmadi.
-- Eski ve bu faza ait olmayan scratch dosyalarindaki onceki donem database URL kalintilari ayri bir temizlik konusudur.
+- `npm run build` komutu ile üretim derlemesi yapılarak kodların hatasız derlendiği doğrulanacak.
+- Form şablonu oluşturma ve düzenleme ekranındaki ayar kaydetme davranışları kontrol edilecek.
+- Form yanıtlarında şube zorunluluğu doğrulama akışları test edilecek.
