@@ -164,7 +164,7 @@ export default function DepoOrders() {
   const [orderLines, setOrderLines] = useState([])
   const [warehouseLocations, setWarehouseLocations] = useState([])
   const [warehouseLpns, setWarehouseLpns] = useState([])
-  const [inventoryMovements, setInventoryMovements] = useState([])
+  const [pickableStock, setPickableStock] = useState([])
 
   // Phase 6 Shipments and Vehicles
   const [vehicles, setVehicles] = useState([])
@@ -197,6 +197,8 @@ export default function DepoOrders() {
   const [shipmentNotes, setShipmentNotes] = useState('')
   const [shipmentLinesDraft, setShipmentLinesDraft] = useState({}) // { stock_item_id: shipped_qty }
   const [savingShipment, setSavingShipment] = useState(false)
+  const [packRequired, setPackRequired] = useState(false)
+  const [loadRequired, setLoadRequired] = useState(false)
 
   // Shipment Detail Modal
   const [detailShipmentId, setDetailShipmentId] = useState('')
@@ -233,7 +235,7 @@ export default function DepoOrders() {
         setOrderLines([])
         setWarehouseLocations([])
         setWarehouseLpns([])
-        setInventoryMovements([])
+        setPickableStock([])
         setVehicles([])
         setShipments([])
         setShipmentOrders([])
@@ -280,11 +282,9 @@ export default function DepoOrders() {
           .eq('branch_id', branchId)
           .order('lpn_code'),
         db
-          .from('inventory_movements')
+          .from('v_wms_pickable_stock')
           .select('*')
-          .eq('branch_id', branchId)
-          .is('deleted_at', null)
-          .order('movement_at', { ascending: false }),
+          .eq('branch_id', branchId),
         db
           .from('vehicles')
           .select('*')
@@ -325,7 +325,7 @@ export default function DepoOrders() {
       setOrders(loadedOrders)
       setWarehouseLocations(locationsResult.data || [])
       setWarehouseLpns(lpnsResult.data || [])
-      setInventoryMovements(movementsResult.data || [])
+      setPickableStock(movementsResult.data || [])
       setVehicles(vehiclesResult.data || [])
       setShipments(shipmentsResult.data || [])
       setShipmentOrders(shipmentOrdersResult.data || [])
@@ -371,46 +371,28 @@ export default function DepoOrders() {
   // Extract unique expiration dates for filter dropdown
   const uniqueSkts = useMemo(() => {
     const dates = new Set()
-    for (const m of inventoryMovements) {
+    for (const m of pickableStock) {
       if (m.expiration_date) {
         dates.add(m.expiration_date)
       }
     }
     return [...dates].sort()
-  }, [inventoryMovements])
+  }, [pickableStock])
 
   // Calculate available stock map dynamically based on selected filters (Location, LPN, SKT)
   const availableStockMap = useMemo(() => {
-    const physical = {}
-    const nonAvailable = {}
-
-    for (const m of inventoryMovements) {
-      // Apply filters if selected
-      if (selectedLocationId && m.location_id !== selectedLocationId) continue
-      if (selectedLpnId && m.lpn_id !== selectedLpnId) continue
-      if (selectedSkt && m.expiration_date !== selectedSkt) continue
-
-      const qty = Number(m.quantity || 0)
-      const signed = m.direction === 'in' ? qty : -qty
-      const stockId = m.stock_item_id
-
-      physical[stockId] = (physical[stockId] || 0) + signed
-
-      const meta = typeof m.meta === 'string' ? parseJsonValue(m.meta, {}) : (m.meta || {})
-      const status = meta.availability_status || 'available'
-      if (status === 'quarantine' || status === 'putaway_pending') {
-        nonAvailable[stockId] = (nonAvailable[stockId] || 0) + signed
-      }
-    }
-
     const result = {}
-    for (const stockId of Object.keys(physical)) {
-      const phys = physical[stockId] || 0
-      const nonAvail = nonAvailable[stockId] || 0
-      result[stockId] = Math.max(phys - nonAvail, 0)
+    for (const row of pickableStock) {
+      // Apply filters if selected
+      if (selectedLocationId && row.location_id !== selectedLocationId) continue
+      if (selectedLpnId && row.lpn_id !== selectedLpnId) continue
+      if (selectedSkt && row.expiration_date !== selectedSkt) continue
+
+      const stockId = row.stock_item_id
+      result[stockId] = (result[stockId] || 0) + Number(row.pickable_qty || 0)
     }
     return result
-  }, [inventoryMovements, selectedLocationId, selectedLpnId, selectedSkt])
+  }, [pickableStock, selectedLocationId, selectedLpnId, selectedSkt])
 
   // Filters visible orders based on text search and status
   const visibleOrders = useMemo(() => {
@@ -704,77 +686,7 @@ export default function DepoOrders() {
     return Object.values(map)
   }, [orderLines, orders])
 
-  const findPickingSources = useCallback((stockItemId, quantityToPick) => {
-    if (quantityToPick <= 0) return [];
 
-    const stockMap = {};
-
-    for (const m of inventoryMovements) {
-      if (m.stock_item_id !== stockItemId) continue;
-      const qty = Number(m.quantity || 0);
-      const signed = m.direction === 'in' ? qty : -qty;
-
-      const meta = typeof m.meta === 'string' ? parseJsonValue(m.meta, {}) : (m.meta || {});
-      const status = meta.availability_status || 'available';
-      if (status === 'quarantine' || status === 'putaway_pending') continue;
-
-      const key = `${m.location_id || ''}__${m.lpn_id || ''}__${m.lot_number || ''}__${m.expiration_date || ''}`;
-      stockMap[key] = (stockMap[key] || 0) + signed;
-    }
-
-    const sources = Object.entries(stockMap)
-      .map(([key, qty]) => {
-        const [loc, lpn, lot, exp] = key.split('__');
-        return {
-          location_id: loc || null,
-          lpn_id: lpn || null,
-          lot_number: lot || null,
-          expiration_date: exp || null,
-          available: qty
-        };
-      })
-      .filter(s => s.available > 0);
-
-    sources.sort((a, b) => {
-      if (a.expiration_date && b.expiration_date) {
-        return a.expiration_date.localeCompare(b.expiration_date);
-      }
-      if (a.expiration_date) return -1;
-      if (b.expiration_date) return 1;
-      return 0;
-    });
-
-    if (selectedLocationId || selectedLpnId || selectedSkt) {
-      sources.sort((a, b) => {
-        const matchA = (!selectedLocationId || a.location_id === selectedLocationId) &&
-                       (!selectedLpnId || a.lpn_id === selectedLpnId) &&
-                       (!selectedSkt || a.expiration_date === selectedSkt);
-        const matchB = (!selectedLocationId || b.location_id === selectedLocationId) &&
-                       (!selectedLpnId || b.lpn_id === selectedLpnId) &&
-                       (!selectedSkt || b.expiration_date === selectedSkt);
-        if (matchA && !matchB) return -1;
-        if (!matchA && matchB) return 1;
-        return 0;
-      });
-    }
-
-    const picks = [];
-    let remaining = quantityToPick;
-    for (const src of sources) {
-      if (remaining <= 0) break;
-      const pickQty = Math.min(src.available, remaining);
-      picks.push({
-        location_id: src.location_id,
-        lpn_id: src.lpn_id,
-        lot_number: src.lot_number,
-        expiration_date: src.expiration_date,
-        qty: pickQty
-      });
-      remaining -= pickQty;
-    }
-
-    return picks;
-  }, [inventoryMovements, selectedLocationId, selectedLpnId, selectedSkt])
 
   const consolidatedLinesForShipment = useMemo(() => {
     if (selectedOrderIds.length === 0) return []
@@ -800,6 +712,8 @@ export default function DepoOrders() {
     setCustomDriverName('')
     setCustomDriverPhone('')
     setShipmentNotes('')
+    setPackRequired(false)
+    setLoadRequired(false)
     
     setShipmentModalOpen(true)
   }
@@ -833,25 +747,8 @@ export default function DepoOrders() {
       }
     }
 
-    // 0. Validate available stock for all lines
-    for (const item of consolidatedLinesForShipment) {
-      const totalShipped = Number(shipmentLinesDraft[item.stock_item_id] !== undefined ? shipmentLinesDraft[item.stock_item_id] : item.total_requested)
-      if (totalShipped <= 0) continue
-
-      const picks = findPickingSources(item.stock_item_id, totalShipped)
-      const totalPicked = picks.reduce((sum, p) => sum + p.qty, 0)
-      
-      if (totalPicked < totalShipped) {
-        toast(`Stok yetersiz! "${item.item_name}" ürünü için depoda sadece ${totalPicked.toFixed(2)} ${item.unit || 'adet'} kullanılabilir stok var, fakat ${totalShipped.toFixed(2)} adet sevk edilmek isteniyor. Lütfen sevk miktarını düşürün veya depo stoğunu güncelleyin.`, 'error')
-        return
-      }
-    }
-
     setSavingShipment(true)
     try {
-      // 1. Generate unique shipment number
-      const shipmentNo = 'SH-' + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 8) + '-' + Math.floor(1000 + Math.random() * 9000)
-
       let vehicleId = null
       if (selectedVehicleId === 'new') {
         if (saveVehiclePermanently) {
@@ -874,132 +771,42 @@ export default function DepoOrders() {
         vehicleId = selectedVehicleId
       }
 
-      // 2. Insert warehouse_shipment
-      const { data: newShipment, error: shipmentErr } = await db
-        .from('warehouse_shipments')
-        .insert({
-          shipment_no: shipmentNo,
-          source_branch_id: branchId,
-          vehicle_id: vehicleId,
-          plate_number: plate,
-          driver_info: driver,
-          status: 'draft',
-          notes: shipmentNotes.trim() || null,
-          meta: {}
-        })
-        .select()
-      if (shipmentErr) throw shipmentErr
-      const shipmentId = newShipment[0].id
-
-      // 3. Insert warehouse_shipment_orders
-      for (const orderId of selectedOrderIds) {
-        const { error: poErr } = await db
-          .from('warehouse_shipment_orders')
-          .insert({
-            shipment_id: shipmentId,
-            purchase_order_id: orderId
-          })
-        if (poErr) throw poErr
-      }
-
-      // 4. Insert warehouse_shipment_lines and update purchase_order_lines
-      for (const item of consolidatedLinesForShipment) {
-        const totalShipped = Number(shipmentLinesDraft[item.stock_item_id] !== undefined ? shipmentLinesDraft[item.stock_item_id] : item.total_requested)
-        if (totalShipped <= 0) continue
-
-        // Query the picking sources once for the entire consolidated amount to prevent location over-picks
-        const allPicks = findPickingSources(item.stock_item_id, totalShipped)
-        let pickIndex = 0
-        let pickOffset = 0
-        let remaining = totalShipped
-
-        for (const line of item.lines) {
-          const lineShipped = Math.min(line.ordered_qty, remaining)
-          remaining -= lineShipped
-          if (lineShipped <= 0) continue
-
-          // Distribute from the consolidated picking list
-          const linePicks = []
-          let lineRemaining = lineShipped
-
-          while (lineRemaining > 0 && pickIndex < allPicks.length) {
-            const currentPick = allPicks[pickIndex]
-            const availableInPick = currentPick.qty - pickOffset
-            const take = Math.min(availableInPick, lineRemaining)
-
-            linePicks.push({
-              location_id: currentPick.location_id,
-              lpn_id: currentPick.lpn_id,
-              lot_number: currentPick.lot_number,
-              expiration_date: currentPick.expiration_date,
-              qty: take
-            })
-
-            lineRemaining -= take
-            pickOffset += take
-
-            if (pickOffset >= currentPick.qty) {
-              pickIndex++
-              pickOffset = 0
-            }
-          }
-
-          // Write shipment line with its specific distributed picks
-          const { error: lineErr } = await db
-            .from('warehouse_shipment_lines')
-            .insert({
-              shipment_id: shipmentId,
-              purchase_order_line_id: line.line_id,
-              stock_item_id: item.stock_item_id,
-              shipped_qty: lineShipped,
-              unit_price: line.unit_price,
-              line_total: lineShipped * line.unit_price,
-              meta: { picks: linePicks }
-            })
-          if (lineErr) throw lineErr
-
-          // Update the original purchase order line
-          const nextMeta = { ...parseJsonValue(line.meta, {}) }
-          if (nextMeta.original_ordered_qty === undefined) {
-            nextMeta.original_ordered_qty = line.ordered_qty
-          }
-
-          const { error: poLineUpdateErr } = await db
-            .from('purchase_order_lines')
-            .update({
-              ordered_qty: lineShipped,
-              line_total: lineShipped * line.unit_price,
-              meta: nextMeta,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', line.line_id)
-          if (poLineUpdateErr) throw poLineUpdateErr
+      // Call database RPC to create shipment draft and assign reservations atomically
+      const { data: shipmentId, error: rpcErr } = await db.rpc(
+        'create_warehouse_shipment_with_reservations',
+        {
+          p_branch_id: branchId,
+          p_purchase_order_ids: selectedOrderIds,
+          p_shipment_draft: shipmentLinesDraft,
+          p_plate_number: plate,
+          p_driver_info: driver,
+          p_notes: shipmentNotes.trim() || null,
+          p_vehicle_id: vehicleId
         }
-      }
+      )
+      if (rpcErr) throw rpcErr
 
-      // 5. Recalculate order totals for each associated order
-      for (const orderId of selectedOrderIds) {
-        const { data: updatedLines, error: fetchLinesErr } = await db
-          .from('purchase_order_lines')
-          .select('*')
-          .eq('order_id', orderId)
-          .is('deleted_at', null)
-        if (fetchLinesErr) throw fetchLinesErr
+      // Update shipment meta with pipeline configurations (pack/load required flags)
+      const { error: metaUpdateErr } = await db
+        .from('warehouse_shipments')
+        .update({
+          meta: {
+            pack_required: packRequired,
+            load_required: loadRequired
+          }
+        })
+        .eq('id', shipmentId)
 
-        const nextTotalQty = updatedLines.reduce((sum, l) => sum + Number(l.ordered_qty || 0), 0)
-        const nextTotalAmount = updatedLines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
+      if (metaUpdateErr) throw metaUpdateErr
 
-        const { error: poUpdateErr } = await db
-          .from('purchase_orders')
-          .update({
-            total_qty: nextTotalQty,
-            total_amount: nextTotalAmount,
-            subtotal: nextTotalAmount,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', orderId)
-        if (poUpdateErr) throw poUpdateErr
-      }
+      // Fetch the created shipment number to log
+      const { data: createdShipment } = await db
+        .from('warehouse_shipments')
+        .select('shipment_no')
+        .eq('id', shipmentId)
+        .single()
+
+      const shipmentNo = createdShipment?.shipment_no || 'SH-UNKNOWN'
 
       await logActivity({
         user,
@@ -1058,55 +865,11 @@ export default function DepoOrders() {
     setCancellingShipmentId(shipmentId)
     setCancellingAction(true)
     try {
-      const { error } = await db
-        .from('warehouse_shipments')
-        .update({
-          status: 'cancelled',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shipmentId)
+      const { error } = await db.rpc('cancel_warehouse_shipment', {
+        p_shipment_id: shipmentId,
+        p_branch_id: branchId
+      })
       if (error) throw error
-
-      // Restore PO lines original quantities
-      const { data: lines } = await db.from('warehouse_shipment_lines').select('*').eq('shipment_id', shipmentId)
-      if (lines) {
-        for (const line of lines) {
-          const { data: poLineData } = await db.from('purchase_order_lines').select('*').eq('id', line.purchase_order_line_id).limit(1)
-          if (poLineData && poLineData.length > 0) {
-            const poLine = poLineData[0]
-            const lineMeta = parseJsonValue(poLine.meta, {})
-            if (lineMeta.original_ordered_qty !== undefined) {
-              const origQty = Number(lineMeta.original_ordered_qty)
-              delete lineMeta.original_ordered_qty
-              
-              await db.from('purchase_order_lines').update({
-                ordered_qty: origQty,
-                line_total: origQty * Number(poLine.unit_price || 0),
-                meta: lineMeta,
-                updated_at: new Date().toISOString()
-              }).eq('id', poLine.id)
-            }
-          }
-        }
-      }
-      
-      // Recalculate PO totals
-      const { data: shOrders } = await db.from('warehouse_shipment_orders').select('purchase_order_id').eq('shipment_id', shipmentId)
-      if (shOrders) {
-        for (const sho of shOrders) {
-          const { data: updatedLines } = await db.from('purchase_order_lines').select('*').eq('order_id', sho.purchase_order_id).is('deleted_at', null)
-          if (updatedLines) {
-            const nextTotalQty = updatedLines.reduce((sum, l) => sum + Number(l.ordered_qty || 0), 0)
-            const nextTotalAmount = updatedLines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
-            await db.from('purchase_orders').update({
-              total_qty: nextTotalQty,
-              total_amount: nextTotalAmount,
-              subtotal: nextTotalAmount,
-              updated_at: new Date().toISOString()
-            }).eq('id', sho.purchase_order_id)
-          }
-        }
-      }
 
       await logActivity({
         user,
@@ -2165,6 +1928,33 @@ export default function DepoOrders() {
             />
           </div>
 
+          <div style={{ border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, borderRadius: 12 }}>
+            <h4 style={{ margin: '0 0 10px 0', fontSize: '.88rem', fontWeight: 800, color: '#334155' }}>
+              <i className="fa-solid fa-list-check" style={{ marginRight: 6, color: '#f5a623' }} /> WMS Görev ve Süreç Seçenekleri
+            </h4>
+            <div style={{ display: 'flex', gap: 24 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '.82rem', fontWeight: 700, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={packRequired}
+                  onChange={e => setPackRequired(e.target.checked)}
+                />
+                Paketleme Adımı Gerekli (Pack Task)
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '.82rem', fontWeight: 700, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={loadRequired}
+                  onChange={e => setLoadRequired(e.target.checked)}
+                />
+                Araç Yükleme Adımı Gerekli (Load Task)
+              </label>
+            </div>
+            <div style={{ fontSize: '.72rem', color: '#64748b', marginTop: 6 }}>
+              Toplama (Pick) tamamlandıktan sonra WMS mobil uygulamasında paketleme/kontrol ve yükleme görevlerinin oluşup oluşmayacağını belirler.
+            </div>
+          </div>
+
           <div style={{ border: '1px solid #e5e5e5', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ background: '#fafafa', padding: '10px 14px', borderBottom: '1px solid #e5e5e5', fontSize: '.78rem', fontWeight: 800, color: '#475569' }}>
               Konsolide Yük Listesi (Kısmi Miktar Düzenleme)
@@ -2268,6 +2058,20 @@ export default function DepoOrders() {
               <div>
                 <div style={{ fontSize: '.7rem', color: '#888888', fontWeight: 700 }}>OLUŞTURULMA TARİHİ</div>
                 <div style={{ fontWeight: 700, fontSize: '.9rem', marginTop: 4 }}>{formatDateTime(selectedShipment.created_at)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#888888', fontWeight: 700 }}>WMS SÜRECİ</div>
+                <div style={{ fontWeight: 700, fontSize: '.9rem', marginTop: 4, display: 'flex', gap: 4 }}>
+                  {selectedShipment.meta?.pack_required && (
+                    <span style={{ background: '#fef3c7', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontSize: '.72rem', fontWeight: 800 }}>Paketleme</span>
+                  )}
+                  {selectedShipment.meta?.load_required && (
+                    <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: 4, fontSize: '.72rem', fontWeight: 800 }}>Yükleme</span>
+                  )}
+                  {!selectedShipment.meta?.pack_required && !selectedShipment.meta?.load_required && (
+                    <span style={{ color: '#64748b', fontSize: '.75rem' }}>Sadece Toplama (Pick)</span>
+                  )}
+                </div>
               </div>
             </div>
 

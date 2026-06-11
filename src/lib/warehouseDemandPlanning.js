@@ -1,4 +1,4 @@
-﻿import { parseJsonValue, safeNumber, clamp } from './branchPurchasing.js';
+import { parseJsonValue, safeNumber, clamp } from './branchPurchasing.js';
 
 const DEMAND_METHOD_PRIORITY = [
   'recipe_forecast',
@@ -38,7 +38,7 @@ function getDemandSourceLabel(qtyMode, demandMethod) {
 }
 
 /**
- * Stok kartÄ± paketleme birimi Ã§arpanÄ±nÄ± hesaplar.
+ * Stok kartı paketleme birimi çarpanını hesaplar.
  */
 export function getOrderUnitFactor(item, orderUnit) {
   if (!item || !orderUnit || orderUnit === 'ana') return 1;
@@ -49,8 +49,8 @@ export function getOrderUnitFactor(item, orderUnit) {
 }
 
 /**
- * WMS talep tahmini ve satÄ±nalma planlama motoru.
- * pure function (veritabanÄ± eriÅŸimi yoktur, test edilmesi kolaydÄ±r).
+ * WMS talep tahmini ve satınalma planlama motoru.
+ * pure function (veritabanı erişimi yoktur, test edilmesi kolaydır).
  */
 export function calculateWarehouseDemand({
   warehouseBranchId,
@@ -67,13 +67,14 @@ export function calculateWarehouseDemand({
   lastOrderQtyMap = new Map(),            // Map: `${branchId}:${stockItemId}` -> lastOrderQty
   warehouseLastOrderQtyMap = new Map(), // Map: stockItemId -> last warehouse purchase qty
   warehouseSettingsMap = new Map(),       // Map: stockItemId -> { min_stock, safety_stock, min_order, max_order, order_unit }
+  warehouseReservedByItem = new Map(),    // Map: stockItemId -> reservedQty
 }) {
   const result = [];
 
   for (const item of stockItems) {
     const itemId = item.id;
     
-    // 1. Depo Parametrelerinin Ã‡Ã¶zÃ¼mlenmesi (Ã–ncelik depo ayarlarÄ±, fallback global stok kartÄ±)
+    // 1. Depo Parametrelerinin Çözümlenmesi (Öncelik depo ayarları, fallback global stok kartı)
     const whSettings = warehouseSettingsMap.get(itemId) || {};
     const minStock = whSettings.min_stock != null ? Number(whSettings.min_stock) : Number(item.min_stock || 0);
     const safetyStock = whSettings.safety_stock != null ? Number(whSettings.safety_stock) : 0;
@@ -84,7 +85,7 @@ export function calculateWarehouseDemand({
 
     const safetyQty = safetyStock;
 
-    // 2. Åube BazlÄ± BrÃ¼t Talep ve Kapsama HesaplamasÄ±
+    // 2. Şube Bazlı Brüt Talep ve Kapsama Hesaplaması
     const qtyMode = flow.qty_mode || 'tahmin';
     const methodTotals = new Map();
     let demandMethod = qtyMode === 'stok'
@@ -103,12 +104,12 @@ export function calculateWarehouseDemand({
       const branchId = branch.id;
       const key = `${branchId}:${itemId}`;
 
-      // Åube stok durumlarÄ±
+      // Şube stok durumları
       const branchAvail = Number(multiBranchBalances.get(key) || 0);
       const outboundYolda = Number(outboundReplenishingQtyMap.get(key) || 0);
       const branchCoverage = branchAvail + outboundYolda;
 
-      // Åube brÃ¼t talebi
+      // Şube brüt talebi
       let gross = 0;
       let source = 'manual';
 
@@ -124,7 +125,7 @@ export function calculateWarehouseDemand({
         source = 'usage_average';
       }
 
-      // Net ÅŸube ihtiyacÄ± (kapsama dÃ¼ÅŸtÃ¼kten sonra)
+      // Net şube ihtiyacı (kapsama düştükten sonra)
       const netBranch = Math.max(gross - branchCoverage, 0);
 
       totalGrossDemand += gross;
@@ -151,11 +152,11 @@ export function calculateWarehouseDemand({
     // 3. Depo Envanter Pozisyonu
     const warehouseAvail = Number(warehouseBalances.get(itemId) || 0);
     const inboundYolda = Number(inboundWarehouseQtyMap.get(itemId) || 0);
-    const expectedReturn = 0; // iadeler (varsayÄ±lan 0)
-    const reserved = 0; // rezerve stok (varsayÄ±lan 0)
+    const expectedReturn = 0; // iadeler (varsayılan 0)
+    const reserved = Number(warehouseReservedByItem.get(itemId) || 0);
     const warehousePosition = warehouseAvail + inboundYolda + expectedReturn - reserved;
 
-    // 4. SipariÅŸ Ã–nerisi FormÃ¼lÃ¼
+    // 4. Sipariş Önerisi Formülü
     let suggestedQty = 0;
     let qtyModeExplanation = '';
 
@@ -175,16 +176,16 @@ export function calculateWarehouseDemand({
       suggestedQty = 0;
       qtyModeExplanation = 'Manuel miktar girisi bekleniyor';
     } else {
-      // Tahmin, Son SipariÅŸ ve Manuel modlarÄ±
+      // Tahmin, Son Sipariş ve Manuel modları
       // Oneri = brut_talep_net + guvenlik_stogu - depo_envanter_pozisyonu
       suggestedQty = totalNetBranchDemand + safetyQty - warehousePosition;
       suggestedQty = Math.max(0, suggestedQty);
-      qtyModeExplanation = `Net Talep: ${totalNetBranchDemand.toFixed(2)}, GÃ¼venlik: ${safetyQty}, Depo Pozisyon: ${warehousePosition.toFixed(2)}`;
+      qtyModeExplanation = `Net Talep: ${totalNetBranchDemand.toFixed(2)}, Güvenlik: ${safetyQty}, Depo Pozisyon: ${warehousePosition.toFixed(2)}`;
     }
 
-    // 5. Yuvarlama KÄ±sÄ±tlarÄ± (Koli iÃ§i / min-max)
+    // 5. Yuvarlama Kısıtları (Koli içi / min-max)
     let roundedSuggestedQty = suggestedQty;
-    let roundingReason = 'Yuvarlama uygulanmadÄ±';
+    let roundingReason = 'Yuvarlama uygulanmadı';
 
     if (suggestedQty > 0) {
       if (flow.round_box_qty && factor > 1) {
@@ -194,7 +195,7 @@ export function calculateWarehouseDemand({
         const fraction = packageCount - whole;
         const nextPackages = whole + (fraction >= threshold ? 1 : 0);
         roundedSuggestedQty = Math.max(nextPackages, 1) * factor;
-        roundingReason = `Koli iÃ§eriÄŸine yuvarlandÄ± (Ã‡arpan: ${factor}, EÅŸik: %${threshold * 100})`;
+        roundingReason = `Koli içeriğine yuvarlandı (Çarpan: ${factor}, Eşik: %${threshold * 100})`;
       }
 
       if (flow.round_min_qty && minOrder > 0) {
@@ -206,14 +207,14 @@ export function calculateWarehouseDemand({
         } else {
           roundedSuggestedQty = Math.max(roundedSuggestedQty, minOrder);
         }
-        roundingReason += ` + Minimum sipariÅŸ miktarÄ± uygulandÄ± (${minOrder} koli/birim)`;
+        roundingReason += ` + Minimum sipariş miktarı uygulandı (${minOrder} koli/birim)`;
       }
 
       if (maxOrder > 0) {
         const maxBaseQty = maxOrder * factor;
         if (roundedSuggestedQty > maxBaseQty) {
           roundedSuggestedQty = maxBaseQty;
-          roundingReason += ` + Maksimum sipariÅŸ seviyesiyle sÄ±nÄ±rlandÄ± (${maxOrder} koli/birim)`;
+          roundingReason += ` + Maksimum sipariş seviyesiyle sınırlandırıldı (${maxOrder} koli/birim)`;
         }
       }
 
@@ -232,13 +233,13 @@ export function calculateWarehouseDemand({
       min_stock: minStock,
       safety_stock: safetyStock,
       current_stock: warehousePosition, // Depo envanter pozisyonu
-      calculated_need: totalNetBranchDemand, // Toplam net ÅŸube talebi
+      calculated_need: totalNetBranchDemand, // Toplam net şube talebi
       demand_method: demandMethod,
       suggested_qty: roundedSuggestedQty,
       ordered_qty: roundedSuggestedQty,
-      price_source: 'stock_card', // VarsayÄ±lan stok kartÄ± fiyatÄ±
+      price_source: 'stock_card', // Varsayılan stok kartı fiyatı
       unit_price: Number(item.purchase_price || 0),
-      line_total: 0, // DÄ±ÅŸarÄ±da birim fiyat ile Ã§arpÄ±lacak
+      line_total: 0, // Dışarıda birim fiyat ile çarpılacak
       meta: {
         warehouse_settings: {
           min_stock: minStock,
@@ -254,6 +255,7 @@ export function calculateWarehouseDemand({
           source_label: getDemandSourceLabel(qtyMode, demandMethod),
           warehouse_avail: warehouseAvail,
           inbound_yolda: inboundYolda,
+          reserved: reserved,
           total_gross_demand: totalGrossDemand,
           total_net_branch_demand: totalNetBranchDemand,
           qty_mode_explanation: qtyModeExplanation,

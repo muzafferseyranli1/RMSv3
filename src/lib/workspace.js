@@ -191,6 +191,7 @@ const ANADEPO_PATHS = new Set([
   '/depo-serbest-kullanim-kaydi',
   '/depo-formlar',
   '/depo-tasks',
+  '/depo-wms-tasks',
   '/depo-time-tracking',
   '/depo-geribildirimler',
   '/wms-locations',

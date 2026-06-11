@@ -961,6 +961,8 @@ export default function MalKabul() {
         .eq('id', movement.source_doc_line_id)
     }
 
+
+
     await db
       .from('purchase_receipts')
       .update({ inventory_posted_at: new Date().toISOString(), updated_at: new Date().toISOString() })

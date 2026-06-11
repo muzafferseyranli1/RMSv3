@@ -1,121 +1,68 @@
-# WMS Faz 6: Toplama, Paketleme, Sevk ve Araç/Plaka - Walkthrough
+# Walkthrough: WMS Rezervasyon ve Görev Motoru Entegrasyonu (Faz 1 & Faz 2)
 
-Bu belgede, WMS Faz 6 (Toplama, Paketleme, Sevk ve Araç/Plaka) kapsamında gerçekleştirilen geliştirmeler, veritabanı şeması ve entegrasyon test sonuçları özetlenmiştir.
-
----
-
-## 1. WMS Faz 6 Geliştirmeleri
-
-Faz 6 kapsamında, WMS ikmal taleplerinin fiziksel sevkiyata dönüştürülmesi, araç/plaka takibi, çoklu şube sipariş konsolidasyonu, kısmi sevk ve sevk onayı verildiğinde depo stok çıkışlarının yapılması sağlanmıştır.
-
-### A. Veritabanı Şeması ve Modeller
-Sevkiyat süreçlerini yönetmek için `migrations/031_wms_shipments.sql` dosyasında aşağıdaki tablolar oluşturulmuş ve Railway veritabanına uygulanmıştır:
-- **`vehicles`**: WMS araç tanımlarını (plaka, model, şoför adı, telefonu ve aktiflik durumu) tutar.
-- **`warehouse_shipments`**: Fiziksel sevk partilerini (durum: `draft`, `in_transit`, `delivered`, `cancelled`, atanan araç/plaka, sevk zamanları ve genel notlar) tutar.
-- **`warehouse_shipment_orders`**: Tek bir sevkiyat partisinin birden fazla şube siparişini (`purchase_orders`) kapsayabilmesi için çoktan-çoğa ilişki sağlar.
-- **`warehouse_shipment_lines`**: Kısmi sevk durumunda hangi sipariş satırından ne kadar ürünün yüklendiğini (`shipped_qty`, birim fiyat ve satır toplamı ile) takip eder.
-
-Bu tablo ve indeks tanımları tek kaynak kuralı gereğince `schema-railway-master.sql` dosyasına da eklenmiştir.
-
-### B. Arayüz Entegrasyonu (`DepoOrders.jsx`)
-- **Yeni Sekme ("Sevkiyatlar / Araç Yükleme"):** `/depo-orders` ekranına yeni bir çalışma sekmesi olarak eklenmiştir.
-- **Çoklu Sipariş Seçimi (Checkbox):** "Bekleyen Talepler" listesinde her satırın soluna checkbox'lar eklenmiş, bekleyen siparişlerin seçilerek tek bir sevkiyat partisine konsolide edilmesi sağlanmıştır.
-- **Sevk Partisi Oluşturma Modalı:** Seçilen siparişlerin ürünlerini konsolide ederek gösterir. Bu modal üzerinden:
-  - Kayıtlı araçlar listesinden (`vehicles` tablosu) seçim yapılabilir veya plaka/şoför bilgileri serbest metin olarak girilebilir.
-  - Serbest metinle girilen yeni aracın sonraki sevkiyatlar için kalıcı olarak `vehicles` tablosuna kaydedilmesi seçeneği sunulur.
-  - Her ürünün sevk edilecek miktarı (`shipped_qty`) düzenlenebilir (varsayılan: sipariş edilen miktar).
-  - Kaydedildiğinde sevkiyat partisi `draft` (taslak) statüsünde veritabanına yazılır.
-
-### C. Kısmi Sevk ve Sipariş Güncelleme
-Sevkiyat partisi oluşturulurken operatör miktar kıstığında:
-- Yüklenen miktar (`shipped_qty`) ilgili sipariş satırlarına FIFO usulü dağıtılır.
-- Orijinal talep miktarları `purchase_order_lines.meta.original_ordered_qty` alanına yedeklenir.
-- `purchase_order_lines.ordered_qty` ve siparişin toplam tutarları fiili sevk miktarına göre otomatik olarak güncellenir. Bu sayede şube mal kabul yaparken sadece fiziksel olarak yola çıkan miktar üzerinden kabul yapabilir.
-- Draft sevkiyat iptal edilirse, orijinal miktarlar PO satırlarına geri yüklenir ve sipariş tutarları eski haline döndürülür.
-
-### D. Sevk Onayı ve Depo Stok Çıkışları
-Taslak halindeki bir sevkiyat onaylanıp "Sevk Et (Onayla)" tetiklendiğinde:
-1. Sevkiyat durumu `'in_transit'` (Yolda) olarak güncellenir.
-2. Sevkiyat satırlarındaki her bir ürün için depoda (`branch_id = activeDepotId`) `direction = 'out'`, `movement_type = 'transfer_out'`, `source_doc_type = 'transfer'` olacak şekilde stok çıkış hareketleri (`inventory_movements`) otomatik oluşturulur.
-3. Bağlı siparişler `supplier_marked_sent = true` ve irsaliye/plaka detayları ile güncellenerek şube mal kabul ekranına aktarılır.
-4. Faz 0 kararına uygun olarak şube stoğuna otomatik giriş yapılmaz; şube kendi mal kabulüyle stoğu içeri alır.
+Bu belgede WMS Faz 1 ve Faz 2 kapsamında gerçekleştirilen envanter rezervasyon motoru, otomatik depo görevleri (putaway, pick, pack, load) üretimi, veritabanı düzeyindeki durum koruma (guard) tetikleyicileri, RPC güncellemeleri, frontend entegrasyonu ve doğrulama süreçleri özetlenmektedir.
 
 ---
 
-## 2. Doğrulama ve Entegrasyon Test Sonuçları
+## Yapılan Değişiklikler ve Mimari Yapı
 
-### A. WMS Faz 6 Entegrasyon Testi (`scratch/test_wms_shipments.cjs`)
-Sevkiyat oluşturma, araç atama, kısmi sevk miktarları, sevk onayı verildiğinde depo stok çıkış hareketlerinin yazılması ve PO sevk durum güncellemelerini test eden transaction rollback korumalı test başarıyla çalıştırılmıştır.
-
-**Çalıştırılan Komut:**
-```bash
-$env:DATABASE_URL="[DATABASE_URL]"; node scratch/test_wms_shipments.cjs
-```
-
-**Test Çıktısı:**
-```text
-Connected to DB successfully.
-Started transaction (BEGIN).
-Warehouse node: Pendik Merkez Depo (ID: 302bd195-3b79-4f14-a60b-4668c36a12c1)
-Requesting branch node: Ankara Etimesgut Şubesi (ID: 475960cc-bd6a-4b02-9587-df45b39a4cc5)
-Stock Item for test: Pizza Hamuru (250g) (ID: b0e10002-0000-4000-8000-000000000002)
-Internal supplier configured: Test İç Depo P6 (Pendik Merkez Depo) (ID: 11c8ac7f-c200-4378-88c4-c76e0203e201)
-Inserted replenishment purchase_order ID: 0c02e745-fb92-466b-8852-c5f52a1f4968 (No: PO-REPL-P6-1780960342498)
-Inserted line ID: 5efb72ea-5205-46cd-825e-fbbedfec7823 (Ordered Qty: 15.0)
-Configured vehicle plate: 34 WMS 666 (ID: 0da49174-4c77-43d1-86e8-ed85244d38c5)
-Created draft shipment ID: 12439c99-9e82-4730-93e1-fb1ea0d32d07 (No: SH-TEST-P6-1780960342640)
-Linked order PO-REPL-P6-1780960342498 to shipment SH-TEST-P6-1780960342640.
-Added shipment line for Pizza Hamuru (250g) with quantity: 12 (Partial shipping: 12.0/15.0)
-Updated PO line quantity to 12 and recalculated order totals.
-
---- DRAFT SHIPMENT STATE ---
-Shipment Status: draft (Expected: draft)
-Generated stock exit movement ID: 4c8e3a12-75f2-4153-b74b-cf68f9aec747 (direction: out, quantity: -12.0)
-Updated PO metadata to trigger awaiting_receipt status.
-
---- VERIFICATION RESULTS ---
-Shipment status in transit? YES (in_transit)
-Shipment plate: 34 WMS 666
-Inventory movement direction: out (Expected: out)
-Inventory movement type: transfer_out (Expected: transfer_out)
-Inventory movement quantity: 12 (Expected: 12)
-PO supplier_marked_sent: true (Expected: true)
-PO doc_no matches shipment_no: YES
-
-✅ WMS Phase 6 Integration Test SUCCESSFUL!
-Transaction rolled back successfully. Database remains clean.
-```
-
-### B. Vite Üretim Derlemesi (Production Build)
-`npm run build` komutu çalıştırılmış ve yeni Faz 6 kodları Vite tarafından sıfır hata ile başarıyla derlenmiştir.
-```text
-dist/assets/DepoOrders-BEWnQZC0.js                   50.20 kB │ gzip:  11.18 kB
-✓ built in 15.51s
-```
+### 1. Envanter Rezervasyon Motoru (Faz 1)
+* **WMS-01A (Şema):** [036_add_warehouse_reservations.sql](file:///C:/RMSv3/migrations/036_add_warehouse_reservations.sql) ile `warehouse_reservations` tablosu idempotent biçimde oluşturulmuş ve performans için durum, depo ve ürün indeksleri tanımlanmıştır.
+* **WMS-01B (Net Envanter Görünümü):** [037_wms_pickable_stock.sql](file:///C:/RMSv3/migrations/037_wms_pickable_stock.sql) ile `v_wms_pickable_stock` görünümü entegre edilmiştir. Bu görünüm envanterden karantina, mal kabul ve aktif rezervasyonları düşerek net toplanabilir envanteri (`pickable_qty`) hesaplar.
+* **WMS-01C (Otomatik Rezervasyonlu Sevkiyat):** [038_create_shipment_reservation_rpc.sql](file:///C:/RMSv3/migrations/038_create_shipment_reservation_rpc.sql) ile `create_warehouse_shipment_with_reservations` RPC'si yazılmıştır. Bu RPC, envanteri FEFO (First Expired First Out) önceliğine göre bloke ederek rezervasyon oluşturur.
+* **WMS-01D (Strict Onay & İptal):** [039_confirm_shipment_reservations_validation.sql](file:///C:/RMSv3/migrations/039_confirm_shipment_reservations_validation.sql) ile `confirm_warehouse_shipment` ve `cancel_warehouse_shipment` fonksiyonları entegre edilmiştir. Sevkiyat onaylandığında rezervasyonlar tüketilir (`consumed`), iptal edildiğinde ise rezerve stoklar güvenle çözülür (`cancelled`) ve satın alma siparişi miktarları orijinal haline döndürülür.
+* **WMS-01E (Talep Planlama Entegrasyonu):** [warehouseDemandPlanning.js](file:///C:/RMSv3/src/lib/warehouseDemandPlanning.js) ve envanter planlama modülü, aktif veritabanı rezervasyonlarını otomatik olarak düşerek doğru satın alma önerileri üretir hale getirilmiştir.
 
 ---
 
-## 3. WMS UI Polish (Görünürlük Cilası)
+### 2. WMS Görev Motoru ve İş Akışları (Faz 2)
 
-Kullanıcı deneyimini güçlendirmek ve WMS modülünün yeni kimliğini yansıtmak amacıyla aşağıdaki görsel ve yönlendirici iyileştirmeler yapılmıştır:
+#### Görev WMS-02A — Görev Şeması
+* **Göç Dosyası:** [040_add_warehouse_tasks.sql](file:///C:/RMSv3/migrations/040_add_warehouse_tasks.sql)
+* `warehouse_tasks` ve `warehouse_task_events` tabloları tanımlanmıştır.
+* Fiziksel işlerin (putaway, pick, pack, load, count, move, quality) durumları (`pending`, `assigned`, `in_progress`, `done`, `exception`, `cancelled`) DB düzeyinde izlenmektedir. `warehouse_task_events` tablosu ise kronolojik ve değiştirilemez bir audit log işlevi görür.
 
-### A. Sidebar Menü Güncellemeleri ve Dinamik Sayaçlar (`Sidebar.jsx`)
-- **İsim Değişiklikleri:** WMS menüsündeki "Siparişler" başlığı **"WMS Sipariş Konsolu"** olarak güncellenmiş; "Mal Kabul" ise **"Mal Kabul & Putaway"** olarak daha net tanımlanmıştır. Ayrıca WMS işlemleri altına **"Lokasyon Taşıma"** bağlantısı entegre edilmiştir.
-- **Dinamik Sayaçlar (Badges):**
-  - **WMS Sipariş Konsolu** menü kaleminin yanına, o depodan sevk edilmeyi bekleyen yeni siparişlerin sayısını gösteren mavi bir sayaç eklenmiştir.
-  - **Mal Kabul & Putaway** menü kaleminin yanına, yolda olan ve şubeye teslim edilip kabul edilmeyi bekleyen sevkiyatların sayısını gösteren yeşil bir sayaç eklenmiştir.
-  - Bu sayaçlar, arka planda 30 saniyede bir veritabanını sorgulayarak otomatik olarak güncellenir.
+#### Görev WMS-02B — Mal Kabulden Putaway Görevi Üretimi
+* **Göç Dosyaları:** [041_complete_putaway_task_rpc.sql](file:///C:/RMSv3/migrations/041_complete_putaway_task_rpc.sql) ve [042_putaway_task_trigger.sql](file:///C:/RMSv3/migrations/042_putaway_task_trigger.sql)
+* **Veritabanı Tetikleyicisi:** Mal kabul esnasında `inventory_movements` tablosuna `putaway_pending` (kabul alanında bekleyen) stok hareketi eklendiğinde, `trg_wms_create_putaway_task` tetikleyicisi otomatik olarak bir `putaway` görevi oluşturur.
+* Görev tamamlanıp `complete_warehouse_putaway_task` RPC'si çağrılmadan stok kullanılabilir (`available`) sayılmaz.
+* **İstemci Temizliği:** [MalKabul.jsx](file:///C:/RMSv3/src/components/pages/MalKabul.jsx) üzerindeki manuel API çağrıları tamamen temizlenerek süreç DB-first ve Fail-Closed (hatasız işlem) yapısına kavuşturulmuştur.
 
-### B. Ana Depo Bağlam Rozeti ve Süreç Stepper'ı (`DepoOrders.jsx`)
-- **Ana Depo Rozeti:** Sayfa başlığına (Header) eklenen şık, koyu mavi gradyan arka planlı ve mavi çerçeveli rozet, kullanıcının o anda hangi depoda işlem yaptığını (`{branchName} — ANA DEPO`) net bir şekilde gösterir.
-- **Süreç Adımları Göstergesi:** Ekranın üst kısmına `Talepler` → `Toplama` → `Sevkiyat` → `Mal Kabul` adımlarını içeren interaktif bir süreç stepper'ı yerleştirilmiştir. Bu sayede warehouse personeli, siparişlerin hangi aşamada olduğunu (örneğin kaç talep bekliyor, kaç sevkiyat hazırlıkta) anlık olarak görebilir ve tıklayarak ilgili sekmeye geçiş yapabilir.
+#### Görev WMS-02C — Sevkiyattan Pick/Pack/Load Görevi Üretimi
+* **Göç Dosyası:** [043_wms_shipment_tasks_rpc.sql](file:///C:/RMSv3/migrations/043_wms_shipment_tasks_rpc.sql)
+* **Otomatik Toplama (Pick):** Sevkiyat taslağı oluşturulduğunda (`warehouse_shipment_lines` tablosuna satır eklendiğinde), `trg_wms_create_pick_tasks` tetikleyicisi rezerve stok detaylarına (LPN, Lot, Lokasyon) bağlı olarak otomatik `pick` görevleri üretir.
+* **Paketleme ve Yükleme Hattı:** Sevkiyat metasındaki `pack_required` ve `load_required` bayraklarına göre sırasıyla otomatik `pack` ve `load` görevleri zincirleme olarak üretilir.
+* **Kısmi Toplama (Exception) Durumu:** Eksik toplama durumunda görev `exception` durumuna düşer. Rezervasyon, sevkiyat satırı miktarları ve satın alma siparişi satır miktarları otomatik olarak toplanan miktara göre güncellenir. Siparişin orijinal miktarı `meta->'original_ordered_qty'` alanında yedeklenir.
+* **Veritabanı Koruma Durumu (Guards):** Sevkiyata bağlı açık/tamamlanmamış bir depo görevi olduğu sürece sevkiyatın durumu `ready_to_load` veya `in_transit` yapılamaz. `confirm_warehouse_shipment` RPC'si de bu doğrulamayı zorunlu kılar.
+* **Hata Düzeltme:** `confirm_warehouse_shipment` RPC'sinde `purchase_orders` tablosundaki doğrudan kolonlara (non-existent columns) yazılmaya çalışılan sevk bilgileri, şemaya tam uyumlu olacak biçimde PO `meta` JSONB alanına doğru şekilde taşınmıştır.
 
-### C. Zenginleştirilmiş ve Yönlendirici Boş Durum Tasarımları (`DepoOrders.jsx`)
-Varsayılan sade gri metinler yerine, tüm sekmeler için yönlendirici ve aksiyona teşvik edici yeni boş durum tasarımları (`EmptyState` bileşeni) uygulanmıştır:
-1. **Bekleyen Talepler Boş:** Mavi ikonlu panel; şubelerden yeni talep geldiğinde buraya düşeceğini anlatır ve yeni ikmal talebi başlatmak için ipucu verir.
-2. **Toplama Listesi Boş:** Mor ikonlu panel; listenin oluşması için öncelikle sevk bekleyen siparişlerin seçilmesi gerektiğini belirtir.
-3. **Dağıtım Detayları Boş:** Dağıtım kırılımının henüz seçili bir sipariş olmadığı için gösterilemediğini açıklar.
-4. **Sevkiyatlar Boş:** Sarı ikonlu panel; yeni bir araç yükleme başlatmak için bekleyen siparişleri seçip sağ üstteki "Sevk Et" butonunun kullanılacağını belirten rehber metin içerir.
+#### Görev WMS-02D — WMS Görev Web Ekranı
+* **Yeni Ekran:** [WmsTasks.jsx](file:///C:/RMSv3/src/components/pages/WmsTasks.jsx)
+* **Yönlendirme (Routing):** `/depo-wms-tasks` rotası eklenmiş ve depo yetki doğrulaması sağlayan `<WarehouseBranchRoute title="WMS Görevleri">` bileşeniyle korunmuştur. Sidebar navigasyonunda "WMS Görevleri" adıyla menü öğesi eklenmiştir.
+* **Arayüz Tasarımı:**
+  - **Özet Kartlar:** Toplam, Bekleyen, İşlemde, Tamamlanan ve Sorunlu (Exception) görev sayıları HSL renk şemalarıyla görselleştirilmiştir.
+  - **Arama ve Filtreler:** Görev no, ürün adı, SKU, lot ve LPN koduna göre dinamik arama; görev tipi ve durumu filtreleri eklenmiştir. "Sadece Sorunlular" butonuyla hatalı görevlere hızlı erişim sağlanmıştır.
+  - **Detay ve Zaman Akışı (Timeline):** Seçilen görevin metasındaki LPN, lot, SKT, kaynak ve hedef lokasyon verileri (`formatAddress` ile biçimlendirilmiş) detay çekmecesinde gösterilir. Görevin tüm olay geçmişi `warehouse_task_events` tablosundan çekilerek kronolojik bir timeline olarak sergilenir.
+  - **Kontrollü Exception Çözümü:** `'exception'` durumundaki görevlerin çözümü veritabanı seviyesinde çalışan tek bir atomik saklı yordam (`resolve_warehouse_task_exception` RPC'si) üzerinden gerçekleştirilir. Çözüm sırasında girilen not ve yetkili personel bilgisiyle görev durumu güncellenir, pick görevleri iptal edildiğinde ilişkili rezervasyon otomatik çözülür ve tüm süreç tek bir ACID veritabanı işlemi olarak `warehouse_task_events` tablosuna audit log olarak işlenir.
 
-### D. Derleme Doğrulaması
-Yapılan tüm görsel cilalamalar sonrasında Vite production build başarıyla tamamlanmış ve `dist/assets/DepoOrders-D5QYQZrm.js` (56.41 kB) hatasız derlenmiştir.
+---
+
+## Doğrulama Sonuçları
+
+Tüm veritabanı süreçleri ve korumaları kapsamlı entegrasyon testleriyle doğrulanmıştır:
+
+1. **Sevkiyat Depo Görevleri Entegrasyon Testi (`test_wms_shipment_tasks.js`):**
+   * Sevkiyat taslağı oluşturulduğunda `pick` görevinin otomatik ve doğru meta verilerle oluşturulduğu,
+   * Görevler açıkken sevkiyat durum güncellemelerinin ve `confirm_warehouse_shipment` RPC çağrısının başarıyla engellendiği (Guard tetiklendi),
+   * Eksik toplama (partial pick) yapıldığında görevin `exception` statüsüne geçtiği, rezervasyonların ve satın alma siparişi miktarlarının güncellendiği ve orijinal miktarın yedeklendiği,
+   * Sırasıyla `pack` ve `load` görevlerinin zincirleme oluşup tamamlandığı,
+   * Tüm görevler tamamlandıktan sonra `confirm_warehouse_shipment` RPC'sinin başarıyla çalıştığı ve sevkiyat durumunun `in_transit` olarak güncellendiği **başarıyla doğrulanmıştır**.
+
+2. **Rezervasyon ve Onay Regresyon Testleri:**
+   * [test_wms_confirm_cancel_rpc.js](file:///C:/RMSv3/scratch/test_wms_confirm_cancel_rpc.js) ve [test_wms_reservation_rpc.js](file:///C:/RMSv3/scratch/test_wms_reservation_rpc.js) test betikleri yeni görev motoru yapısına uyumlu hale getirilerek çalıştırılmış ve **tamamından başarıyla geçilmiştir**.
+
+3. **Frontend Derleme Kontrolü:**
+   * `npm run build` komutu çalıştırılmış ve frontend üretim paketi sıfır hata ve uyarı ile başarıyla derlenmiştir.
+
+4. **Biçimlendirme Kontrolü:**
+   * `git diff --check` komutu ile boşluk ve hizalama kontrolleri yapılmış, herhangi bir kod stili hatası olmadığı kesinleşmiştir.

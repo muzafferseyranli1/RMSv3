@@ -223,6 +223,7 @@ const NAV = [
         ],
       },
       { label: 'GÃ¶revler', path: '/depo-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
+      { label: 'WMS Görevleri', path: '/depo-wms-tasks', icon: 'fa-tasks', color: '#818cf8', bg: 'rgba(129,140,248,.18)' },
       {
         label: 'Depo Ayarları', icon: 'fa-gear', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
         group: 'anadepo-ayarlar',

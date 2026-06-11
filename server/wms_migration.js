@@ -1,5 +1,7 @@
 // WMS Migration — tabloları oluşturur, eksik kolonları ekler
 const { Client } = require('pg')
+const fs = require('fs')
+const path = require('path')
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -113,6 +115,131 @@ const STEPS = [
   { desc: 'purchase_orders.flow_channel CHECK', sql: `ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'))` },
   { desc: 'order_flows.flow_channel', sql: `ALTER TABLE public.order_flows ADD COLUMN IF NOT EXISTS flow_channel TEXT DEFAULT 'external_purchase'` },
   { desc: 'order_flows.flow_channel CHECK', sql: `ALTER TABLE public.order_flows ADD CONSTRAINT order_flows_flow_channel_check CHECK (flow_channel IN ('external_purchase', 'warehouse_replenishment', 'kitchen_replenishment'))` },
+  // Phase 1 - Rezervasyon Motoru ve Sevkiyat Güvenliği
+  {
+    desc: 'warehouse_reservations tablosu',
+    sql: `CREATE TABLE IF NOT EXISTS public.warehouse_reservations (
+      id UUID DEFAULT gen_random_uuid() NOT NULL,
+      branch_id UUID NOT NULL,
+      stock_item_id UUID NOT NULL REFERENCES public.stock_items(id) ON DELETE CASCADE,
+      location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+      lpn_id UUID REFERENCES public.warehouse_lpns(id) ON DELETE SET NULL,
+      lot_number TEXT,
+      expiration_date DATE,
+      source_doc_type TEXT NOT NULL,
+      source_doc_id UUID NOT NULL,
+      source_line_id UUID,
+      reserved_qty NUMERIC(18,4) NOT NULL,
+      status TEXT DEFAULT 'active' NOT NULL,
+      reserved_by TEXT,
+      reserved_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      released_at TIMESTAMPTZ,
+      meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+      CONSTRAINT warehouse_reservations_pkey PRIMARY KEY (id),
+      CONSTRAINT warehouse_reservations_status_check CHECK (status IN ('active', 'consumed', 'released', 'cancelled', 'expired')),
+      CONSTRAINT warehouse_reservations_qty_check CHECK (reserved_qty > 0)
+    )`
+  },
+  { desc: 'idx_warehouse_reservations_branch', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_branch ON public.warehouse_reservations(branch_id)` },
+  { desc: 'idx_warehouse_reservations_stock_item', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_stock_item ON public.warehouse_reservations(stock_item_id)` },
+  { desc: 'idx_warehouse_reservations_location', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_location ON public.warehouse_reservations(location_id) WHERE location_id IS NOT NULL` },
+  { desc: 'idx_warehouse_reservations_lpn', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_lpn ON public.warehouse_reservations(lpn_id) WHERE lpn_id IS NOT NULL` },
+  { desc: 'idx_warehouse_reservations_status', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_status ON public.warehouse_reservations(status)` },
+  { desc: 'idx_warehouse_reservations_source', sql: `CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_source ON public.warehouse_reservations(source_doc_type, source_doc_id)` },
+  {
+    desc: 'v_wms_pickable_stock view',
+    sql: `CREATE OR REPLACE VIEW public.v_wms_pickable_stock AS
+    WITH physical_stock AS (
+      SELECT
+        branch_id,
+        stock_item_id,
+        location_id,
+        lpn_id,
+        lot_number,
+        expiration_date,
+        SUM(CASE WHEN direction = 'in' THEN quantity ELSE -quantity END) AS physical_qty
+      FROM public.inventory_movements
+      WHERE deleted_at IS NULL
+        AND is_cancelled = false
+        AND COALESCE(meta->>'availability_status', 'available') NOT IN ('quarantine', 'putaway_pending')
+      GROUP BY
+        branch_id,
+        stock_item_id,
+        location_id,
+        lpn_id,
+        lot_number,
+        expiration_date
+    ),
+    reserved_stock AS (
+      SELECT
+        branch_id,
+        stock_item_id,
+        location_id,
+        lpn_id,
+        lot_number,
+        expiration_date,
+        SUM(reserved_qty) AS reserved_qty
+      FROM public.warehouse_reservations
+      WHERE status = 'active'
+      GROUP BY
+        branch_id,
+        stock_item_id,
+        location_id,
+        lpn_id,
+        lot_number,
+        expiration_date
+    )
+    SELECT
+      p.branch_id,
+      p.stock_item_id,
+      p.location_id,
+      p.lpn_id,
+      p.lot_number,
+      p.expiration_date,
+      p.physical_qty,
+      COALESCE(r.reserved_qty, 0::numeric) AS reserved_qty,
+      GREATEST(p.physical_qty - COALESCE(r.reserved_qty, 0::numeric), 0::numeric) AS pickable_qty
+    FROM physical_stock p
+    LEFT JOIN reserved_stock r ON
+      p.branch_id = r.branch_id AND
+      p.stock_item_id = r.stock_item_id AND
+      (p.location_id = r.location_id OR (p.location_id IS NULL AND r.location_id IS NULL)) AND
+      (p.lpn_id = r.lpn_id OR (p.lpn_id IS NULL AND r.lpn_id IS NULL)) AND
+      (p.lot_number = r.lot_number OR (p.lot_number IS NULL AND r.lot_number IS NULL)) AND
+      (p.expiration_date = r.expiration_date OR (p.expiration_date IS NULL AND r.expiration_date IS NULL))
+    WHERE p.physical_qty > 0`
+  },
+  {
+    desc: 'create_warehouse_shipment_with_reservations RPC ve confirm_warehouse_shipment güncellemesi',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/038_create_shipment_reservation_rpc.sql'), 'utf8')
+  },
+  {
+    desc: 'confirm_warehouse_shipment rezervasyon doğrulama ve cancel_warehouse_shipment RPC',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/039_confirm_shipment_reservations_validation.sql'), 'utf8')
+  },
+  {
+    desc: 'warehouse_tasks ve warehouse_task_events tabloları (WMS-02A)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/040_add_warehouse_tasks.sql'), 'utf8')
+  },
+  {
+    desc: 'complete_warehouse_putaway_task RPC fonksiyonu (WMS-02B)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/041_complete_putaway_task_rpc.sql'), 'utf8')
+  },
+  {
+    desc: 'inventory_movements otomatik putaway task trigger (WMS-02B)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/042_putaway_task_trigger.sql'), 'utf8')
+  },
+  {
+    desc: 'wms shipment pick/pack/load tasks, complete and confirm/cancel guards (WMS-02C)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/043_wms_shipment_tasks_rpc.sql'), 'utf8')
+  },
+  {
+    desc: 'wms task exception resolution RPC (WMS-02D)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/044_wms_task_exception_rpc.sql'), 'utf8')
+  }
 ]
 
 async function run() {

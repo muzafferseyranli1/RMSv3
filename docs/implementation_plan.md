@@ -1,37 +1,49 @@
-# Implementation Plan: Form Ayarları ve Şube Seçimi Zorunluluğu Entegrasyonu
+# Refactoring Plan - WMS Task Exception Resolution Atomic RPC
 
-Bu plan, form şablonlarındaki ayarların (GPS Zorunlu, Kullanım Alanı, Görev Oluşturma) şık ve birleşik bir "Form Ayarları" grubu olarak düzenlenmesi ve "Şube Seçimi Zorunlu" adında yeni bir form ayarının tüm form tiplerine uygulanması amacıyla hazırlanmıştır.
+Bu plan, `WmsTasks.jsx` arayüzündeki sorun (exception) çözüm akışında gerçekleştirilen çok adımlı, transactional olmayan istemci çağrılarını kaldırarak, süreci veritabanı seviyesinde çalışan tek bir atomik saklı yordam (Stored Procedure / RPC) ile ACID uyumlu hale getirmeyi amaçlar.
 
-## Hedefler
+---
 
-1. **Görsel Sadeleştirme:** Form Şablonu Düzenleyici (`FormTemplates.jsx`) ekranında dağınık ve farklı koşullara bağlı olan tüm ayarlar (GPS Zorunlu, Şube Seçimi Zorunlu, Kullanım Bağlamı, Otomatik Görev Oluştur) tek bir "Form Ayarları" kartı altında, kesikli çizgiyle ayrılmış şık bir bölüm olarak birleştirilecek.
-2. **Şube Seçimi Zorunlu Desteği:** Şablon şemasına (`schemaJson.require_branch_selection`) yeni bir boolean ayar eklenecek.
-3. **Tarih/Saat Otomatikleştirme Kuralı:** Şablon şemasına (`schemaJson.auto_date_time`) yeni bir kural eklenecek; dolduran kişinin seçimine bırakılmaksızın sistem tarih/saatinin otomatik alınıp kilitlenmesi sağlanacak.
-4. **Tüm Form Tiplerine Uygulama:** Form ayarları ve otomatik görev oluşturma yeteneği tüm form tiplerinde (inspections, checklists, customer_surveys, personnel_surveys, requests vb.) kullanılabilir olacak.
-5. **Form Gönderim Kontrolleri:** Form Doldurma ekranında (`FormSubmissions.jsx`) eğer şablon için `require_branch_selection` aktifse, kullanıcının şube seçmesi zorunlu kılınacak ve şube seçilmeden form gönderilemeyecek.
+## User Review Required
 
-## Önerilen Değişiklikler
+> [!IMPORTANT]
+> **ACID Transaction Garantisi:**
+> Tüm durum güncellemeleri (görev durumunun güncellenmesi, pick görevleri için ilişkili rezervasyonun iptal edilmesi ve olay günlüğü logunun atılması) tek bir PostgreSQL fonksiyonu (`resolve_warehouse_task_exception`) içerisinde ve `FOR UPDATE` kilitlemesi altında gerçekleştirilecektir. Bu sayede ağ kopması veya istemci çökmesi durumunda veritabanında tutarsızlık oluşma riski (Fail-Closed prensibi uyarınca) sıfırlanacaktır.
 
-### 1. Şablon Düzenleyici
+---
 
-Dosya: `src/components/pages/FormTemplates.jsx`
+## Proposed Changes
 
-- Dağınık duran tüm checkbox girdileri ve kullanım bağlamı seçicileri tek bir `Form Ayarları` başlığı altında iki sütunlu grid yapısında görsel olarak birleştirildi.
-- "Şube Seçimi Zorunlu" checkbox'ı eklendi ve `schemaJson.require_branch_selection` ile bağlandı.
-- "Tarih ve Saati Otomatik Al" checkbox'ı eklendi ve `schemaJson.auto_date_time` ile bağlandı.
-- Form tipi `request` olduğunda kullanım alanı ve otomatik görev oluşturma kısıtlamaları kaldırılarak tüm form tiplerinde etkinleştirildi.
+### 1. Veritabanı Değişiklikleri
 
-### 2. Form Doldurma ve Gönderim
+#### [NEW] [044_wms_task_exception_rpc.sql](file:///C:/RMSv3/migrations/044_wms_task_exception_rpc.sql)
+Yeni bir migration dosyası oluşturulacak ve içerisinde `resolve_warehouse_task_exception` PL/pgSQL fonksiyonu tanımlanacaktır:
+- Görevi `FOR UPDATE` ile kilitleyecek ve durumunun `'exception'` olduğunu doğrulayacaktır.
+- Eğer aksiyon `'cancel'` ise ve görev tipi `'pick'` ise ilişkili rezervasyonu (`meta->>'reservation_id'`) bulup durumunu `'cancelled'` yapacaktır.
+- Görevin statüsünü seçilen aksiyona (`'pending'` veya `'cancelled'`) güncelleyecek ve çözüm notlarını metasında saklayacaktır.
+- Son olarak `warehouse_task_events` tablosuna audit logunu tek adımda ekleyecektir.
 
-Dosya: `src/components/pages/FormSubmissions.jsx`
+#### [MODIFY] [schema-railway-master.sql](file:///C:/RMSv3/schema-railway-master.sql)
+- Projenin master şema dosyasının sonuna bu yeni RPC fonksiyon tanımı eklenecektir.
 
-- Form doldurma aşamasında `autoDateTime` değeri doğrudan şablondaki `auto_date_time` kuralına bağlandı. Formu dolduran kişinin bu seçimi değiştirmesini sağlayan onay kutuları arayüzden tamamen kaldırıldı.
-- Eğer şablonda `auto_date_time` kuralı aktifse tarih ve saat alanları sistem saatiyle otomatik doldurulup kilitlenir (readonly/disabled), aktif değilse alanlar düzenlenebilir hale gelir.
-- Gönderim doğrulama (`handleSubmit`) fonksiyonuna `require_branch_selection` kontrolü eklenerek şube seçilmediğinde formun gönderilmesi engellendi ve kullanıcıya uyarı gösterilmesi sağlandı.
-- `inspection`, `checklist` ve `notification_form` dışındaki form tipleri (örneğin anketler ve talepler) için eğer `require_branch_selection` aktifse şube seçim kutusunu da içeren genel "Form Bilgileri" başlık kartı render edilmesi sağlandı.
+#### [MODIFY] [wms_migration.js](file:///C:/RMSv3/server/wms_migration.js)
+- `STEPS` dizisinin sonuna `044` migration adımını ekleyerek `node server/wms_migration.js` ile Railway veritabanında çalıştırılması sağlanacaktır.
 
-## Doğrulama Plani
+---
 
-- `npm run build` komutu ile üretim derlemesi yapılarak kodların hatasız derlendiği doğrulanacak.
-- Form şablonu oluşturma ve düzenleme ekranındaki ayar kaydetme davranışları kontrol edilecek.
-- Form yanıtlarında şube zorunluluğu doğrulama akışları test edilecek.
+### 2. Frontend Değişiklikleri
+
+#### [MODIFY] [WmsTasks.jsx](file:///C:/RMSv3/src/components/pages/WmsTasks.jsx)
+- `handleResolveException` fonksiyonundaki tüm ardışık `db.from(...).update(...)` ve `insert(...)` istekleri silinecektir.
+- Yerine sadece tek bir `await db.rpc('resolve_warehouse_task_exception', { ... })` RPC çağrısı yerleştirilecektir.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- `$env:DATABASE_URL="..."; node server/wms_migration.js` çalıştırılarak yeni RPC'nin veritabanına sorunsuz uygulandığı doğrulanacaktır.
+- `npm run build` komutu ile frontend derlemesinin hatasız çalıştığı doğrulanacaktır.
+
+### Manual Verification
+- Bir exception görevi seçilerek web paneli üzerinden "Yeniden Dene" veya "İptal Et" butonlarına tıklanacak, veritabanında hem görev durumunun hem de rezervasyonların atomik olarak güncellendiği doğrulanacaktır.

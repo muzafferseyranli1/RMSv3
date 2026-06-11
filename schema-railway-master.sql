@@ -4224,11 +4224,45 @@ CREATE TABLE IF NOT EXISTS public.warehouse_shipment_lines (
   CONSTRAINT warehouse_shipment_lines_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS public.warehouse_reservations (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  branch_id UUID NOT NULL,
+  stock_item_id UUID NOT NULL REFERENCES public.stock_items(id) ON DELETE CASCADE,
+  location_id UUID REFERENCES public.warehouse_locations(id) ON DELETE SET NULL,
+  lpn_id UUID REFERENCES public.warehouse_lpns(id) ON DELETE SET NULL,
+  lot_number TEXT,
+  expiration_date DATE,
+  source_doc_type TEXT NOT NULL,
+  source_doc_id UUID NOT NULL,
+  source_line_id UUID,
+  reserved_qty NUMERIC(18,4) NOT NULL,
+  status TEXT DEFAULT 'active'::text NOT NULL,
+  reserved_by TEXT,
+  reserved_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT warehouse_reservations_pkey PRIMARY KEY (id),
+  CONSTRAINT warehouse_reservations_status_check CHECK (status = ANY (ARRAY['active'::text, 'consumed'::text, 'released'::text, 'cancelled'::text, 'expired'::text])),
+  CONSTRAINT warehouse_reservations_qty_check CHECK (reserved_qty > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_branch ON public.warehouse_reservations(branch_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_stock_item ON public.warehouse_reservations(stock_item_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_location ON public.warehouse_reservations(location_id) WHERE location_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_lpn ON public.warehouse_reservations(lpn_id) WHERE lpn_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_status ON public.warehouse_reservations(status);
+CREATE INDEX IF NOT EXISTS idx_warehouse_reservations_source ON public.warehouse_reservations(source_doc_type, source_doc_id);
+
+
 CREATE INDEX IF NOT EXISTS vehicles_active_idx ON public.vehicles(active);
 CREATE INDEX IF NOT EXISTS warehouse_shipments_source_branch_idx ON public.warehouse_shipments(source_branch_id);
 CREATE INDEX IF NOT EXISTS warehouse_shipments_vehicle_idx ON public.warehouse_shipments(vehicle_id);
 CREATE INDEX IF NOT EXISTS warehouse_shipments_status_idx ON public.warehouse_shipments(status);
 
+-- RPC Function for Atomic and Idempotent WMS Shipment Dispatch & Stock Out
 -- RPC Function for Atomic and Idempotent WMS Shipment Dispatch & Stock Out
 CREATE OR REPLACE FUNCTION public.confirm_warehouse_shipment(
   p_shipment_id UUID,
@@ -4247,6 +4281,15 @@ DECLARE
   v_order RECORD;
   v_meta JSONB;
   v_next_meta JSONB;
+
+  -- locked reservation fields
+  v_res_id UUID;
+  v_res_location_id UUID;
+  v_res_lpn_id UUID;
+  v_res_lot_number TEXT;
+  v_res_expiration_date DATE;
+  v_res_qty NUMERIC;
+  v_res_status TEXT;
 BEGIN
   -- 1. Select and lock the shipment row to enforce idempotency
   SELECT shipment_no, source_branch_id, plate_number, driver_info, notes, status
@@ -4275,7 +4318,7 @@ BEGIN
   WHERE id = p_shipment_id;
 
   -- 3. Loop over shipment lines and generate stock exits
-  FOR v_line IN 
+  FOR v_line IN
     SELECT wsl.*, si.name AS item_name
     FROM public.warehouse_shipment_lines wsl
     LEFT JOIN public.stock_items si ON si.id = wsl.stock_item_id
@@ -4285,11 +4328,1348 @@ BEGIN
       -- Check if meta has 'picks' array
       IF v_line.meta ? 'picks' AND jsonb_typeof(v_line.meta->'picks') = 'array' THEN
         -- Loop over picks
-        FOR v_pick IN 
-          SELECT * FROM jsonb_to_recordset(v_line.meta->'picks') 
-          AS x(location_id UUID, lpn_id UUID, lot_number TEXT, expiration_date DATE, qty NUMERIC) 
+        FOR v_pick IN
+          SELECT * FROM jsonb_to_recordset(v_line.meta->'picks')
+          AS x(location_id UUID, lpn_id UUID, lot_number TEXT, expiration_date DATE, qty NUMERIC, reservation_id UUID)
         LOOP
           IF v_pick.qty > 0 THEN
+            -- Check reservation existence
+            IF v_pick.reservation_id IS NULL THEN
+              RAISE EXCEPTION 'Sevkiyat satırında rezervasyon ID bilgisi bulunmamaktadır.';
+            END IF;
+
+            -- Select and lock the reservation row
+            SELECT id, location_id, lpn_id, lot_number, expiration_date, reserved_qty, status
+            INTO v_res_id, v_res_location_id, v_res_lpn_id, v_res_lot_number, v_res_expiration_date, v_res_qty, v_res_status
+            FROM public.warehouse_reservations
+            WHERE id = v_pick.reservation_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'İlgili rezervasyon bulunamadı (ID: %).', v_pick.reservation_id;
+            END IF;
+
+            IF v_res_status <> 'active' THEN
+              RAISE EXCEPTION 'Rezervasyon aktif değil (ID: %, Durum: %).', v_pick.reservation_id, v_res_status;
+            END IF;
+
+            IF v_res_qty <> v_pick.qty THEN
+              RAISE EXCEPTION 'Rezervasyon miktarı ile sevk miktarı uyuşmuyor (Rezervasyon: %, Sevk: %).', v_res_qty, v_pick.qty;
+            END IF;
+
+            -- Insert inventory movement using fields from the locked reservation row
+            INSERT INTO public.inventory_movements (
+              item_type,
+              stock_item_id,
+              item_name,
+              branch_id,
+              branch_name,
+              movement_type,
+              source_doc_type,
+              direction,
+              movement_at,
+              quantity,
+              unit_cost,
+              total_cost,
+              location_id,
+              lpn_id,
+              lot_number,
+              expiration_date,
+              meta
+            ) VALUES (
+              'stock_item',
+              v_line.stock_item_id,
+              COALESCE(v_line.item_name, 'Bilinmeyen Ürün'),
+              p_branch_id,
+              p_branch_name,
+              'transfer_out',
+              'transfer',
+              'out',
+              now(),
+              v_res_qty,
+              v_line.unit_price,
+              v_res_qty * v_line.unit_price,
+              v_res_location_id,
+              v_res_lpn_id,
+              v_res_lot_number,
+              v_res_expiration_date,
+              jsonb_build_object(
+                'shipment_id', p_shipment_id,
+                'shipment_no', v_shipment_no,
+                'reservation_id', v_res_id,
+                'availability_status', 'available'
+              )
+            );
+
+            -- Mark reservation as consumed
+            UPDATE public.warehouse_reservations
+            SET status = 'consumed',
+                consumed_at = now(),
+                updated_at = now()
+            WHERE id = v_res_id;
+          END IF;
+        END LOOP;
+      ELSE
+        -- Fallback if no picks array (e.g. manual DB inserts)
+        RAISE EXCEPTION 'Picks array bulunmayan sevkiyat onaylanamaz.';
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- 4. Update associated Purchase Order meta
+  FOR v_order IN
+    SELECT po.*
+    FROM public.purchase_orders po
+    JOIN public.warehouse_shipment_orders wso ON wso.purchase_order_id = po.id
+    WHERE wso.shipment_id = p_shipment_id AND wso.deleted_at IS NULL
+  LOOP
+    -- Build new metadata
+    v_meta := COALESCE(v_order.meta, '{}'::jsonb);
+    v_next_meta := v_meta || jsonb_build_object(
+      'supplier_marked_sent', true,
+      'supplier_sent_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'supplier_dispatch', jsonb_build_object(
+        'delivered_on', to_char(now(), 'YYYY-MM-DD'),
+        'delivered_at', to_char(now(), 'HH24:MI'),
+        'doc_kind', 'irsaliye',
+        'doc_date', to_char(now(), 'YYYY-MM-DD'),
+        'doc_no', v_shipment_no,
+        'plate_number', v_plate_number,
+        'driver_info', v_driver_info,
+        'note', COALESCE(v_notes, 'Araç ile sevk edildi.')
+      )
+    );
+
+    UPDATE public.purchase_orders
+    SET meta = v_next_meta,
+        updated_at = now()
+    WHERE id = v_order.id;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.cancel_warehouse_shipment(
+  p_shipment_id UUID,
+  p_branch_id UUID
+) RETURNS VOID AS $$
+DECLARE
+  v_source_branch_id UUID;
+  v_status TEXT;
+  v_line RECORD;
+  v_po_line RECORD;
+  v_order RECORD;
+  v_meta JSONB;
+  v_orig_qty NUMERIC;
+BEGIN
+  -- 1. Select and lock the shipment row
+  SELECT source_branch_id, status
+  INTO v_source_branch_id, v_status
+  FROM public.warehouse_shipments
+  WHERE id = p_shipment_id AND deleted_at IS NULL
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Sevkiyat bulunamadı.';
+  END IF;
+
+  IF v_source_branch_id <> p_branch_id THEN
+    RAISE EXCEPTION 'Yetkisiz depo işlemi: Sevkiyat deposu ile aktif depo uyuşmuyor.';
+  END IF;
+
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'Yalnızca taslak durumundaki sevkiyatlar iptal edilebilir (Mevcut durum: %).', v_status;
+  END IF;
+
+  -- 2. Update shipment status to 'cancelled'
+  UPDATE public.warehouse_shipments
+  SET status = 'cancelled',
+      updated_at = now()
+  WHERE id = p_shipment_id;
+
+  -- 3. Release/cancel all associated active reservations
+  UPDATE public.warehouse_reservations
+  SET status = 'cancelled',
+      released_at = now(),
+      updated_at = now()
+  WHERE source_doc_type = 'warehouse_shipment'
+    AND source_doc_id = p_shipment_id
+    AND status = 'active';
+
+  -- 4. Restore original quantities to purchase order lines
+  FOR v_line IN
+    SELECT * FROM public.warehouse_shipment_lines
+    WHERE shipment_id = p_shipment_id AND deleted_at IS NULL
+  LOOP
+    SELECT * INTO v_po_line
+    FROM public.purchase_order_lines
+    WHERE id = v_line.purchase_order_line_id AND deleted_at IS NULL
+    FOR UPDATE;
+
+    IF FOUND THEN
+      v_meta := COALESCE(v_po_line.meta, '{}'::jsonb);
+      IF v_meta ? 'original_ordered_qty' THEN
+        v_orig_qty := (v_meta->>'original_ordered_qty')::NUMERIC;
+
+        -- Delete the original_ordered_qty property from the metadata object
+        v_meta := v_meta - 'original_ordered_qty';
+
+        UPDATE public.purchase_order_lines
+        SET ordered_qty = v_orig_qty,
+            line_total = v_orig_qty * unit_price,
+            meta = v_meta,
+            updated_at = now()
+        WHERE id = v_po_line.id;
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- 5. Recalculate purchase order totals for associated orders
+  FOR v_order IN
+    SELECT po.*
+    FROM public.purchase_orders po
+    JOIN public.warehouse_shipment_orders wso ON wso.purchase_order_id = po.id
+    WHERE wso.shipment_id = p_shipment_id AND wso.deleted_at IS NULL
+  LOOP
+    UPDATE public.purchase_orders
+    SET total_qty = COALESCE((SELECT SUM(ordered_qty) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        total_amount = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        subtotal = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        updated_at = now()
+    WHERE id = v_order.id;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC Function for atomic WMS Shipment Draft Creation with Reservations
+CREATE OR REPLACE FUNCTION public.create_warehouse_shipment_with_reservations(
+  p_branch_id UUID,
+  p_purchase_order_ids UUID[],
+  p_shipment_draft JSONB,
+  p_plate_number TEXT,
+  p_driver_info TEXT,
+  p_notes TEXT,
+  p_vehicle_id UUID
+) RETURNS UUID AS $$
+DECLARE
+  v_supplier_id UUID;
+  v_shipment_no TEXT;
+  v_shipment_id UUID;
+  v_order_id UUID;
+  v_draft_item RECORD;
+  v_po_line RECORD;
+
+  -- variables for cursor / stock picking
+  v_cursor_opened BOOLEAN := false;
+  v_stock_fetched BOOLEAN;
+  v_curr_location_id UUID;
+  v_curr_lpn_id UUID;
+  v_curr_lot_number TEXT;
+  v_curr_expiration_date DATE;
+  v_curr_stock_qty NUMERIC;
+  v_curr_stock_remaining NUMERIC;
+
+  v_remaining_for_po_lines NUMERIC;
+  v_line_shipped_qty NUMERIC;
+  v_initial_line_shipped_qty NUMERIC;
+  v_take_qty NUMERIC;
+  v_reservation_id UUID;
+  v_line_picks JSONB;
+  v_shipment_line_id UUID;
+  v_item_name TEXT;
+
+  -- cursor definition
+  c_stock CURSOR (cp_stock_item_id UUID) FOR
+    SELECT location_id, lpn_id, lot_number, expiration_date, pickable_qty
+    FROM public.v_wms_pickable_stock
+    WHERE branch_id = p_branch_id
+      AND stock_item_id = cp_stock_item_id
+      AND pickable_qty > 0
+    ORDER BY expiration_date ASC NULLS LAST, location_id, lpn_id;
+BEGIN
+  -- 1. Check active depot authority
+  SELECT id INTO v_supplier_id
+  FROM public.suppliers
+  WHERE source_branch_id = p_branch_id
+    AND supplier_kind = 'internal_warehouse'
+    AND deleted_at IS NULL
+  LIMIT 1;
+
+  IF v_supplier_id IS NULL THEN
+    RAISE EXCEPTION 'Depo yetkilendirmesi bulunamadı veya aktif depo geçersiz.';
+  END IF;
+
+  -- 2. Validate and lock purchase orders
+  PERFORM id
+  FROM public.purchase_orders
+  WHERE id = ANY(p_purchase_order_ids)
+    AND deleted_at IS NULL
+  FOR UPDATE;
+
+  -- Verify all orders belong to the branch's supplier
+  IF EXISTS (
+    SELECT 1
+    FROM public.purchase_orders po
+    WHERE po.id = ANY(p_purchase_order_ids)
+      AND po.supplier_id <> v_supplier_id
+      AND po.deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Seçili siparişlerden biri veya birkaçı bu depoya ait değil.';
+  END IF;
+
+  -- Lock all order lines
+  PERFORM id
+  FROM public.purchase_order_lines
+  WHERE order_id = ANY(p_purchase_order_ids)
+    AND deleted_at IS NULL
+  FOR UPDATE;
+
+  -- 3. Generate unique shipment number
+  LOOP
+    v_shipment_no := 'SH-' || to_char(now(), 'YYYYMMDD') || '-' || lpad(floor(random() * 9000 + 1000)::text, 4, '0');
+    EXIT WHEN NOT EXISTS (
+      SELECT 1 FROM public.warehouse_shipments WHERE shipment_no = v_shipment_no
+    );
+  END LOOP;
+
+  -- 4. Create warehouse_shipment
+  INSERT INTO public.warehouse_shipments (
+    shipment_no,
+    source_branch_id,
+    vehicle_id,
+    plate_number,
+    driver_info,
+    status,
+    notes,
+    meta
+  ) VALUES (
+    v_shipment_no,
+    p_branch_id,
+    p_vehicle_id,
+    p_plate_number,
+    p_driver_info,
+    'draft',
+    p_notes,
+    '{}'::jsonb
+  ) RETURNING id INTO v_shipment_id;
+
+  -- 5. Create warehouse_shipment_orders
+  FOREACH v_order_id IN ARRAY p_purchase_order_ids LOOP
+    INSERT INTO public.warehouse_shipment_orders (
+      shipment_id,
+      purchase_order_id
+    ) VALUES (
+      v_shipment_id,
+      v_order_id
+    );
+  END LOOP;
+
+  -- 6. Allocate stock and create shipment lines & reservations
+  FOR v_draft_item IN
+    SELECT key::UUID AS stock_item_id, value::NUMERIC AS shipped_qty
+    FROM jsonb_each(p_shipment_draft)
+  LOOP
+    IF v_draft_item.shipped_qty > 0 THEN
+      -- Initialize cursor tracking
+      v_cursor_opened := false;
+      v_stock_fetched := false;
+      v_curr_stock_remaining := 0;
+
+      v_remaining_for_po_lines := v_draft_item.shipped_qty;
+
+      -- Loop over purchase order lines for this stock item across selected POs
+      FOR v_po_line IN
+        SELECT pol.id AS line_id, pol.ordered_qty, pol.unit_price, pol.meta
+        FROM public.purchase_order_lines pol
+        WHERE pol.order_id = ANY(p_purchase_order_ids)
+          AND pol.stock_item_id = v_draft_item.stock_item_id
+          AND pol.deleted_at IS NULL
+        ORDER BY pol.created_at ASC
+      LOOP
+        v_line_shipped_qty := LEAST(v_po_line.ordered_qty, v_remaining_for_po_lines);
+        v_initial_line_shipped_qty := v_line_shipped_qty;
+        v_remaining_for_po_lines := v_remaining_for_po_lines - v_line_shipped_qty;
+
+        IF v_line_shipped_qty > 0 THEN
+          v_line_picks := '[]'::jsonb;
+          v_shipment_line_id := gen_random_uuid();
+
+          -- Allocate from physical pickable stock
+          WHILE v_line_shipped_qty > 0 LOOP
+            IF NOT v_stock_fetched OR v_curr_stock_remaining <= 0 THEN
+              -- Open cursor if not already done
+              IF NOT v_cursor_opened THEN
+                OPEN c_stock(v_draft_item.stock_item_id);
+                v_cursor_opened := true;
+              END IF;
+
+              FETCH c_stock INTO v_curr_location_id, v_curr_lpn_id, v_curr_lot_number, v_curr_expiration_date, v_curr_stock_qty;
+
+              IF NOT FOUND THEN
+                -- Close cursor and raise error
+                CLOSE c_stock;
+                v_cursor_opened := false;
+
+                SELECT name INTO v_item_name FROM public.stock_items WHERE id = v_draft_item.stock_item_id;
+                RAISE EXCEPTION 'Stok yetersiz! "%" ürünü için depoda yeterli pickable stok bulunmamaktadır.', COALESCE(v_item_name, 'Bilinmeyen Ürün');
+              END IF;
+
+              v_curr_stock_remaining := v_curr_stock_qty;
+              v_stock_fetched := true;
+            END IF;
+
+            v_take_qty := LEAST(v_curr_stock_remaining, v_line_shipped_qty);
+            v_curr_stock_remaining := v_curr_stock_remaining - v_take_qty;
+            v_line_shipped_qty := v_line_shipped_qty - v_take_qty;
+
+            -- Insert reservation
+            INSERT INTO public.warehouse_reservations (
+              branch_id,
+              stock_item_id,
+              location_id,
+              lpn_id,
+              lot_number,
+              expiration_date,
+              source_doc_type,
+              source_doc_id,
+              source_line_id,
+              reserved_qty,
+              status,
+              reserved_by,
+              reserved_at
+            ) VALUES (
+              p_branch_id,
+              v_draft_item.stock_item_id,
+              v_curr_location_id,
+              v_curr_lpn_id,
+              v_curr_lot_number,
+              v_curr_expiration_date,
+              'warehouse_shipment',
+              v_shipment_id,
+              v_shipment_line_id,
+              v_take_qty,
+              'active',
+              'System (WMS RPC)',
+              now()
+            ) RETURNING id INTO v_reservation_id;
+
+            -- Append pick info
+            v_line_picks := v_line_picks || jsonb_build_array(
+              jsonb_build_object(
+                'reservation_id', v_reservation_id,
+                'location_id', v_curr_location_id,
+                'lpn_id', v_curr_lpn_id,
+                'lot_number', v_curr_lot_number,
+                'expiration_date', v_curr_expiration_date,
+                'qty', v_take_qty
+              )
+            );
+          END LOOP;
+
+          -- Create shipment line
+          INSERT INTO public.warehouse_shipment_lines (
+            id,
+            shipment_id,
+            purchase_order_line_id,
+            stock_item_id,
+            shipped_qty,
+            unit_price,
+            line_total,
+            meta
+          ) VALUES (
+            v_shipment_line_id,
+            v_shipment_id,
+            v_po_line.line_id,
+            v_draft_item.stock_item_id,
+            v_initial_line_shipped_qty,
+            v_po_line.unit_price,
+            v_initial_line_shipped_qty * v_po_line.unit_price,
+            jsonb_build_object('picks', v_line_picks)
+          );
+
+          -- Update purchase order line
+          DECLARE
+            v_next_meta JSONB;
+          BEGIN
+            v_next_meta := COALESCE(v_po_line.meta, '{}'::jsonb);
+            IF NOT (v_next_meta ? 'original_ordered_qty') THEN
+              v_next_meta := v_next_meta || jsonb_build_object('original_ordered_qty', v_po_line.ordered_qty);
+            END IF;
+
+            UPDATE public.purchase_order_lines
+            SET ordered_qty = v_initial_line_shipped_qty,
+                line_total = v_initial_line_shipped_qty * unit_price,
+                meta = v_next_meta,
+                updated_at = now()
+            WHERE id = v_po_line.line_id;
+          END;
+        END IF;
+      END LOOP;
+
+      -- Close cursor if open
+      IF v_cursor_opened THEN
+        CLOSE c_stock;
+        v_cursor_opened := false;
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- 7. Recalculate purchase order totals
+  FOREACH v_order_id IN ARRAY p_purchase_order_ids LOOP
+    UPDATE public.purchase_orders
+    SET total_qty = COALESCE((SELECT SUM(ordered_qty) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+        total_amount = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+        subtotal = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+        updated_at = now()
+    WHERE id = v_order_id;
+  END LOOP;
+
+  RETURN v_shipment_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE VIEW public.v_wms_pickable_stock AS
+WITH physical_stock AS (
+  SELECT
+    branch_id,
+    stock_item_id,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date,
+    SUM(CASE WHEN direction = 'in' THEN quantity ELSE -quantity END) AS physical_qty
+  FROM public.inventory_movements
+  WHERE deleted_at IS NULL
+    AND is_cancelled = false
+    AND COALESCE(meta->>'availability_status', 'available') NOT IN ('quarantine', 'putaway_pending')
+  GROUP BY
+    branch_id,
+    stock_item_id,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date
+),
+reserved_stock AS (
+  SELECT
+    branch_id,
+    stock_item_id,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date,
+    SUM(reserved_qty) AS reserved_qty
+  FROM public.warehouse_reservations
+  WHERE status = 'active'
+  GROUP BY
+    branch_id,
+    stock_item_id,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date
+)
+SELECT
+  p.branch_id,
+  p.stock_item_id,
+  p.location_id,
+  p.lpn_id,
+  p.lot_number,
+  p.expiration_date,
+  p.physical_qty,
+  COALESCE(r.reserved_qty, 0::numeric) AS reserved_qty,
+  GREATEST(p.physical_qty - COALESCE(r.reserved_qty, 0::numeric), 0::numeric) AS pickable_qty
+FROM physical_stock p
+LEFT JOIN reserved_stock r ON
+  p.branch_id = r.branch_id AND
+  p.stock_item_id = r.stock_item_id AND
+  (p.location_id = r.location_id OR (p.location_id IS NULL AND r.location_id IS NULL)) AND
+  (p.lpn_id = r.lpn_id OR (p.lpn_id IS NULL AND r.lpn_id IS NULL)) AND
+  (p.lot_number = r.lot_number OR (p.lot_number IS NULL AND r.lot_number IS NULL)) AND
+  (p.expiration_date = r.expiration_date OR (p.expiration_date IS NULL AND r.expiration_date IS NULL))
+WHERE p.physical_qty > 0;
+-- Create warehouse_tasks and warehouse_task_events tables and their indexes
+CREATE TABLE IF NOT EXISTS public.warehouse_tasks (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  branch_id UUID NOT NULL REFERENCES public.company_nodes(id) ON DELETE CASCADE,
+  task_type TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' NOT NULL,
+  priority TEXT DEFAULT 'normal' NOT NULL,
+  assigned_personnel_id TEXT,
+  assigned_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  due_at TIMESTAMPTZ,
+  source_doc_type TEXT,
+  source_doc_id UUID,
+  source_line_id UUID,
+  description TEXT,
+  meta JSONB DEFAULT '{}'::jsonb NOT NULL,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT warehouse_tasks_pkey PRIMARY KEY (id),
+  CONSTRAINT warehouse_tasks_status_check CHECK (status IN ('pending', 'assigned', 'in_progress', 'done', 'exception', 'cancelled')),
+  CONSTRAINT warehouse_tasks_type_check CHECK (task_type IN ('putaway', 'pick', 'pack', 'load', 'count', 'move', 'quality')),
+  CONSTRAINT warehouse_tasks_priority_check CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_tasks_branch ON public.warehouse_tasks(branch_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_tasks_status ON public.warehouse_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_warehouse_tasks_type ON public.warehouse_tasks(task_type);
+CREATE INDEX IF NOT EXISTS idx_warehouse_tasks_assigned ON public.warehouse_tasks(assigned_personnel_id) WHERE assigned_personnel_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_warehouse_tasks_source ON public.warehouse_tasks(source_doc_type, source_doc_id) WHERE source_doc_type IS NOT NULL AND source_doc_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.warehouse_task_events (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  task_id UUID NOT NULL REFERENCES public.warehouse_tasks(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  from_status TEXT,
+  to_status TEXT,
+  personnel_id TEXT,
+  terminal_id TEXT,
+  barcode_scanned TEXT,
+  payload JSONB DEFAULT '{}'::jsonb NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT warehouse_task_events_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_task_events_task ON public.warehouse_task_events(task_id);
+
+-- Complete warehouse putaway task RPC
+CREATE OR REPLACE FUNCTION public.complete_warehouse_putaway_task(
+  p_task_id UUID,
+  p_personnel_id TEXT,
+  p_target_location_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_task public.warehouse_tasks%ROWTYPE;
+  v_source_movement_id UUID;
+  v_source_movement public.inventory_movements%ROWTYPE;
+  v_out_movement_id UUID;
+  v_in_movement_id UUID;
+  v_qty NUMERIC(18,6);
+  v_target_location_id UUID := p_target_location_id;
+BEGIN
+  -- 1. Görevi kilitle ve kontrol et
+  SELECT * INTO v_task
+  FROM public.warehouse_tasks
+  WHERE id = p_task_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Görev bulunamadı (ID: %)', p_task_id;
+  END IF;
+
+  IF v_task.task_type <> 'putaway' THEN
+    RAISE EXCEPTION 'Bu işlem sadece putaway görevleri için geçerlidir. Görev tipi: %', v_task.task_type;
+  END IF;
+
+  IF v_task.status = 'done' THEN
+    RAISE EXCEPTION 'Görev zaten tamamlanmış.';
+  END IF;
+
+  IF v_task.status = 'cancelled' THEN
+    RAISE EXCEPTION 'İptal edilmiş bir görev tamamlanamaz.';
+  END IF;
+
+  -- 2. Meta verileri oku
+  v_source_movement_id := (v_task.meta->>'source_movement_id')::UUID;
+  IF v_source_movement_id IS NULL THEN
+    RAISE EXCEPTION 'Görevin meta verisinde kaynak hareket ID''si (source_movement_id) bulunamadı.';
+  END IF;
+
+  -- Kaynak hareketi kilitle
+  SELECT * INTO v_source_movement
+  FROM public.inventory_movements
+  WHERE id = v_source_movement_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Kaynak stok hareketi bulunamadı (ID: %)', v_source_movement_id;
+  END IF;
+
+  -- Görevdeki veya metadaki miktar
+  v_qty := COALESCE(
+    (v_task.meta->>'quantity')::NUMERIC(18,6),
+    v_source_movement.quantity
+  );
+
+  IF v_qty <= 0 THEN
+    RAISE EXCEPTION 'Görev miktarı sıfır veya negatif olamaz: %', v_qty;
+  END IF;
+
+  -- Hedef lokasyon belirlenmesi
+  IF v_target_location_id IS NULL THEN
+    v_target_location_id := (v_task.meta->>'target_location_id')::UUID;
+  END IF;
+
+  IF v_target_location_id IS NULL THEN
+    RAISE EXCEPTION 'Hedef lokasyon belirtilmedi veya görev metasında bulunamadı.';
+  END IF;
+
+  -- 3. transfer_out hareketini ekle (putaway_pending durumunu azaltır)
+  v_out_movement_id := gen_random_uuid();
+  v_in_movement_id := gen_random_uuid();
+
+  INSERT INTO public.inventory_movements (
+    id,
+    company_id,
+    legal_entity_id,
+    org_unit_id,
+    branch_id,
+    branch_name,
+    warehouse_id,
+    warehouse_name,
+    item_type,
+    stock_item_id,
+    semi_item_id,
+    item_name,
+    item_sku,
+    unit,
+    unit_factor,
+    movement_type,
+    source_doc_type,
+    direction,
+    movement_at,
+    quantity,
+    source_doc_id,
+    source_doc_line_id,
+    source_doc_no,
+    source_doc_ref,
+    transfer_pair_id,
+    unit_cost,
+    total_cost,
+    currency_code,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date,
+    meta,
+    created_by
+  ) VALUES (
+    v_out_movement_id,
+    v_source_movement.company_id,
+    v_source_movement.legal_entity_id,
+    v_source_movement.org_unit_id,
+    v_source_movement.branch_id,
+    v_source_movement.branch_name,
+    v_source_movement.warehouse_id,
+    v_source_movement.warehouse_name,
+    v_source_movement.item_type,
+    v_source_movement.stock_item_id,
+    v_source_movement.semi_item_id,
+    v_source_movement.item_name,
+    v_source_movement.item_sku,
+    v_source_movement.unit,
+    v_source_movement.unit_factor,
+    'transfer_out',
+    'transfer',
+    'out',
+    now(),
+    v_qty,
+    v_task.id,
+    NULL,
+    NULL,
+    NULL,
+    v_in_movement_id,
+    v_source_movement.unit_cost,
+    v_qty * v_source_movement.unit_cost,
+    v_source_movement.currency_code,
+    v_source_movement.location_id,
+    v_source_movement.lpn_id,
+    v_source_movement.lot_number,
+    v_source_movement.expiration_date,
+    jsonb_build_object(
+      'warehouse_task_id', p_task_id,
+      'availability_status', 'putaway_pending',
+      'source_movement_id', v_source_movement_id
+    ),
+    CASE WHEN p_personnel_id IS NOT NULL AND p_personnel_id ~ '^[0-9a-fA-F-]{36}$' THEN p_personnel_id::UUID ELSE NULL END
+  );
+
+  -- 4. transfer_in hareketini ekle (available durumunu artırır)
+  INSERT INTO public.inventory_movements (
+    id,
+    company_id,
+    legal_entity_id,
+    org_unit_id,
+    branch_id,
+    branch_name,
+    warehouse_id,
+    warehouse_name,
+    item_type,
+    stock_item_id,
+    semi_item_id,
+    item_name,
+    item_sku,
+    unit,
+    unit_factor,
+    movement_type,
+    source_doc_type,
+    direction,
+    movement_at,
+    quantity,
+    source_doc_id,
+    source_doc_line_id,
+    source_doc_no,
+    source_doc_ref,
+    transfer_pair_id,
+    unit_cost,
+    total_cost,
+    currency_code,
+    location_id,
+    lpn_id,
+    lot_number,
+    expiration_date,
+    meta,
+    created_by
+  ) VALUES (
+    v_in_movement_id,
+    v_source_movement.company_id,
+    v_source_movement.legal_entity_id,
+    v_source_movement.org_unit_id,
+    v_source_movement.branch_id,
+    v_source_movement.branch_name,
+    v_source_movement.warehouse_id,
+    v_source_movement.warehouse_name,
+    v_source_movement.item_type,
+    v_source_movement.stock_item_id,
+    v_source_movement.semi_item_id,
+    v_source_movement.item_name,
+    v_source_movement.item_sku,
+    v_source_movement.unit,
+    v_source_movement.unit_factor,
+    'transfer_in',
+    'transfer',
+    'in',
+    now(),
+    v_qty,
+    v_task.id,
+    NULL,
+    NULL,
+    NULL,
+    v_out_movement_id,
+    v_source_movement.unit_cost,
+    v_qty * v_source_movement.unit_cost,
+    v_source_movement.currency_code,
+    v_target_location_id,
+    v_source_movement.lpn_id,
+    v_source_movement.lot_number,
+    v_source_movement.expiration_date,
+    jsonb_build_object(
+      'warehouse_task_id', p_task_id,
+      'availability_status', 'available',
+      'source_movement_id', v_source_movement_id
+    ),
+    CASE WHEN p_personnel_id IS NOT NULL AND p_personnel_id ~ '^[0-9a-fA-F-]{36}$' THEN p_personnel_id::UUID ELSE NULL END
+  );
+
+  -- 5. Görevi güncelle
+  UPDATE public.warehouse_tasks
+  SET status = 'done',
+      completed_at = now(),
+      updated_at = now(),
+      meta = jsonb_set(
+        jsonb_set(meta, '{target_location_id}', to_jsonb(v_target_location_id::text)),
+        '{completed_by}', to_jsonb(COALESCE(p_personnel_id, ''))
+      )
+  WHERE id = p_task_id;
+
+  -- 6. Olay kaydı ekle
+  INSERT INTO public.warehouse_task_events (
+    task_id,
+    event_type,
+    from_status,
+    to_status,
+    personnel_id,
+    payload
+  ) VALUES (
+    p_task_id,
+    'completed',
+    v_task.status,
+    'done',
+    p_personnel_id,
+    jsonb_build_object(
+      'target_location_id', v_target_location_id,
+      'out_movement_id', v_out_movement_id,
+      'in_movement_id', v_in_movement_id,
+      'quantity', v_qty
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'task_id', p_task_id,
+    'out_movement_id', v_out_movement_id,
+    'in_movement_id', v_in_movement_id
+  );
+END;
+$$;
+
+-- Trigger and trigger function for automatic putaway task creation on inventory_movements insert
+CREATE OR REPLACE FUNCTION public.inventory_movements_create_putaway_task_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_default_location_id UUID;
+  v_item_name TEXT;
+  v_unit TEXT;
+BEGIN
+  -- 1. availability_status 'putaway_pending' kontrolü yap
+  IF NEW.meta IS NOT NULL AND NEW.meta->>'availability_status' = 'putaway_pending' THEN
+
+    -- 2. Varsayılan lokasyonu stock_item_warehouse_settings tablosundan sorgula
+    SELECT default_location_id INTO v_default_location_id
+    FROM public.stock_item_warehouse_settings
+    WHERE stock_item_id = NEW.stock_item_id AND branch_id = NEW.branch_id;
+
+    -- 3. Ürün adını ve birimini al
+    v_item_name := NEW.item_name;
+    v_unit := NEW.unit;
+
+    -- 4. warehouse_tasks tablosuna putaway görevini insert et
+    INSERT INTO public.warehouse_tasks (
+      branch_id,
+      task_type,
+      status,
+      priority,
+      source_doc_type,
+      source_doc_id,
+      source_line_id,
+      description,
+      meta
+    ) VALUES (
+      NEW.branch_id,
+      'putaway',
+      'pending',
+      'normal',
+      'purchase_receipt',
+      NEW.source_doc_id,
+      NEW.source_doc_line_id,
+      v_item_name || ' (' || NEW.quantity::TEXT || ' ' || COALESCE(v_unit, 'Adet') || ') Putaway Görevi',
+      jsonb_build_object(
+        'source_movement_id', NEW.id,
+        'stock_item_id', NEW.stock_item_id,
+        'quantity', NEW.quantity,
+        'from_location_id', NEW.location_id,
+        'target_location_id', v_default_location_id,
+        'lot_number', NEW.lot_number,
+        'expiration_date', NEW.expiration_date,
+        'lpn_id', NEW.lpn_id
+      )
+    );
+
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Trigger'ı oluştur
+DROP TRIGGER IF EXISTS trg_wms_create_putaway_task ON public.inventory_movements;
+CREATE TRIGGER trg_wms_create_putaway_task
+  AFTER INSERT ON public.inventory_movements
+  FOR EACH ROW
+  EXECUTE FUNCTION public.inventory_movements_create_putaway_task_trigger();
+
+-- Trigger for automatic pick task creation, complete shipment task RPC, and updated confirm/cancel shipment RPCs
+-- 1. Trigger function to create pick tasks upon shipment line creation
+CREATE OR REPLACE FUNCTION public.wms_create_pick_tasks_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_pick RECORD;
+  v_item_name TEXT;
+  v_unit TEXT;
+  v_shipment_no TEXT;
+  v_branch_id UUID;
+BEGIN
+  -- Select shipment info
+  SELECT shipment_no, source_branch_id INTO v_shipment_no, v_branch_id
+  FROM public.warehouse_shipments
+  WHERE id = NEW.shipment_id;
+
+  SELECT name, unit INTO v_item_name, v_unit
+  FROM public.stock_items
+  WHERE id = NEW.stock_item_id;
+
+  -- Loop over picks array in meta and insert a pick task for each entry
+  IF NEW.meta IS NOT NULL AND NEW.meta ? 'picks' AND jsonb_typeof(NEW.meta->'picks') = 'array' THEN
+    FOR v_pick IN
+      SELECT * FROM jsonb_to_recordset(NEW.meta->'picks')
+      AS x(reservation_id UUID, location_id UUID, lpn_id UUID, lot_number TEXT, expiration_date DATE, qty NUMERIC)
+    LOOP
+      IF v_pick.qty > 0 THEN
+        INSERT INTO public.warehouse_tasks (
+          branch_id,
+          task_type,
+          status,
+          priority,
+          source_doc_type,
+          source_doc_id,
+          source_line_id,
+          description,
+          meta
+        ) VALUES (
+          v_branch_id,
+          'pick',
+          'pending',
+          'normal',
+          'warehouse_shipment',
+          NEW.shipment_id,
+          NEW.id,
+          COALESCE(v_item_name, 'Bilinmeyen Ürün') || ' (' || v_pick.qty::TEXT || ' ' || COALESCE(v_unit, 'Adet') || ') Toplama Görevi - Sevk: ' || COALESCE(v_shipment_no, ''),
+          jsonb_build_object(
+            'reservation_id', v_pick.reservation_id,
+            'location_id', v_pick.location_id,
+            'lpn_id', v_pick.lpn_id,
+            'lot_number', v_pick.lot_number,
+            'expiration_date', v_pick.expiration_date,
+            'quantity', v_pick.qty,
+            'stock_item_id', NEW.stock_item_id
+          )
+        );
+      END IF;
+    END LOOP;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_wms_create_pick_tasks ON public.warehouse_shipment_lines;
+CREATE TRIGGER trg_wms_create_pick_tasks
+  AFTER INSERT ON public.warehouse_shipment_lines
+  FOR EACH ROW
+  EXECUTE FUNCTION public.wms_create_pick_tasks_trigger();
+
+-- 2. Complete warehouse shipment task (pick/pack/load) RPC
+CREATE OR REPLACE FUNCTION public.complete_warehouse_shipment_task(
+  p_task_id UUID,
+  p_personnel_id TEXT,
+  p_picked_qty NUMERIC
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_task public.warehouse_tasks%ROWTYPE;
+  v_shipment public.warehouse_shipments%ROWTYPE;
+  v_res_id UUID;
+  v_shipment_line_id UUID;
+  v_diff_qty NUMERIC;
+  v_picked_qty NUMERIC := p_picked_qty;
+  v_req_qty NUMERIC;
+  v_next_status TEXT;
+  v_next_task_id UUID;
+  v_pack_required BOOLEAN := false;
+  v_load_required BOOLEAN := false;
+BEGIN
+  -- 1. Lock and retrieve task
+  SELECT * INTO v_task
+  FROM public.warehouse_tasks
+  WHERE id = p_task_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Görev bulunamadı (ID: %)', p_task_id;
+  END IF;
+
+  IF v_task.status IN ('done', 'cancelled') THEN
+    RAISE EXCEPTION 'Görev zaten tamamlanmış veya iptal edilmiş.';
+  END IF;
+
+  -- 2. Lock and retrieve shipment to check pipeline options
+  SELECT * INTO v_shipment
+  FROM public.warehouse_shipments
+  WHERE id = v_task.source_doc_id
+  FOR UPDATE;
+
+  v_pack_required := COALESCE((v_shipment.meta->>'pack_required')::BOOLEAN, false);
+  v_load_required := COALESCE((v_shipment.meta->>'load_required')::BOOLEAN, false);
+
+  -- 3. Handle task type execution
+  IF v_task.task_type = 'pick' THEN
+    v_res_id := (v_task.meta->>'reservation_id')::UUID;
+    v_shipment_line_id := v_task.source_line_id;
+    v_req_qty := (v_task.meta->>'quantity')::NUMERIC;
+
+    IF v_picked_qty IS NULL THEN
+      v_picked_qty := v_req_qty;
+    END IF;
+
+    IF v_picked_qty < 0 OR v_picked_qty > v_req_qty THEN
+      RAISE EXCEPTION 'Geçersiz toplama miktarı: %. İstenen miktar: %', v_picked_qty, v_req_qty;
+    END IF;
+
+    -- If picking was incomplete, update reservations, PO lines, and shipment line quantity
+    IF v_picked_qty < v_req_qty THEN
+      v_diff_qty := v_req_qty - v_picked_qty;
+
+      -- A) Update reservation
+      IF v_picked_qty = 0 THEN
+        UPDATE public.warehouse_reservations
+        SET status = 'cancelled', reserved_qty = 0, updated_at = now()
+        WHERE id = v_res_id;
+      ELSE
+        UPDATE public.warehouse_reservations
+        SET reserved_qty = v_picked_qty, updated_at = now()
+        WHERE id = v_res_id;
+      END IF;
+
+      -- B) Update shipment line shipped_qty and meta.picks
+      UPDATE public.warehouse_shipment_lines
+      SET shipped_qty = shipped_qty - v_diff_qty,
+          line_total = (shipped_qty - v_diff_qty) * unit_price,
+          meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object(
+            'picks',
+            COALESCE(
+              (
+                SELECT jsonb_agg(
+                  CASE
+                    WHEN (x->>'reservation_id')::UUID = v_res_id THEN
+                      CASE WHEN v_picked_qty = 0 THEN NULL ELSE x || jsonb_build_object('qty', v_picked_qty) END
+                    ELSE x
+                  END
+                )
+                FROM jsonb_array_elements(meta->'picks') AS x
+                WHERE x IS NOT NULL AND (CASE WHEN (x->>'reservation_id')::UUID = v_res_id AND v_picked_qty = 0 THEN false ELSE true END)
+              ),
+              '[]'::jsonb
+            )
+          )
+      WHERE id = v_shipment_line_id;
+
+      -- C) Update purchase order line and recalculate PO totals
+      DECLARE
+        v_po_line_id UUID;
+        v_order_id UUID;
+        v_po_line_meta JSONB;
+        v_po_line_ordered_qty NUMERIC;
+      BEGIN
+        SELECT purchase_order_line_id INTO v_po_line_id
+        FROM public.warehouse_shipment_lines
+        WHERE id = v_shipment_line_id;
+
+        SELECT order_id, meta, ordered_qty INTO v_order_id, v_po_line_meta, v_po_line_ordered_qty
+        FROM public.purchase_order_lines
+        WHERE id = v_po_line_id;
+
+        IF v_po_line_meta IS NULL THEN
+          v_po_line_meta := '{}'::jsonb;
+        END IF;
+
+        IF NOT (v_po_line_meta ? 'original_ordered_qty') THEN
+          v_po_line_meta := v_po_line_meta || jsonb_build_object('original_ordered_qty', v_po_line_ordered_qty);
+        END IF;
+
+        UPDATE public.purchase_order_lines
+        SET ordered_qty = ordered_qty - v_diff_qty,
+            line_total = (ordered_qty - v_diff_qty) * unit_price,
+            meta = v_po_line_meta,
+            updated_at = now()
+        WHERE id = v_po_line_id;
+
+        UPDATE public.purchase_orders
+        SET total_qty = COALESCE((SELECT SUM(ordered_qty) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+            total_amount = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+            subtotal = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order_id AND deleted_at IS NULL), 0),
+            updated_at = now()
+        WHERE id = v_order_id;
+      END;
+
+      v_next_status := 'exception';
+    ELSE
+      v_next_status := 'done';
+    END IF;
+
+    -- Update pick task status
+    UPDATE public.warehouse_tasks
+    SET status = v_next_status,
+        completed_at = now(),
+        updated_at = now(),
+        meta = meta || jsonb_build_object('picked_qty', v_picked_qty, 'completed_by', p_personnel_id)
+    WHERE id = p_task_id;
+
+    -- Add event record
+    INSERT INTO public.warehouse_task_events (task_id, event_type, from_status, to_status, personnel_id, payload)
+    VALUES (p_task_id, 'completed', v_task.status, v_next_status, p_personnel_id, jsonb_build_object('picked_qty', v_picked_qty, 'requested_qty', v_req_qty));
+
+    -- D) Trigger Pack/Load pipelines if picked quantity > 0
+    IF v_picked_qty > 0 THEN
+      IF v_pack_required THEN
+        INSERT INTO public.warehouse_tasks (
+          branch_id, task_type, status, priority, source_doc_type, source_doc_id, source_line_id, description, meta
+        ) VALUES (
+          v_task.branch_id, 'pack', 'pending', 'normal', 'warehouse_shipment', v_task.source_doc_id, v_task.source_line_id,
+          'Paketleme/Kontrol Görevi - Line: ' || v_task.source_line_id::TEXT,
+          jsonb_build_object('parent_task_id', p_task_id, 'quantity', v_picked_qty, 'stock_item_id', v_task.meta->'stock_item_id')
+        ) RETURNING id INTO v_next_task_id;
+      ELSIF v_load_required THEN
+        INSERT INTO public.warehouse_tasks (
+          branch_id, task_type, status, priority, source_doc_type, source_doc_id, source_line_id, description, meta
+        ) VALUES (
+          v_task.branch_id, 'load', 'pending', 'normal', 'warehouse_shipment', v_task.source_doc_id, v_task.source_line_id,
+          'Yükleme Görevi - Line: ' || v_task.source_line_id::TEXT,
+          jsonb_build_object('parent_task_id', p_task_id, 'quantity', v_picked_qty, 'stock_item_id', v_task.meta->'stock_item_id')
+        ) RETURNING id INTO v_next_task_id;
+      END IF;
+    END IF;
+
+  ELSIF v_task.task_type = 'pack' THEN
+    UPDATE public.warehouse_tasks
+    SET status = 'done', completed_at = now(), updated_at = now(), meta = meta || jsonb_build_object('completed_by', p_personnel_id)
+    WHERE id = p_task_id;
+
+    INSERT INTO public.warehouse_task_events (task_id, event_type, from_status, to_status, personnel_id)
+    VALUES (p_task_id, 'completed', v_task.status, 'done', p_personnel_id);
+
+    IF v_load_required THEN
+      INSERT INTO public.warehouse_tasks (
+        branch_id, task_type, status, priority, source_doc_type, source_doc_id, source_line_id, description, meta
+      ) VALUES (
+        v_task.branch_id, 'load', 'pending', 'normal', 'warehouse_shipment', v_task.source_doc_id, v_task.source_line_id,
+        'Yükleme Görevi - Line: ' || v_task.source_line_id::TEXT,
+        jsonb_build_object('parent_task_id', p_task_id, 'quantity', v_task.meta->'quantity', 'stock_item_id', v_task.meta->'stock_item_id')
+      ) RETURNING id INTO v_next_task_id;
+    END IF;
+
+  ELSIF v_task.task_type = 'load' THEN
+    UPDATE public.warehouse_tasks
+    SET status = 'done', completed_at = now(), updated_at = now(), meta = meta || jsonb_build_object('completed_by', p_personnel_id)
+    WHERE id = p_task_id;
+
+    INSERT INTO public.warehouse_task_events (task_id, event_type, from_status, to_status, personnel_id)
+    VALUES (p_task_id, 'completed', v_task.status, 'done', p_personnel_id);
+
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'task_id', p_task_id,
+    'next_task_id', v_next_task_id,
+    'status', COALESCE(v_next_status, 'done')
+  );
+END;
+$$;
+
+-- 3. Updated confirm_warehouse_shipment RPC with tasks guard check
+CREATE OR REPLACE FUNCTION public.confirm_warehouse_shipment(
+  p_shipment_id UUID,
+  p_branch_id UUID,
+  p_branch_name TEXT
+) RETURNS VOID AS $$
+DECLARE
+  v_shipment_no TEXT;
+  v_source_branch_id UUID;
+  v_plate_number TEXT;
+  v_driver_info TEXT;
+  v_notes TEXT;
+  v_status TEXT;
+  v_line RECORD;
+  v_pick RECORD;
+  v_order RECORD;
+  v_meta JSONB;
+  v_next_meta JSONB;
+
+  -- locked reservation fields
+  v_res_id UUID;
+  v_res_location_id UUID;
+  v_res_lpn_id UUID;
+  v_res_lot_number TEXT;
+  v_res_expiration_date DATE;
+  v_res_qty NUMERIC;
+  v_res_status TEXT;
+BEGIN
+  -- 1. Select and lock the shipment row to enforce idempotency
+  SELECT shipment_no, source_branch_id, plate_number, driver_info, notes, status
+  INTO v_shipment_no, v_source_branch_id, v_plate_number, v_driver_info, v_notes, v_status
+  FROM public.warehouse_shipments
+  WHERE id = p_shipment_id AND deleted_at IS NULL
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Sevkiyat bulunamadı.';
+  END IF;
+
+  IF v_source_branch_id <> p_branch_id THEN
+    RAISE EXCEPTION 'Yetkisiz depo işlemi: Sevkiyat deposu ile aktif depo uyuşmuyor.';
+  END IF;
+
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'Sevkiyat taslak durumunda değil (Mevcut durum: %).', v_status;
+  END IF;
+
+  -- WMS-02C Guard: Verify all warehouse tasks related to this shipment are completed
+  IF EXISTS (
+    SELECT 1
+    FROM public.warehouse_tasks
+    WHERE source_doc_type = 'warehouse_shipment'
+      AND source_doc_id = p_shipment_id
+      AND status NOT IN ('done', 'cancelled', 'exception')
+  ) THEN
+    RAISE EXCEPTION 'Bu sevkiyata bağlı tamamlanmamış depo görevleri (toplama, paketleme vb.) bulunmaktadır. Lütfen önce görevleri tamamlayın.';
+  END IF;
+
+  -- 2. Update status to 'in_transit'
+  UPDATE public.warehouse_shipments
+  SET status = 'in_transit',
+      shipped_at = now(),
+      updated_at = now()
+  WHERE id = p_shipment_id;
+
+  -- 3. Loop over shipment lines and generate stock exits
+  FOR v_line IN
+    SELECT wsl.*, si.name AS item_name
+    FROM public.warehouse_shipment_lines wsl
+    LEFT JOIN public.stock_items si ON si.id = wsl.stock_item_id
+    WHERE wsl.shipment_id = p_shipment_id AND wsl.deleted_at IS NULL
+  LOOP
+    IF v_line.shipped_qty > 0 THEN
+      -- Check if meta has 'picks' array
+      IF v_line.meta ? 'picks' AND jsonb_typeof(v_line.meta->'picks') = 'array' THEN
+        -- Loop over picks
+        FOR v_pick IN
+          SELECT * FROM jsonb_to_recordset(v_line.meta->'picks')
+          AS x(location_id UUID, lpn_id UUID, lot_number TEXT, expiration_date DATE, qty NUMERIC, reservation_id UUID)
+        LOOP
+          IF v_pick.qty > 0 THEN
+            -- Check reservation existence
+            IF v_pick.reservation_id IS NULL THEN
+              RAISE EXCEPTION 'Sevkiyat satırında rezervasyon ID bilgisi bulunmamaktadır.';
+            END IF;
+
+            -- Select and lock the reservation row
+            SELECT id, location_id, lpn_id, lot_number, expiration_date, reserved_qty, status
+            INTO v_res_id, v_res_location_id, v_res_lpn_id, v_res_lot_number, v_res_expiration_date, v_res_qty, v_res_status
+            FROM public.warehouse_reservations
+            WHERE id = v_pick.reservation_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'İlgili rezervasyon bulunamadı (ID: %).', v_pick.reservation_id;
+            END IF;
+
+            IF v_res_status <> 'active' THEN
+              RAISE EXCEPTION 'Rezervasyon aktif değil (ID: %, Durum: %).', v_pick.reservation_id, v_res_status;
+            END IF;
+
+            IF v_res_qty <> v_pick.qty THEN
+              RAISE EXCEPTION 'Rezervasyon miktarı ile sevk miktarı uyuşmuyor (Rezervasyon: %, Sevk: %).', v_res_qty, v_pick.qty;
+            END IF;
+
+            -- Insert inventory movement (without generated quantity_signed and total_cost_signed columns)
             INSERT INTO public.inventory_movements (
               item_type,
               stock_item_id,
@@ -4331,10 +5711,17 @@ BEGIN
                 'availability_status', 'available'
               )
             );
+
+            -- Consume reservation
+            UPDATE public.warehouse_reservations
+            SET status = 'consumed',
+                consumed_at = now(),
+                updated_at = now()
+            WHERE id = v_res_id;
           END IF;
         END LOOP;
       ELSE
-        -- Fallback if no picks array (e.g. manual DB inserts)
+        -- Fallback if no picks array
         INSERT INTO public.inventory_movements (
           item_type,
           stock_item_id,
@@ -4384,6 +5771,11 @@ BEGIN
     v_next_meta := v_meta || jsonb_build_object(
       'supplier_marked_sent', true,
       'supplier_sent_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'shipment_id', p_shipment_id,
+      'shipment_no', v_shipment_no,
+      'shipped_at', now(),
+      'plate_number', v_plate_number,
+      'driver_info', v_driver_info,
       'supplier_dispatch', jsonb_build_object(
         'delivered_on', to_char(now(), 'YYYY-MM-DD'),
         'delivered_at', to_char(now(), 'HH24:MI'),
@@ -4403,3 +5795,248 @@ BEGIN
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;
+
+-- 4. Updated cancel_warehouse_shipment RPC with tasks cancellation logic
+CREATE OR REPLACE FUNCTION public.cancel_warehouse_shipment(
+  p_shipment_id UUID,
+  p_branch_id UUID
+) RETURNS VOID AS $$
+DECLARE
+  v_source_branch_id UUID;
+  v_status TEXT;
+  v_line RECORD;
+  v_po_line RECORD;
+  v_order RECORD;
+  v_meta JSONB;
+  v_orig_qty NUMERIC;
+BEGIN
+  -- 1. Select and lock the shipment row
+  SELECT source_branch_id, status
+  INTO v_source_branch_id, v_status
+  FROM public.warehouse_shipments
+  WHERE id = p_shipment_id AND deleted_at IS NULL
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Sevkiyat bulunamadı.';
+  END IF;
+
+  IF v_source_branch_id <> p_branch_id THEN
+    RAISE EXCEPTION 'Yetkisiz depo işlemi: Sevkiyat deposu ile aktif depo uyuşmuyor.';
+  END IF;
+
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'Yalnızca taslak durumundaki sevkiyatlar iptal edilebilir (Mevcut durum: %).', v_status;
+  END IF;
+
+  -- 2. Update shipment status to 'cancelled'
+  UPDATE public.warehouse_shipments
+  SET status = 'cancelled',
+      updated_at = now()
+  WHERE id = p_shipment_id;
+
+  -- 2b. Cancel all associated active WMS tasks
+  UPDATE public.warehouse_tasks
+  SET status = 'cancelled',
+      cancelled_at = now(),
+      updated_at = now()
+  WHERE source_doc_type = 'warehouse_shipment'
+    AND source_doc_id = p_shipment_id
+    AND status NOT IN ('done', 'cancelled', 'exception');
+
+  -- 3. Release/cancel all associated active reservations
+  UPDATE public.warehouse_reservations
+  SET status = 'cancelled',
+      released_at = now(),
+      updated_at = now()
+  WHERE source_doc_type = 'warehouse_shipment'
+    AND source_doc_id = p_shipment_id
+    AND status = 'active';
+
+  -- 4. Restore original quantities to purchase order lines
+  FOR v_line IN
+    SELECT * FROM public.warehouse_shipment_lines
+    WHERE shipment_id = p_shipment_id AND deleted_at IS NULL
+  LOOP
+    SELECT * INTO v_po_line
+    FROM public.purchase_order_lines
+    WHERE id = v_line.purchase_order_line_id AND deleted_at IS NULL
+    FOR UPDATE;
+
+    IF FOUND THEN
+      v_meta := COALESCE(v_po_line.meta, '{}'::jsonb);
+      IF v_meta ? 'original_ordered_qty' THEN
+        v_orig_qty := (v_meta->>'original_ordered_qty')::NUMERIC;
+
+        -- Delete the original_ordered_qty property from the metadata object
+        v_meta := v_meta - 'original_ordered_qty';
+
+        UPDATE public.purchase_order_lines
+        SET ordered_qty = v_orig_qty,
+            line_total = v_orig_qty * unit_price,
+            meta = v_meta,
+            updated_at = now()
+        WHERE id = v_po_line.id;
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- 5. Recalculate purchase order totals for associated orders
+  FOR v_order IN
+    SELECT po.*
+    FROM public.purchase_orders po
+    JOIN public.warehouse_shipment_orders wso ON wso.purchase_order_id = po.id
+    WHERE wso.shipment_id = p_shipment_id AND wso.deleted_at IS NULL
+  LOOP
+    UPDATE public.purchase_orders
+    SET total_qty = COALESCE((SELECT SUM(ordered_qty) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        total_amount = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        subtotal = COALESCE((SELECT SUM(line_total) FROM public.purchase_order_lines WHERE order_id = v_order.id AND deleted_at IS NULL), 0),
+        updated_at = now()
+    WHERE id = v_order.id;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 5. Shipment Status Guard Trigger
+CREATE OR REPLACE FUNCTION public.wms_shipment_status_guard_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- If status transitions to ready_to_load or in_transit, all pick tasks must be completed/cancelled
+  IF NEW.status IN ('ready_to_load', 'in_transit') THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.warehouse_tasks
+      WHERE source_doc_type = 'warehouse_shipment'
+        AND source_doc_id = NEW.id
+        AND task_type = 'pick'
+        AND status NOT IN ('done', 'cancelled', 'exception')
+    ) THEN
+      RAISE EXCEPTION 'Bu sevkiyata bağlı tamamlanmamış toplama (pick) görevleri bulunmaktadır. Sevkiyat durumu % yapılamaz.', NEW.status;
+    END IF;
+  END IF;
+
+  -- If status transitions to in_transit (confirm_warehouse_shipment), all warehouse tasks (pick, pack, load) must be completed/cancelled
+  IF NEW.status = 'in_transit' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.warehouse_tasks
+      WHERE source_doc_type = 'warehouse_shipment'
+        AND source_doc_id = NEW.id
+        AND status NOT IN ('done', 'cancelled', 'exception')
+    ) THEN
+      RAISE EXCEPTION 'Bu sevkiyata bağlı tamamlanmamış depo görevleri (toplama, paketleme, yükleme vb.) bulunmaktadır. Lütfen önce görevleri tamamlayın.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_wms_shipment_status_guard ON public.warehouse_shipments;
+CREATE TRIGGER trg_wms_shipment_status_guard
+  BEFORE UPDATE OF status ON public.warehouse_shipments
+  FOR EACH ROW
+  EXECUTE FUNCTION public.wms_shipment_status_guard_trigger();
+
+-- RPC for resolving warehouse task exceptions atomically
+CREATE OR REPLACE FUNCTION public.resolve_warehouse_task_exception(
+  p_task_id UUID,
+  p_action TEXT,
+  p_note TEXT,
+  p_personnel_id TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_task public.warehouse_tasks%ROWTYPE;
+  v_next_status TEXT;
+  v_res_id UUID;
+  v_meta JSONB;
+  v_event_type TEXT;
+BEGIN
+  -- 1. Select and lock the task row
+  SELECT * INTO v_task
+  FROM public.warehouse_tasks
+  WHERE id = p_task_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Görev bulunamadı (ID: %)', p_task_id;
+  END IF;
+
+  IF v_task.status <> 'exception' THEN
+    RAISE EXCEPTION 'Bu işlem sadece sorunlu (exception) durumundaki görevler için geçerlidir. Görev durumu: %', v_task.status;
+  END IF;
+
+  IF p_action NOT IN ('retry', 'cancel') THEN
+    RAISE EXCEPTION 'Geçersiz aksiyon: %. Sadece retry veya cancel kabul edilir.', p_action;
+  END IF;
+
+  IF p_note IS NULL OR trim(p_note) = '' THEN
+    RAISE EXCEPTION 'Çözüm notu zorunludur.';
+  END IF;
+
+  -- 2. Determine next status and event type
+  IF p_action = 'retry' THEN
+    v_next_status := 'pending';
+    v_event_type := 'exception_resolved_retry';
+  ELSE
+    v_next_status := 'cancelled';
+    v_event_type := 'exception_resolved_cancel';
+  END IF;
+
+  -- 3. If action is cancel and task type is pick, cancel the reservation
+  IF p_action = 'cancel' AND v_task.task_type = 'pick' THEN
+    v_res_id := (v_task.meta->>'reservation_id')::UUID;
+    IF v_res_id IS NOT NULL THEN
+      UPDATE public.warehouse_reservations
+      SET status = 'cancelled',
+          released_at = now(),
+          updated_at = now()
+      WHERE id = v_res_id;
+    END IF;
+  END IF;
+
+  -- 4. Update task status and meta
+  v_meta := COALESCE(v_task.meta, '{}'::jsonb) || jsonb_build_object(
+    'exception_resolved', true,
+    'resolution_note', p_note,
+    'resolved_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'resolved_by', p_personnel_id
+  );
+
+  UPDATE public.warehouse_tasks
+  SET status = v_next_status,
+      meta = v_meta,
+      updated_at = now()
+  WHERE id = p_task_id;
+
+  -- 5. Insert audit event record
+  INSERT INTO public.warehouse_task_events (
+    task_id,
+    event_type,
+    from_status,
+    to_status,
+    personnel_id,
+    payload
+  ) VALUES (
+    p_task_id,
+    v_event_type,
+    'exception',
+    v_next_status,
+    p_personnel_id,
+    jsonb_build_object('note', p_note)
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'task_id', p_task_id,
+    'status', v_next_status
+  );
+END;
+$$;

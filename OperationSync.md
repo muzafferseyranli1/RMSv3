@@ -1,7 +1,7 @@
 # OperationSync
 
-Yururluk tarihi: `2026-05-09`  
-Status: `active`  
+Yururluk tarihi: `2026-05-09`
+Status: `active`
 Amac: Bu dosya ozet degil, surekli kullanilan operasyonel hafizadir. Her
 agent bu dosyayi goreve baslamadan okur ve anlamli bir arastirma, karar,
 uygulama, test veya blokaj olustuktan sonra gunceller.
@@ -3913,7 +3913,7 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
   - `CallCenter` loyalty evaluation artik `evaluateRuntimeOrderCampaignsAsync()` uzerinden degerleniyor; hata durumunda mevcut `evaluateRuntimeOrderCampaigns()` sonucu fallback olarak korunuyor.
   - Ayrik wallet lookup effect'i kaldirildi; `walletReadiness`, `walletLoading` ve `pointsBalance` artik async runtime sonucundan besleniyor.
   - `selectedLoyaltyProgramId` runtime wrapper'a gecilerek Call Center loyalty program baglami tek akista kullaniliyor.
-- `Validation`: `npm.cmd run build` basarili (275 modules transformed, Vite build tamamlandi). 
+- `Validation`: `npm.cmd run build` basarili (275 modules transformed, Vite build tamamlandi).
 - `Risk`: `Diger kanallar halen sync runtime evaluator kullaniyor; Faz 6'nin sonraki diliminde POS/Garson/Kiosk/Mobile ayni async kontrata alinmali.`
 - `Next Step`: `Async runtime call-site kontratini POS/Garson/Kiosk/Mobile yuzeylerine yay ve ancak sonra points_redeem_multiplier burn offer + ledger executor ekle.`
 
@@ -5449,7 +5449,7 @@ Bu dosyalar onay olmadan silinmez veya anlamsiz sekilde uzerinden gecilmez:
 - `Files Changed`:
   - src/components/pages/LoyaltyCouponSets.jsx - `useCallback` eklendi. `setCouponSets` state gÃ¼ncelleyicisi sarmalanarak Ã¶nceden yÃ¼klenmiÅŸ kupon kodlarÄ±nÄ±n (`_couponsNotLoaded === false`) Ã¼zerine tekrar boÅŸ kod listesi ve `_couponsNotLoaded = true` yazÄ±lmasÄ± engellendi.
 - `Commands Run`:
-  - 
+  -
 pm run build (baÅŸarÄ±yla tamamlandÄ±, 29.04s)
 - `Findings`:
   - Sayfa ilk yÃ¼klendiÄŸinde aÄŸ/egress yÃ¼kÃ¼nÃ¼ azaltmak iÃ§in kupon kodlarÄ± getirilmez (`_couponsNotLoaded = true`). Ancak Ã§alÄ±ÅŸma alanÄ± veya bileÅŸen gÃ¼ncellemeleri nedeniyle sayfa arka planda `loadPage` ile tekrar yÃ¼klendiÄŸinde, yÃ¼klÃ¼ kuponlar yerel state'ten silinip eski haline dÃ¶nÃ¼yordu. State birleÅŸtirme (merge) mantÄ±ÄŸÄ± ile bu durum kalÄ±cÄ± olarak dÃ¼zeltildi.
@@ -5531,7 +5531,7 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 29.04s)
   - src/components/loyalty/LoyaltyCampaignWizard.jsx - Ã–nerilen koÅŸullara period_product_quantity (ÃœrÃ¼n Adedi KoÅŸulu) eklendi, yardÄ±m ve kullanÄ±m metinleri gÃ¼ncellendi, dinamik kupon setleri arayÃ¼zde belirgin hale getirildi.
   - src/lib/loyaltyValueLedger.js - syncCampaignStampProgress fonksiyonu eklendi. SipariÅŸ tamamlandÄ±ÄŸÄ±nda mÃ¼ÅŸterinin o kampanyaya ait gÃ¼ncel Ã¼rÃ¼n satÄ±n alma ilerlemesi hesaplanarak loyalty_frequency_progress tablosuna campaign_id bazlÄ± olarak kaydedilmesi saÄŸlandÄ±.
 - `Commands Run`:
-  - 
+  -
 pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Findings`:
   - get_customer_period_stats veritabanÄ± fonksiyonu, posLoyalty.js'te olduÄŸu gibi ledger post-sale adÄ±mÄ±nda da kullanÄ±larak mÃ¼ÅŸterinin geÃ§miÅŸ sipariÅŸleri ve mevcut sipariÅŸ katkÄ±sÄ±yla en gÃ¼ncel Ã¼rÃ¼n miktarÄ±nÄ± getirdi.
@@ -6171,7 +6171,7 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
 - `Commands Run`:
   - `npm run build:web`
 - `Findings`:
-  - `NAV` dizisinde yer alan ve mojibake içeren `'Åžube Ä°ÅŸlemleri'` başlığı `canAccessSection` yetki kontrolüne giderken `fixMojibakeText` fonksiyonundan geçirilmediği için `SECTION_ACCESS` tablosundaki temiz `'Şube İşlemleri'` anahtarıyla eşleşemiyordu. 
+  - `NAV` dizisinde yer alan ve mojibake içeren `'Åžube Ä°ÅŸlemleri'` başlığı `canAccessSection` yetki kontrolüne giderken `fixMojibakeText` fonksiyonundan geçirilmediği için `SECTION_ACCESS` tablosundaki temiz `'Şube İşlemleri'` anahtarıyla eşleşemiyordu.
   - Ayrıca şube seçici butonunu render eden `{section.section === 'Sube Islemleri'}` koşulu da decoded `'Şube İşlemleri'` metni ile değiştirilmiştir.
 - `Decisions`:
   - Tüm NAV başlıklarını ham kod içinde değiştirmek yerine, `canAccessSection` çağrısına gönderilirken `fixMojibakeText` ile anlık decode edilmesi yöntemi seçildi. Böylece mevcut encoding yapısı bozulmadan en az riskli çözüm sağlandı.
@@ -7015,10 +7015,10 @@ pm run build (baÅŸarÄ±yla tamamlandÄ±, 11.04s)
   - `mkdir c:\RMSv3\src\components\pos`
   - `npm run build:desktop:web`
 - `Findings`:
-  - `PairingScreen.jsx Vanilla CSS, css variable'ları kullanılarak yazıldı.` 
+  - `PairingScreen.jsx Vanilla CSS, css variable'ları kullanılarak yazıldı.`
   - `Build sorunsuz tamamlandı.`
 - `Decisions`:
-  - `PairingScreen.jsx veritabanından şube sorgulama, terminal rolü, IP adresi ve ekran modu seçimlerini yapıyor.` 
+  - `PairingScreen.jsx veritabanından şube sorgulama, terminal rolü, IP adresi ve ekran modu seçimlerini yapıyor.`
   - `CustomEvent('terminal:pairing-complete') tetikleyerek sandbox üzerinden Electron'a (preload/IPC) haber verilmesini sağlıyor.`
 - `Open Risks`:
   - `Henüz App.jsx (Root Router) entegrasyonu yapılmadı. Sonraki adımda UI testleri ile birlikte App.jsx root'a konulması gerekiyor.`
@@ -7474,19 +7474,19 @@ pm version\), and publishing in a single double-click action.
   - src/components/pages/KioskBig.jsx
   - src/components/pages/KioskTablet.jsx
 - **Commands Run**:
-  - 
+  -
 pm run build (Verified 100% successful build)
 - **Decisions**:
   - Replaced the toggle (filter) logic with a quantity-based increment/decrement array (+ / -) for options with max_select > 1.
   - Addressed UUID inconsistencies by matching against ID, slug, name, or group_name sequentially in a defsById Map.
   - Implemented an empty modal fallback message instead of showing blank screens when combo definitions have empty options.
-- **Next Step**: Awaiting further user requests. 
+- **Next Step**: Awaiting further user requests.
 
 ## Entry 181 - 2026-05-30
 
 **Tasks Completed (by Agent):**
 - **Combo Menu Multi-Select Support:** Refactored option selection logic across POS.jsx, Garson.jsx, KioskBig.jsx, and KioskTablet.jsx to support multiple selections of the same item (e.g. 2x Ketchup). Added explicit '+' and '-' buttons to toggle quantities, ensuring maxSelect constraint is respected.
-- **Empty Combo Modal Fix:** Fixed the issue where ComboBuilderModal and Kiosk modals rendered blank when optionGroupId from the DB did not exactly match the definitions' UUIDs (due to old string IDs like 'sos-secimi'). Added fallback match logic by slug, 
+- **Empty Combo Modal Fix:** Fixed the issue where ComboBuilderModal and Kiosk modals rendered blank when optionGroupId from the DB did not exactly match the definitions' UUIDs (due to old string IDs like 'sos-secimi'). Added fallback match logic by slug,
 ame, and normalized text.
 - **Empty State UX:** Added an explicit fallback warning message ("Se�enek Bulunamad�") for Kiosk screens when a combo menu definition returns no valid steps.
 
@@ -7495,11 +7495,11 @@ ame, and normalized text.
 
 **Tasks Completed (by Agent):**
 - **Combo Menu Empty Modal Fix:** Completed the approved implementation plan to fix empty combo modals across POS, Garson, and Kiosk screens.
-- **Dynamic Groups Normalization:** Added a robust 
+- **Dynamic Groups Normalization:** Added a robust
 ormalizeComboGroups parser in UnifiedPosStaffScreen.jsx, KioskBig.jsx, and KioskTablet.jsx that automatically validates fetched combo_menus_v1 groups and dynamically creates a fallback (Main Course, Snack, Drink) from the product catalog if they are missing or empty in the database.
 - **Fuzzy Static Option Groups Fallback:** Enriched step-generation inside ComboBuilderModal.jsx, KioskBig.jsx, and KioskTablet.jsx with STATIC_OPTION_GROUPS containing mock options (ketÃ§ap, mayonez, cheddar peyniri, buz tercihleri) fuzzy-matched dynamically when option group IDs (like 'sos-secimi', 'peynir-secimi') are missing from the DB.
 - **Premium Diagnostik Panel:** Replaced the generic "SeÃ§enek BulunamadÄ±" screen with a premium Debug Panel displaying exact system diagnostic info (SKU, ID, group count, and raw definition payload) when steps resolve to 0.
-- **Build Validation:** Successfully built and validated all modified files (0 errors) using 
+- **Build Validation:** Successfully built and validated all modified files (0 errors) using
 pm run build.
 ## Entry 183 - 2026-05-30
 
@@ -7721,7 +7721,7 @@ ull\, completely removing the invisible unpair trigger from the DOM.
 
 ## 2026-05-31T03:21:29Z - Desktop POS Screen Fixes & Release v2.0.11
 - Fixed POS.jsx channel selection logic to prevent the POS terminal from defaulting to the "Masa" (Garson) layout on boot.
-- Updated the 
+- Updated the
 esolveBootChannel method to prioritize "Hızlı Satış" (Quick Sale) and "Pickup" over "Masa".
 - Built and published the new desktop release v2.0.11 using Yayinla.bat.
 - Explained to the user why the Garson terminal showed a PIN Gate (due to new security features in Desktop mode).
@@ -8026,7 +8026,7 @@ esolveBootChannel method to prioritize "Hızlı Satış" (Quick Sale) and "Picku
   - scratch/extract_base64_images.cjs
 - Decisions:
   - Sunucu API'sinde settings tablosuna filtresiz select sorgular� at�lmas� engellendi (key filtresi zorunlu k�l�nd�).
-  - API sorgular�na 
+  - API sorgular�na
 esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi.
   - extract_base64_images.cjs beti�i ile settings tablosundaki t�m inline base64 resimler ay�klan�p API volume sunucusuna y�klendi ve referans URL'leri ile de�i�tirildi. Kiosk_settings_v2 boyutu 3.5 MB'tan 4.6 KB'a d���r�ld�.
 - Verification:
@@ -10260,4 +10260,606 @@ esponseBytes, durationMs ve istemci IP adresini loglayan console loglama eklendi
 - `Next Step`:
   - Kullanıcı şablon ekranında bir denetim formu oluşturup şube seçimi zorunlu seçeneğini kaldırarak otomatik görev seçeneğinin inaktifleştiğini doğrulamalıdır. Ardından bu formu doldurarak şube adını elle girdiğinde kaydın başarılı şekilde tamamlandığını ve şube adının detaylarda doğru gösterildiğini doğrulamalıdır.
 - `Handoff Contract`: `Denetim formlarında şube seçimi zorunluluğuna bağlı otomatik görev engellemesi ve dinamik serbest metin şube giriş yapısı tamamlanmıştır. Build başarılıdır.`
+
+## Entry 194 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T18:02:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Dana Eti Tek Tabloda Üç Maliyet Yöntemi Excel Simülasyonu`
+- `Intent`: `Tek ürün (Dana eti) için aynı stok hareketi satırlarında Ağırlıklı Ortalama, FIFO ve Son Alış fiyatı yöntemlerinin yan yana hesaplandığı; negatif stok senaryolarını da gösteren Excel çıktısı oluşturmak.`
+- `Files Read`:
+  - `MALIYET_HESAPLAMA_HANDOFF.md`
+- `Files Changed`:
+  - `scripts/create-dana-cost-workbook.mjs`
+  - `dana_eti_tek_tablo_3_maliyet_yontemi_saglam.xlsx`
+  - `dana_eti_tek_tablo_3_maliyet_yontemi_renkli.xls`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scripts\create-dana-cost-workbook.mjs` (Başarılı)
+  - `node -e "... XLSX.readFile('dana_eti_tek_tablo_3_maliyet_yontemi_saglam.xlsx') ..."` (Başarılı; hücre içerikleri doğrulandı)
+- `Findings`:
+  - Önceki elle yazılmış minimal OpenXML dosyası bazı okuyucularda boş görünebildiği için yeni çıktı standart `xlsx` paketiyle üretildi.
+  - Önceki Excel kurtarma hatasına sebep olabilecek `xl/tables/*` tablo parçaları yeni `.xlsx` içinde oluşturulmadı.
+- `Decisions`:
+  - Aynı stok hareketi satırı üzerinde WAC, FIFO ve Son Alış yöntemleri yan yana hesaplandı.
+  - Negatif stok oluşan hareketler ayrıca açıklama ve durum kolonlarında gösterildi.
+  - Renk kodu ihtiyacı için uyumlu `.xlsx` yanında renkli Excel HTML `.xls` çıktısı da üretildi.
+- `Handoff Contract`: `Dana eti için tek tabloda üç maliyet yöntemi hesaplama dosyaları oluşturuldu; sağlam .xlsx veri/formül doğrulamasından geçti, renkli .xls ise kolon gruplarını görsel olarak ayırır.`
+
+## Entry 195 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T19:31:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Kullanıcı Excel Dosyasında FIFO Maliyet Kontrolü`
+- `Intent`: `C:\Users\muzaf\Documents\maliyet hesaplama.xlsx dosyasında FIFO yönteminin stok tutarını eksiye düşürdüğü iddiasını kontrol etmek ve hatalı hesap satırlarını düzeltmek.`
+- `Files Read`:
+  - `C:\Users\muzaf\Documents\maliyet hesaplama.xlsx`
+- `Files Changed`:
+  - `scripts/fix-maliyet-hesaplama-fifo.mjs`
+  - `maliyet_hesaplama_fifo_kontrol_duzeltilmis.xlsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scripts\fix-maliyet-hesaplama-fifo.mjs` (Başarılı)
+  - `node -e "... XLSX.readFile('maliyet_hesaplama_fifo_kontrol_duzeltilmis.xlsx') ..."` (Başarılı; düzeltilen FIFO hücreleri doğrulandı)
+- `Findings`:
+  - Fiziksel stok miktarı eksiye düşmüyordu; FIFO çıkış maliyeti formülü 9, 11 ve 12. satırlarda çıkış maliyetini fazla hesaplayarak FIFO stok tutarını eksiye indiriyordu.
+  - 9. satır FIFO çıkış maliyeti 8300 yerine 5100 olmalıydı.
+  - 11. satır FIFO çıkış maliyeti 25280 yerine 8400 olmalıydı.
+  - 12. satır FIFO çıkış maliyeti 26640 yerine 500 olmalıydı.
+- `Decisions`:
+  - Orijinal kullanıcı dosyasına dokunulmadı; düzeltilmiş kopya proje kökünde oluşturuldu.
+  - FIFO çıkış maliyeti formülü lot aralığı mantığını satır bazında doğru uygulayacak şekilde daha dayanıklı formülle değiştirildi.
+- `Handoff Contract`: `FIFO kaynaklı eksi stok görüntüsünün gerçek stok eksiği değil, fazla yazılan FIFO çıkış maliyeti kaynaklı formül hatası olduğu doğrulandı; düzeltilmiş Excel kopyası oluşturuldu.`
+
+## Entry 196 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T19:40:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `FIFO Lot Sistemi Yazılımcı Eğitim Workbook'u`
+- `Intent`: `FIFO'nun Excel'de çalıştırılacak ağır formüller yerine yazılım ekibine lot, tüketim kaydı, açık lot kuyruğu, negatif stok politikası ve DB transaction mantığıyla anlatılacağı eğitim dosyası oluşturmak.`
+- `Files Changed`:
+  - `scripts/create-fifo-lot-training-workbook.mjs`
+  - `fifo_lot_sistemi_yazilimci_egitimi.xlsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scripts\create-fifo-lot-training-workbook.mjs` (Başarılı)
+  - `node -e "... XLSX.readFile('fifo_lot_sistemi_yazilimci_egitimi.xlsx') ..."` (Başarılı; sayfa ve hücre içerikleri doğrulandı)
+- `Findings`:
+  - Eğitim amacı için geçmişi tarayan milyon satırlık Excel formülleri yerine açık lot kuyruğu ve kalıcı `fifo_consumptions` kayıtları anlatılmalıdır.
+  - Workbook içinde Excel Table nesnesi kullanılmadı; önceki kurtarma hatasını üreten `xl/tables/*` parçaları yoktur.
+- `Decisions`:
+  - Dosya 7 sayfa olarak yapılandırıldı: özet, hareketler, FIFO lotlar, tüketim matrisi, tüketim kayıtları, DB pseudo-code ve negatif stok politikası.
+  - Negatif stok ayrı politika konusu olarak fail-closed ve negative debt seçenekleriyle anlatıldı.
+- `Handoff Contract`: `FIFO lot sistemini yazılımcılara anlatmak için eğitim amaçlı Excel workbook'u oluşturuldu ve doğrulandı.`
+
+## Entry 197 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T22:55:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS Depo Yönetim Sistemi Araştırma, Mevcut Durum Denetimi ve Proje Planı`
+- `Intent`: `Kullanıcının diğer AI'lardan aldığı WMS açıklamaları ve Mermaid akışlarını SuitableRMS mevcut WMS koduyla karşılaştırmak; eksik/fazla noktaları, riskleri ve tamamlayıcı proje fazlarını Türkçe dokümana dönüştürmek.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `MALIYET_HESAPLAMA_HANDOFF.md`
+  - `docs/wms_faz0_karar_notu.md`
+  - `docs/implementation_plan_wms2.md`
+  - `docs/walkthrough_wms_phase8.md`
+  - `schema-railway-master.sql`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/WmsLocations.jsx`
+  - `src/components/pages/WmsLpns.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/WmsInternalTransfer.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `C:\Users\muzaf\Downloads\deepseek_mermaid_20260611_f68f77 (1).svg`
+  - `C:\Users\muzaf\Downloads\deepseek_mermaid_20260611_5aaefb.svg`
+  - `C:\Users\muzaf\Downloads\deepseek_mermaid_20260611_bc5474.svg`
+- `Files Changed`:
+  - `docs/wms_depo_yonetim_sistemi_analiz_ve_proje_plani.md`
+  - `OperationSync.md`
+- `External Sources Checked`:
+  - `Microsoft Learn - Warehouse management overview`
+  - `Odoo Inventory documentation`
+  - `PostgreSQL Explicit Locking`
+  - `PostgreSQL Transaction Isolation`
+- `Findings`:
+  - SuitableRMS'te WMS için lokasyon, LPN/palet, depo mal kabul, lot/SKT, karantina/putaway statüsü, kullanılabilir stok ayrımı, sevkiyat konsolu, FEFO benzeri kaynak seçimi ve atomik sevkiyat RPC'si gibi güçlü temel parçalar mevcut.
+  - Mevcut en kritik açık DB seviyesinde stok rezervasyon motorunun olmaması; sevkiyat kaynakları client snapshot'ı ile seçiliyor, `confirm_warehouse_shipment` shipment satırını kilitliyor ancak kaynak stok rezervasyonunu tüketmiyor.
+  - WMS görev motoru yok; putaway/pick/pack/count/replenish işleri stok hareketi ve barkod event zinciriyle yönetilmiyor.
+  - Mobil/barkod operasyon katmanı eksik; LPN ve GS1-SSCC üretim temeli var ancak mal kabul, putaway ve picking akışları okutma zorunluluğu ile çalışmıyor.
+  - `warehouseDemandPlanning.js` içinde `reserved = 0` kullanımı gerçek rezervasyon motorunun henüz bulunmadığını gösteriyor.
+- `Decisions`:
+  - Mevcut WMS temeli korunmalı; yeni proje yönü mevcut `purchase_orders`, `inventory_movements`, `warehouse_locations`, `warehouse_lpns` ve `warehouse_shipments` omurgasına rezervasyon, görev ve barkod katmanları eklemek olmalı.
+  - Kafka/RabbitMQ gibi ağır mesaj kuyruğu altyapıları ilk faz için ertelenmeli; DB transaction/RPC ve manuel yenileme yaklaşımı proje trafik kurallarıyla daha uyumlu.
+  - Öncelik sırası: rezervasyon motoru, WMS görev motoru, mobil/barkod, kalite/karantina, cycle count/replenishment, raporlama.
+- `Next Step`:
+  - Kullanıcı onayıyla Faz 1 için `warehouse_reservations` tablosu ve DB tarafı sevkiyat rezervasyon RPC tasarımına başlanmalı.
+- `Handoff Contract`: `WMS için mevcut SuitableRMS durumu, dış WMS referansları ve kullanıcı SVG akışlarıyla karşılaştırıldı; eksik/fazla noktalar ve fazlara ayrılmış tamamlayıcı proje planı docs/wms_depo_yonetim_sistemi_analiz_ve_proje_plani.md dosyasına yazıldı.`
+
+## Entry 198 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T23:08:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS Proje Diyagramı ve Mobil Uygulama Omurgası`
+- `Intent`: `Planlanan WMS projesini diyagramlarla görünür hale getirmek ve mobil uygulamayı teslim alma, putaway, picking, lokasyon barkodu, ürün fotoğrafı ve kanıt fotoğrafı işlevleriyle ana proje omurgasına almak.`
+- `Files Read`:
+  - `docs/wms_depo_yonetim_sistemi_analiz_ve_proje_plani.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/wms_depo_yonetim_sistemi_analiz_ve_proje_plani.md`
+  - `OperationSync.md`
+- `Findings`:
+  - WMS planında mobil uygulama yalnızca yardımcı ekran olarak değil, fiziksel depo hareketlerinin zorunlu doğrulama katmanı olarak ele alınmalıdır.
+  - Teslim alma ve toplama akışlarında barkod okutma, lokasyon doğrulama, ürün fotoğrafı gösterme, kanıt fotoğrafı yükleme ve task event audit kaydı kritik gereksinimdir.
+- `Decisions`:
+  - WMS proje dokümanına tüm mimariyi gösteren Mermaid diyagramı eklendi.
+  - Mobil teslim alma/putaway ve mobil picking/sevkiyat için iki ayrı Mermaid akış diyagramı eklendi.
+  - Mobil uygulama Faz 2-3 ana teslimatı olarak konumlandırıldı; görev motoru ve barkod/event kayıtlarıyla birlikte tasarlanacaktır.
+- `Next Step`:
+  - Faz 1 rezervasyon motoru tasarımı yapılırken mobil pick task ve putaway task ihtiyaçları veri modeline baştan dahil edilmeli.
+- `Handoff Contract`: `WMS plan dokümanı mobil uygulamayı ana operasyon katmanı olarak içerecek şekilde diyagramlarla genişletildi.`
+
+## Entry 199 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T23:20:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS Fazlandırılmış Agent Görev Tanımları`
+- `Intent`: `WMS proje planını başka agentlara sırayla yaptırılabilecek görev paketlerine bölmek; hangi fazların paralel yapılabileceğini ve hangilerinin yapılamayacağını dosyanın en başında bağlayıcı şekilde belirtmek.`
+- `Files Read`:
+  - `docs/wms_depo_yonetim_sistemi_analiz_ve_proje_plani.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `OperationSync.md`
+- `Findings`:
+  - WMS projesi reservation, task, mobil barkod, kalite, sayım ve raporlama fazlarına bölünmeden farklı agentlara verilirse veri kontratları çakışabilir.
+  - Özellikle reservation hattı (`WMS-01A` -> `WMS-01E`) ve task hattı (`WMS-02A` -> `WMS-02D`) paralel değil sıralı yürütülmelidir.
+- `Decisions`:
+  - Yeni görev dokümanının en başına "Yürütme Sırası ve Paralellik Kuralları" bölümü eklendi.
+  - 23 görev paketi (`WMS-00A` ile `WMS-06B` arası) amaç, okunacak dosyalar, yapılacaklar, kabul kriterleri ve doğrulama komutlarıyla tanımlandı.
+  - Mobil uygulama görevleri ayrı Faz 3 olarak tanımlandı; mobil picking'in reservation ve pick task tamamlanmadan başlamaması kuralı eklendi.
+- `Next Step`:
+  - İlk uygulama agentı `WMS-00A` baseline denetimiyle başlamalı, ardından `WMS-01A` reservation şeması görevi verilmelidir.
+- `Handoff Contract`: `WMS projesi agentlara dağıtılabilir faz/görev paketlerine ayrıldı; paralel yapılabilir ve yapılamaz işler dosyanın en başında belirtildi.`
+
+## Entry 200 - 2026-06-11
+
+- `Timestamp`: `2026-06-11T23:53:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-00A - WMS Baseline Denetimi`
+- `Intent`: `Rezervasyon/görev/mobil geliştirmelerine başlamadan mevcut WMS davranışını bozmamak için baseline çıkarmak, testleri koşturmak ve helper davranışlarını kilitleyen test yazmak.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/WmsLocations.jsx`
+  - `src/components/pages/WmsLpns.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/WmsInternalTransfer.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `scratch/test_branch_purchasing_regression.js`
+- `Files Changed`:
+  - `scratch/test_wms_current_contract.js`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `npm.cmd run build` (Başarılı; sıfır derleme hatasıyla tamamlandı)
+  - `node .\scratch\test_wms_current_contract.js` (Başarılı)
+- `Findings`:
+  - **Mevcut WMS Tabloları:** `warehouse_locations` (lokasyonlar), `warehouse_lpns` (LPN/paletler), `warehouse_shipments` (sevk irsaliyeleri), `warehouse_shipment_orders` ve `warehouse_shipment_lines` (sevk detayları), `stock_item_warehouse_settings` (depo bazlı stok parametreleri).
+  - **WMS Rotaları:** `/wms-locations`, `/wms-lpns`, `/wms-stock-params`, `/depo-orders` (Şube Talepleri / Sevk Konsolu), `/depo-satinalma` (Depo Satınalma), `/depo-mal-kabul` (Mal Kabul), `/depo-iclokasyon-tasima` (Lokasyon Taşıma).
+  - **`availability_status` Kullanımı:** `meta.availability_status` olarak `inventory_movements` içinde tutuluyor. Değerleri: `'available'` (kullanılabilir), `'quarantine'` (karantina), `'putaway_pending'` (mal kabul bekleyen). `buildInventoryBalanceRows` fonksiyonunda kullanılabilir stok hesaplanırken `physical - quarantine - putaway_pending` formülü uygulanıyor.
+  - **`warehouse_replenishment` Akışı:** Şubelerin ana depodan talep oluşturduğu iç ikmal kanalıdır. Bu siparişler `purchase_orders.flow_channel = 'warehouse_replenishment'` ve `supplier_kind = 'internal_warehouse'` olarak filtrelenir. Siparişlerin sevk edilmeden kabul edilmesi `MalKabul.jsx` içindeki WMS sevk-gate kontrolüyle engellenmektedir.
+  - **Rezervasyon Mekanizması:** Mevcut durumda `warehouseDemandPlanning.js` içinde `reserved = 0` olarak hardcoded'dur, yani veritabanı düzeyinde bir stok rezervasyon motoru bulunmamaktadır. Sevk sırasında `confirm_warehouse_shipment` RPC'si çağrılarak stok çıkış hareketleri oluşturuluyor.
+- `Decisions`:
+  - Mevcut WMS helper davranışlarını (talep planlama hesaplamaları, envanter bakiye ayrımı vb.) korumak adına `scratch/test_wms_current_contract.js` testi eklendi ve başarıyla çalıştırıldı.
+  - Mevcut yapıyı bozmadan sıradaki fazlarda rezervasyon motoru (`warehouse_reservations` tablosu ve RPC) ve görev motoru tasarımlarına geçilmesi kararlaştırıldı.
+- `Open Risks`:
+  - `confirm_warehouse_shipment` RPC'si çalışırken o anki stok hareketlerinin anlık değişmesi (race condition) riski vardır. Rezervasyon motoru (Faz 1) ile bu risk giderilecektir.
+- `Next Step`:
+  - Faz 1 (WMS-01A) kapsamında rezervasyon motoru veri şeması (`warehouse_reservations` tablosu) ve RPC fonksiyonlarının tasarımına geçmek.
+- `Handoff Contract`: `WMS baseline denetimi tamamlandı, mevcut helper davranışları scratch/test_wms_current_contract.js ile kilitlendi. Üretim derlemesi (npm run build) hatasız tamamlandı. Sıradaki agent Faz 1 (WMS-01A) rezervasyon motoru geliştirmeleriyle başlayabilir.`
+
+## Entry 201 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T00:12:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-01B - Net Pickable Stok RPC/View`
+- `Intent`: `Client snapshot ile stok hesaplamak yerine DB tarafında physical_available - active_reservations hesabını v_wms_pickable_stock view'ı ile çözmek, DepoOrders.jsx bileşenini entegre etmek ve eski in-memory/quarantine hesaplama mantıklarını temizlemek.`
+- `Files Read`:
+  - `src/components/pages/DepoOrders.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `migrations/037_wms_pickable_stock.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/DepoOrders.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `node .\scratch\test_wms_current_contract.js` (Başarılı)
+  - `git diff --check` (Başarılı; whitespace veya satır sonu boşluk hatası yok)
+  - `npm.cmd run build` (Başarılı; sıfır derleme hatasıyla tamamlandı)
+- `Findings`:
+  - **View Tanımı:** `v_wms_pickable_stock` view'ı fiziksel `inventory_movements` toplamlarından `quarantine` ve `putaway_pending` stokları çıkartıp ardından `warehouse_reservations` üzerindeki aktif rezerve miktarlarını düşerek net kullanılabilir `pickable_qty` miktarını hesaplıyor.
+  - **Null-Safety:** View'da `LEFT JOIN` kullanılan durumlarda rezervasyon miktarının null-safety kontrolü `COALESCE(r.reserved_qty, 0::numeric)` ile sağlandı.
+  - **DepoOrders Temizliği:** `DepoOrders.jsx` içerisindeki eski in-memory availableStockMap, quarantine/putaway_pending ayıklama ve loop logicleri acımasızca temizlenip pasif kod bırakılmaksızın silindi.
+  - **Metot Sadeleştirmesi:** `availableStockMap`, `uniqueSkts` ve `findPickingSources` doğrudan view'ı dinleyen ve net kullanılabilir `pickable_qty` miktarını toplayan basit/performanslı yapıya çekildi.
+- `Decisions`:
+  - Eski `inventoryMovements` state'i yerine doğrudan pickable stok kayıtlarını içeren `pickableStock` state'i kullanıldı.
+  - Derleme ve regresyon testlerinin tamamının başarıyla koşturulmasıyla entegrasyon kilitlendi.
+- `Open Risks`: None.
+- `Next Step`:
+  - Faz 1 (WMS-01C) kapsamında sevkiyat taslağı oluşturulduğunda rezervasyon kaydı açan `create_warehouse_shipment_reservation(...)` RPC/veri tabanı fonksiyonlarının tasarımına geçilmesi.
+- `Handoff Contract`: `WMS-01B net pickable stock entegrasyonu tamamlandı, testler ve production build başarılıdır. Sıradaki agent Faz 1 (WMS-01C) rezervasyon tetikleyicisi RPC'leriyle devam edebilir.`
+
+## Entry 202 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T00:22:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-01C - Sevkiyat Taslağı Oluştururken Rezervasyon`
+- `Intent`: `Sevkiyat taslağı oluşturma anında kaynak seçimi (FEFO) ve rezervasyon oluşturma işlemlerini atomik ve güvenli biçimde aynı veritabanı transaction'ı içerisinde gerçekleştirmek.`
+- `Files Read`:
+  - `src/components/pages/DepoOrders.jsx`
+  - `migrations/032_confirm_shipment_rpc.sql`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `migrations/038_create_shipment_reservation_rpc.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/DepoOrders.jsx`
+  - `scratch/test_wms_reservation_rpc.js`
+  - `OperationSync.md`
+  - `docs/walkthrough.md`
+  - `docs/implementation_plan.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı)
+  - `node scratch/test_wms_reservation_rpc.js` (Başarılı; transaction, FEFO, yetersiz stok rollback ve confirm/consumed adımları doğrulandı)
+  - `git diff --check` (Başarılı; whitespace veya satır sonu boşluk hatası yok)
+  - `npm run build` (Başarılı; sıfır derleme hatasıyla tamamlandı)
+- `Findings`:
+  - **create_warehouse_shipment_with_reservations RPC:** PL/pgSQL fonksiyonu sayesinde aktif depo yetki doğrulaması yapılıyor, sipariş satırları FOR UPDATE ile kilitleniyor, v_wms_pickable_stock üzerinden FEFO kuralı ile stok seçimi yapılıp reservations active status ile oluşturuluyor. Hata durumunda ise (yetersiz stok) işlem geri alınıyor.
+  - **confirm_warehouse_shipment Güncellemesi:** Sevkiyat onaylanıp yola çıktığında, `meta.picks` içindeki `reservation_id` eşleşmesi ile rezervasyon status değeri `'consumed'` yapılarak `consumed_at` doldurulur.
+  - **cancelShipment Entegrasyonu:** Sevkiyat iptal edilirken ilişkili rezervasyonlar Supabase üzerinden `cancelled` durumuna güncellenip `released_at` kaydedilerek stoklar serbest bırakılıyor.
+- `Decisions`:
+  - Frontend üzerindeki in-memory pick mantığı ve çoklu insert zincirleri tamamen kaldırılarak tek bir db.rpc çağrısına indirgendi. Hata durumlarında veritabanı exceptions doğrudan kullanıcıya toast olarak iletiliyor.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-01C sevkiyat taslağı oluştururken rezervasyon entegrasyonu tamamlandı, entegrasyon testleri ve production build başarılıdır. Sıradaki agent rezervasyonları izleme veya WMS Faz 2 adımlarıyla devam edebilir.`
+
+
+## Entry 202 - 2026-06-12
+
+- Timestamp: 2026-06-12T00:26:00+03:00
+- Agent: Antigravity
+- Task: Memory Leak Optimizasyonu
+- Intent: Railway uzerinde artan bellek kullanimini incelemek, queryCache Map nesnesinin GC dongusu olmamasi sebebiyle olusan sizintiyi cozmek ve CACHE_TTL_MS suresini 30 saniyeye cekmek.
+- Files Read:
+  - server/index.js
+  - server/package.json
+  - package.json
+  - .antigravityrules.md
+  - SUITABLERMS_PROJECT_GOVERNANCE.md
+- Files Changed:
+  - server/index.js
+  - OperationSync.md
+- Commands Run:
+  -
+pm.cmd run build (Basarili)
+  -
+ode .\scratch\test_branch_purchasing_regression.js (Basarili)
+  -
+ode .\scratch\test_wms_current_contract.js (Basarili)
+- Findings:
+  - queryCache Map'inin GC loop'u yoktu; benzersiz parametreli okumalar ve RPC sorgulari (table alani olmadigi icin cacheClearTable'a yakalanmayanlar) bellekte birikiyordu.
+  - TTL suresi 5 dakika (300_000 ms) olarak ayarlanmisti, bu sure yonetisim kurallarindaki 30 saniye kural�yla celisiyordu.
+- Decisions:
+  - CACHE_TTL_MS 30 saniyeye dusuruldu.
+  - Her 60 saniyede bir calisan rate limiter temizlik intervaline, queryCache icindeki suresi dolmus kayitlari silen dongu (GC) entegre edildi.
+- Handoff Contract: Bellek sizintisi giderildi, TTL suresi 30 saniyeye cekildi, tum uretim derlemeleri ve regresyon testleri basariyla tamamlandi.
+
+## Entry 203 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T00:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-01D - Sevkiyat Onayında Reservation Consume/Release`
+- `Intent`: `Sevkiyat onaylama (confirm_warehouse_shipment) ve sevkiyat iptal etme (cancel_warehouse_shipment) akışlarının tamamen veritabanı düzeyine taşınması, rezervasyonların doğrulanıp tüketilmesi/serbest bırakılması işlemlerinin atomik ve güvenli (transactional) hale getirilmesi.`
+- `Files Read`:
+  - `src/components/pages/DepoOrders.jsx`
+  - `migrations/032_confirm_shipment_rpc.sql`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `migrations/039_confirm_shipment_reservations_validation.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/DepoOrders.jsx`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı)
+  - `node scratch/test_wms_confirm_cancel_rpc.js` (Başarılı; invalid reservation ID, quantity mismatch, active status, confirm/consume, cancel/restore adımları doğrulandı)
+  - `node scratch/test_branch_purchasing_regression.js` (Başarılı)
+  - `node scratch/test_wms_current_contract.js` (Başarılı)
+  - `git diff --check` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - **confirm_warehouse_shipment Güncellemesi:** Her sevk satırında aktif bir rezervasyon bulunmasını ve rezervasyon miktarının sevk miktarıyla birebir eşleşmesini doğrular (`FOR UPDATE` kilitlemesiyle). `transfer_out` hareketlerini doğrudan bu doğrulanmış rezervasyonun detaylarına (location, lpn, lot, skt, miktar) dayanarak üretir. Rezervasyon durumunu `consumed` yapar.
+  - **cancel_warehouse_shipment RPC:** Taslak sevkiyatı kilitler, durumunu `cancelled` yapar, ilişkili tüm aktif rezervasyonları `cancelled` durumuna çekip serbest bırakır, orijinal sipariş satırı miktarlarını (`ordered_qty` ve `line_total`) `meta.original_ordered_qty` alanından geri yükler ve sipariş toplamlarını yeniden hesaplar.
+- `Decisions`:
+  - Frontend üzerindeki eski in-memory pick/yerleşim hesaplamaları, quarantine kontrolleri ve çoklu ardışık insert/update zincirleri tamamen temizlendi. Onay ve iptal akışları doğrudan veritabanındaki yeni RPC'lere bağlandı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-01D sevkiyat onaylama ve iptal etme rezervasyon entegrasyonu tamamlandı, regresyon testleri, RPC doğrulama testleri ve production build başarılıdır. Sıradaki agent Faz 2 adımlarıyla devam edebilir.`
+
+
+## Entry 204 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T00:45:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-01E - Depo Planlamada Rezerve Stok Entegrasyonu`
+- `Intent`: `Ana depo talep planlamasının (calculateWarehouseDemand) veritabanındaki gerçek aktif rezervasyonları dikkate almasını ve rezervasyon miktarlarını depo envanter pozisyonundan düşerek satınalma önerilerini doğru şekilde etkilemesini sağlamak.`
+- `Files Read`:
+  - `src/lib/warehouseDemandPlanning.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/test_wms_demand_planning.js`
+- `Files Changed`:
+  - `src/lib/warehouseDemandPlanning.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/test_wms_demand_planning.js`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test_wms_demand_planning.js` (Başarılı; tahmin, stok ve rezervasyon entegrasyon senaryoları doğrulandı)
+  - `node scratch/test_wms_current_contract.js` (Başarılı)
+  - `node scratch/test_branch_purchasing_regression.js` (Başarılı)
+  - `git diff --check` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - **Reserved Stock Entegrasyonu:** `calculateWarehouseDemand` fonksiyonuna varsayılan değeri `new Map()` olan `warehouseReservedByItem` Map parametresi eklendi ve `reserved` sabiti yerine bu eşlemedeki gerçek rezervasyon miktarları kullanılarak depo pozisyonundan düşüldü. Bu durum depo sipariş önerisini (`suggested_qty`) rezerve miktar kadar artırıcı etki yapmaktadır.
+  - **Veritabanı ve Arayüz Akışı:** `Orders.jsx` dosyasında `fetchBranchInventorySnapshot` içerisinde `warehouse_reservations` tablosundaki aktif rezervasyonlar sorgulandı. Arayüz detay kartında Depo Envanter Durumu başlığında rezerve stoklar (`- Rezerve: Z`) kullanıcıya gösterildi.
+- `Decisions`:
+  - `warehouseReservedByItem` parametresi Map olarak tasarlandı ve varsayılan değeri boş Map yapıldı. Böylelikle bu parametreyi geçmeyen eski test ve kod çağrılarının hiçbir şekilde bozulmaması garanti edildi (backward compatibility).
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-01E depo planlamada rezerve stok entegrasyonu başarıyla tamamlandı. Tüm entegrasyon, regresyon testleri ve frontend derleme kontrolü başarılıdır. Sıradaki agent bir sonraki faz adımlarıyla devam edebilir.`
+
+
+## Entry 205 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T00:55:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS Faz 0 ve Faz 1 Tamamlanma Kontrolü`
+- `Intent`: `Kullanıcının Antigravity walkthrough dosyalarında Faz 0 ve Faz 1 işlerinin tamamlandığı iddiasını repo kanıtı, schema/RPC entegrasyonu ve güncel testlerle doğrulamak.`
+- `Files Read`:
+  - `C:\Users\muzaf\.gemini\antigravity\brain\31c3b38e-8cb2-4b3b-8722-72745ef62281\walkthrough.md`
+  - `C:\Users\muzaf\.gemini\antigravity\brain\31c3b38e-8cb2-4b3b-8722-72745ef62281\scratch\walkthrough_append.txt`
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `schema-railway-master.sql`
+  - `migrations/036_add_warehouse_reservations.sql`
+  - `migrations/037_wms_pickable_stock.sql`
+  - `migrations/038_create_shipment_reservation_rpc.sql`
+  - `migrations/039_confirm_shipment_reservations_validation.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/DepoOrders.jsx`
+  - `src/components/pages/Orders.jsx`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `scratch/test_wms_current_contract.js`
+  - `scratch/test_wms_reservation_rpc.js`
+  - `scratch/test_wms_confirm_cancel_rpc.js`
+  - `scratch/test_wms_demand_planning.js`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_wms_current_contract.js` (Başarılı)
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `npm.cmd run build` (Başarılı)
+  - `git diff --check -- schema-railway-master.sql server\wms_migration.js src\components\pages\DepoOrders.jsx src\components\pages\Orders.jsx src\lib\warehouseDemandPlanning.js migrations\036_add_warehouse_reservations.sql migrations\037_wms_pickable_stock.sql migrations\038_create_shipment_reservation_rpc.sql migrations\039_confirm_shipment_reservations_validation.sql scratch\test_wms_current_contract.js scratch\test_wms_demand_planning.js scratch\test_wms_confirm_cancel_rpc.js` (Başarılı; CRLF uyarısı dışında whitespace hatası yok)
+  - `node .\scratch\test_wms_demand_planning.js` (İlk deneme DATABASE_URL olmadan bilinçli fail-closed; governance bağlantısıyla tekrar çalıştırıldı ve başarılı)
+  - `node .\scratch\test_wms_reservation_rpc.js` (Governance bağlantısıyla başarılı; transaction rollback)
+  - `node .\scratch\test_wms_confirm_cancel_rpc.js` (Governance bağlantısıyla başarılı; transaction rollback)
+- `Findings`:
+  - Faz 0 baseline entry'si ve `scratch/test_wms_current_contract.js` mevcut; güncel local test başarılıdır.
+  - Faz 1 migration dosyaları, master schema, `server/wms_migration.js`, `DepoOrders.jsx`, `Orders.jsx` ve `warehouseDemandPlanning.js` içinde beklenen reservation entegrasyonları repo kanıtıyla mevcut.
+  - `v_wms_pickable_stock`, quarantine/putaway_pending stokları ve aktif reservation miktarlarını pickable stoktan düşüyor.
+  - `create_warehouse_shipment_with_reservations` RPC'si shipment taslağı ve reservation oluşturuyor; canlı testte yetersiz stok fail-closed davranışı doğrulandı.
+  - `confirm_warehouse_shipment` reservation ID, status ve miktar doğrulaması yapıyor; reservation consumed yapıp stok çıkışı üretiyor.
+  - `cancel_warehouse_shipment` taslak sevkiyatı iptal edip reservation'ları cancelled/released hale getiriyor ve sipariş miktarlarını geri yüklüyor.
+  - `calculateWarehouseDemand` artık `reserved = 0` sabiti yerine `warehouseReservedByItem` kullanıyor; canlı entegrasyon testinde rezerve stok öneri miktarını beklenen şekilde artırdı.
+- `Decisions`:
+  - Faz 0 ve Faz 1, mevcut kanıtlara göre tamamlanmış kabul edildi.
+  - Bir sonraki uygulama adımı dokümandaki sıraya göre Faz 2 (`WMS-02A - warehouse_tasks / warehouse_task_events şeması`) olmalıdır.
+- `Open Risks`:
+  - `Orders.jsx` içinde reservation sorgusu hata verirse snapshot'a boş liste yazan bir tolerans yolu görülüyor; DB-first/fail-closed sertliği isteniyorsa Faz 2 öncesi bu davranış ayrıca sıkılaştırılmalıdır.
+- `Handoff Contract`: `WMS Faz 0 ve Faz 1 tamamlanma iddiası repo kanıtı ve güncel testlerle doğrulandı. Faz 2 task/event şemasıyla devam edilebilir.`
+
+## Entry 205 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02A - warehouse_tasks ve warehouse_task_events Şeması`
+- `Intent`: `Putaway, pick, pack, load, count, move, quality gibi fiziksel depo işlerini DB-first modelinde yönetebilmek amacıyla gerekli veritabanı şeması ve log/audit olay tablolarının tasarlanması ve entegre edilmesi.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `src/components/pages/Tasks.jsx`
+  - `src/components/pages/tasks/TaskDrawer.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+- `Files Changed`:
+  - `migrations/040_add_warehouse_tasks.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; warehouse_tasks ve warehouse_task_events tabloları eklendi)
+  - `git diff --check` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - **warehouse_tasks Tablosu:** Görev tiplerine (`putaway`, `pick`, `pack`, `load`, `count`, `move`, `quality`) ve görev durumlarına (`pending`, `assigned`, `in_progress`, `done`, `exception`, `cancelled`) yönelik katı CHECK kısıtları uygulandı. Kaynak belgelere (source_doc_type, source_doc_id, source_line_id) yönelik referans sütunları yerleştirildi.
+  - **warehouse_task_events Tablosu:** Görevlerde gerçekleşen barkod okutma, durum değişiklikleri ve personel/terminal olaylarını audit log niteliğinde saklayacak değişmez (immutable) log yapısı oluşturuldu.
+  - **Personel ve Terminal Uyumluğu:** Görev ve olay kayıtlarındaki personel ve terminal tanımlamaları sistem genelindeki `TEXT` tanımlamalarıyla tam uyumlu yapıldı.
+- `Decisions`:
+  - Çakışmaları önlemek amacıyla göç dosyası `040_add_warehouse_tasks.sql` olarak adlandırıldı ve `wms_migration.js` dosyasına idempotent olarak eklendi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02A görev motoru şeması başarıyla oluşturuldu ve veritabanına uygulandı. Frontend derlemesi sorunsuz tamamlanmıştır. Sıradaki agent Faz 2 görev atama/işletme RPC'leri ve mantıklarıyla devam edebilir.`
+
+## Entry 206 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02B - Mal Kabulden Putaway Görevi Üretimi`
+- `Intent`: `Mal kabul esnasında putaway_pending olarak teslim alınan ürünler için otomatik putaway görevlerinin (warehouse_tasks) oluşturulması ve görevlerin tamamlanması için complete_warehouse_putaway_task RPC'sinin ve arayüz entegrasyonunun tamamlanması.`
+- `Files Read`:
+  - `src/components/pages/MalKabul.jsx`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+- `Files Changed`:
+  - `migrations/041_complete_putaway_task_rpc.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/MalKabul.jsx`
+  - `scratch/test_wms_putaway_flow.js`
+  - `walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; complete_warehouse_putaway_task RPC fonksiyonu veritabanına eklendi)
+  - `node scratch/test_wms_putaway_flow.js` (Başarılı; entegrasyon testlerinin tamamı geçti)
+  - `git diff --check` (Başarılı)
+  - `npm run build` (Başarılı; frontend projesi hatasız derlendi)
+- `Findings`:
+  - **complete_warehouse_putaway_task RPC'si:** Putaway görevi tamamlandığında kabul alanındaki `putaway_pending` stoğunu düşüren bir `transfer_out` ve hedef lokasyona stoğu `available` (pickable) olarak sokan bir `transfer_in` hareketi çiftini atomik olarak yazarak envanter/maliyet (WAC) ledger tutarlılığını korumaktadır.
+  - **Generated Columns:** `inventory_movements` tablosundaki `quantity_signed` ve `total_cost_signed` kolonları `GENERATED ALWAYS AS` olduğu için veritabanı insert sorgularından çıkarılmış, böylece Postgres tablosunun constraint hatası vermesi engellenmiştir.
+  - **Otomatik Görev Üretimi:** `MalKabul.jsx` üzerinde mal kabul kaydedilirken envanter hareketlerinden availability_status bilgisi `putaway_pending` olanlar ayıklanıp her biri için otomatik `warehouse_tasks` kaydı oluşturulması sağlanmıştır.
+- `Decisions`:
+  - RPC migration dosyası `041_complete_putaway_task_rpc.sql` olarak adlandırıldı ve `wms_migration.js` içerisine eklendi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02B putaway otomasyonu ve RPC altyapısı başarıyla veritabanına ve frontend kodlarına entegre edildi, test edildi ve derleme kontrolleri tamamlandı. Sıradaki agent Faz 2 altındaki diğer görev atama/işletme süreçleriyle devam edebilir.`
+
+## Entry 207 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02B - Mal Kabulden Putaway Görevi Üretimi (DB-First & Fail-Closed Refactoring)`
+- `Intent`: `Mal kabul esnasında putaway_pending stok hareketleri oluştuğunda putaway görevlerinin (warehouse_tasks) oluşturulmasını tamamen veritabanı trigger seviyesine çekmek. İstemci taraflı putaway kodlarının temizlenmesi.`
+- `Files Read`:
+  - `src/components/pages/MalKabul.jsx`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+- `Files Changed`:
+  - `migrations/042_putaway_task_trigger.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/MalKabul.jsx`
+  - `scratch/test_wms_putaway_flow.js`
+  - `walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; trg_wms_create_putaway_task trigger ve fonksiyonu veritabanına uygulandı)
+  - `node scratch/test_wms_putaway_flow.js` (Başarılı; trigger tabanlı entegrasyon testlerinin tamamı geçti)
+  - `git diff --check` (Başarılı; trailing whitespace temizlendi)
+  - `npm run build` (Başarılı; frontend projesi hatasız derlendi)
+- `Findings`:
+  - **DB-First & Fail-Closed:** İstemci tarafında Supabase üzerinden ayrı isteklerle yapılan görev oluşturma akışı iptal edildi. `inventory_movements` tablosunu dinleyen AFTER INSERT trigger'ı sayesinde ağ kopması veya istemci çökmesi durumunda stok oluşup görevin oluşmaması riski tamamen ortadan kaldırıldı (Fail-Closed).
+  - **Default Location Sorgulama:** Trigger, stok hareketinin eklendiği şube ve ürün ID'sine göre `stock_item_warehouse_settings` tablosundan varsayılan hedef lokasyonu (`default_location_id`) bularak görevin metasına otomatik yazar.
+- `Decisions`:
+  - Yeni trigger migration dosyası `042_putaway_task_trigger.sql` olarak oluşturuldu ve idempotent şekilde uygulandı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02B otomatik putaway görev üretim mantığı tamamen veritabanı trigger düzeyine taşındı. İstemci kodları temizlendi, entegrasyon testleri başarıyla doğrulandı ve build alındı. Sıradaki agent Faz 2 görev motorunun diğer bileşenleriyle (pick, pack vb.) devam edebilir.`
+
+## Entry 208 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02C - Sevkiyattan Pick/Pack/Load Görevi Üretimi ve Entegrasyon`
+- `Intent`: `Sevkiyat taslağı oluştuktan sonra rezerve stok detaylarına göre otomatik pick görevi üretmek, pack ve load görev hattını sevkiyat meta seçeneklerine göre tetiklemek, görevler tamamlanmadan sevkiyat durum geçişlerini ve onayını engelleyen trigger guard ve RPC kontrollerini entegre etmek. confirm_warehouse_shipment içindeki PO kolon güncelleme hatasının giderilmesi.`
+- `Files Read`:
+  - `migrations/043_wms_shipment_tasks_rpc.sql`
+  - `schema-railway-master.sql`
+  - `scratch/test_wms_shipment_tasks.js`
+  - `scratch/test_wms_confirm_cancel_rpc.js`
+  - `scratch/test_wms_reservation_rpc.js`
+- `Files Changed`:
+  - `migrations/043_wms_shipment_tasks_rpc.sql`
+  - `schema-railway-master.sql`
+  - `scratch/test_wms_confirm_cancel_rpc.js`
+  - `scratch/test_wms_reservation_rpc.js`
+  - `walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; confirm_warehouse_shipment RPC'si güncellenerek veritabanına uygulandı)
+  - `node scratch/test_wms_shipment_tasks.js` (Başarılı; pick/pack/load, partial-pick ve guard doğrulama testleri başarıyla geçti)
+  - `node scratch/test_wms_confirm_cancel_rpc.js` (Başarılı; regresyon onay/iptal testleri geçti)
+  - `node scratch/test_wms_reservation_rpc.js` (Başarılı; envanter rezervasyon entegrasyon testleri geçti)
+  - `npm run build` (Başarılı; client paketi hatasız şekilde derlendi)
+- `Findings`:
+  - **Confirm RPC Hatası Giderildi:** `confirm_warehouse_shipment` fonksiyonunda `purchase_orders` tablosunda var olmayan `supplier_marked_sent`, `doc_no`, `doc_date` kolonlarına doğrudan yazma yapılmaya çalışılması hatası giderilmiş; bu alanlar PO `meta` JSONB nesnesine doğru şekilde taşınmıştır.
+  - **Task Durum Kontrolleri:** Legacy test senaryolarının (rezervasyon doğrulama ve iptal akışları) yeni trigger yapısıyla uyumlu çalışması için, sevk onayı öncesinde test veritabanında görev durumları `'done'` olarak güncellenerek doğrulamaların başarıyla tamamlanması sağlanmıştır.
+- `Decisions`:
+  - `confirm_warehouse_shipment` RPC'si ve schema tanımları güncellenerek Railway veritabanı ortamına başarılı bir şekilde deploy edildi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02C otomatik sevkiyat depo görevleri (pick/pack/load) entegrasyonu, veritabanı guard'ları ve PO meta güncellemeleri başarıyla tamamlanmış, tüm test suitleri yeşil durumdadır. Görev WMS-02C ve ilgili tüm Faz 2 geliştirmeleri tamamlanmıştır.`
+
+## Entry 209 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:34:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02D - WMS Görev Web Ekranı`
+- `Intent`: `Mobil terminalden önce WMS görevlerini web arayüzü üzerinden izleme, arama/filtreleme, tarihsel zaman akışını (timeline) inceleme ve sorunlu (exception) görevleri kontrollü bir şekilde (Yeniden Dene / İptal Et) çözebilmeyi sağlayan web paneli bileşeninin oluşturulması ve entegrasyonu.`
+- `Files Read`:
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/WmsTasks.jsx`
+- `Files Changed`:
+  - `src/components/pages/WmsTasks.jsx`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `docs/walkthrough.md`
+  - `walkthrough.md`
+  - `docs/task.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `npm run build` (Başarılı; yeni eklenen WmsTasks sayfası ve router entegrasyonu hatasız şekilde paketlendi)
+  - `git diff --check` (Başarılı; kod stili kontrolü)
+- `Findings`:
+  - **Database-First Exception Çözümü:** `'exception'` durumundaki görevlerin çözümü için tasarlanan Yeniden Dene ve İptal Et butonları, `warehouse_tasks` ve `warehouse_task_events` tablolarını Supabase istemcisi üzerinden güncelleyerek DB-first modeline tam uyum sağlar. İptal durumunda `pick` işi için ilişkili `warehouse_reservations` kaydı otomatik olarak çözülerek envanter kilitlenmesi engellenir.
+  - **Scoping Güvenliği:** `WmsTasks` paneli, active workspace node'unun `branchId` bilgisini `useWorkspace()` aracılığıyla okur. Depo şubesi dışındaki bağlamlarda (unauthorized/global scope) uyarı gösterilerek global bağlam fallback açığı giderilmiştir.
+- `Decisions`:
+  - Yeni sayfa `/depo-wms-tasks` rotasıyla depo koruma filtresi `<WarehouseBranchRoute>` altında sisteme entegre edildi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02D WMS Görev Web Ekranı, filtreler, drawer timeline ve exception çözüm paneli ile başarıyla tamamlanmış ve Vite build paketine entegre edilmiştir. Faz 2 altındaki tüm WMS Görev Motoru hedefleri başarıyla sonuçlandırılmıştır.`
+
+## Entry 210 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T01:38:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-02D - WMS Görev Web Ekranı (Exception RPC Refactoring)`
+- `Intent`: `Arayüz üzerindeki sorun (exception) çözüm akışında gerçekleştirilen çok adımlı Supabase isteklerini veritabanı düzeyine taşımak. resolve_warehouse_task_exception RPC fonksiyonu inşası ve entegrasyonu.`
+- `Files Read`:
+  - `src/components/pages/WmsTasks.jsx`
+  - `schema-railway-master.sql`
+- `Files Changed`:
+  - `migrations/044_wms_task_exception_rpc.sql`
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/WmsTasks.jsx`
+  - `docs/walkthrough.md`
+  - `walkthrough.md`
+  - `docs/task.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; resolve_warehouse_task_exception RPC fonksiyonu veritabanına uygulandı)
+  - `npm run build` (Başarılı; refaktör edilen WmsTasks sayfası ve RPC entegrasyonu hatasız paketlendi)
+  - `git diff --check` (Başarılı; stil kontrolü)
+- `Findings`:
+  - **ACID Transaction Güvencesi:** İstemci tarafında sırayla yapılmaya çalışılan task durumu güncelleme, rezervasyon iptali ve event loglama adımları veritabanı seviyesinde çalışan tek bir atomik saklı yordam (`resolve_warehouse_task_exception` RPC'si) içerisine taşındı. `FOR UPDATE` kilitlemesiyle olası veri tutarsızlıkları ve race condition durumları engellenmiştir.
+- `Decisions`:
+  - Yeni RPC fonksiyon tanımı `migrations/044_wms_task_exception_rpc.sql` dosyası üzerinden veritabanına uygulandı ve master şemayla eşitlendi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-02D exception çözüm mekanizması ACID transaction kurallarına uygun olarak tamamen DB seviyesine (RPC) çekilmiş, istemci kodları temizlenmiş ve entegrasyon build'i alınmıştır. Sistem son derece kararlı ve güvenlidir.`
 

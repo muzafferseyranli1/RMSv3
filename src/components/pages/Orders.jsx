@@ -1256,6 +1256,7 @@ function createDraftLines({
   wmsMultiBranchDailySales = new Map(),
   wmsMultiBranchForecasts = new Map(),
   wmsMultiBranchSaleLines = new Map(),
+  warehouseReservations = [],
 }) {
   if (!flow || !branch) return []
 
@@ -1438,6 +1439,12 @@ function createDraftLines({
 
     // 3. Call calculateWarehouseDemand
     const planningDays = planningDates.length
+    const warehouseReservedByItem = new Map()
+    for (const res of warehouseReservations || []) {
+      const current = warehouseReservedByItem.get(res.stock_item_id) || 0
+      warehouseReservedByItem.set(res.stock_item_id, current + Number(res.reserved_qty || 0))
+    }
+
     const demandLines = calculateWarehouseDemand({
       warehouseBranchId: branch.id,
       flow,
@@ -1453,6 +1460,7 @@ function createDraftLines({
       lastOrderQtyMap,
       warehouseLastOrderQtyMap,
       warehouseSettingsMap,
+      warehouseReservedByItem,
     })
 
     return demandLines.map((line, idx) => {
@@ -1932,7 +1940,7 @@ function OrderDetailModal({
                                   <div><strong>Talep Yontemi:</strong> {getDemandMethodLabel(line.demand_method || line.meta?.forecast?.demand_method)}</div>
                                   <div><strong>Hesaplama:</strong> {line.meta?.forecast?.qty_mode_explanation}</div>
                                   <div><strong>Yuvarlama:</strong> {line.meta?.forecast?.rounding_reason}</div>
-                                  <div><strong>Depo Envanter Durumu:</strong> Mevcut: {formatQty(line.meta?.forecast?.warehouse_avail)} + Tedarikçiden Yolda: {formatQty(line.meta?.forecast?.inbound_yolda)}</div>
+                                  <div><strong>Depo Envanter Durumu:</strong> Mevcut: {formatQty(line.meta?.forecast?.warehouse_avail)} + Tedarikçiden Yolda: {formatQty(line.meta?.forecast?.inbound_yolda)} - Rezerve: {formatQty(line.meta?.forecast?.reserved)}</div>
                                 </div>
                                 <div style={{ borderTop: '1px solid #e9d5ff', paddingTop: 8 }}>
                                   <div style={{ fontSize: '.68rem', fontWeight: 900, color: '#7c3aed', marginBottom: 6 }}>
@@ -2143,6 +2151,7 @@ export default function Orders() {
   const [dailySalesRows, setDailySalesRows] = useState([])
   const [savedForecastRows, setSavedForecastRows] = useState([])
   const [saleLineRows, setSaleLineRows] = useState([])
+  const [warehouseReservations, setWarehouseReservations] = useState([])
 
   // WMS multi-branch planning state variables
   const [allCompanyBranches, setAllCompanyBranches] = useState([])
@@ -2358,17 +2367,24 @@ export default function Orders() {
     const savedForecastQuery = applyBranchFilter(
       db
         .from('sales_forecasts')
-        .select('forecast_date,calc_receipt_count,adj_receipt_count')
+        .select('forecast_date,branch_id,calc_receipt_count,adj_receipt_count')
         .gte('forecast_date', today)
         .lte('forecast_date', forecastEndDate)
         .order('forecast_date', { ascending: true }),
       branch,
     )
 
-    const [movementResult, dailySalesResult, savedForecastResult] = await Promise.all([
+    const reservationsQuery = db
+      .from('warehouse_reservations')
+      .select('stock_item_id,reserved_qty')
+      .eq('branch_id', branch.id)
+      .eq('status', 'active')
+
+    const [movementResult, dailySalesResult, savedForecastResult, reservationsResult] = await Promise.all([
       movementQuery,
       dailySalesQuery,
       savedForecastQuery,
+      reservationsQuery,
     ])
     if (movementResult.error) throw movementResult.error
 
@@ -2414,6 +2430,7 @@ export default function Orders() {
       dailySalesRows: dailySalesResult.error ? [] : (dailySalesResult.data || []),
       savedForecastRows: savedForecastResult.error ? [] : (savedForecastResult.data || []),
       saleLineRows,
+      warehouseReservations: reservationsResult.error ? [] : (reservationsResult.data || []),
       errors: {
         dailySalesError: dailySalesResult.error || null,
         savedForecastError: savedForecastResult.error || null,
@@ -2512,6 +2529,7 @@ export default function Orders() {
       setDailySalesRows([])
       setSavedForecastRows([])
       setSaleLineRows([])
+      setWarehouseReservations([])
       setWmsMultiBranchBalances(new Map())
       setWmsMultiBranchDailyUsageMap(new Map())
       setWmsMultiBranchDailySales(new Map())
@@ -2529,6 +2547,7 @@ export default function Orders() {
       setDailySalesRows(snapshot.dailySalesRows)
       setSavedForecastRows(snapshot.savedForecastRows)
       setSaleLineRows(snapshot.saleLineRows)
+      setWarehouseReservations(snapshot.warehouseReservations || [])
 
       if (snapshot.errors?.dailySalesError) {
         toast(`Tahmin gecmisi okunamadi: ${snapshot.errors.dailySalesError.message}`, 'warning')
@@ -2624,6 +2643,7 @@ export default function Orders() {
         dailySalesRows: branchSnapshot.dailySalesRows,
         savedForecastRows: branchSnapshot.savedForecastRows,
         saleLineRows: branchSnapshot.saleLineRows,
+        warehouseReservations: branchSnapshot.warehouseReservations || [],
         forecastLookbackWeeks: forecastSettings.lookbackWeeks,
         allSuppliers: suppliers,
         allWarehouseSettings,
@@ -2898,6 +2918,7 @@ export default function Orders() {
       dailySalesRows: branchSnapshot.dailySalesRows,
       savedForecastRows: branchSnapshot.savedForecastRows,
       saleLineRows: branchSnapshot.saleLineRows,
+      warehouseReservations: branchSnapshot.warehouseReservations || [],
       forecastLookbackWeeks: forecastSettings.lookbackWeeks,
       assumedInboundOrderIds: options.assumedInboundOrderIds,
       targetSupplierId: order.supplier_id,

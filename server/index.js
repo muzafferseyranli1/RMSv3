@@ -109,7 +109,7 @@ const upload = multer({
   },
 })
 
-const CACHE_TTL_MS = 300_000 // 5 minutes
+const CACHE_TTL_MS = 30_000 // 30 seconds (per governance rule 6)
 const queryCache = new Map()
 const pendingRequests = new Map()
 const rateLimitMap = new Map()
@@ -135,13 +135,13 @@ function cacheSet(key, data) {
 // Recursively strips empty values (null, undefined, empty arrays) from objects/arrays
 function stripEmptyValues(val) {
   if (val === null || val === undefined) return undefined
-  
+
   if (Array.isArray(val)) {
     if (val.length === 0) return undefined
     const cleanedArr = val.map(stripEmptyValues).filter(v => v !== undefined)
     return cleanedArr.length > 0 ? cleanedArr : undefined
   }
-  
+
   if (typeof val === 'object' && val.constructor === Object) {
     const cleanedObj = {}
     for (const [k, v] of Object.entries(val)) {
@@ -152,7 +152,7 @@ function stripEmptyValues(val) {
     }
     return cleanedObj
   }
-  
+
   return val
 }
 
@@ -166,15 +166,24 @@ function cleanApiResponse(result) {
   return { data: cleanedData, error: result.error ?? null }
 }
 
-// Cleanup interval to prevent rateLimitMap from growing unbounded
+// Cleanup interval to prevent rateLimitMap and queryCache from growing unbounded
 setInterval(() => {
   const now = Date.now()
+
+  // Rate limit map cleanup
   for (const [ip, timestamps] of rateLimitMap.entries()) {
     const active = timestamps.filter(ts => now - ts < 60_000)
     if (active.length === 0) {
       rateLimitMap.delete(ip)
     } else {
       rateLimitMap.set(ip, active)
+    }
+  }
+
+  // queryCache cleanup (Garbage Collector for expired keys)
+  for (const [key, entry] of queryCache.entries()) {
+    if (now - entry.ts > CACHE_TTL_MS) {
+      queryCache.delete(key)
     }
   }
 }, 60_000)
@@ -186,17 +195,17 @@ function rateLimiter(req, res, next) {
   }
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown'
   const now = Date.now()
-  
+
   let timestamps = rateLimitMap.get(ip) || []
   timestamps = timestamps.filter(ts => now - ts < 60_000)
-  
+
   if (timestamps.length >= 600) {
     return res.status(429).json({
       data: null,
       error: { message: 'Too many requests. Please try again later.' }
     })
   }
-  
+
   timestamps.push(now)
   rateLimitMap.set(ip, timestamps)
   next()
@@ -649,17 +658,17 @@ async function getRateForDate(dateObj, currency) {
       const yyyy = currentObj.getFullYear()
       const mm = String(currentObj.getMonth() + 1).padStart(2, '0')
       const dd = String(currentObj.getDate()).padStart(2, '0')
-      
+
       const todayStr = new Date().toLocaleDateString('en-CA')
       const targetStr = `${yyyy}-${mm}-${dd}`
-      
+
       let url
       if (targetStr === todayStr) {
         url = 'https://www.tcmb.gov.tr/kurlar/today.xml'
       } else {
         url = `https://www.tcmb.gov.tr/kurlar/${yyyy}${mm}/${dd}${mm}${yyyy}.xml`
       }
-      
+
       try {
         console.log(`[ExchangeRate] Trying TCMB XML URL: ${url}`)
         const xml = await fetchTcmbXml(url)
@@ -1053,7 +1062,7 @@ app.delete('/api/manual/categories/:id', async (req, res) => {
 app.get('/api/manual/equipments', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT ei.id, 
+      `SELECT ei.id,
               COALESCE(ei.name, ed.name) || ' (' || COALESCE(ei.serial_number, 'Seri No Yok') || ')' AS name
        FROM public.equipment_instances ei
        JOIN public.equipment_definitions ed ON ei.definition_id = ed.id
@@ -1093,7 +1102,7 @@ app.get('/api/manual/pages/:id', async (req, res) => {
   try {
     const { id } = req.params
     const query = `
-      SELECT 
+      SELECT
         p.*,
         COALESCE(
           json_agg(
@@ -1135,7 +1144,7 @@ app.post('/api/manual/pages', async (req, res) => {
     await client.query('BEGIN')
 
     const pageRes = await client.query(
-      `INSERT INTO public.manual_pages (category_id, title, content, last_updated_by_pin, linked_item_id, linked_item_type, is_draft, metadata, version) 
+      `INSERT INTO public.manual_pages (category_id, title, content, last_updated_by_pin, linked_item_id, linked_item_type, is_draft, metadata, version)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1) RETURNING *;`,
       [category_id, title, content, last_updated_by_pin, linked_item_id || null, linked_item_type || null, is_draft || false, metadata || null]
     )
@@ -1173,8 +1182,8 @@ app.put('/api/manual/pages/:id', async (req, res) => {
     await client.query('BEGIN')
 
     const pageRes = await client.query(
-      `UPDATE public.manual_pages 
-       SET category_id = $1, title = $2, content = $3, last_updated_by_pin = $4, linked_item_id = $5, linked_item_type = $6, is_draft = $7, metadata = $8, version = version + 1, updated_at = now() 
+      `UPDATE public.manual_pages
+       SET category_id = $1, title = $2, content = $3, last_updated_by_pin = $4, linked_item_id = $5, linked_item_type = $6, is_draft = $7, metadata = $8, version = version + 1, updated_at = now()
        WHERE id = $9 RETURNING *;`,
       [category_id, title, content, last_updated_by_pin, linked_item_id || null, linked_item_type || null, is_draft || false, metadata || null, id]
     )
@@ -1215,7 +1224,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
     if (!linked_item_id || !linked_item_type) {
       return res.json({ data: { recipe: [], portionNames: {}, allChannels: [] }, error: null });
     }
-    
+
     let recipeRows = [];
     let portionsArr = [];
     let channelPrices = [];
@@ -1234,7 +1243,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
         channelPrices = itemRes.rows[0].channel_prices || [];
       }
     }
-    
+
     if (typeof recipeRows === 'string') {
       try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
     }
@@ -1272,14 +1281,14 @@ app.get('/api/manual/context-by-item', async (req, res) => {
     // Build allChannels list from public.sales_channels table to get correct names and icons
     const channelsRes = await pool.query('SELECT id, name, icon FROM public.sales_channels WHERE deleted_at IS NULL ORDER BY sort_order');
     const allChannels = channelsRes.rows;
-    
+
     const enrichedRecipe = [];
     for (const row of recipeRows) {
       const isSemi = row.ingredient_type === 'semi_item' || row.semi_item_id;
       const targetId = isSemi ? row.semi_item_id : row.stock_item_id;
-      
+
       if (!targetId) continue;
-      
+
       let name = '';
       if (isSemi) {
         const nameRes = await pool.query('SELECT name FROM public.semi_items WHERE id = $1', [targetId]);
@@ -1288,7 +1297,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
         const nameRes = await pool.query('SELECT name FROM public.stock_items WHERE id = $1', [targetId]);
         if (nameRes.rows.length) name = nameRes.rows[0].name;
       }
-      
+
       const manualRes = await pool.query('SELECT id, metadata FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
       const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
       let imageUrl = null;
@@ -1299,7 +1308,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
         }
         imageUrl = meta?.product_image || null;
       }
-      
+
       if (!imageUrl) {
         if (isSemi) {
           const imgRes = await pool.query('SELECT image_url, pos_image, channel_image FROM public.semi_items WHERE id = $1', [targetId]);
@@ -1313,7 +1322,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
           }
         }
       }
-      
+
       enrichedRecipe.push({
         ...row,
         name,
@@ -1321,7 +1330,7 @@ app.get('/api/manual/context-by-item', async (req, res) => {
         image_url: imageUrl
       });
     }
-    
+
     return res.json({ data: { recipe: enrichedRecipe, portionNames, allChannels }, error: null });
   } catch (err) {
     console.error('[GET /api/manual/context-by-item]', err.message);
@@ -1333,17 +1342,17 @@ app.get('/api/manual/context-by-item', async (req, res) => {
 app.get('/api/manual/pages/:id/context', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // First find the page to see if it's linked
     const pageRes = await pool.query('SELECT linked_item_id, linked_item_type FROM public.manual_pages WHERE id = $1', [id]);
     if (!pageRes.rows.length) return res.status(404).json({ data: null, error: { message: 'Page not found' } });
-    
+
     const { linked_item_id, linked_item_type } = pageRes.rows[0];
-    
+
     if (!linked_item_id || !linked_item_type) {
       return res.json({ data: { recipe: [], portionNames: {}, allChannels: [] }, error: null });
     }
-    
+
     let recipeRows = [];
     let portionsArr = [];
     let channelPrices = [];
@@ -1362,7 +1371,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
         channelPrices = itemRes.rows[0].channel_prices || [];
       }
     }
-    
+
     if (typeof recipeRows === 'string') {
       try { recipeRows = JSON.parse(recipeRows); } catch (e) { recipeRows = []; }
     }
@@ -1400,14 +1409,14 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
     // Build allChannels list from public.sales_channels table to get correct names and icons
     const channelsRes = await pool.query('SELECT id, name, icon FROM public.sales_channels WHERE deleted_at IS NULL ORDER BY sort_order');
     const allChannels = channelsRes.rows;
-    
+
     const enrichedRecipe = [];
     for (const row of recipeRows) {
       const isSemi = row.ingredient_type === 'semi_item' || row.semi_item_id;
       const targetId = isSemi ? row.semi_item_id : row.stock_item_id;
-      
+
       if (!targetId) continue;
-      
+
       let name = '';
       if (isSemi) {
         const nameRes = await pool.query('SELECT name FROM public.semi_items WHERE id = $1', [targetId]);
@@ -1416,7 +1425,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
         const nameRes = await pool.query('SELECT name FROM public.stock_items WHERE id = $1', [targetId]);
         if (nameRes.rows.length) name = nameRes.rows[0].name;
       }
-      
+
       const manualRes = await pool.query('SELECT id, metadata FROM public.manual_pages WHERE linked_item_id = $1 LIMIT 1', [targetId]);
       const manualPageId = manualRes.rows.length ? manualRes.rows[0].id : null;
       let imageUrl = null;
@@ -1427,7 +1436,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
         }
         imageUrl = meta?.product_image || null;
       }
-      
+
       if (!imageUrl) {
         if (isSemi) {
           const imgRes = await pool.query('SELECT image_url, pos_image, channel_image FROM public.semi_items WHERE id = $1', [targetId]);
@@ -1441,7 +1450,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
           }
         }
       }
-      
+
       enrichedRecipe.push({
         ...row,
         name,
@@ -1449,7 +1458,7 @@ app.get('/api/manual/pages/:id/context', async (req, res) => {
         image_url: imageUrl
       });
     }
-    
+
     return res.json({ data: { recipe: enrichedRecipe, portionNames, allChannels }, error: null });
   } catch (err) {
     console.error('[GET /api/manual/pages/:id/context]', err.message);
@@ -2291,8 +2300,8 @@ app.get('/api/survey-tokens/:token', async (req, res) => {
   try {
     const { token } = req.params
     const { rows } = await pool.query(
-      `SELECT st.*, 
-              ft.title AS template_title, 
+      `SELECT st.*,
+              ft.title AS template_title,
               ft.schema_json AS template_schema
        FROM public.survey_tokens st
        JOIN public.form_templates ft ON st.template_id = ft.id
@@ -2317,8 +2326,8 @@ app.get('/api/survey-tokens', async (req, res) => {
       return res.status(400).json({ data: null, error: { message: 'templateId parametresi gereklidir' } })
     }
     const { rows } = await pool.query(
-      `SELECT * FROM public.survey_tokens 
-       WHERE template_id = $1 
+      `SELECT * FROM public.survey_tokens
+       WHERE template_id = $1
        ORDER BY created_at DESC`,
       [templateId]
     )
@@ -2339,17 +2348,17 @@ app.post('/api/survey-tokens', async (req, res) => {
 
     const token = require('crypto').randomBytes(16).toString('hex')
     const { rows } = await pool.query(
-      `INSERT INTO public.survey_tokens 
+      `INSERT INTO public.survey_tokens
          (template_id, token, mode, branch_id, branch_ids, label, qr_config, active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true, now(), now()) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, now(), now())
        RETURNING *`,
       [
-        template_id, 
-        token, 
-        mode, 
-        branch_id || null, 
-        branch_ids ? JSON.stringify(branch_ids) : null, 
-        label || null, 
+        template_id,
+        token,
+        mode,
+        branch_id || null,
+        branch_ids ? JSON.stringify(branch_ids) : null,
+        label || null,
         qr_config ? JSON.stringify(qr_config) : '{}'
       ]
     )
@@ -2382,9 +2391,9 @@ app.delete('/api/survey-tokens/:id', async (req, res) => {
 app.get('/api/branches/list', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id::text, name 
-       FROM public.company_nodes 
-       WHERE type = 'sube' 
+      `SELECT id::text, name
+       FROM public.company_nodes
+       WHERE type = 'sube'
        ORDER BY name ASC`
     )
     return res.json({ data: rows, error: null })
@@ -2432,10 +2441,10 @@ app.post('/api/customer-category-assign', async (req, res) => {
     )
     if (!catCheck.rows.length) {
       await pool.query(
-        `INSERT INTO public.loyalty_customer_categories 
+        `INSERT INTO public.loyalty_customer_categories
            (id, scope_type, name, code, description, color, active, sort_order, metadata, created_at, updated_at)
-         VALUES 
-           ($1, 'global', 'Geri Bildirimden Gelen', 'FEEDBACK_SOURCE', 
+         VALUES
+           ($1, 'global', 'Geri Bildirimden Gelen', 'FEEDBACK_SOURCE',
             'Geri bildirim oluşturan veya anket dolduran müşteriler', '#ef4444', true, 0, '{}', now(), now())
          ON CONFLICT (id) DO NOTHING`,
         [categoryId]
@@ -2444,7 +2453,7 @@ app.post('/api/customer-category-assign', async (req, res) => {
 
     // Müşterinin bu kategoriye üyeliği var mı?
     const memCheck = await pool.query(
-      `SELECT id FROM public.loyalty_customer_category_members 
+      `SELECT id FROM public.loyalty_customer_category_members
        WHERE customer_id = $1 AND category_id = $2 AND deleted_at IS NULL`,
       [customerId, categoryId]
     )
@@ -2452,9 +2461,9 @@ app.post('/api/customer-category-assign', async (req, res) => {
     if (!memCheck.rows.length) {
       const memberId = 'member_' + require('crypto').randomUUID()
       await pool.query(
-        `INSERT INTO public.loyalty_customer_category_members 
+        `INSERT INTO public.loyalty_customer_category_members
            (id, customer_id, category_id, scope_type, scope_branch_id, scope_branch_name, active, metadata, created_at, updated_at, deleted_at)
-         VALUES 
+         VALUES
            ($1, $2, $3, 'global', null, null, true, '{}', now(), now(), null)`,
         [memberId, customerId, categoryId]
       )

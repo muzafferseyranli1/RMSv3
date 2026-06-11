@@ -1,4 +1,4 @@
-﻿import pg from 'pg';
+import pg from 'pg';
 const { Client } = pg;
 import { calculateWarehouseDemand } from '../src/lib/warehouseDemandPlanning.js';
 
@@ -206,6 +206,41 @@ async function main() {
       console.log('Stok Mode Test PASS!');
     } else {
       console.log('Stok Mode Test FAIL!');
+      failed = true;
+    }
+
+    // Scenario C: Reserved Stock Integration
+    // With 10 units reserved: suggestedQty = 35 + 3 - (5 + 10 - 10) = 33 -> rounds to 40
+    const warehouseReservedByItem = new Map([
+      [item.id, 10]
+    ]);
+    const resultsReserved = calculateWarehouseDemand({
+      warehouseBranchId,
+      flow: flowTahmin,
+      stockItems: [mockedItem],
+      connectedBranches,
+      planningDays,
+      multiBranchBalances,
+      warehouseBalances,
+      inboundWarehouseQtyMap,
+      outboundReplenishingQtyMap,
+      multiBranchDailyUsageMap,
+      multiBranchRecipeForecastMap,
+      lastOrderQtyMap,
+      warehouseSettingsMap,
+      warehouseReservedByItem
+    });
+
+    const rReserved = resultsReserved[0];
+    console.log(`\n--- TEST RESULTS: RESERVED STOCK INTEGRATION ---`);
+    console.log(`Suggested Qty with reservations: ${rReserved.suggested_qty} (Expected: 40)`);
+    console.log(`Explanation: ${rReserved.meta.forecast.qty_mode_explanation}`);
+    console.log(`Reserved in meta: ${rReserved.meta.forecast.reserved} (Expected: 10)`);
+
+    if (rReserved.suggested_qty === 40 && rReserved.meta.forecast.reserved === 10) {
+      console.log('Reserved Stock Integration Test PASS!');
+    } else {
+      console.log('Reserved Stock Integration Test FAIL!');
       failed = true;
     }
 

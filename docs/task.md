@@ -1,11 +1,7 @@
-# Task List: Form Ayarları ve Şube Seçimi Zorunluluğu Entegrasyonu
+# WMS Görev Web Ekranı (WMS-02D) Görev Listesi
 
-- `[x]` `FormTemplates.jsx` dosyasında ayarlar alanını "Form Ayarları" başlığı altında birleşik dikey şerit ve kesikli çizgi tasarımıyla tek bölüme topla.
-- `[x]` "Şube Seçimi Zorunlu" checkbox girdisini ekle ve `schemaJson.require_branch_selection` ile bağla.
-- `[x]` "Tarih ve Saati Otomatik Al" checkbox girdisini ekle ve `schemaJson.auto_date_time` ile bağla.
-- `[x]` `FormTemplates.jsx` düzenleyicideki form tipi kısıtlamalarını esneterek bu ayarların tüm form tiplerinde (anket, talep vb.) kullanılmasını sağla.
-- `[x]` `FormSubmissions.jsx` arayüzünden doldurucunun tarih/saat otomatik ayarını değiştirebilmesini sağlayan checkbox'ları tamamen kaldır.
-- `[x]` Doldurucunun karşısındaki tarih/saat alanlarını şablondaki `auto_date_time` kuralı aktif ise kilitle, pasif ise düzenlenebilir yap.
-- `[x]` `FormSubmissions.jsx` gönderim doğrulama mantığına `require_branch_selection` kontrolünü ekle, zorunluysa şube seçilmediğinde hata verdir.
-- `[x]` `FormSubmissions.jsx` arayüzünde standart form tipleri dışındaki anket ve talepler için şube seçimi zorunlu kılındığında şube seçilebilen genel "Form Bilgileri" kartı göster.
-- `[x]` `npm run build` ile üretim derlemesi yapılarak syntax ve derleme hataları olmadığını doğrula.
+- [x] `src/components/pages/WmsTasks.jsx` sayfa bileşeninin (filtreler, özet istatistikler, tablo görünümü, detay çekmecesi, timeline ve exception çözüm paneli ile) oluşturulması
+- [x] `src/App.jsx` dosyasına `/depo-wms-tasks` rotasının ve `WmsTasks` lazy load tanımının eklenmesi
+- [x] `src/components/layout/Sidebar.jsx` dosyasına "WMS Görevleri" menü yönlendirmesinin eklenmesi
+- [x] Frontend derleme kontrolünün yapılması (`npm run build`)
+- [x] Değişikliklerin belgelenmesi (`walkthrough.md` ve `OperationSync.md` güncellemeleri)

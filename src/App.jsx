@@ -64,6 +64,7 @@ const OrderHub = lazy(() => import('@/components/pages/OrderHub'))
 const PurchasingManager = lazy(() => import('@/components/pages/PurchasingManager'))
 const SupplierOrderPanel = lazy(() => import('@/components/pages/SupplierOrderPanel'))
 const Tasks = lazy(() => import('@/components/pages/Tasks'))
+const WmsTasks = lazy(() => import('@/components/pages/WmsTasks'))
 const LoyaltyManagement = lazy(() => import('@/components/pages/LoyaltyManagement'))
 const LoyaltyCampaignWizard = lazy(() => import('@/components/loyalty/LoyaltyCampaignWizard'))
 const LoyaltyCustomerCategories = lazy(() => import('@/components/pages/LoyaltyCustomerCategories'))
@@ -506,6 +507,7 @@ function AppShell() {
               <Route path="/depo-satinalma" element={<WarehouseBranchRoute title="Depo Satınalma Siparişleri"><Orders /></WarehouseBranchRoute>} />
               <Route path="/depo-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="anadepo" /></WarehouseBranchRoute>} />
+              <Route path="/depo-wms-tasks" element={<WarehouseBranchRoute title="WMS Görevleri"><WmsTasks /></WarehouseBranchRoute>} />
               <Route path="/depo-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="anadepo" />} />
               <Route path="/depo-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="anadepo" />} />
