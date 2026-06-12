@@ -1582,7 +1582,7 @@ Yanıtını MUTLAKA aşağıdaki JSON formatında ver:
     try {
       const parsed = JSON.parse(rawText)
       if (!parsed.foundInKb) {
-        return res.json({ data: { reply: "[UNANSWERED] Üzgünüm, bu konu hakkında bilgi bankasında henüz bir kılavuz bulunmuyor. Talebiniz sisteme kaydedildi ve kısa süre içinde ilgili doküman eklenecektir." }, error: null })
+        return res.json({ data: { reply: "Üzgünüm, cevabı bilmiyorum çünkü bu soruyu ilk defa siz sordunuz, ama size söz en kısa sürede cevabı öğreneceğim ;)" }, error: null })
       }
       return res.json({ data: { reply: parsed.reply }, error: null })
     } catch (e) {
