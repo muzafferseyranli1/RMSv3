@@ -1551,12 +1551,20 @@ KURALLAR (BU KURALLARA UYMAMAK SİSTEMİ ÇÖKERTİR):
 4. Yanıtlarını akıcı ve profesyonel Türkçe ile ver. Teknik tablo isimlerini gizle.
 
 BİLGİ BANKASI:
-${kbContent}`
+${kbContent}
+
+ÇIKTI FORMATI:
+Yanıtını MUTLAKA aşağıdaki JSON formatında ver:
+{
+  "foundInKb": true veya false (Eğer sorunun cevabı BİLGİ BANKASINDA YOKSA kesinlikle false yap),
+  "reply": "Detaylı cevabın. (Eğer foundInKb false ise bu alanı boş bırak)"
+}`
           }]
         },
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 1500
+          temperature: 0.1,
+          maxOutputTokens: 1500,
+          responseMimeType: 'application/json'
         }
       })
     })
@@ -1570,8 +1578,17 @@ ${kbContent}`
       return res.status(500).json({ data: null, error: { message: 'Gemini API did not return a valid response candidate.', details: data } })
     }
 
-    const reply = data.candidates[0].content.parts[0].text
-    return res.json({ data: { reply }, error: null })
+    const rawText = data.candidates[0].content.parts[0].text
+    try {
+      const parsed = JSON.parse(rawText)
+      if (!parsed.foundInKb) {
+        return res.json({ data: { reply: "[UNANSWERED] Üzgünüm, bu konu hakkında bilgi bankasında henüz bir kılavuz bulunmuyor. Talebiniz sisteme kaydedildi ve kısa süre içinde ilgili doküman eklenecektir." }, error: null })
+      }
+      return res.json({ data: { reply: parsed.reply }, error: null })
+    } catch (e) {
+      // JSON parse hatası olursa rawText'i döndür
+      return res.json({ data: { reply: rawText }, error: null })
+    }
   } catch (err) {
     console.error('[POST /api/support/chat]', err.message)
     return res.status(500).json({ data: null, error: { message: err.message } })
