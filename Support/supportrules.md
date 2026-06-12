@@ -17,10 +17,11 @@ Bu dosya, herhangi bir makine değişikliğinde veya yeni bir sohbette Yapay Zek
 2. **RAG Mimarisi:** Backend (`server/index.js` içerisindeki `/api/support/chat`), buradaki tüm `.md` dosyalarını birleştirip Gemini API'ye gönderir. Dosya isimlerinin açıklayıcı olmasına (örn: `wms_depo.md`, `maliyet_hesaplama.md`) dikkat et.
 3. **Doküman Yapısı:** Yeni bir kılavuz oluştururken şu hiyerarşiyi kullan:
    * Modülün Amacı (Ne işe yarar?)
-   * Ekranlara Erişim (Nasıl girilir?)
+   * Ekranlara Erişim (Nasıl girilir? MUTLAKA frontend URL yolunu belirtin, Örn: `/donem-kapanis`)
    * Önemli Adımlar / Kurallar (Kullanım detayları)
    * Sık Sorulan Sorular / Sorun Giderme
-4. **Geliştirme Döngüsü (Workflow):** Kullanıcı "X modülünü anlat" dediğinde; 
+4. **Linklerin Önemi:** Asistanın kullanıcıyı doğru sayfaya yönlendirebilmesi için hazırladığın dokümanın içinde o sayfanın doğrudan link (URL path) karşılığı mutlaka bulunmalıdır.
+5. **Geliştirme Döngüsü (Workflow):** Kullanıcı "X modülünü anlat" dediğinde; 
    - Önce ilgili bileşen kodunu oku.
    - Modülün iş mantığını anla.
    - `Support/x_modulu.md` dosyasını oluştur.
