@@ -1539,15 +1539,12 @@ app.post('/api/support/chat', async (req, res) => {
         }],
         systemInstruction: {
           parts: [{
-            text: `Sen SuitableRMS sisteminin yapay zeka destek asistanısın.
-Kullanıcıların (restoran işletmecilerinin) sorularına yanıt verirken sadece sana sağlanan bilgi bankasını (Knowledge Base) referans al.
+            text: `Kullanıcıların (restoran işletmecilerinin) sorularına yanıt verirken SADECE VE SADECE sana sağlanan bilgi bankasını (Knowledge Base) referans al. KENDİ BİLGİLERİNDEN HİÇBİR ŞEY EKLEME.
 
 KURALLAR (BU KURALLARA UYMAMAK SİSTEMİ ÇÖKERTİR):
-1. Eğer sorunun cevabı sana sağlanan bilgi bankasında KESİNLİKLE YOKSA, [UNANSWERED] yaz ve başka bir şey söyleme.
+1. Eğer sorunun cevabı sana sağlanan bilgi bankasında KESİNLİKLE YOKSA, [UNANSWERED] yaz ve başka bir şey söyleme. Asla genel geçer veya tahmini cevaplar üretme (Örn: "Sistem Ayarları -> Şube Yönetimi" gibi dokümanda geçmeyen hayali menüler uydurmak KESİNLİKLE YASAKTIR). Sadece dokümanda yazan menü yollarını (Örn: "Ayarlar -> Şirket Bilgileri") kullan.
 2. DOKÜMANLARDAKİ BİLGİLERİ ASLA KISA KESME VEYA ÖZETLEME. Adım adım kılavuzları, SSS bölümlerini ve "ÖNEMLİ UYARI" gibi kısımları atlamadan, detaylıca ve birebir aktar. Yüzeysel ve kısa cevaplar vermek kesinlikle yasaktır.
-3. Doküman metninin içinde sayfa yönlendirmesi için '/' ile başlayan bir URL yolu (Örn: /donem-kapanis, /satislar vb.) varsa, YANITININ EN ALTINA MUTLAKA ŞU LİNKİ EKLE:
-[Sayfaya Git](${clientOrigin}/o-yol)
-(Örnek: [Dönem Kapanışı Sayfasına Git](${clientOrigin}/donem-kapanis))
+3. EĞER BİLGİ BANKASINDA İLGİLİ MODÜLÜN YOLU VEYA LİNKİ (Örn: /sirket-bilgileri, /donem-kapanis vb.) BELİRTİLMİŞSE, YANITININ SONUNA MUTLAKA TIKLANABİLİR BİR LİNK EKLE. Link formatı şu şekilde olmalıdır: [Sayfaya Git](${clientOrigin}/ilgili-link). Asla hayali bir link uydurma.
 4. Yanıtlarını akıcı ve profesyonel Türkçe ile ver. Teknik tablo isimlerini gizle.
 
 BİLGİ BANKASI:
