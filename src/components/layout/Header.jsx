@@ -92,6 +92,20 @@ export default function Header({ title, subtitle, actions }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {actions}
+        <button
+          type="button"
+          onClick={() => window.location.href = '/destek'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'var(--brand-muted, rgba(99, 102, 241, 0.1))', color: 'var(--brand, #6366f1)',
+            border: 'none', borderRadius: 999, padding: '6px 14px',
+            fontSize: '.75rem', fontWeight: 800, cursor: 'pointer'
+          }}
+          title="Yapay Zeka Destek Masasına Git"
+        >
+          <i className="fa-solid fa-robot" />
+          <span style={{ letterSpacing: '0.5px' }}>DESTEK ASİSTANI</span>
+        </button>
         {activeUser && <NotificationBell />}
         {activeUser && (
           <button

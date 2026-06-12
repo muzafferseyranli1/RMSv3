@@ -1503,7 +1503,8 @@ app.get('/api/manual/pages/:id', async (req, res) => {
 // AI SUPPORT CHAT ENDPOINT (RAG ENTEGRASYONU)
 app.post('/api/support/chat', async (req, res) => {
   try {
-    const { message } = req.body
+    const { message, origin } = req.body
+    const clientOrigin = origin || 'http://localhost:5173'
     if (!message) {
       return res.status(400).json({ data: null, error: { message: 'message is required' } })
     }
@@ -1543,7 +1544,7 @@ Kullanıcıların (restoran işletmecilerinin) sorularına yanıt verirken sadec
 
 KURALLAR:
 1. Kesinlikle veritabanı tablo adlarını, kaynak kod dosya yollarını ve teknik değişkenleri kullanıcıya gösterme (bunlar bilgi bankasında yazar ama gizli kalmalıdır).
-2. Yanıtlarında sadece doğrudan tıklanabilir localhost linklerini (http://localhost:5173/...) ve operasyonel iş mantığını ver.
+2. Yanıtlarında sadece doğrudan tıklanabilir linkleri (${clientOrigin}/...) ve operasyonel iş mantığını ver.
 3. Yanıtları doğrudan, akıcı ve Türkçe olarak ver. Herhangi bir onay isteme ya da komut çalıştırma gibi aşamalardan bahsetme.
 
 BİLGİ BANKASI:

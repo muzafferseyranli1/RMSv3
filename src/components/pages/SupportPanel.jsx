@@ -10,9 +10,7 @@ export default function SupportPanel() {
       sender: 'ai',
       text: `Merhaba! Ben **SuitableRMS Yapay Zeka Destek Asistanıyım**. 
 
-İşletmenizdeki günlük operasyonlar, yeni ürün ve menü tanımlama, tedarikçi değişiklikleri, geriye dönük fatura girişleri ve maliyet etkileri gibi her türlü sistem kullanımıyla ilgili sorunuzu yanıtlayabilirim. 
-
-Sormak istediğiniz konuyu yazarak başlayabilirsiniz.`,
+Nasıl yardımcı olabilirim? İster programın kullanımıyla ilgili, ister işinizi geliştirmeyle ilgili, ister günlük operasyonunuzla ilgili... Nasıl yardımcı olabilirim?`,
       timestamp: new Date()
     }
   ])
@@ -90,7 +88,10 @@ Sormak istediğiniz konuyu yazarak başlayabilirsiniz.`,
       const response = await fetch(buildApiUrl('/api/support/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed })
+        body: JSON.stringify({ 
+          message: trimmed,
+          origin: window.location.origin
+        })
       })
 
       const result = await response.json()
