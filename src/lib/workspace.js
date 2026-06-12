@@ -72,6 +72,7 @@ const SECTION_ACCESS = {
 
 const CENTER_PATHS = new Set([
   '/dashboard',
+  '/destek',
   '/company',
   '/products',
   '/combo-menu',
@@ -199,10 +200,13 @@ const ANADEPO_PATHS = new Set([
   '/wms-stock-params',
   '/depo-mal-kabul',
   '/depo-iclokasyon-tasima',
+  '/wms-mobile',
+  '/depo-mobile',
 ])
 
 const MERKEZMUTFAK_PATHS = new Set([
   '/merkezmutfak-uretim',
+  '/merkezmutfak-satinalma',
   '/merkezmutfak-documents',
   '/merkezmutfak-count',
   '/merkezmutfak-transfer',

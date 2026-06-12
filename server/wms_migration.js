@@ -3,6 +3,32 @@ const { Client } = require('pg')
 const fs = require('fs')
 const path = require('path')
 
+function loadServerEnv() {
+  const envPath = path.join(__dirname, '.env')
+  if (!fs.existsSync(envPath)) return
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith('#')) continue
+    const separatorIndex = line.indexOf('=')
+    if (separatorIndex === -1) continue
+
+    const key = line.slice(0, separatorIndex).trim()
+    if (!key || Object.prototype.hasOwnProperty.call(process.env, key)) continue
+
+    let value = line.slice(separatorIndex + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    process.env[key] = value
+  }
+}
+loadServerEnv()
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error("DATABASE_URL environment variable is missing.");
@@ -239,6 +265,14 @@ const STEPS = [
   {
     desc: 'wms task exception resolution RPC (WMS-02D)',
     sql: fs.readFileSync(path.join(__dirname, '../migrations/044_wms_task_exception_rpc.sql'), 'utf8')
+  },
+  {
+    desc: 'wms evidence photo support in task events (WMS-03F)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/045_add_evidence_photo_to_task_events.sql'), 'utf8')
+  },
+  {
+    desc: 'wms packaging and capacity schema and functions (WMS-03G)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/046_wms_packaging_and_capacity_schema.sql'), 'utf8')
   }
 ]
 

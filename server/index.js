@@ -110,26 +110,74 @@ const upload = multer({
 })
 
 const CACHE_TTL_MS = 30_000 // 30 seconds (per governance rule 6)
+const CACHE_MAX_ENTRY_BYTES = Number(process.env.API_QUERY_CACHE_MAX_ENTRY_BYTES || 256 * 1024)
+const CACHE_MAX_TOTAL_BYTES = Number(process.env.API_QUERY_CACHE_MAX_TOTAL_BYTES || 3 * 1024 * 1024)
+const CACHE_MAX_ENTRIES = Number(process.env.API_QUERY_CACHE_MAX_ENTRIES || 150)
 const queryCache = new Map()
 const pendingRequests = new Map()
 const rateLimitMap = new Map()
+let queryCacheBytes = 0
 
 function cacheKey(body) {
   return JSON.stringify(body)
+}
+
+function estimateJsonBytes(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value || {}))
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
+}
+
+function cacheDelete(key) {
+  const entry = queryCache.get(key)
+  if (!entry) return
+  queryCacheBytes = Math.max(0, queryCacheBytes - Number(entry.bytes || 0))
+  queryCache.delete(key)
+}
+
+function evictQueryCache(now = Date.now()) {
+  for (const [key, entry] of queryCache.entries()) {
+    if (now - entry.ts > CACHE_TTL_MS) {
+      cacheDelete(key)
+    }
+  }
+
+  while (
+    queryCache.size > CACHE_MAX_ENTRIES ||
+    queryCacheBytes > CACHE_MAX_TOTAL_BYTES
+  ) {
+    const oldestKey = queryCache.keys().next().value
+    if (!oldestKey) break
+    cacheDelete(oldestKey)
+  }
 }
 
 function cacheGet(key) {
   const entry = queryCache.get(key)
   if (!entry) return null
   if (Date.now() - entry.ts > CACHE_TTL_MS) {
-    queryCache.delete(key)
+    cacheDelete(key)
     return null
   }
+  queryCache.delete(key)
+  queryCache.set(key, entry)
   return entry.data
 }
 
 function cacheSet(key, data) {
-  queryCache.set(key, { data, ts: Date.now() })
+  const bytes = estimateJsonBytes(data)
+  if (!Number.isFinite(bytes) || bytes > CACHE_MAX_ENTRY_BYTES) {
+    cacheDelete(key)
+    return false
+  }
+
+  cacheDelete(key)
+  queryCache.set(key, { data, ts: Date.now(), bytes })
+  queryCacheBytes += bytes
+  evictQueryCache()
+  return true
 }
 
 // Recursively strips empty values (null, undefined, empty arrays) from objects/arrays
@@ -180,12 +228,8 @@ setInterval(() => {
     }
   }
 
-  // queryCache cleanup (Garbage Collector for expired keys)
-  for (const [key, entry] of queryCache.entries()) {
-    if (now - entry.ts > CACHE_TTL_MS) {
-      queryCache.delete(key)
-    }
-  }
+  // queryCache cleanup (Garbage Collector for expired keys and oversized cache)
+  evictQueryCache(now)
 }, 60_000)
 
 function rateLimiter(req, res, next) {
@@ -215,7 +259,7 @@ function cacheClearTable(table) {
   for (const key of queryCache.keys()) {
     try {
       const parsed = JSON.parse(key)
-      if (parsed.table === table) queryCache.delete(key)
+      if (parsed.table === table) cacheDelete(key)
     } catch { /* ignore */ }
   }
 }
@@ -307,6 +351,8 @@ function normalizeWriteValue(table, column, value) {
     form_submissions: new Set(['answers_json', 'metadata']),
     form_submission_photos: new Set(['metadata']),
     pos_terminals: new Set(['config_data']),
+    warehouse_tasks: new Set(['meta']),
+    warehouse_task_events: new Set(['payload']),
   }
 
   // These columns accept nested arrays/objects. Stringifying here keeps the generic
@@ -514,6 +560,328 @@ function buildConditions(filters, startIdx = 1) {
 }
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
+
+async function resolveProductAndPackage(barcode, branch_id) {
+  // 1. Try to find in product_external_barcodes
+  let extRes = await pool.query(
+    `SELECT
+      s.id AS stock_item_id,
+      s.name AS stock_item_name,
+      s.sku AS stock_item_sku,
+      s.unit AS stock_item_unit,
+      s.image_url AS stock_item_image_url,
+      p.package_unit_id
+     FROM product_external_barcodes p
+     JOIN stock_items s ON p.stock_item_id = s.id
+     WHERE p.gtin_barcode = $1 AND p.is_approved = true`,
+    [barcode]
+  )
+
+  let product = null
+  let package_unit_id = null
+
+  if (extRes.rows.length > 0) {
+    const row = extRes.rows[0]
+    product = {
+      id: row.stock_item_id,
+      name: row.stock_item_name,
+      sku: row.stock_item_sku,
+      unit: row.stock_item_unit,
+      image_url: row.stock_item_image_url
+    }
+    package_unit_id = row.package_unit_id
+  } else {
+    // 2. Fallback to direct match on stock_items sku
+    let itemRes = await pool.query(
+      'SELECT id, name, sku, unit, image_url FROM stock_items WHERE sku = $1',
+      [barcode]
+    )
+    if (itemRes.rows.length > 0) {
+      const row = itemRes.rows[0]
+      product = {
+        id: row.id,
+        name: row.name,
+        sku: row.sku,
+        unit: row.unit,
+        image_url: row.image_url
+      }
+    }
+  }
+
+  if (!product) return null
+
+  // 3. Resolve package unit
+  let package_unit = null
+  if (package_unit_id) {
+    let unitRes = await pool.query(
+      `SELECT id, unit_name, unit_symbol, base_quantity, length_cm, width_cm, height_cm, volume_m3, gross_weight_kg
+       FROM stock_item_package_units WHERE id = $1`,
+      [package_unit_id]
+    )
+    if (unitRes.rows.length > 0) {
+      const u = unitRes.rows[0]
+      package_unit = {
+        package_unit_id: u.id,
+        unit_name: u.unit_name,
+        unit_symbol: u.unit_symbol,
+        conversion_factor: Number(u.base_quantity),
+        barcode: barcode,
+        length_cm: u.length_cm ? Number(u.length_cm) : null,
+        width_cm: u.width_cm ? Number(u.width_cm) : null,
+        height_cm: u.height_cm ? Number(u.height_cm) : null,
+        volume_m3: u.volume_m3 ? Number(u.volume_m3) : null,
+        gross_weight_kg: u.gross_weight_kg ? Number(u.gross_weight_kg) : null
+      }
+    }
+  }
+
+  // If no package unit resolved, find default for this product
+  if (!package_unit) {
+    let unitRes = await pool.query(
+      `SELECT id, unit_name, unit_symbol, base_quantity, length_cm, width_cm, height_cm, volume_m3, gross_weight_kg
+       FROM stock_item_package_units
+       WHERE stock_item_id = $1 AND active = true
+       ORDER BY is_base_unit DESC, is_default_picking_unit DESC, base_quantity ASC LIMIT 1`,
+      [product.id]
+    )
+    if (unitRes.rows.length > 0) {
+      const u = unitRes.rows[0]
+      package_unit = {
+        package_unit_id: u.id,
+        unit_name: u.unit_name,
+        unit_symbol: u.unit_symbol,
+        conversion_factor: Number(u.base_quantity),
+        barcode: null,
+        length_cm: u.length_cm ? Number(u.length_cm) : null,
+        width_cm: u.width_cm ? Number(u.width_cm) : null,
+        height_cm: u.height_cm ? Number(u.height_cm) : null,
+        volume_m3: u.volume_m3 ? Number(u.volume_m3) : null,
+        gross_weight_kg: u.gross_weight_kg ? Number(u.gross_weight_kg) : null
+      }
+    } else {
+      // Fallback: Generate default unit from stock_item unit
+      package_unit = {
+        package_unit_id: null,
+        unit_name: product.unit || 'Adet',
+        unit_symbol: product.unit || 'AD',
+        conversion_factor: 1.0,
+        barcode: null,
+        length_cm: null,
+        width_cm: null,
+        height_cm: null,
+        volume_m3: null,
+        gross_weight_kg: null
+      }
+    }
+  }
+
+  return { product, package_unit }
+}
+
+app.post('/api/wms/parse-barcode', async (req, res) => {
+  const { barcode, branch_id, task_id, personnel_id, terminal_id } = req.body
+  if (!barcode || !branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'barcode ve branch_id zorunludur' } })
+  }
+
+  try {
+    let scan_type = 'unknown'
+    let matched = false
+    let product = null
+    let package_unit = null
+    let location = null
+    let lpn = null
+    let lot_info = null
+    let is_expected = false
+    let message = 'Eşleşme bulunamadı.'
+
+    // 1. Lokasyon sorgula
+    const locRes = await pool.query(
+      'SELECT id, zone_code, aisle, rack, level, bin FROM warehouse_locations WHERE branch_id = $1 AND is_active = true',
+      [branch_id]
+    )
+    for (const loc of locRes.rows) {
+      const fullLocCode = `LOC-${loc.zone_code}-${loc.aisle || 0}-${loc.rack || 0}-${loc.level || 0}`
+      const shortLocCode = `LOC-${loc.zone_code}`
+      if (
+        fullLocCode.toLowerCase() === barcode.toLowerCase() ||
+        shortLocCode.toLowerCase() === barcode.toLowerCase() ||
+        loc.zone_code.toLowerCase() === barcode.toLowerCase() ||
+        loc.id === barcode
+      ) {
+        scan_type = 'location'
+        matched = true
+        location = loc
+        message = `Lokasyon doğrulandı: Zone ${loc.zone_code}`
+        break
+      }
+    }
+
+    // 2. LPN sorgula (eğer lokasyon değilse)
+    if (!matched) {
+      const lpnRes = await pool.query(
+        'SELECT id, lpn_code, location_id FROM warehouse_lpns WHERE branch_id = $1 AND lpn_code = $2',
+        [branch_id, barcode]
+      )
+      if (lpnRes.rows.length > 0) {
+        scan_type = 'lpn'
+        matched = true
+        lpn = lpnRes.rows[0]
+        message = `LPN doğrulandı: ${lpn.lpn_code}`
+      }
+    }
+
+    // 3. Ürün sorgula (eğer lokasyon veya LPN değilse)
+    if (!matched) {
+      const resolved = await resolveProductAndPackage(barcode, branch_id)
+      if (resolved) {
+        scan_type = 'product'
+        matched = true
+        product = resolved.product
+        package_unit = resolved.package_unit
+        message = `Ürün doğrulandı: ${product.name}`
+      }
+    }
+
+    // 4. Lot/SKT ayrıştır (opsiyonel)
+    if (barcode.includes('LOT:') || barcode.includes('EXP:')) {
+      const lotMatch = barcode.match(/LOT:([^;]+)/i)
+      const expMatch = barcode.match(/EXP:([^;]+)/i)
+      if (lotMatch || expMatch) {
+        lot_info = {
+          lot_number: lotMatch ? lotMatch[1].trim() : null,
+          expiration_date: expMatch ? expMatch[1].trim() : null
+        }
+      }
+    }
+
+    // 5. Seçili görevle eşleştir (varsa)
+    let activeTask = null
+    if (task_id) {
+      const taskRes = await pool.query(
+        `SELECT
+          id,
+          task_type,
+          status,
+          COALESCE(meta->>'product_id', meta->>'stock_item_id') AS product_id,
+          meta->>'barcode' AS barcode,
+          meta->>'product_code' AS product_code,
+          meta->>'source_location' AS source_location,
+          meta->>'target_location' AS target_location,
+          COALESCE(meta->>'source_location_id', meta->>'location_id', meta->>'from_location_id') AS source_location_id,
+          COALESCE(meta->>'target_location_id', meta->>'location_id') AS target_location_id,
+          (meta->>'quantity')::int AS quantity,
+          (meta->>'scanned_quantity')::int AS scanned_quantity
+         FROM warehouse_tasks
+         WHERE id = $1`,
+        [task_id]
+      )
+      if (taskRes.rows.length > 0) {
+        activeTask = taskRes.rows[0]
+        if (scan_type === 'product') {
+          if (
+            product && (
+              product.id === activeTask.product_id ||
+              barcode === activeTask.barcode ||
+              barcode === activeTask.product_code
+            )
+          ) {
+            is_expected = true
+            message = `Doğru ürün taranmıştır: ${product.name}`
+          } else {
+            is_expected = false
+            message = `Hata: Bu ürün seçili görev için beklenmiyor`
+          }
+        } else if (scan_type === 'location') {
+          if (activeTask.task_type === 'putaway') {
+            if (
+              location.id === activeTask.target_location_id ||
+              location.zone_code === activeTask.target_location ||
+              location.id === activeTask.source_location_id
+            ) {
+              is_expected = true
+              message = `Doğru hedef lokasyon seçildi: Zone ${location.zone_code}`
+            } else {
+              is_expected = false
+              message = `Hata: Yanlış lokasyon! Görevin hedefi: ${activeTask.target_location}`
+            }
+          } else if (activeTask.task_type === 'pick') {
+            if (
+              location.id === activeTask.source_location_id ||
+              location.zone_code === activeTask.source_location
+            ) {
+              is_expected = true
+              message = `Doğru kaynak lokasyon doğrulandı: Zone ${location.zone_code}`
+            } else {
+              is_expected = false
+              message = `Hata: Yanlış lokasyon! Görevin kaynağı: ${activeTask.source_location}`
+            }
+          } else {
+            is_expected = true
+            message = `Lokasyon seçildi: Zone ${location.zone_code}`
+          }
+        } else if (scan_type === 'lpn') {
+          is_expected = true
+          message = `LPN seçildi: ${lpn.lpn_code}`
+        }
+      }
+    } else {
+      is_expected = matched
+    }
+
+    // 6. Log attempt in warehouse_task_events
+    if (activeTask || task_id) {
+      const targetTaskId = activeTask ? activeTask.id : task_id
+      const eventType = is_expected ? 'scan_success' : 'scan_failed'
+      await pool.query(
+        'INSERT INTO warehouse_task_events (task_id, event_type, from_status, to_status, personnel_id, terminal_id, barcode_scanned, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [
+          targetTaskId,
+          eventType,
+          activeTask ? activeTask.status : null,
+          activeTask ? activeTask.status : null,
+          personnel_id || null,
+          terminal_id || null,
+          barcode,
+          JSON.stringify({ scan_type, matched, is_expected, lot_info, message })
+        ]
+      )
+    }
+
+    return res.json({
+      data: {
+        barcode,
+        scan_type,
+        matched,
+        product,
+        package_unit,
+        location,
+        lpn,
+        lot_info,
+        is_expected,
+        message
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('Error in parse-barcode endpoint', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/shipment-capacity/:shipment_id', async (req, res) => {
+  const { shipment_id } = req.params
+  try {
+    const { rows } = await pool.query('SELECT public.get_warehouse_shipment_capacity($1) AS capacity', [shipment_id])
+    if (rows.length > 0 && rows[0].capacity) {
+      return res.json({ data: rows[0].capacity, error: null })
+    }
+    return res.status(404).json({ data: null, error: { message: 'Sevkiyat bulunamadı' } })
+  } catch (err) {
+    console.error('Error in shipment-capacity endpoint', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
 
 app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) {
@@ -1128,6 +1496,80 @@ app.get('/api/manual/pages/:id', async (req, res) => {
     return res.json({ data: rows[0], error: null })
   } catch (err) {
     console.error('[GET /api/manual/pages/:id]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// AI SUPPORT CHAT ENDPOINT (RAG ENTEGRASYONU)
+app.post('/api/support/chat', async (req, res) => {
+  try {
+    const { message } = req.body
+    if (!message) {
+      return res.status(400).json({ data: null, error: { message: 'message is required' } })
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return res.status(500).json({ data: null, error: { message: 'GEMINI_API_KEY is not configured on the server environment.' } })
+    }
+
+    // Support klasöründeki tüm .md dosyalarını oku
+    const supportDir = path.join(__dirname, '../Support')
+    let kbContent = ''
+    if (fs.existsSync(supportDir)) {
+      const files = fs.readdirSync(supportDir)
+      for (const file of files) {
+        if (file.endsWith('.md')) {
+          const filePath = path.join(supportDir, file)
+          const content = fs.readFileSync(filePath, 'utf8')
+          kbContent += `\n=== DOKÜMAN: ${file} ===\n${content}\n`
+        }
+      }
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: message }]
+        }],
+        systemInstruction: {
+          parts: [{
+            text: `Sen SuitableRMS sisteminin yapay zeka destek asistanısın.
+Kullanıcıların (restoran işletmecilerinin) sorularına yanıt verirken sadece sana sağlanan bilgi bankasını (Knowledge Base) referans al.
+
+KURALLAR:
+1. Kesinlikle veritabanı tablo adlarını, kaynak kod dosya yollarını ve teknik değişkenleri kullanıcıya gösterme (bunlar bilgi bankasında yazar ama gizli kalmalıdır).
+2. Yanıtlarında sadece doğrudan tıklanabilir localhost linklerini (http://localhost:5173/...) ve operasyonel iş mantığını ver.
+3. Yanıtları doğrudan, akıcı ve Türkçe olarak ver. Herhangi bir onay isteme ya da komut çalıştırma gibi aşamalardan bahsetme.
+
+BİLGİ BANKASI:
+${kbContent}`
+          }]
+        },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1500
+        }
+      })
+    })
+
+    const data = await response.json()
+    if (data.error) {
+      return res.status(500).json({ data: null, error: { message: data.error.message } })
+    }
+
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
+      return res.status(500).json({ data: null, error: { message: 'Gemini API did not return a valid response candidate.', details: data } })
+    }
+
+    const reply = data.candidates[0].content.parts[0].text
+    return res.json({ data: { reply }, error: null })
+  } catch (err) {
+    console.error('[POST /api/support/chat]', err.message)
     return res.status(500).json({ data: null, error: { message: err.message } })
   }
 })

@@ -224,6 +224,7 @@ const NAV = [
       },
       { label: 'GÃ¶revler', path: '/depo-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
       { label: 'WMS Görevleri', path: '/depo-wms-tasks', icon: 'fa-tasks', color: '#818cf8', bg: 'rgba(129,140,248,.18)' },
+      { label: 'WMS Mobil Panel', path: '/wms-mobile', icon: 'fa-mobile-screen-button', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
       {
         label: 'Depo Ayarları', icon: 'fa-gear', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
         group: 'anadepo-ayarlar',
@@ -240,6 +241,7 @@ const NAV = [
     icon: 'fa-industry',
     items: [
       { label: 'Ãœretim', path: '/merkezmutfak-uretim', icon: 'fa-industry', color: '#4ade80', bg: 'rgba(74,222,128,.18)' },
+      { label: 'Mutfak Satınalma Siparişleri', path: '/merkezmutfak-satinalma', icon: 'fa-cart-shopping', color: '#fb923c', bg: 'rgba(251,146,60,.18)' },
       {
         label: 'Ä°ÅŸlemler', icon: 'fa-file-invoice', color: '#60a5fa', bg: 'rgba(96,165,250,.18)',
         group: 'merkez-mutfak-islemler',
@@ -272,6 +274,7 @@ const NAV = [
     section: 'Ayarlar',
     icon: 'fa-gear',
     items: [
+      { label: 'Yapay Zeka Destek', path: '/destek', icon: 'fa-robot', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
       { label: 'Tahmin AyarlarÄ±', path: '/settings', icon: 'fa-gear', color: '#94a3b8', bg: 'rgba(148,163,184,.18)' },
       { label: 'Müşteri App Ayarları', path: '/customer-app-settings', icon: 'fa-mobile-screen', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
       { label: 'Hesap Ã‡izelgesi', path: '/hesap-cizelgesi', icon: 'fa-book-bookmark', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },

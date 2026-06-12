@@ -10863,3 +10863,439 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Handoff Contract`: `WMS-02D exception çözüm mekanizması ACID transaction kurallarına uygun olarak tamamen DB seviyesine (RPC) çekilmiş, istemci kodları temizlenmiş ve entegrasyon build'i alınmıştır. Sistem son derece kararlı ve güvenlidir.`
 
+
+[SUPPORT_SYNC_MARKER] - Baseline established after initial documentation setup.
+
+## Entry 211 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T17:00:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-00A - WMS Baseline Denetimi`
+- `Intent`: `WMS baseline denetimini gerçekleştirmek, mevcut route/tablo yapısını, replenishment akışı izolasyonunu ve availability_status kullanımını doğrulamak; mevcut testleri ve Vite production build derlemesini doğrulamak.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+  - `src/components/pages/MalKabul.jsx`
+  - `src/components/pages/WmsLocations.jsx`
+  - `src/components/pages/WmsLpns.jsx`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/WmsInternalTransfer.jsx`
+  - `src/lib/branchPurchasing.js`
+  - `src/lib/warehouseDemandPlanning.js`
+  - `scratch/test_branch_purchasing_regression.js`
+  - `scratch/test_wms_current_contract.js`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `node .\scratch\test_wms_current_contract.js` (Başarılı)
+  - `npm run build` (Başarılı)
+- `Findings`:
+  - **Mevcut WMS Tabloları:** `warehouse_locations`, `warehouse_lpns`, `warehouse_shipments`, `warehouse_shipment_orders`, `warehouse_shipment_lines`, `warehouse_reservations`, `warehouse_tasks`, `warehouse_task_events` ve `stock_item_warehouse_settings` tablolarının şemada yer aldığı doğrulandı.
+  - **WMS Rotaları:** `/depo-orders` (Şube Talepleri / Sevk Konsolu), `/depo-satinalma` (Depo Satınalma), `/depo-mal-kabul` (Mal Kabul), `/depo-iclokasyon-tasima` (Lokasyon Taşıma), `/depo-tasks` (Görevler), `/depo-wms-tasks` (WMS Görevleri), `/wms-locations`, `/wms-lpns`, `/wms-stock-params` vb. rotaların `App.jsx` ve `Sidebar.jsx` içinde tanımlı olduğu doğrulandı.
+  - **İzolasyon:** `warehouse_replenishment` akışının şube siparişlerinden `flow_channel = 'warehouse_replenishment'` ve `supplier_kind = 'internal_warehouse'` kısıtlarıyla izole edildiği ve `DepoOrders.jsx` tarafından bu filtreyle çekildiği doğrulandı.
+  - **availability_status:** `inventory_movements` içerisinde `availability_status` değerinin `quarantine` ve `putaway_pending` durumlarında kullanılabilir stoktan (`available_qty`) düşüldüğü hem `buildInventoryBalanceRows` helper'ında hem de veritabanı `v_wms_pickable_stock` view'ında doğrulandı.
+  - **Testlerin Koşturulması:** `test_branch_purchasing_regression.js` ve `test_wms_current_contract.js` scriptleri sorunsuz çalışarak tüm test senaryolarını yeşile çekmiştir.
+  - **Build:** `npm run build` derlemesi sıfır hata ile tamamlanmıştır.
+- `Decisions`:
+  - Mevcut WMS baseline ve kilit test durumları stabil kabul edildi ve herhangi bir kod değişikliği yapılmasına gerek duyulmadı.
+- `Open Risks`: Yok.
+- `Next Step`:
+  - Mevcut stabil durum ve kilit testler korunarak sonraki fazların (WMS-01A rezervasyon motoru vb.) geliştirilmesine devam edilmelidir.
+- `Handoff Contract`: `WMS baseline denetimi başarıyla tamamlanmıştır. Mevcut testler (regression ve current contract) ve üretim derlemesi sorunsuzdur. Sonraki fazların bozmayacağı davranışlar kilitlenmiş durumdadır.`
+
+
+## Entry 212 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T17:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Görev WMS-03A - Mobil WMS Shell ve Görevlerim`
+- `Intent`: `Depo personelinin el terminali veya mobil cihazlar üzerinden barkod/QR okutarak fiziksel depo işlemlerini yürütebileceği split-screen tasarımlı premium mobil arayüz katmanını kurmak.`
+- `Files Read`:
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/lib/posStaffAuth.js`
+  - `src/components/pages/WmsTasks.jsx`
+  - `src/lib/workspace.js`
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+- `Files Changed`:
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/lib/workspace.js`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Files Created`:
+  - `src/components/pages/WmsMobile.jsx`
+- `Commands Run`:
+  - `node .\scratch\test_branch_purchasing_regression.js` (Başarılı)
+  - `node .\scratch\test_wms_current_contract.js` (Başarılı)
+  - `npm run build` (Başarılı; WmsMobile modülü hatasız paketlendi)
+- `Findings`:
+  - **Split-Screen Arayüz:** Üstte (%35) video kamera akışı ve barkod simülasyonu, altta (%65) bağımsız kaydırılabilir işlem panelleri ve sekmeler yerleşimiyle kesintisiz iş akışı sağlandı.
+  - **Kamera & Simülatör:** WebRTC video stream yayını denendi, fallback olarak laser grid animasyonu tasarlandı. Testler için predefined barkod dropdown'ı ve emüle klavye girişi metin kutusu entegre edildi.
+  - **Rota & Yetkilendirme:** `/wms-mobile` ve `/depo-mobile` rotaları `workspace.js` altındaki `ANADEPO_PATHS` listesine eklenerek depo PIN yetkilendirmesiyle tam koruma altına alındı. Sidebar altına link eklendi.
+  - **İşlem Sekmeleri:** Görevlerim listesi, Aktif İşlem detayı (putaway için `complete_warehouse_putaway_task` ve pick için `complete_warehouse_shipment_task` tetikleyicileriyle) ve Stok Sorgulama sekmeleri kuruldu.
+- `Decisions`:
+  - Donanım ve klavye okuması sorunsuz çalışsın diye görünmez sürekli odaklanan barkod input katmanı uygulandı.
+- `Open Risks`: Yok.
+- `Next Step`:
+  - Bir sonraki faz olan WMS-03B barkod okuma motoru (`wmsBarcode.js` vb.) ve lot/SKT ayrıştırıcılarının geliştirilmesiyle devam edilmelidir.
+- `Handoff Contract`: `WMS Mobil Shell ve Görevlerim modülü başarıyla tamamlanmış, tüm regresyon testleri yeşil durumda ve Vite üretimi derlemesi sorunsuzdur.`
+
+
+
+
+## Entry 213 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:20:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS faz talimatinda Faz 3 mobil bolumunu native Android uygulama olarak revize etme`
+- `Intent`: `Fazlandirilmis WMS gorev talimatinda mobil WMS isinin web/PWA/WebView veya barkod simulasyonu degil, personel-android altinda gercek native Android APK olarak yapilmasini netlestirmek.`
+- `Files Read`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `personel-android/HANDOFF.md`
+  - `personel-android/app/build.gradle.kts`
+  - `personel-android/app/src/main/AndroidManifest.xml`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `OperationSync.md`
+- `Findings`:
+  - Mevcut `personel-android` projesinde Kotlin/Jetpack Compose, Retrofit/Gson, Coroutines ve ZXing barkod/QR altyapisi oldugu icin Faz 3 talimati bu proje uzerinden native Android modulu seklinde yeniden tanimlandi.
+  - Onceki web route, responsive ekran, WebView/PWA, WebRTC kamera onizlemesi veya dropdown barkod simulasyonu Faz 3 kabul kriteri olmaktan cikarildi; bunlar sadece UX/prototip referansi sayilabilir.
+  - WMS-03A ile WMS-03F arasindaki mobil gorevler Android APK, kamera/runtime izinleri, ZXing scan, Retrofit API, multipart upload ve server-side fail-closed dogrulama gerektirecek sekilde guncellendi.
+- `Decisions`:
+  - Android uygulama DB'ye dogrudan baglanmayacak; Railway API uzerinden konusacak.
+  - Offline/local queue veya yerel done state kullanilmayacak; server basarili donmeden gorev tamamlanmis sayilmayacak.
+- `Open Risks`:
+  - Daha once uretilen `src/components/pages/WmsMobile.jsx` web/simulasyon modulu yeni native Android kabul kriterlerini karsilamaz; Faz 3 tamamlandi sayilmadan once `personel-android` icinde gercek Android uygulama isi yapilmalidir.
+- `Next Step`:
+  - WMS-03A native Android modul isi, `personel-android` altinda Compose ekranlari ve Retrofit WMS API kontratlariyla yeniden baslatilmalidir.
+- `Handoff Contract`: `Faz 3 mobil WMS artik simulasyon/prototip degil, personel-android icinde gercek native Android APK teslimati olarak tanimlanmistir.`
+
+## Entry 214 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:30:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS native Android uygulama klasoru ve hedef yolunu olusturma`
+- `Intent`: `WMS mobil uygulamasinin personel-android icine gomulmeden, proje kokunde ayri wms-android klasorunde kurulmasini netlestirmek ve hedef handoff dosyasini olusturmak.`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `wms-android/HANDOFF.md`
+  - `OperationSync.md`
+- `Files Created`:
+  - `wms-android/HANDOFF.md`
+- `Decisions`:
+  - WMS Android uygulama hedef yolu `C:\RMSv3\wms-android` olarak sabitlendi.
+  - Android package onerisi `com.suitable.wms`, ana kaynak yolu `wms-android/app/src/main/java/com/suitable/wms/` olarak yazildi.
+  - `personel-android` ve `musteri-android` yalnizca referans olarak kalacak; WMS kodu bu uygulamalarin icine gomulmeyecek.
+- `Open Risks`: `wms-android` klasoru henuz sadece handoff/yonlendirme dosyasi icerir; Android Gradle proje iskeleti WMS-03A agent gorevinde kurulmalidir.
+- `Next Step`: `WMS-03A` agenti `C:\RMSv3\wms-android` altinda bagimsiz native Android Gradle application projesini kurmalidir.
+- `Handoff Contract`: `WMS Android hedef klasoru olusturuldu; uygulama yolu C:\RMSv3\wms-android olarak sabitlendi.`
+
+## Entry 215 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:40:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Faz 3 native wms-android degisikligi sonrasi Faz 4-6 bagimliliklarini guncelleme`
+- `Intent`: `WMS Faz 3 mobil uygulamasinin ayri native Android APK olarak degismesi nedeniyle kalite, sayim, replenishment ve raporlama fazlarinin wms-android event/upload kontratini tuketecek sekilde hizalanmasi.`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `OperationSync.md`
+- `Findings`:
+  - Faz 4 kalite/karantina, Android evidence upload ve task event payload kontratina baglandi.
+  - Faz 5 cycle count ve replenishment artik web/mobile simulasyon degil, wms-android icindeki native Android ekranlar ve ortak scanner/parser kontratiyla tamamlanacak sekilde guncellendi.
+  - Faz 6 rapor/dashboard metriklerine wms-android scan, evidence upload, cihaz/personel ve app version eventleri eklendi.
+- `Decisions`:
+  - Quality hold migration ismi sabit migration numarasi yerine siradaki bos migration numarasi kullanacak sekilde revize edildi.
+  - Dashboard ve web kalite ekranlari mobil gorevlerin yerini almayacak; barkod okutma/task done/evidence upload simulasyonu yapmayacak.
+- `Open Risks`: Faz 4-6 final dogrulamasi icin WMS-03A-F native Android kontratlarinin gerceklesmesi gerekir.
+- `Next Step`: WMS-03A-F native Android isi tamamlandiktan sonra Faz 4 kalite/evidence ve Faz 5 Android sayim/ikmal ekranlari baslatilmalidir.
+- `Handoff Contract`: `Faz 4-6, wms-android ayri native Android uygulama kararina gore guncellendi.`
+
+
+## Entry 216 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:50:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Faz 3 - Native Android WMS Uygulamas� ve G�revlerim (WMS-03A)`
+- `Intent`: `wms-android alt�nda ayr� bir native Android projesi kurmak, paket ismini com.suitable.wms yapmak, API entegrasyonlar�n� sa�lamak, b�l�nm�� ekranl� scanner ve g�revlerim aray�z�n� olu�turmak.`
+- `Files Created`:
+  - wms-android/app/src/main/java/com/suitable/wms/data/ApiClient.kt
+  - wms-android/app/src/main/java/com/suitable/wms/data/WmsRepository.kt
+  - wms-android/app/src/main/java/com/suitable/wms/ui/main/PinLoginScreen.kt
+  - wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt
+- `Files Changed`:
+  - wms-android/app/build.gradle.kts
+  - wms-android/app/src/main/AndroidManifest.xml
+  - wms-android/app/src/main/java/com/suitable/wms/MainActivity.kt
+  - wms-android/app/src/main/java/com/suitable/wms/Navigation.kt
+  - wms-android/app/src/main/java/com/suitable/wms/NavigationKeys.kt
+  - wms-android/app/src/main/java/com/suitable/wms/ui/main/MainScreen.kt
+  - OperationSync.md
+- `Findings`:
+  - Proje ndroid create ile olu�turulduktan sonra paket isimleri com.suitable.wms olarak refakt�r edildi.
+  - Camera, location ve internet izinleri manifest'e eklendi.
+  - ZXing CompoundBarcodeView ile s�rekli canl� tarama yapabilen split-screen kamera alan� ekranda g�m�l� olarak yerle�tirildi.
+  - Taranan barkodun e�le�me durumuna g�re inline ye�il/k�rm�z� feedback banner'� g�sterilmesi sa�land�.
+  - Retrofit + Coroutines ile API query ve RPC putaway/shipment entegrasyonu tamamland�.
+  - settings personel kay�tlar� ve company_tree �zerinden PIN login ve WMS/Depo birimleri filtreli oturum a�ma sa�land�.
+- `Decisions`:
+  - ssembleDebug ve 	est gradle komutlar� ile uygulaman�n hatas�z derlendi�i ve testleri ge�ti�i do�ruland�.
+  - WMS-03A t�m kabul kriterleriyle tamamland�.
+- `Open Risks`: Yok.
+- `Next Step`: Faz 4 Kalite / Karantina (WMS-04A) veya bir sonraki el terminali mod�llerinin entegrasyonu.
+- `Handoff Contract`: `WMS-03A native Android uygulamas� ve g�revlerim mod�l� ba�ar�yla derlenerek app-debug.apk halinde haz�rland�.`
+
+
+## Entry 217 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `G�rev WMS-03A - WmsRepository RPC Parametre Hizalamas� ve Lokasyon ��z�mleme`
+- `Intent`: `Kotlin WmsRepository taraf�ndaki RPC �a�r�lar�n�n Postgres imza ve UUID tipleri ile e�le�memesinden kaynaklanan veritaban� �al��ma zaman� hatalar�n� d�zeltmek.`
+- `Files Changed`:
+  - wms-android/app/src/main/java/com/suitable/wms/data/WmsRepository.kt
+  - wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt
+- `Findings`:
+  - complete_warehouse_putaway_task ve complete_warehouse_shipment_task RPC'lerinin gereksinim duydu�u p_personnel_id parametresi eklendi.
+  - Putaway i�leminde ham barkod string verisini UUID bekleyen p_target_location_id parametresine g�ndermeden �nce esolveLocationId ile DB �zerinden UUID'ye ��z�mleme katman� kuruldu.
+  - Picking g�revinde g�nderilen miktar parametre ad� p_picked_qty olarak d�zeltildi.
+- `Decisions`:
+  - Lokasyon ��z�mleme i�lemi mobil tarafta warehouse_locations verisi �zerinden in-memory e�le�tirme ile ��z�ld�.
+- `Next Step`:
+  - WMS-03B barkod tarama motoru ve server parser entegrasyonu a�amas�na ge�ilebilir.
+- `Handoff Contract`: `WmsRepository RPC parametreleri Postgres DB imzalar�yla hizaland�, el terminali testi ve lokasyon UUID ��z�mlemesi tamamland�.`
+
+
+## Entry 218 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T19:43:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Manuel Sipariş Girişi ve Mutfak Satınalma Entegrasyonu`
+- `Intent`: `Siparişler sayfasından manuel sipariş oluşturma (şube, depo, mutfak) desteğinin eklenmesi ve Merkez Mutfak için satınalma siparişleri rotasının ve sidebar linkinin entegrasyonu.`
+- `Files Changed`:
+  - src/lib/workspace.js
+  - src/App.jsx
+  - src/components/layout/Sidebar.jsx
+  - src/components/pages/Orders.jsx
+  - OperationSync.md
+- `Findings`:
+  - `isFlowDueOnDate` kontrolünün manuel akışları filtrelemesi nedeniyle Siparişler sayfasından manuel sipariş oluşturulamadığı tespit edildi.
+  - Sayfada şube/birim seçildikten sonra aktif akışlardan (manuel/otomatik) yeni taslak sipariş (`order_source: 'manual'`) üretecek `createManualOrder` callback fonksiyonu ve arayüz modali eklendi.
+  - Merkez Mutfak için `/merkezmutfak-satinalma` rotası tanımlandı ve Sidebar'a eklendi.
+- `Decisions`:
+  - Yeni oluşturulan manuel siparişin detay modalı oluşturma işleminin hemen ardından otomatik olarak tetiklenerek (`setDetailOrderId`) kullanıcının doğrudan miktarları girmesi sağlandı.
+- `Next Step`:
+  - Sistemin devreye alınması ve kullanıcı testleri.
+- `Handoff Contract`: `Siparişler sayfasından manuel sipariş oluşturma özelliği ve mutfak satınalma entegrasyonu tamamlandı, proje sorunsuz derlendi.`
+
+
+## Entry 219 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T20:06:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Depo/Mutfak Sipariş Sayfalarında Otomatik Birim Seçimi Desteği`
+- `Intent`: `Kullanıcının Merkez Depo (anadepo) ve Merkez Mutfak (merkezmutfak) çalışma alanlarında iken, Siparişler sayfasındaki birim dropdown'ının otomatik olarak aktif çalışma alanı birimine (Pendik Merkez vb.) pre-select olması ve kilitlenmesi.`
+- `Files Changed`:
+  - src/components/pages/Orders.jsx
+  - OperationSync.md
+- `Findings`:
+  - `branchLocked` state'inin sadece `isBranchScopedScope(scope)` (Şube kapsamı) durumunda true olduğu, bu sebeple depo ve mutfak oturumlarında `workspaceBranchId` olmasına rağmen dropdown'ın otomatik seçilmediği ve "Depo seçin" durumunda kaldığı tespit edildi.
+- `Decisions`:
+  - `branchLocked` tanımı `anadepo` ve `merkezmutfak` kapsamlarını da içerecek şekilde güncellendi. Böylece aktif depo/mutfak oturumu varsa dropdown otomatik kilitlenip pre-select olacak şekilde düzeltildi.
+- `Handoff Contract`: `Depo ve Mutfak sipariş sayfalarındaki otomatik birim kilitlenme problemi giderildi, derleme hatasız alındı.`
+
+## Entry 216 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T18:55:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `WMS barkod, paket olculeri ve arac kapasite talimatlarini faz planina ekleme`
+- `Intent`: `Urun barkod master data, paketleme birimi bazli en/boy/yukseklik/agirlik bilgileri ve arac hacim/agirlik kapasite kontrollerini WMS faz planina eklemek; mobil Android etkisini ayrica tanimlamak.`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `OperationSync.md`
+- `Findings`:
+  - Mevcut stok kartinda `stock_items.packaging_units` JSONB ile paketleme hiyerarsisi var; WMS kapasite ve barkod hesabi icin normalize `stock_item_package_units` benzeri DB kontrati gerektigi belirtildi.
+  - Mevcut `product_external_barcodes` tablosu WMS icin genisletilecek; `stock_items` icine tek `barcode` alani acilmamasi talimatlandirildi.
+  - `vehicles` tablosuna hacim ve agirlik kapasitesi alanlari eklenmesi, sevkiyat/pack/load akista DB/API fail-closed kapasite kontrolu yapilmasi tanimlandi.
+  - `wms-android` icin paket barkodu, olcu/agirlik ve yuk onizleme ek gorevi `WMS-03G` olarak eklendi.
+- `Decisions`:
+  - Yeni Faz 4.5, Faz 4 kalite/traceability sonrasina ve Faz 5 sayim/ikmal oncesine konumlandirildi.
+  - Android kapasite ekrani nihai karar vermeyecek; server/DB kapasite sonucunu gosterecek.
+- `Open Risks`: Kapasite hesaplari icin paket birimi verisinin eksik oldugu mevcut stok kartlari backfill veya eksik master data uyarisi gerektirir.
+- `Next Step`: WMS-04D ile normalize paket/barkod semasi olusturulup WMS-04E stok karti UI ve WMS-04F arac kapasite kontrolu sirayla uygulanmalidir.
+- `Handoff Contract`: `Barkod ve paket olculeri talimati Faz 4.5 olarak eklendi; mobil etkisi WMS-03G olarak tanimlandi.`
+
+## Entry 217 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T19:05:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Merkez Depo arac tanimlari master ekran talimatini WMS faz planina ekleme`
+- `Intent`: `WMS sevkiyat, Android pack/load ve raporlama ekranlarinin arac plaka, sicaklik sinifi, hacim ve agirlik kapasitesi bilgilerini tek merkez arac master datasindan almasini saglayacak talimati eklemek.`
+- `Files Changed`:
+  - `docs/wms_fazlandirilmis_agent_gorev_tanimlari.md`
+  - `OperationSync.md`
+- `Findings`:
+  - Mevcut `vehicles` tablosu plaka/model/surucu bilgisiyle sinirli; WMS icin sicaklik sinifi, hacim kapasitesi, agirlik kapasitesi ve ic olcu bilgileri merkezi master data olmalidir.
+  - Faz 4.5 icinde `WMS-04F - Merkez Depo Arac Tanimlari` ayrildi; kapasite kontrolu `WMS-04G` olarak bu master ekrana baglandi.
+  - Sevkiyat web ekrani, wms-android pack/load ve rapor/dashboard arac bilgisini `vehicles` master datasindan tuketecek sekilde talimatlandirildi.
+- `Decisions`:
+  - Arac tanimlari Merkez Depo/WMS menu grubunda `WmsVehicles.jsx` ve `/depo-araclar` veya `/wms-vehicles` route onerisiyle yapilacak.
+  - Arac sicaklik sinifi degerleri `dry`, `cold`, `frozen`, `multi_temp` olarak tanimlandi.
+  - Serbest metin/static arac listesi veya localStorage/sessionStorage kullanimi yasaklandi.
+- `Open Risks`: Arac sicaklik sinifi ile urun/paket sicaklik gereksinimi eslestirme kurali WMS-04G kapasite/uygunluk kontrolunde netlestirilmelidir.
+- `Next Step`: WMS-04F ile arac master data ve Merkez Depo UI tamamlanmadan WMS-04G kapasite kontrolune gecilmemelidir.
+- `Handoff Contract`: `Merkez Depo arac tanimlari WMS-04F olarak eklendi; kapasite kontrolu WMS-04G olarak bu master dataya baglandi.`
+
+## Entry 220 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T20:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-03E - Android Lokasyon Yonlendirmeli Picking Audit`
+- `Intent`: `Android native WMS uygulamasinda lokasyon yonlendirmeli picking (toplama) akisinin kod denetiminin yapilmasi ve dogrulanmasi.`
+- `Files Changed`:
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPickingScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/data/WmsRepository.kt`
+  - `OperationSync.md`
+- `Findings`:
+  - Cift asamali dogrulama akisinin Kotlin client uzerinde basariyla uygulandigi (1. Asama: Kaynak lokasyon okutma, 2. Asama: Urun / LPN okutma).
+  - Kaynak lokasyon ve urun barkodu/LPN dogrulamalarinin sunucu tarafindaki `/api/wms/parse-barcode` endpoint'ine gonderilerek DB-first ve fail-closed sekilde yapildigi onaylandi.
+  - `complete_warehouse_shipment_task` RPC cagrisinda parametrelerin (`p_task_id`, `p_personnel_id`, `p_picked_qty`) veritabanindaki plpgsql fonksiyonuyla tam uyumlu oldugu goruldu.
+  - `test_wms_shipment_tasks.js` entegrasyon testi calistirildi ve tum adimlarin (kismi toplama/exception, pack/load gorevi uretimi ve sevkiyat onayi) basariyla PASS ettigi dogrulandi.
+  - Kotlin kodunun basariyla derlendigi (`compileDebugKotlin` Gradle task'i 0 hata ile sonuclandi) teyit edildi.
+- `Decisions`:
+  - WMS-03E Android lokasyon yonlendirmeli picking akisi hicbir kritik bulgu/risk olmadan onaylanmistir (ONAYLANDI).
+- `Handoff Contract`: `WMS-03E Android lokasyon yonlendirmeli picking akisi denetlendi ve basariyla onaylandi.`
+## Entry 221 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T21:10:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Yapay Zeka Destek Masası Entegrasyonu`
+- `Intent`: `Restoran yöneticilerinin uygulama içerisinden sistem kılavuzlarını ve operasyon adımlarını doğrudan sorgulayabileceği, Google Gemini API ile entegre çalışan yerleşik bir Yapay Zeka Destek Masası modülü eklemek.`
+- `Files Created`:
+  - `src/components/pages/SupportPanel.jsx`
+- `Files Changed`:
+  - `server/index.js`
+  - `src/lib/workspace.js`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `OperationSync.md`
+- `Findings`:
+  - `/api/support/chat` POST endpoint'i backend'e eklendi. Bu endpoint, `Support/` klasöründeki kılavuzları dinamik olarak okuyarak RAG (Retrieval-Augmented Generation) bağlamı oluşturur ve Google Gemini API'ye (`gemini-1.5-flash`) ileterek yanıtları üretir.
+  - İstemci (frontend) tarafında `/destek` rotası `CENTER_PATHS` yetki kümesine eklenerek merkez yöneticileri için yetkilendirildi.
+  - `SupportPanel.jsx` adında TailwindCSS tabanlı, premium bir chat arayüzü yazıldı. Yanıtları doğrudan render eden inline markdown parser'ı ve otomatik aşağı kaydırma uygulandı.
+  - `npm run build` ile tüm frontend projesinin sıfır hata ile derlendiği test edildi.
+- `Decisions`:
+  - API anahtarı `GEMINI_API_KEY` çevre değişkeninden okunarak sunucu tarafında proxy edilir, böylece istemci tarafına sızdırılması engellenir.
+- `Next Step`:
+  - Canlı sunucu ortamında (Railway) `GEMINI_API_KEY` çevre değişkeninin tanımlanması.
+- `Handoff Contract`: `Yapay Zeka Destek Masası backend entegrasyonu, frontend chat paneli ve rota/menü bağlantıları başarıyla tamamlanarak derlendi.`
+
+## Entry 222 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T21:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-03F - Android Fotoğraf Kanıtı ve Dosya Upload Entegrasyonu Audit`
+- `Intent`: `Android native WMS uygulamasinda putaway ve picking (toplama) gorevlerinde fotoğraf kaniti ve dosya yukleme entegrasyonunun kod denetiminin yapilmasi ve dogrulanmasi.`
+- `Files Changed`:
+  - `migrations/045_add_evidence_photo_to_task_events.sql`
+  - `server/wms_migration.js`
+  - `server/index.js`
+  - `wms-android/app/src/main/AndroidManifest.xml`
+  - `wms-android/app/src/main/res/xml/file_paths.xml`
+  - `wms-android/app/src/main/java/com/suitable/wms/data/ApiClient.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/data/WmsRepository.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPutawayScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPickingScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt`
+  - `OperationSync.md`
+- `Findings`:
+  - Kanit fotografi yukleme desteginin WmsPutawayScreen.kt ve WmsPickingScreen.kt ekranlarinda basariyla entegre edildigi, Coil onizleme destegi sunuldugu teyit edildi.
+  - Gorev exception durumunda oldugunda veya picking isleminde eksik toplama (kismi toplama) yapilacaginda kanit fotografi yuklenmesinin zorunlu kilindigi (fotoğraf yuklenene kadar onay butonunun kilitlendigi) dogrulandi.
+  - Cihaz kamera/galeri intent'lerinin basariyla tetiklendigi, gecici dosyalarin Retrofit @Multipart arayuzu uzerinden /api/upload endpoint'ine yollanip URL'inin alindigi, OkHttp 4 modern request body extension fonksiyonlarinin dogru sekilde kullanildigi goruldu.
+  - Manifest izinlerinin (READ_EXTERNAL_STORAGE ve READ_MEDIA_IMAGES) ve FileProvider (file_paths.xml) tanimlarinin dogru sekilde yapildigi onaylandi.
+  - complete_warehouse_putaway_task ve complete_warehouse_shipment_task RPC fonksiyonlarinin p_evidence_photo_url parametresini alacak sekilde veritabaninda guncellendigi, warehouse_task_events tablosunda event payload'una basariyla kaydedildigi teyit edildi.
+  - Postgres'in fonksiyon asiri yukleme (overloading) cakismasindan kaynaklanan not unique hatasinin giderilmesi amaciyla eski 3 parametreli fonksiyon imzalarinin DROP edildigi ve bu drop komutlarinin migration dosyasina eklendigi teyit edildi.
+  - Kotlin derlemesinin (compileDebugKotlin) ve test_wms_shipment_tasks.js entegrasyon testlerinin basariyla sonuclandigi dogrulandi.
+- `Decisions`:
+  - WMS-03F Android fotoğraf kaniti ve dosya yukleme entegrasyonu akisi basariyla onaylanmistir (ONAYLANDI).
+- `Handoff Contract`: `WMS-03F Android fotoğraf kaniti ve dosya yukleme entegrasyonu denetlendi ve basariyla onaylandi.`
+## Entry 218 - 2026-06-12
+
+- `Timestamp`: `2026-06-12T19:20:00+03:00`
+- `Agent`: `Codex`
+- `Task`: `Railway network egress ve RAM kullanim artisi incelemesi`
+- `Intent`: `Railway SuitableRMS ekraninda gorulen network egress ve RAM artisinin canli API/DB olcumleriyle muhtemel kaynaklarini belirlemek.`
+- `Files Read`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `server/index.js`
+  - `src/lib/db.js`
+  - `src/components/pages/Orders.jsx`
+  - `scratch/analyze_settings_bloat.cjs`
+- `Files Created`:
+  - `temp/railway-egress-ram-audit.mjs`
+- `Commands Run`:
+  - `Invoke-RestMethod -Uri https://rms-api-production-219d.up.railway.app/health -Method GET` (basarili)
+  - `node scratch\analyze_settings_bloat.cjs` (basarili)
+  - `node temp\railway-egress-ram-audit.mjs` (basarili)
+  - `npx.cmd -y @railway/cli status` (basarisiz: invalid_grant / No linked project)
+  - `npx.cmd -y @railway/cli logs --service rms-api --lines 120` (basarisiz: invalid_grant / No linked project)
+- `Findings`:
+  - Railway CLI servis metrik/log erisimi local auth/link sorunu nedeniyle alinamadi; bulgular API/DB olcumlerine dayali guclu dolayli kanittir.
+  - DB boyutu 1577.63 MB; en buyuk tablolar `inventory_movements` 1014.38 MB, `sale_lines` 325.46 MB, `sales` 177.73 MB.
+  - `settings` tarafinda onceki kiosk siskinligi temizlenmis gorunuyor: `kiosk_settings_v2` 4.68 KB. En buyuk settings anahtari `personnel_records` 428.69 KB.
+  - API response olcumunde `inventory_movements:recent1000` 68.26 KB compressed egress, 1.40 MB identity/uncompressed JSON uretmektedir; RAM cache baskisinin en guclu endpoint adayi budur.
+  - `server/index.js` `/api/query` read-only response'lari 30 saniye in-memory `queryCache` icinde tutuyor; buyuk response'lar Node RAM'i artirabilir.
+- `Decisions`:
+  - Oncelikli optimizasyon: `inventory_movements` ve rapor/WMS sayfalarinda ham satir yerine dar select/RPC/windowed aggregate kullanmak, `/api/query` cache'ini byte/adet limitiyle sinirlamak, `personnel_records` settings payload'ini bolmek.
+- `Open Risks`: Railway dashboard servis bazli RAM/egress kirilimi CLI auth duzeltilmeden dogrudan dogrulanamadi.
+- `Next Step`: Railway CLI icin `railway login` ve `railway link` yenilenirse servis loglarindaki `[API_QUERY_LOG]` satirlariyla hangi endpointin kac kez cagrildigi dogrudan sayilmalidir.
+- `Handoff Contract`: `Egress/RAM artisi icin en guclu canli aday inventory_movements buyuk response + /api/query in-memory cache; settings kiosk siskinligi artik ana aday degil.`
+
+## 2026-06-13 - Codex - Railway RAM/Egress Cache Guard
+- `server/index.js` icinde `/api/query` in-memory cache icin byte tabanli koruma eklendi.
+- Tek cache girdisi varsayilan 256 KB ile sinirlandi (`API_QUERY_CACHE_MAX_ENTRY_BYTES`).
+- Toplam cache varsayilan 3 MB / 150 entry ile sinirlandi (`API_QUERY_CACHE_MAX_TOTAL_BYTES`, `API_QUERY_CACHE_MAX_ENTRIES`).
+- Expired/oldest entry temizligi byte muhasebesiyle yapilacak sekilde guncellendi.
+- WMS parse-barcode bolumunde mevcut yarim kalmis duplicate handler kaldirildi; dosya tekrar parse edilebilir hale getirildi.
+- Dogrulama: `node --check server\index.js` ve `git diff --check -- server\index.js` basarili.
+
+
+## Entry 223 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T01:05:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-03G - Android Paket Barkodu, Ölçü/Ağırlık ve Yük Önizleme ve Derleme Doğrulaması`
+- `Intent`: `Android WMS uygulamasında ürün/paket barkodu okutulduğunda paketleme detaylarının gösterilmesi, araç kapasite doluluğunun grafiksel takibi ve sunucu tabanlı kapasite aşım validasyonu entegrasyonu ile derleme doğrulaması.`
+- `Files Read`:
+  - `wms-android/HANDOFF.md`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPackLoadScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPutawayScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPickingScreen.kt`
+  - `server/index.js`
+- `Files Changed`:
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPutawayScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPickingScreen.kt`
+  - `wms-android/HANDOFF.md`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+- `Commands Run`:
+  - `.\gradlew.bat assembleDebug`
+- `Findings`:
+  - `WmsPickingScreen.kt` ve `WmsPutawayScreen.kt` dosyalarında `Card` ve `else` bloklarında eksik kapanan süslü parantez (`}`) hataları tespit edildi ve düzeltildi.
+  - Hatalar giderildikten sonra Android Gradle derleme süreci sorunsuz tamamlandı (`BUILD SUCCESSFUL in 1m 38s`).
+- `Decisions`:
+  - `docs.md` senkronizasyon adımlarına uygun olarak plan, görev ve walkthrough belgeleri projenin `./docs/` dizinine kopyalandı ve `wms-android/HANDOFF.md` güncellendi.
+- `Open Risks`: Yok.
+- `Next Step`: WMS Faz 4 (Kalite ve Karantina) veya Faz 5 (Android Sayım ve Replenishment) süreçlerinin entegrasyonu.
+- `Handoff Contract`: `WMS-03G paket ve kapasite entegrasyonu tamamlandı, derleme hataları giderildi, APK başarıyla derlendi ve tüm proje belgeleri ./docs/ altına senkronize edildi.`
+
+

@@ -2129,7 +2129,7 @@ export default function Orders() {
   const { scope, branchId: workspaceBranchId } = useWorkspace()
   const isDepoSiparis = scope === 'anadepo'
   const isMutfakSiparis = scope === 'merkezmutfak'
-  const branchLocked = isBranchScopedScope(scope) && !!workspaceBranchId
+  const branchLocked = (scope === 'branch' || scope === 'anadepo' || scope === 'merkezmutfak') && !!workspaceBranchId
   const forecastSettings = readForecastSettings()
   const [loading, setLoading] = useState(true)
   const [inventoryLoading, setInventoryLoading] = useState(false)
@@ -2145,6 +2145,9 @@ export default function Orders() {
   const [suppliers, setSuppliers] = useState([])
   const [branches, setBranches] = useState([])
   const [selectedBranch, setSelectedBranch] = useState('')
+  const [manualOrderModalOpen, setManualOrderModalOpen] = useState(false)
+  const [selectedFlowIdForManualOrder, setSelectedFlowIdForManualOrder] = useState('')
+  const [saving, setSaving] = useState(false)
   const [balanceRows, setBalanceRows] = useState([])
   const [inventoryMovementRows, setInventoryMovementRows] = useState([])
   const [purchaseMovementRows, setPurchaseMovementRows] = useState([])
@@ -2588,6 +2591,237 @@ export default function Orders() {
     }, 60000)
     return () => window.clearInterval(timer)
   }, [])
+
+  const activeFlowsForManualOrder = useMemo(() => {
+    if (!selectedBranch) return []
+    const branch = findBranchById(branches, selectedBranch)
+    if (!branch) return []
+
+    return flows.filter(flow => {
+      if (!flow.active) return false
+      const flowReceiverScope = flow.receiver_scope || 'branch'
+      if (isDepoSiparis && flowReceiverScope !== 'warehouse') return false
+      if (isMutfakSiparis && flowReceiverScope !== 'kitchen') return false
+      if (!isDepoSiparis && !isMutfakSiparis && flowReceiverScope !== 'branch') return false
+      return isBranchIncluded(flow.branches, selectedBranch)
+    })
+  }, [flows, selectedBranch, branches, isDepoSiparis, isMutfakSiparis])
+
+  const createManualOrder = useCallback(async (flowId) => {
+    if (!selectedBranch) {
+      toast('Lütfen önce bir şube/depo/mutfak seçin.', 'error')
+      return
+    }
+    const branch = findBranchById(branches, selectedBranch)
+    if (!branch) {
+      toast('Geçersiz şube/depo/mutfak seçimi.', 'error')
+      return
+    }
+    const flow = flows.find(f => f.id === flowId)
+    if (!flow) {
+      toast('Seçilen akış bulunamadı.', 'error')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const today = todayStr()
+      const dates = getFlowDates(flow, today)
+
+      // Resolve items in the flow
+      const matchedItems = resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, suppliers)
+        .filter(item => stockVisibleInBranch(item, branch.id))
+
+      // Group draft lines by supplier
+      const linesBySupplier = {}
+      for (const item of matchedItems) {
+        const supId = flow.receiver_scope === 'warehouse'
+          ? flow.supplier_id
+          : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
+        if (!supId) continue
+
+        if (!linesBySupplier[supId]) {
+          linesBySupplier[supId] = []
+        }
+
+        const supplierRecord = suppliers.find(s => String(s.id).toLowerCase() === String(supId).toLowerCase())
+
+        // Resolve contract price or last purchase price or stock card purchase_price
+        let unitPrice = Number(item.purchase_price || 0)
+        let priceSource = 'stock_card'
+        let contractId = null
+
+        // Check contracts
+        const activeContracts = contracts.filter(c => 
+          String(c.supplier_id).toLowerCase() === String(supId).toLowerCase() &&
+          (!c.branch_id || String(c.branch_id).toLowerCase() === String(branch.id).toLowerCase()) &&
+          (!c.start_date || c.start_date <= today) &&
+          (!c.end_date || c.end_date >= today)
+        )
+        const contractItem = activeContracts
+          .flatMap(c => parseJsonValue(c.items, []))
+          .find(ci => String(ci.stock_item_id) === String(item.id))
+
+        if (contractItem) {
+          unitPrice = Number(contractItem.price || 0)
+          priceSource = 'contract'
+          contractId = contractItem.contract_id || null
+        } else {
+          // Check last receipt price
+          const priceMap = buildLatestPurchasePriceMap(purchaseMovementRows, asUuidOrNull(branch.id) || '')
+          const lastPrice = priceMap.get(item.id)
+          if (lastPrice) {
+            unitPrice = lastPrice
+            priceSource = 'last_receipt'
+          }
+        }
+
+        // Warehouse transfer price check
+        if (supplierRecord?.supplier_kind === 'internal_warehouse' && supplierRecord?.source_branch_id) {
+          const setting = allWarehouseSettings.find(ws => ws.stock_item_id === item.id && ws.branch_id === supplierRecord.source_branch_id)
+          const transferPrice = resolveWarehouseTransferPrice(unitPrice, setting)
+          if (transferPrice.applied) {
+            unitPrice = transferPrice.unit_price
+            priceSource = 'warehouse_transfer_price'
+          }
+        }
+
+        linesBySupplier[supId].push({
+          stock_item_id: item.id,
+          item_name: item.name,
+          item_sku: item.sku || '',
+          unit: item.unit || '',
+          current_stock: 0,
+          calculated_need: 0,
+          suggested_qty: 0,
+          ordered_qty: 0,
+          price_source: priceSource,
+          unit_price: unitPrice,
+          line_total: 0,
+          contract_id: contractId,
+          meta: {},
+        })
+      }
+
+      const existingOrderNumbers = orders.map(order => order.order_no)
+      let firstCreatedOrderId = null
+
+      for (const [supId, supLines] of Object.entries(linesBySupplier)) {
+        if (!supLines.length) continue
+
+        const targetSupplier = suppliers.find(row => row.id === supId)
+        const supplierKind = targetSupplier?.supplier_kind || 'external'
+
+        let flowChannel = 'external_purchase'
+        if (supplierKind === 'internal_warehouse') flowChannel = 'warehouse_replenishment'
+        else if (supplierKind === 'internal_kitchen') flowChannel = 'kitchen_replenishment'
+
+        // Re-index lines
+        const seqLines = supLines.map((line, index) => ({
+          ...line,
+          line_no: index + 1,
+        }))
+
+        const orderNo = nextDocumentNo('SP', today, existingOrderNumbers)
+        existingOrderNumbers.push(orderNo)
+
+        const orderPayload = {
+          order_no: orderNo,
+          branch_id: asUuidOrNull(branch.id),
+          branch_name: branch.name,
+          flow_id: asUuidOrNull(flow.id),
+          flow_name: flow.name,
+          flow_channel: flowChannel,
+          supplier_id: asUuidOrNull(supId),
+          supplier_name: targetSupplier?.name || '',
+          description: flow.description || '',
+          order_source: 'manual',
+          status: 'pending_action',
+          order_date: today,
+          cutoff_at: null,
+          delivery_date: dates.deliveryDate || today,
+          delivery_time: dates.deliveryTime || '17:00',
+          next_order_date: dates.nextOrderDate || null,
+          next_delivery_date: dates.nextDeliveryDate || null,
+          qty_mode: flow.qty_mode || 'manuel',
+          auto_send_mode: 'Manuel',
+          branch_approval: !!flow.branch_approval,
+          hq_approval: !!flow.hq_approval,
+          needs_manager_approval: !!(flow.branch_approval || flow.hq_approval),
+          manager_approval_status: 'not_required',
+          total_qty: 0,
+          subtotal: 0,
+          total_amount: 0,
+          suggestion_refreshed_at: new Date().toISOString(),
+          submitted_at: null,
+          cancelled_at: null,
+          cancelled_reason: null,
+          notes: null,
+          meta: flow.receiver_scope && flow.receiver_scope !== 'branch' ? { receiver_scope: flow.receiver_scope } : {},
+        }
+
+        const { data: insertedOrder, error: insertOrderError } = await db
+          .from('purchase_orders')
+          .insert(orderPayload)
+          .select('*')
+          .single()
+        if (insertOrderError) throw insertOrderError
+
+        if (!firstCreatedOrderId) {
+          firstCreatedOrderId = insertedOrder.id
+        }
+
+        const { error: insertLinesError } = await db
+          .from('purchase_order_lines')
+          .insert(seqLines.map(line => toPurchaseOrderLinePayload(line, insertedOrder.id)))
+        if (insertLinesError) throw insertLinesError
+
+        await logActivity({
+          user,
+          actionType: 'purchase_order_create',
+          route: flow.receiver_scope === 'warehouse' ? '/depo-satinalma' : '/orders',
+          entityType: 'purchase_order',
+          entityId: insertedOrder.id,
+          metadata: {
+            branch_id: branch.id,
+            flow_id: flow.id,
+            order_no: insertedOrder.order_no,
+            status: insertedOrder.status,
+            order_source: 'manual',
+          },
+        })
+      }
+
+      toast('Manuel sipariş taslağı oluşturuldu.', 'success')
+      setManualOrderModalOpen(false)
+      setSelectedFlowIdForManualOrder('')
+      await loadBase()
+
+      // Auto-open detail modal for the user to edit the manual order
+      if (firstCreatedOrderId) {
+        setDetailOrderId(firstCreatedOrderId)
+      }
+    } catch (error) {
+      toast(`Sipariş oluşturulamadı: ${error?.message || 'Bilinmeyen hata'}`, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }, [
+    selectedBranch,
+    branches,
+    flows,
+    stockItems,
+    stockTemplates,
+    contracts,
+    suppliers,
+    purchaseMovementRows,
+    allWarehouseSettings,
+    orders,
+    toast,
+    loadBase,
+    setDetailOrderId,
+    user,
+  ])
 
   const createOrdersForToday = useCallback(async ({ force = false } = {}) => {
     if (!selectedBranch) return 0
@@ -3118,6 +3352,16 @@ export default function Orders() {
             <button className="btn-o" onClick={() => { loadBase() }}>
               <i className="fa-solid fa-rotate-right" /> Yenile
             </button>
+            <button className="btn-p" style={{ backgroundColor: '#10b981', borderColor: '#10b981' }} onClick={() => {
+              if (!selectedBranch) {
+                toast('Lütfen önce bir şube/depo/mutfak seçin.', 'error')
+                return
+              }
+              setSelectedFlowIdForManualOrder('')
+              setManualOrderModalOpen(true)
+            }}>
+              <i className="fa-solid fa-plus" /> Manuel Sipariş Oluştur
+            </button>
             <button className="btn-p" onClick={async () => {
               try {
                 const created = await createOrdersForToday({ force: true })
@@ -3289,6 +3533,63 @@ export default function Orders() {
           await cancelOrder(payload)
         }}
       />
+
+      <Modal
+        open={manualOrderModalOpen}
+        onClose={() => {
+          setManualOrderModalOpen(false)
+          setSelectedFlowIdForManualOrder('')
+        }}
+        width={500}
+        title="Manuel Sipariş Oluştur"
+        subtitle={`${selectedBranchRecord?.name || 'Seçili Birim'} için yeni taslak sipariş`}
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'end', gap: 8 }}>
+            <button className="btn-o" onClick={() => {
+              setManualOrderModalOpen(false)
+              setSelectedFlowIdForManualOrder('')
+            }}>
+              Vazgeç
+            </button>
+            <button
+              className="btn-p"
+              disabled={saving || !selectedFlowIdForManualOrder}
+              onClick={() => createManualOrder(selectedFlowIdForManualOrder)}
+              style={{ backgroundColor: '#10b981', borderColor: '#10b981' }}
+            >
+              {saving ? 'Oluşturuluyor...' : 'Sipariş Oluştur'}
+            </button>
+          </div>
+        )}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          {activeFlowsForManualOrder.length === 0 ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: '#64748b' }}>
+              <i className="fa-solid fa-circle-info" style={{ fontSize: '1.5rem', marginBottom: 8, color: '#94a3b8' }} />
+              <p style={{ fontSize: '.85rem' }}>Bu birim için tanımlı aktif sipariş akışı bulunamadı.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label style={{ fontSize: '.76rem', fontWeight: 700, color: '#475569' }}>Sipariş Akışı Seçin</label>
+              <select
+                className="f-input"
+                value={selectedFlowIdForManualOrder}
+                onChange={e => setSelectedFlowIdForManualOrder(e.target.value)}
+              >
+                <option value="">Akış Seçin...</option>
+                {activeFlowsForManualOrder.map(flow => {
+                  const supplier = suppliers.find(s => s.id === flow.supplier_id)
+                  return (
+                    <option key={flow.id} value={flow.id}>
+                      {flow.name} {supplier ? `(${supplier.name})` : ''} ({flow.flow_type === 'otomatik' ? 'Otomatik' : 'Manuel'})
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

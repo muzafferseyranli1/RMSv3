@@ -24,6 +24,7 @@ const Templates = lazy(() => import('@/components/pages/Templates'))
 const StockItems = lazy(() => import('@/components/pages/StockItems'))
 const InventoryMovements = lazy(() => import('@/components/pages/InventoryMovements'))
 const SaleItems = lazy(() => import('@/components/pages/SaleItems'))
+const SupportPanel = lazy(() => import('@/components/pages/SupportPanel'))
 const ComboMenu = lazy(() => import('@/components/pages/ComboMenu'))
 const ComboMenuBackofficePreview = lazy(() => import('@/components/pages/ComboMenuBackofficePreview'))
 const SemiProducts = lazy(() => import('@/components/pages/SemiProducts'))
@@ -65,6 +66,7 @@ const PurchasingManager = lazy(() => import('@/components/pages/PurchasingManage
 const SupplierOrderPanel = lazy(() => import('@/components/pages/SupplierOrderPanel'))
 const Tasks = lazy(() => import('@/components/pages/Tasks'))
 const WmsTasks = lazy(() => import('@/components/pages/WmsTasks'))
+const WmsMobile = lazy(() => import('@/components/pages/WmsMobile'))
 const LoyaltyManagement = lazy(() => import('@/components/pages/LoyaltyManagement'))
 const LoyaltyCampaignWizard = lazy(() => import('@/components/loyalty/LoyaltyCampaignWizard'))
 const LoyaltyCustomerCategories = lazy(() => import('@/components/pages/LoyaltyCustomerCategories'))
@@ -390,6 +392,7 @@ function AppShell() {
               <Routes>
               <Route path="/" element={<Navigate to={defaultPath} replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/destek" element={<SupportPanel />} />
               <Route path="/dashboard/design-demo" element={<DesignDemo />} />
               <Route path="/suppliers" element={<Suppliers />} />
               <Route path="/units" element={<Units />} />
@@ -508,6 +511,8 @@ function AppShell() {
               <Route path="/depo-documents" element={<WarehouseBranchRoute title="Belge Girisi"><Documents mode="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-tasks" element={<WarehouseBranchRoute title="Gorevler"><Tasks scope="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-wms-tasks" element={<WarehouseBranchRoute title="WMS Görevleri"><WmsTasks /></WarehouseBranchRoute>} />
+              <Route path="/wms-mobile" element={<WarehouseBranchRoute title="WMS Mobil Panel"><WmsMobile /></WarehouseBranchRoute>} />
+              <Route path="/depo-mobile" element={<Navigate to="/wms-mobile" replace />} />
               <Route path="/depo-count" element={<WarehouseBranchRoute title="Sayim"><Count scopeVariant="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/depo-zayi-kaydi" element={<InventoryOperationRecord operationKey="waste" scopeVariant="anadepo" />} />
               <Route path="/depo-serbest-kullanim-kaydi" element={<InventoryOperationRecord operationKey="freeUse" scopeVariant="anadepo" />} />
@@ -522,6 +527,7 @@ function AppShell() {
 
               {/* Merkez Mutfak İşlemleri */}
               <Route path="/merkezmutfak-uretim" element={<WarehouseBranchRoute title="Uretim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Production /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-satinalma" element={<WarehouseBranchRoute title="Mutfak Satınalma Siparişleri" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Orders /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-documents" element={<WarehouseBranchRoute title="Belge Girisi" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Documents mode="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-tasks" element={<WarehouseBranchRoute title="Gorevler" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Tasks scope="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-count" element={<WarehouseBranchRoute title="Sayim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Count scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
