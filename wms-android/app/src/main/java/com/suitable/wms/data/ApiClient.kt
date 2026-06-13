@@ -9,6 +9,7 @@ import retrofit2.http.Path
 import retrofit2.http.Multipart
 import retrofit2.http.Part
 import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
 import com.google.gson.Gson
 
 data class QueryRequest(
@@ -89,8 +90,6 @@ data class SubmitCountTaskResult(
     val task_id: String,
     val approval_id: String? = null
 )
-
-import okhttp3.OkHttpClient
 
 interface ApiService {
     @POST("api/query")

@@ -154,7 +154,7 @@ export default function WmsDashboard() {
               borderRadius: 8,
               fontSize: '0.9rem',
               display: 'flex',
-              align-items: 'center',
+              alignItems: 'center',
               gap: 8,
               cursor: 'pointer',
               transition: 'all 0.2s ease'
