@@ -3,7 +3,7 @@ import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { useWorkspace } from '@/context/WorkspaceContext'
-import { db } from '@/lib/db'
+import { db, buildApiUrl } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import { logActivity } from '@/lib/activityLogger'
 import {
@@ -173,6 +173,13 @@ export default function DepoOrders() {
   const [shipmentLines, setShipmentLines] = useState([])
   const [selectedOrderIds, setSelectedOrderIds] = useState([])
 
+  // WMS-04G Capacity / Override States
+  const [capacityWarningOpen, setCapacityWarningOpen] = useState(false)
+  const [capacityData, setCapacityData] = useState(null)
+  const [pendingConfirmShipment, setPendingConfirmShipment] = useState(null)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [overrideManager, setOverrideManager] = useState('')
+
   // Filters
   const [search, setSearch] = useState('')
   const [selectedLocationId, setSelectedLocationId] = useState('')
@@ -188,7 +195,7 @@ export default function DepoOrders() {
 
   // Shipment Create Modal
   const [shipmentModalOpen, setShipmentModalOpen] = useState(false)
-  const [selectedVehicleId, setSelectedVehicleId] = useState('new')
+  const [selectedVehicleId, setSelectedVehicleId] = useState('')
   const [saveVehiclePermanently, setSaveVehiclePermanently] = useState(false)
   const [customPlateNumber, setCustomPlateNumber] = useState('')
   const [customModel, setCustomModel] = useState('')
@@ -705,7 +712,7 @@ export default function DepoOrders() {
     setShipmentLinesDraft(draft)
     
     // Reset vehicle fields
-    setSelectedVehicleId('new')
+    setSelectedVehicleId('')
     setSaveVehiclePermanently(false)
     setCustomPlateNumber('')
     setCustomModel('')
@@ -721,56 +728,24 @@ export default function DepoOrders() {
   async function saveShipment() {
     if (selectedOrderIds.length === 0) return
     
-    // Validation
-    let plate = ''
-    let driver = ''
-    if (selectedVehicleId === 'new') {
-      if (!customPlateNumber.trim()) {
-        toast('Lütfen bir araç plakası girin.', 'error')
-        return
-      }
-      plate = customPlateNumber.trim().toUpperCase()
-      driver = `${customDriverName.trim()}`
-      if (customDriverPhone.trim()) {
-        driver += ` (${customDriverPhone.trim()})`
-      }
-    } else {
-      const v = vehicles.find(item => item.id === selectedVehicleId)
-      if (!v) {
-        toast('Seçilen araç bulunamadı.', 'error')
-        return
-      }
-      plate = v.plate_number
-      driver = `${v.driver_name || ''}`
-      if (v.driver_phone) {
-        driver += ` (${v.driver_phone})`
-      }
+    if (!selectedVehicleId) {
+      toast('Lütfen sevkıyat için bir araç seçin.', 'error')
+      return
+    }
+
+    const v = vehicles.find(item => item.id === selectedVehicleId)
+    if (!v) {
+      toast('Seçilen araç bulunamadı.', 'error')
+      return
+    }
+    const plate = v.plate_number
+    let driver = `${v.driver_name || ''}`
+    if (v.driver_phone) {
+      driver += ` (${v.driver_phone})`
     }
 
     setSavingShipment(true)
     try {
-      let vehicleId = null
-      if (selectedVehicleId === 'new') {
-        if (saveVehiclePermanently) {
-          const { data: newVehicle, error: vehicleErr } = await db
-            .from('vehicles')
-            .insert({
-              plate_number: plate,
-              model: customModel.trim() || null,
-              driver_name: customDriverName.trim() || null,
-              driver_phone: customDriverPhone.trim() || null,
-              active: true
-            })
-            .select()
-          if (vehicleErr) throw vehicleErr
-          if (newVehicle && newVehicle.length > 0) {
-            vehicleId = newVehicle[0].id
-          }
-        }
-      } else {
-        vehicleId = selectedVehicleId
-      }
-
       // Call database RPC to create shipment draft and assign reservations atomically
       const { data: shipmentId, error: rpcErr } = await db.rpc(
         'create_warehouse_shipment_with_reservations',
@@ -781,7 +756,7 @@ export default function DepoOrders() {
           p_plate_number: plate,
           p_driver_info: driver,
           p_notes: shipmentNotes.trim() || null,
-          p_vehicle_id: vehicleId
+          p_vehicle_id: v.id
         }
       )
       if (rpcErr) throw rpcErr
@@ -829,10 +804,80 @@ export default function DepoOrders() {
   }
 
   async function confirmShipment(shipment) {
-    if (!window.confirm('Bu sevkiyatı yola çıkarmak (sevk etmek) istediğinizden emin misiniz? Depodan stok çıkışı yapılacaktır.')) return
     setConfirmingShipmentId(shipment.id)
     setConfirmingAction(true)
     try {
+      // 1. Fetch capacity details from the API
+      const capRes = await fetch(buildApiUrl(`/api/wms/shipment-capacity/${shipment.id}`))
+      const capResult = await capRes.json()
+      if (capResult.error) throw new Error(capResult.error.message)
+      const cap = capResult.data
+
+      // Check if limits exceeded or temperature mismatched
+      if ((cap.is_exceeded || cap.is_temperature_mismatched) && !cap.is_override_active) {
+        // Stop and open the warning modal
+        setCapacityData(cap)
+        setPendingConfirmShipment(shipment)
+        setOverrideReason('')
+        setOverrideManager(user?.name || user?.username || '')
+        setCapacityWarningOpen(true)
+        setConfirmingShipmentId('')
+        setConfirmingAction(false)
+        return
+      }
+
+      // 2. Execute confirmation
+      if (!window.confirm('Bu sevkiyatı yola çıkarmak (sevk etmek) istediğinizden emin misiniz? Depodan stok çıkışı yapılacaktır.')) {
+        setConfirmingShipmentId('')
+        setConfirmingAction(false)
+        return
+      }
+
+      await executeConfirmShipment(shipment)
+    } catch (err) {
+      toast(`Sevkiyat kontrol edilemedi veya onaylanamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
+      setConfirmingShipmentId('')
+      setConfirmingAction(false)
+    }
+  }
+
+  async function executeConfirmShipment(shipment, overridePayload = null) {
+    setConfirmingShipmentId(shipment.id)
+    setConfirmingAction(true)
+    try {
+      if (overridePayload) {
+        // Update meta in db first so the DB RPC will accept it
+        const currentMeta = shipment.meta || {}
+        const nextMeta = {
+          ...currentMeta,
+          capacity_override: true,
+          override_by: overridePayload.override_by,
+          override_reason: overridePayload.override_reason,
+          override_at: new Date().toISOString()
+        }
+
+        const { error: updateErr } = await db
+          .from('warehouse_shipments')
+          .update({ meta: nextMeta })
+          .eq('id', shipment.id)
+
+        if (updateErr) throw updateErr
+
+        // Log override activity
+        await logActivity({
+          user,
+          actionType: 'wms_shipment_override',
+          route: '/depo-orders',
+          entityType: 'warehouse_shipment',
+          entityId: shipment.id,
+          metadata: {
+            shipment_no: shipment.shipment_no,
+            override_by: overridePayload.override_by,
+            override_reason: overridePayload.override_reason
+          }
+        })
+      }
+
       // Execute the atomic, idempotent RPC confirmation function on PostgreSQL
       const { error: rpcErr } = await db.rpc('confirm_warehouse_shipment', {
         p_shipment_id: shipment.id,
@@ -847,10 +892,12 @@ export default function DepoOrders() {
         route: '/depo-orders',
         entityType: 'warehouse_shipment',
         entityId: shipment.id,
-        metadata: { shipment_no: shipment.shipment_no },
+        metadata: { shipment_no: shipment.shipment_no, was_overridden: !!overridePayload },
       })
 
       toast(`Sevkiyat (${shipment.shipment_no}) onaylandı ve yola çıktı. Depo stok çıkışları gerçekleştirildi.`, 'success')
+      setCapacityWarningOpen(false)
+      setPendingConfirmShipment(null)
       await loadData()
     } catch (err) {
       toast(`Sevkiyat onaylanamadı: ${err?.message || 'Bilinmeyen hata'}`, 'error')
@@ -1839,82 +1886,45 @@ export default function DepoOrders() {
             <h4 style={{ margin: '0 0 10px 0', fontSize: '.88rem', fontWeight: 800, color: '#334155' }}>
               <i className="fa-solid fa-truck" style={{ marginRight: 6, color: '#f5a623' }} /> Araç ve Plaka Atama
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 10 }}>
               <div>
-                <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Kayıtlı Araç</label>
+                <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Kayıtlı Sevk Aracı <span style={{ color: '#ef4444' }}>*</span></label>
                 <select
                   className="f-input"
                   value={selectedVehicleId}
                   onChange={e => setSelectedVehicleId(e.target.value)}
                   style={{ padding: '8px 10px' }}
                 >
-                  <option value="new">+ Yeni Araç / Serbest Giriş</option>
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {`${v.plate_number} - ${v.driver_name || 'Şoför Belirtilmemiş'} (${v.model || ''})`}
-                    </option>
-                  ))}
+                  <option value="">-- Lütfen Araç Seçin --</option>
+                  {vehicles.map(v => {
+                    const capacityMissing = !v.max_volume_m3 && !v.max_weight_kg;
+                    return (
+                      <option key={v.id} value={v.id}>
+                        {`${v.plate_number} - ${v.driver_name || 'Şoför Belirtilmemiş'} (${v.model || ''}) ${capacityMissing ? '[Kapasite Bilgisi Eksik]' : ''}`}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
-              
-              {selectedVehicleId === 'new' && (
-                <div>
-                  <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Plaka *</label>
-                  <input
-                    className="f-input"
-                    value={customPlateNumber}
-                    onChange={e => setCustomPlateNumber(e.target.value)}
-                    placeholder="Örn: 34 WMS 102"
-                    style={{ textTransform: 'uppercase', padding: '8px 10px' }}
-                  />
-                </div>
-              )}
             </div>
 
-            {selectedVehicleId === 'new' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, animation: 'fadeIn 0.2s ease' }}>
-                <div>
-                  <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Şoför Adı</label>
-                  <input
-                    className="f-input"
-                    value={customDriverName}
-                    onChange={e => setCustomDriverName(e.target.value)}
-                    placeholder="Şoför adı soyadı"
-                    style={{ padding: '8px 10px' }}
-                  />
-                </div>
-                <div>
-                  <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Şoför Telefonu</label>
-                  <input
-                    className="f-input"
-                    value={customDriverPhone}
-                    onChange={e => setCustomDriverPhone(e.target.value)}
-                    placeholder="05xx xxx xx xx"
-                    style={{ padding: '8px 10px' }}
-                  />
-                </div>
-                <div>
-                  <label className="f-label" style={{ fontSize: '.72rem', fontWeight: 800 }}>Araç Model / Marka</label>
-                  <input
-                    className="f-input"
-                    value={customModel}
-                    onChange={e => setCustomModel(e.target.value)}
-                    placeholder="Ford Transit vb."
-                    style={{ padding: '8px 10px' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginTop: 18 }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={saveVehiclePermanently}
-                      onChange={e => setSaveVehiclePermanently(e.target.checked)}
-                    />
-                    Bu aracı kalıcı kaydet
-                  </label>
-                </div>
-              </div>
-            )}
+            {/* Capacity Warning Badge */}
+            {(() => {
+              const selectedV = vehicles.find(item => item.id === selectedVehicleId)
+              if (selectedV && !selectedV.max_volume_m3 && !selectedV.max_weight_kg) {
+                return (
+                  <div style={{
+                    marginTop: 8,
+                    background: 'rgba(245,158,11,.1)', color: '#d97706', border: '1px solid rgba(245,158,11,.2)',
+                    borderRadius: 8, padding: '8px 12px', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 6
+                  }}>
+                    <i className="fa-solid fa-triangle-exclamation" />
+                    <span><strong>Kapasite Bilgisi Eksik:</strong> Seçilen araç için kapasite limitleri tanımlanmamıştır. Kapasite denetimleri bu sevkiyat için yapılamayacaktır.</span>
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
 
           <div>
@@ -2158,6 +2168,143 @@ export default function DepoOrders() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* WMS-04G Capacity & Temperature Warning Modal */}
+      <Modal
+        open={capacityWarningOpen}
+        onClose={() => {
+          setCapacityWarningOpen(false)
+          setPendingConfirmShipment(null)
+        }}
+        title="⚠️ Araç Kapasite / Sıcaklık Sınıfı Aşımı"
+        width={600}
+      >
+        {capacityData && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: 'rgba(239,68,68,.1)', color: '#b91c1c', border: '1px solid rgba(239,68,68,.2)', borderRadius: 10, padding: 14, fontSize: '.85rem' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '.9rem', fontWeight: 800 }}>Onay Engeli Bulunmaktadır</h4>
+              <p style={{ margin: 0 }}>
+                Seçilen araç (<strong>{capacityData.plate_number}</strong>) için tanımlı limitler aşılmış veya sıcaklık sınıfı uyumsuzluğu tespit edilmiştir.
+              </p>
+            </div>
+
+            {/* Volume Violation */}
+            {capacityData.is_volume_exceeded && (
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#475569' }}>
+                    <i className="fa-solid fa-cube" style={{ marginRight: 6, color: '#f5a623' }} /> Hacim Sınırı Aşımı
+                  </span>
+                  <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '.85rem' }}>Aşıldı</span>
+                </div>
+                <div style={{ display: 'flex', gap: 16, fontSize: '.8rem' }}>
+                  <div>Toplam Sevk Hacmi: <strong>{capacityData.total_volume_m3} m³</strong></div>
+                  <div>Araç Limiti: <strong>{capacityData.vehicle_max_volume_m3} m³</strong></div>
+                </div>
+                <div style={{ width: '100%', background: '#e2e8f0', height: 8, borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
+                  <div style={{ width: '100%', background: '#ef4444', height: '100%' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Weight Violation */}
+            {capacityData.is_weight_exceeded && (
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#475569' }}>
+                    <i className="fa-solid fa-weight-hanging" style={{ marginRight: 6, color: '#f5a623' }} /> Ağırlık Sınırı Aşımı
+                  </span>
+                  <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '.85rem' }}>Aşıldı</span>
+                </div>
+                <div style={{ display: 'flex', gap: 16, fontSize: '.8rem' }}>
+                  <div>Toplam Sevk Ağırlığı: <strong>{capacityData.total_weight_kg} kg</strong></div>
+                  <div>Araç Limiti: <strong>{capacityData.vehicle_max_weight_kg} kg</strong></div>
+                </div>
+                <div style={{ width: '100%', background: '#e2e8f0', height: 8, borderRadius: 99, marginTop: 8, overflow: 'hidden' }}>
+                  <div style={{ width: '100%', background: '#ef4444', height: '100%' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Temperature Mismatch */}
+            {capacityData.is_temperature_mismatched && (
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#475569', marginBottom: 8 }}>
+                  <i className="fa-solid fa-snowflake" style={{ marginRight: 6, color: '#3b82f6' }} /> Sıcaklık Sınıfı Uyumsuzluğu
+                </div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '.78rem', color: '#64748b' }}>
+                  Aşağıdaki ürünlerin sıcaklık saklama koşulları, taşıyacak aracın sıcaklık sınıfı ile uyuşmuyor:
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {capacityData.mismatched_items?.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', background: '#f8fafc', padding: '6px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontWeight: 600 }}>{item.item_name}</span>
+                      <span style={{ color: '#b91c1c', fontWeight: 700 }}>Ürün: {item.item_temp} | Araç: {item.vehicle_temp}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Override inputs */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '.82rem', fontWeight: 800, color: '#334155' }}>
+                Yönetici Override Yetkilendirmesi
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <label className="f-label" style={{ fontSize: '.72rem' }}>Onaylayan Yönetici / Yetkili <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    type="text"
+                    className="f-input"
+                    value={overrideManager}
+                    onChange={e => setOverrideManager(e.target.value)}
+                    placeholder="Yönetici adı soyadı veya kullanıcı adı"
+                  />
+                </div>
+                <div>
+                  <label className="f-label" style={{ fontSize: '.72rem' }}>Gerekçe / Açıklama <span style={{ color: '#ef4444' }}>*</span></label>
+                  <textarea
+                    className="f-input"
+                    rows={2}
+                    value={overrideReason}
+                    onChange={e => setOverrideReason(e.target.value)}
+                    placeholder="Lütfen bu aşımı onaylama gerekçenizi yazın..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
+              <button
+                className="btn-s"
+                onClick={() => {
+                  setCapacityWarningOpen(false)
+                  setPendingConfirmShipment(null)
+                }}
+              >
+                İptal Et / Sevk Etme
+              </button>
+              <button
+                className="btn-p"
+                style={{ background: '#ef4444', color: '#fff' }}
+                disabled={!overrideManager.trim() || !overrideReason.trim() || confirmingAction}
+                onClick={() => {
+                  if (pendingConfirmShipment) {
+                    executeConfirmShipment(pendingConfirmShipment, {
+                      override_by: overrideManager.trim(),
+                      override_reason: overrideReason.trim()
+                    })
+                  }
+                }}
+              >
+                {confirmingAction ? 'İşleniyor...' : 'Yönetici Onayı ile Sevk Et (Override)'}
+              </button>
             </div>
           </div>
         )}

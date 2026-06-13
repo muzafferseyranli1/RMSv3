@@ -779,6 +779,7 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
           task_type,
           status,
           COALESCE(meta->>'product_id', meta->>'stock_item_id') AS product_id,
+          meta->>'lpn_id' AS lpn_id,
           meta->>'barcode' AS barcode,
           meta->>'product_code' AS product_code,
           meta->>'source_location' AS source_location,
@@ -794,18 +795,39 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
       if (taskRes.rows.length > 0) {
         activeTask = taskRes.rows[0]
         if (scan_type === 'product') {
-          if (
-            product && (
-              product.id === activeTask.product_id ||
-              barcode === activeTask.barcode ||
-              barcode === activeTask.product_code
-            )
-          ) {
-            is_expected = true
-            message = `Doğru ürün taranmıştır: ${product.name}`
+          if (activeTask.task_type === 'count') {
+            if (activeTask.product_id) {
+              if (
+                product && (
+                  product.id === activeTask.product_id ||
+                  barcode === activeTask.barcode ||
+                  barcode === activeTask.product_code
+                )
+              ) {
+                is_expected = true
+                message = `Doğru ürün taranmıştır: ${product.name}`
+              } else {
+                is_expected = false
+                message = `Hata: Yanlış ürün! Beklenen ürün kodu: ${activeTask.product_code || 'Farklı Ürün'}`
+              }
+            } else {
+              is_expected = true
+              message = `Ürün doğrulandı: ${product.name}`
+            }
           } else {
-            is_expected = false
-            message = `Hata: Bu ürün seçili görev için beklenmiyor`
+            if (
+              product && (
+                product.id === activeTask.product_id ||
+                barcode === activeTask.barcode ||
+                barcode === activeTask.product_code
+              )
+            ) {
+              is_expected = true
+              message = `Doğru ürün taranmıştır: ${product.name}`
+            } else {
+              is_expected = false
+              message = `Hata: Bu ürün seçili görev için beklenmiyor`
+            }
           }
         } else if (scan_type === 'location') {
           if (activeTask.task_type === 'putaway') {
@@ -831,13 +853,50 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
               is_expected = false
               message = `Hata: Yanlış lokasyon! Görevin kaynağı: ${activeTask.source_location}`
             }
+          } else if (activeTask.task_type === 'count') {
+            if (
+              location.id === activeTask.source_location_id ||
+              location.id === activeTask.target_location_id
+            ) {
+              is_expected = true
+              message = `Doğru sayım lokasyonu doğrulandı: Zone ${location.zone_code}`
+            } else {
+              is_expected = false
+              message = `Hata: Yanlış lokasyon! Görevin lokasyonu farklı.`
+            }
+          } else if (activeTask.task_type === 'move') {
+            if (location.id === activeTask.source_location_id || location.zone_code === activeTask.source_location) {
+              is_expected = true
+              message = `Kaynak lokasyon doğrulandı: Zone ${location.zone_code}`
+            } else if (location.id === activeTask.target_location_id || location.zone_code === activeTask.target_location) {
+              is_expected = true
+              message = `Hedef lokasyon doğrulandı: Zone ${location.zone_code}`
+            } else {
+              is_expected = false
+              message = `Hata: Yanlış lokasyon! Görevin kaynak veya hedef lokasyonu ile uyuşmuyor.`
+            }
           } else {
             is_expected = true
             message = `Lokasyon seçildi: Zone ${location.zone_code}`
           }
         } else if (scan_type === 'lpn') {
-          is_expected = true
-          message = `LPN seçildi: ${lpn.lpn_code}`
+          if (activeTask.task_type === 'count') {
+            if (activeTask.lpn_id) {
+              if (lpn.id === activeTask.lpn_id) {
+                is_expected = true
+                message = `Doğru LPN doğrulandı: ${lpn.lpn_code}`
+              } else {
+                is_expected = false
+                message = `Hata: Yanlış LPN! Beklenen LPN farklı.`
+              }
+            } else {
+              is_expected = true
+              message = `LPN doğrulandı: ${lpn.lpn_code}`
+            }
+          } else {
+            is_expected = true
+            message = `LPN seçildi: ${lpn.lpn_code}`
+          }
         }
       }
     } else {
@@ -848,6 +907,8 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
     if (activeTask || task_id) {
       const targetTaskId = activeTask ? activeTask.id : task_id
       const eventType = is_expected ? 'scan_success' : 'scan_failed'
+      const finalTerminalId = req.headers['x-terminal-id'] || terminal_id || 'TERMINAL-01'
+      const appVersion = req.headers['x-app-version'] || '1.0'
       await pool.query(
         'INSERT INTO warehouse_task_events (task_id, event_type, from_status, to_status, personnel_id, terminal_id, barcode_scanned, payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
         [
@@ -856,9 +917,9 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
           activeTask ? activeTask.status : null,
           activeTask ? activeTask.status : null,
           personnel_id || null,
-          terminal_id || null,
+          finalTerminalId,
           barcode,
-          JSON.stringify({ scan_type, matched, is_expected, lot_info, message })
+          JSON.stringify({ scan_type, matched, is_expected, lot_info, message, app_version: appVersion })
         ]
       )
     }
@@ -884,6 +945,685 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
   }
 })
 
+app.post('/api/wms/tasks/count/submit', async (req, res) => {
+  const { task_id, personnel_id, counted_qty, reason } = req.body
+  if (!task_id || counted_qty === undefined) {
+    return res.status(400).json({ data: null, error: { message: 'task_id ve counted_qty zorunludur' } })
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT public.submit_warehouse_count_task($1, $2, $3, $4) AS result',
+      [task_id, personnel_id || null, counted_qty, reason || null]
+    )
+    if (rows.length > 0 && rows[0].result) {
+      return res.json({ data: rows[0].result, error: null })
+    }
+    return res.status(500).json({ data: null, error: { message: 'İşlem başarısız' } })
+  } catch (err) {
+    console.error('Error submitting count task', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/replenishment/suggestions', async (req, res) => {
+  const { branch_id } = req.query
+  if (!branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id zorunludur' } })
+  }
+  try {
+    // 1. Fetch settings and pick-face locations
+    const settingsSql = `
+      SELECT
+        s.id AS settings_id,
+        s.stock_item_id,
+        s.pick_face_min_qty,
+        s.pick_face_max_qty,
+        s.default_location_id AS pick_face_location_id,
+        si.name AS product_name,
+        si.sku AS product_sku,
+        si.unit AS product_unit,
+        loc.zone_code,
+        loc.aisle,
+        loc.rack,
+        loc.level,
+        loc.bin
+      FROM public.stock_item_warehouse_settings s
+      JOIN public.stock_items si ON s.stock_item_id = si.id
+      JOIN public.warehouse_locations loc ON s.default_location_id = loc.id
+      WHERE s.branch_id = $1
+        AND loc.usage_type = 'PICK_FACE'
+        AND loc.is_active = true
+        AND s.pick_face_min_qty IS NOT NULL
+        AND s.pick_face_max_qty IS NOT NULL
+    `
+    const { rows: settingsRows } = await pool.query(settingsSql, [branch_id])
+    const suggestions = []
+
+    for (const item of settingsRows) {
+      // 2. Fetch current pickable quantity at pick-face
+      const stockSql = `
+        SELECT COALESCE(SUM(pickable_qty), 0) AS current_qty
+        FROM public.v_wms_pickable_stock
+        WHERE branch_id = $1
+          AND stock_item_id = $2
+          AND location_id = $3
+      `
+      const { rows: stockRows } = await pool.query(stockSql, [branch_id, item.stock_item_id, item.pick_face_location_id])
+      const current_qty = parseFloat(stockRows[0].current_qty)
+
+      // 3. Fetch pending tasks of type move targeting this pick-face
+      const pendingSql = `
+        SELECT COALESCE(SUM((meta->>'quantity')::numeric), 0) AS pending_qty
+        FROM public.warehouse_tasks
+        WHERE branch_id = $1
+          AND task_type = 'move'
+          AND status IN ('pending', 'assigned', 'in_progress')
+          AND (meta->>'stock_item_id')::UUID = $2
+          AND (meta->>'target_location_id')::UUID = $3
+      `
+      const { rows: pendingRows } = await pool.query(pendingSql, [branch_id, item.stock_item_id, item.pick_face_location_id])
+      const pending_qty = parseFloat(pendingRows[0].pending_qty)
+
+      const min_qty = parseFloat(item.pick_face_min_qty)
+      const max_qty = parseFloat(item.pick_face_max_qty)
+
+      if (current_qty + pending_qty < min_qty) {
+        let needed_qty = max_qty - (current_qty + pending_qty)
+        if (needed_qty > 0) {
+          // 4. Fetch available stock in RESERVE locations
+          const reserveSql = `
+            SELECT
+              v.location_id,
+              v.lpn_id,
+              v.lot_number,
+              v.expiration_date,
+              v.pickable_qty,
+              loc.zone_code,
+              loc.aisle,
+              loc.rack,
+              loc.level,
+              loc.bin,
+              lpn.lpn_code
+            FROM public.v_wms_pickable_stock v
+            JOIN public.warehouse_locations loc ON v.location_id = loc.id
+            LEFT JOIN public.warehouse_lpns lpn ON v.lpn_id = lpn.id
+            WHERE v.branch_id = $1
+              AND v.stock_item_id = $2
+              AND loc.usage_type = 'RESERVE'
+              AND loc.is_active = true
+              AND v.pickable_qty > 0
+            ORDER BY
+              v.expiration_date ASC NULLS LAST,
+              v.pickable_qty DESC
+          `
+          const { rows: reserveRows } = await pool.query(reserveSql, [branch_id, item.stock_item_id])
+          
+          // Allocate reserve stock up to needed_qty using FEFO
+          const allocations = []
+          let rem = needed_qty
+          for (const resRow of reserveRows) {
+            if (rem <= 0) break
+            const avail = parseFloat(resRow.pickable_qty)
+            const alloc = Math.min(rem, avail)
+            allocations.push({
+              location_id: resRow.location_id,
+              zone_code: resRow.zone_code,
+              aisle: resRow.aisle,
+              rack: resRow.rack,
+              level: resRow.level,
+              bin: resRow.bin,
+              lpn_id: resRow.lpn_id,
+              lpn_code: resRow.lpn_code,
+              lot_number: resRow.lot_number,
+              expiration_date: resRow.expiration_date,
+              pickable_qty: avail,
+              allocated_qty: alloc
+            })
+            rem -= alloc
+          }
+
+          suggestions.push({
+            stock_item_id: item.stock_item_id,
+            product_name: item.product_name,
+            product_sku: item.product_sku,
+            product_unit: item.product_unit,
+            pick_face_location_id: item.pick_face_location_id,
+            pick_face_location_code: `LOC-${item.zone_code}-${item.aisle || 0}-${item.rack || 0}-${item.level || 0}`,
+            pick_face_min_qty: min_qty,
+            pick_face_max_qty: max_qty,
+            current_qty,
+            pending_qty,
+            needed_qty,
+            allocations,
+            has_warning: allocations.length === 0,
+            warning_message: allocations.length === 0 ? 'Rezerve alanda kullanılabilir stok bulunmuyor.' : null
+          })
+        }
+      }
+    }
+    return res.json({ data: suggestions, error: null })
+  } catch (err) {
+    console.error('Error fetching replenishment suggestions', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.post('/api/wms/replenishment/create-tasks', async (req, res) => {
+  const { branch_id, suggestions } = req.body
+  if (!branch_id || !suggestions || !Array.isArray(suggestions)) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id ve suggestions zorunludur' } })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const createdTasks = []
+
+    for (const suggestion of suggestions) {
+      const { stock_item_id, pick_face_location_id, pick_face_location_code, allocations } = suggestion
+      for (const allocation of allocations) {
+        const { location_id, zone_code, aisle, rack, level, bin, lpn_id, lpn_code, lot_number, expiration_date, allocated_qty } = allocation
+        
+        const sourceLocationCode = `LOC-${zone_code}-${aisle || 0}-${rack || 0}-${level || 0}`
+        
+        const taskMeta = {
+          stock_item_id,
+          source_location_id: location_id,
+          source_location: sourceLocationCode,
+          target_location_id: pick_face_location_id,
+          target_location: pick_face_location_code,
+          quantity: Number(allocated_qty),
+          lpn_id,
+          lpn_code,
+          lot_number,
+          expiration_date
+        }
+
+        const taskInsert = `
+          INSERT INTO public.warehouse_tasks (
+            branch_id, task_type, status, priority, description, meta
+          ) VALUES ($1, 'move', 'pending', 'high', $2, $3)
+          RETURNING id, meta
+        `
+        const description = `${suggestion.product_name} ikmali (${sourceLocationCode} -> ${pick_face_location_code})`
+        const { rows: taskRows } = await client.query(taskInsert, [
+          branch_id,
+          description,
+          JSON.stringify(taskMeta)
+        ])
+
+        const taskId = taskRows[0].id
+
+        const resInsert = `
+          INSERT INTO public.warehouse_reservations (
+            branch_id, stock_item_id, location_id, lpn_id, lot_number, expiration_date,
+            source_doc_type, source_doc_id, reserved_qty, status
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'warehouse_task', $7, $8, 'active')
+        `
+        await client.query(resInsert, [
+          branch_id,
+          stock_item_id,
+          location_id,
+          lpn_id,
+          lot_number,
+          expiration_date,
+          taskId,
+          allocated_qty
+        ])
+
+        createdTasks.push(taskRows[0])
+      }
+    }
+
+    await client.query('COMMIT')
+    return res.json({ data: createdTasks, error: null })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('Error creating replenishment tasks', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  } finally {
+    client.release()
+  }
+})
+
+
+app.post('/api/wms/log-event', async (req, res) => {
+  const { task_id, event_type, personnel_id, terminal_id, app_version, payload } = req.body
+  if (!task_id || !event_type) {
+    return res.status(400).json({ data: null, error: { message: 'task_id ve event_type zorunludur' } })
+  }
+  try {
+    const finalAppVersion = req.headers['x-app-version'] || app_version || '1.0'
+    const finalTerminalId = req.headers['x-terminal-id'] || terminal_id || 'TERMINAL-01'
+    const metaPayload = { ...(payload || {}), app_version: finalAppVersion }
+
+    await pool.query(
+      `INSERT INTO public.warehouse_task_events (
+        task_id, event_type, personnel_id, terminal_id, payload
+      ) VALUES ($1, $2, $3, $4, $5)`,
+      [task_id, event_type, personnel_id || null, finalTerminalId, JSON.stringify(metaPayload)]
+    )
+    return res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    console.error('Error in log-event API', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/dashboard/metrics', async (req, res) => {
+  const { branch_id } = req.query
+  if (!branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id zorunludur' } })
+  }
+  try {
+    const malKabulRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.purchase_orders 
+       WHERE branch_id = $1 AND status IN ('approved', 'submitted') AND deleted_at IS NULL`,
+      [branch_id]
+    )
+
+    const putawayRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_tasks 
+       WHERE branch_id = $1 AND task_type = 'putaway' AND status IN ('pending', 'assigned', 'in_progress')`,
+      [branch_id]
+    )
+
+    const pickRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_tasks 
+       WHERE branch_id = $1 AND task_type = 'pick' AND status IN ('pending', 'assigned', 'in_progress')`,
+      [branch_id]
+    )
+
+    const exceptionRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_tasks 
+       WHERE branch_id = $1 AND status = 'exception'`,
+      [branch_id]
+    )
+
+    const failedScansRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_task_events e
+       JOIN public.warehouse_tasks t ON e.task_id = t.id
+       WHERE t.branch_id = $1 AND e.event_type = 'scan_failed'`,
+      [branch_id]
+    )
+
+    const uploadFailuresRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_task_events e
+       JOIN public.warehouse_tasks t ON e.task_id = t.id
+       WHERE t.branch_id = $1 AND e.event_type = 'evidence_upload_failed'`,
+      [branch_id]
+    )
+
+    const capacityExceededRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM (
+         SELECT public.get_warehouse_shipment_capacity(id) as cap 
+         FROM public.warehouse_shipments 
+         WHERE source_branch_id = $1 AND status = 'draft' AND vehicle_id IS NOT NULL AND deleted_at IS NULL
+       ) c WHERE (c.cap->>'is_exceeded')::boolean = true OR (c.cap->>'is_temperature_mismatched')::boolean = true`,
+      [branch_id]
+    )
+
+    const missingPkgRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.stock_items 
+       WHERE deleted_at IS NULL AND id NOT IN (
+         SELECT stock_item_id FROM public.stock_item_package_units 
+         WHERE active = true AND length_cm > 0 AND width_cm > 0 AND height_cm > 0 AND gross_weight_kg > 0
+       )`
+    )
+
+    const shippedTodayRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.warehouse_shipments 
+       WHERE source_branch_id = $1 AND status = 'in_transit' AND shipped_at::date = CURRENT_DATE AND deleted_at IS NULL`,
+      [branch_id]
+    )
+
+    const quarantineRes = await pool.query(
+      `SELECT COUNT(DISTINCT stock_item_id)::int as count FROM public.warehouse_quality_holds 
+       WHERE branch_id = $1 AND status = 'hold'`,
+      [branch_id]
+    )
+
+    const missingVehicleCapRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.vehicles 
+       WHERE (max_volume_m3 IS NULL OR max_volume_m3 = 0 OR max_weight_kg IS NULL OR max_weight_kg = 0) 
+         AND active = true AND branch_id = $1`,
+      [branch_id]
+    )
+
+    return res.json({
+      data: {
+        pending_mal_kabul: malKabulRes.rows[0].count,
+        open_putaway: putawayRes.rows[0].count,
+        open_pick: pickRes.rows[0].count,
+        exceptions: exceptionRes.rows[0].count,
+        failed_scans: failedScansRes.rows[0].count,
+        evidence_upload_failures: uploadFailuresRes.rows[0].count,
+        capacity_exceeded_shipments: capacityExceededRes.rows[0].count,
+        missing_pkg_dimensions: missingPkgRes.rows[0].count,
+        shipped_today: shippedTodayRes.rows[0].count,
+        quarantine_items: quarantineRes.rows[0].count,
+        missing_vehicle_capacities: missingVehicleCapRes.rows[0].count
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('Error fetching dashboard metrics', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/reports/metrics', async (req, res) => {
+  const { branch_id } = req.query
+  if (!branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id zorunludur' } })
+  }
+  try {
+    const availableStock = await pool.query(`SELECT COALESCE(SUM(pickable_qty), 0)::numeric as qty FROM public.v_wms_pickable_stock WHERE branch_id = $1`, [branch_id])
+    const reservedStock = await pool.query(`SELECT COALESCE(SUM(reserved_qty), 0)::numeric as qty FROM public.warehouse_reservations WHERE branch_id = $1 AND status = 'active'`, [branch_id])
+    const quarantineStock = await pool.query(`SELECT COALESCE(SUM(hold_qty), 0)::numeric as qty FROM public.warehouse_quality_holds WHERE branch_id = $1 AND status = 'hold'`, [branch_id])
+    const putawayPendingStock = await pool.query(`SELECT COALESCE(SUM((meta->>'quantity')::numeric), 0)::numeric as qty FROM public.warehouse_tasks WHERE branch_id = $1 AND task_type = 'putaway' AND status IN ('pending', 'assigned', 'in_progress')`, [branch_id])
+
+    const totalLocations = await pool.query(`SELECT COUNT(*)::int as total FROM public.warehouse_locations WHERE branch_id = $1 AND is_active = true`, [branch_id])
+    const occupiedLocations = await pool.query(`SELECT COUNT(DISTINCT location_id)::int as occupied FROM public.v_wms_pickable_stock WHERE branch_id = $1 AND pickable_qty > 0`, [branch_id])
+
+    const expiryRes = await pool.query(
+      `SELECT 
+        v.stock_item_id,
+        si.name AS product_name,
+        si.sku AS product_sku,
+        v.location_id,
+        loc.zone_code,
+        loc.aisle,
+        loc.rack,
+        loc.level,
+        v.lpn_id,
+        lpn.lpn_code,
+        v.lot_number,
+        v.expiration_date,
+        v.pickable_qty::numeric,
+        (v.expiration_date - CURRENT_DATE) as days_to_expiry
+       FROM public.v_wms_pickable_stock v
+       JOIN public.stock_items si ON v.stock_item_id = si.id
+       JOIN public.warehouse_locations loc ON v.location_id = loc.id
+       LEFT JOIN public.warehouse_lpns lpn ON v.lpn_id = lpn.id
+       WHERE v.branch_id = $1 AND v.expiration_date IS NOT NULL AND v.pickable_qty > 0
+       ORDER BY v.expiration_date ASC
+       LIMIT 50`,
+      [branch_id]
+    )
+
+    const vehicleUsageRes = await pool.query(
+      `SELECT 
+        ws.id,
+        ws.shipment_no,
+        ws.plate_number,
+        ws.status,
+        ws.created_at,
+        v.vehicle_code,
+        public.get_warehouse_shipment_capacity(ws.id) as capacity_details
+       FROM public.warehouse_shipments ws
+       LEFT JOIN public.vehicles v ON ws.vehicle_id = v.id
+       WHERE ws.source_branch_id = $1 AND ws.deleted_at IS NULL AND ws.vehicle_id IS NOT NULL
+       ORDER BY ws.created_at DESC
+       LIMIT 20`,
+      [branch_id]
+    )
+
+    const fillRateRes = await pool.query(
+      `SELECT 
+        ws.id,
+        ws.shipment_no,
+        ws.created_at,
+        COALESCE(SUM(wsl.shipped_qty), 0)::numeric AS total_shipped,
+        COALESCE(SUM(COALESCE((pol.meta->>'original_ordered_qty')::numeric, pol.ordered_qty)), 0)::numeric AS total_ordered
+       FROM public.warehouse_shipments ws
+       LEFT JOIN public.warehouse_shipment_lines wsl ON ws.id = wsl.shipment_id AND wsl.deleted_at IS NULL
+       LEFT JOIN public.purchase_order_lines pol ON wsl.purchase_order_line_id = pol.id AND pol.deleted_at IS NULL
+       WHERE (ws.source_branch_id = $1 OR ws.branch_id = $1) AND ws.deleted_at IS NULL
+       GROUP BY ws.id, ws.shipment_no, ws.created_at
+       ORDER BY ws.created_at DESC
+       LIMIT 20`,
+      [branch_id]
+    )
+
+    const lateShipmentsRes = await pool.query(
+      `SELECT 
+        ws.id,
+        ws.shipment_no,
+        ws.status,
+        ws.shipped_at,
+        po.order_no,
+        po.delivery_date,
+        CASE
+          WHEN ws.shipped_at IS NOT NULL AND ws.shipped_at::date > po.delivery_date THEN true
+          WHEN ws.shipped_at IS NULL AND CURRENT_DATE > po.delivery_date THEN true
+          ELSE false
+        END AS is_late,
+        CASE
+          WHEN ws.shipped_at IS NOT NULL THEN (ws.shipped_at::date - po.delivery_date)
+          ELSE (CURRENT_DATE - po.delivery_date)
+        END AS delay_days
+       FROM public.warehouse_shipments ws
+       JOIN public.warehouse_shipment_orders wso ON ws.id = wso.shipment_id
+       JOIN public.purchase_orders po ON wso.purchase_order_id = po.id
+       WHERE ws.source_branch_id = $1 AND ws.deleted_at IS NULL
+       ORDER BY ws.created_at DESC
+       LIMIT 20`,
+      [branch_id]
+    )
+
+    const performanceRes = await pool.query(
+      `SELECT 
+        COALESCE(t.meta->>'completed_by', t.assigned_personnel_id, 'Bilinmeyen Personel') AS personnel,
+        t.task_type,
+        COUNT(*)::int AS completed_count,
+        ROUND(AVG(EXTRACT(EPOCH FROM (t.completed_at - t.created_at)))::numeric / 60, 2)::float AS avg_duration_minutes
+       FROM public.warehouse_tasks t
+       WHERE t.branch_id = $1 AND t.status = 'done' AND t.completed_at IS NOT NULL
+       GROUP BY COALESCE(t.meta->>'completed_by', t.assigned_personnel_id, 'Bilinmeyen Personel'), t.task_type
+       ORDER BY completed_count DESC`,
+      [branch_id]
+    )
+
+    const missingPkgDimensions = await pool.query(
+      `SELECT id, sku, name FROM public.stock_items 
+       WHERE deleted_at IS NULL AND id NOT IN (
+         SELECT stock_item_id FROM public.stock_item_package_units 
+         WHERE active = true AND length_cm > 0 AND width_cm > 0 AND height_cm > 0 AND gross_weight_kg > 0
+       ) LIMIT 50`
+    )
+
+    const missingVehicleCapacities = await pool.query(
+      `SELECT id, plate_number, vehicle_code, display_name FROM public.vehicles 
+       WHERE (max_volume_m3 IS NULL OR max_volume_m3 = 0 OR max_weight_kg IS NULL OR max_weight_kg = 0) 
+         AND active = true AND branch_id = $1`,
+      [branch_id]
+    )
+
+    return res.json({
+      data: {
+        stock_distribution: {
+          available: parseFloat(availableStock.rows[0].qty),
+          reserved: parseFloat(reservedStock.rows[0].qty),
+          quarantine: parseFloat(quarantineStock.rows[0].qty),
+          putaway_pending: parseFloat(putawayPendingStock.rows[0].qty)
+        },
+        location_occupancy: {
+          total: totalLocations.rows[0].total,
+          occupied: occupiedLocations.rows[0].occupied,
+          rate: totalLocations.rows[0].total > 0 ? parseFloat((occupiedLocations.rows[0].occupied / totalLocations.rows[0].total * 100).toFixed(2)) : 0
+        },
+        expiry_approaching: expiryRes.rows,
+        vehicle_usage: vehicleUsageRes.rows,
+        fill_rate: fillRateRes.rows,
+        late_shipments: lateShipmentsRes.rows,
+        personnel_performance: performanceRes.rows,
+        missing_pkg_dimensions: missingPkgDimensions.rows,
+        missing_vehicle_capacities: missingVehicleCapacities.rows
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('Error fetching reports metrics', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/reports/lpn-details', async (req, res) => {
+  const { branch_id, query } = req.query
+  if (!branch_id || !query) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id ve query zorunludur' } })
+  }
+  try {
+    const lpnRes = await pool.query(
+      `SELECT id, lpn_code, status, location_id FROM public.warehouse_lpns 
+       WHERE branch_id = $1 AND (lpn_code = $2 OR id::text = $2) LIMIT 1`,
+      [branch_id, query]
+    )
+    if (lpnRes.rows.length === 0) {
+      return res.status(404).json({ data: null, error: { message: 'LPN bulunamadı' } })
+    }
+    const lpn = lpnRes.rows[0]
+
+    const contentsRes = await pool.query(
+      `SELECT v.stock_item_id, si.name AS product_name, si.sku AS product_sku, si.unit as product_unit, SUM(v.pickable_qty)::numeric AS qty 
+       FROM public.v_wms_pickable_stock v 
+       JOIN public.stock_items si ON v.stock_item_id = si.id 
+       WHERE v.lpn_id = $1 
+       GROUP BY v.stock_item_id, si.name, si.sku, si.unit`,
+      [lpn.id]
+    )
+
+    const historyRes = await pool.query(
+      `SELECT im.id, im.movement_at, im.direction, im.quantity::numeric, im.movement_type, 
+              si.name AS product_name, si.sku AS product_sku, 
+              loc.zone_code, loc.aisle, loc.rack, loc.level
+       FROM public.inventory_movements im 
+       JOIN public.stock_items si ON im.stock_item_id = si.id 
+       LEFT JOIN public.warehouse_locations loc ON im.location_id = loc.id 
+       WHERE im.lpn_id = $1 AND im.deleted_at IS NULL AND im.is_cancelled = false
+       ORDER BY im.movement_at DESC
+       LIMIT 50`,
+      [lpn.id]
+    )
+
+    return res.json({
+      data: {
+        lpn,
+        contents: contentsRes.rows,
+        history: historyRes.rows
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('Error fetching LPN details', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/reports/task-events', async (req, res) => {
+  const { branch_id, limit = 50, offset = 0 } = req.query
+  if (!branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id zorunludur' } })
+  }
+  try {
+    const eventsRes = await pool.query(
+      `SELECT 
+        e.id,
+        e.task_id,
+        e.event_type,
+        e.from_status,
+        e.to_status,
+        e.personnel_id,
+        e.terminal_id,
+        e.barcode_scanned,
+        e.payload,
+        e.created_at,
+        t.task_type,
+        t.description as task_description
+       FROM public.warehouse_task_events e
+       JOIN public.warehouse_tasks t ON e.task_id = t.id
+       WHERE t.branch_id = $1
+       ORDER BY e.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [branch_id, parseInt(limit), parseInt(offset)]
+    )
+    return res.json({ data: eventsRes.rows, error: null })
+  } catch (err) {
+    console.error('Error fetching task events', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+
+app.get('/api/wms/count-approvals', async (req, res) => {
+  const { branch_id, status } = req.query
+  if (!branch_id) {
+    return res.status(400).json({ data: null, error: { message: 'branch_id zorunludur' } })
+  }
+  try {
+    const query = `
+      SELECT
+        a.*,
+        si.name AS stock_item_name,
+        si.sku AS stock_item_sku,
+        wl.zone_code, wl.aisle, wl.rack, wl.level, wl.bin,
+        wlpn.lpn_code
+      FROM public.warehouse_count_approvals a
+      JOIN public.stock_items si ON si.id = a.stock_item_id
+      JOIN public.warehouse_locations wl ON wl.id = a.location_id
+      LEFT JOIN public.warehouse_lpns wlpn ON wlpn.id = a.lpn_id
+      WHERE a.branch_id = $1 AND ($2::text IS NULL OR a.status = $2)
+      ORDER BY a.created_at DESC
+    `
+    const { rows } = await pool.query(query, [branch_id, status || null])
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('Error fetching count approvals', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.post('/api/wms/count-approvals/approve', async (req, res) => {
+  const { approval_id, manager_id } = req.body
+  if (!approval_id) {
+    return res.status(400).json({ data: null, error: { message: 'approval_id zorunludur' } })
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT public.approve_warehouse_count_approval($1, $2) AS result',
+      [approval_id, manager_id || null]
+    )
+    if (rows.length > 0 && rows[0].result) {
+      return res.json({ data: rows[0].result, error: null })
+    }
+    return res.status(500).json({ data: null, error: { message: 'İşlem başarısız' } })
+  } catch (err) {
+    console.error('Error approving count discrepancy', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.post('/api/wms/count-approvals/reject', async (req, res) => {
+  const { approval_id, manager_id } = req.body
+  if (!approval_id) {
+    return res.status(400).json({ data: null, error: { message: 'approval_id zorunludur' } })
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT public.reject_warehouse_count_approval($1, $2) AS result',
+      [approval_id, manager_id || null]
+    )
+    if (rows.length > 0 && rows[0].result) {
+      return res.json({ data: rows[0].result, error: null })
+    }
+    return res.status(500).json({ data: null, error: { message: 'İşlem başarısız' } })
+  } catch (err) {
+    console.error('Error rejecting count discrepancy', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
 app.get('/api/wms/shipment-capacity/:shipment_id', async (req, res) => {
   const { shipment_id } = req.params
   try {
@@ -894,6 +1634,173 @@ app.get('/api/wms/shipment-capacity/:shipment_id', async (req, res) => {
     return res.status(404).json({ data: null, error: { message: 'Sevkiyat bulunamadı' } })
   } catch (err) {
     console.error('Error in shipment-capacity endpoint', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.get('/api/wms/vehicles', async (req, res) => {
+  const { branch_id, active } = req.query
+  try {
+    let query = 'SELECT * FROM public.vehicles WHERE 1=1'
+    const params = []
+    if (branch_id) {
+      params.push(branch_id)
+      query += ` AND branch_id = $${params.length}`
+    }
+    if (active !== undefined) {
+      params.push(active === 'true')
+      query += ` AND active = $${params.length}`
+    }
+    query += ' ORDER BY plate_number ASC'
+    const { rows } = await pool.query(query, params)
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('Error fetching vehicles', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.post('/api/wms/vehicles', async (req, res) => {
+  const {
+    plate_number,
+    vehicle_code,
+    display_name,
+    model,
+    vehicle_type,
+    temperature_class,
+    max_volume_m3,
+    max_weight_kg,
+    inner_length_cm,
+    inner_width_cm,
+    inner_height_cm,
+    driver_name,
+    driver_phone,
+    branch_id,
+    capacity_notes,
+    active
+  } = req.body
+
+  if (!plate_number) {
+    return res.status(400).json({ data: null, error: { message: 'Plaka numarası zorunludur' } })
+  }
+
+  try {
+    const { rows: existing } = await pool.query('SELECT id FROM public.vehicles WHERE plate_number = $1', [plate_number])
+    if (existing.length > 0) {
+      return res.status(400).json({ data: null, error: { message: 'Bu plaka numarası ile kayıtlı bir araç zaten mevcut.' } })
+    }
+    if (vehicle_code) {
+      const { rows: existingCode } = await pool.query('SELECT id FROM public.vehicles WHERE vehicle_code = $1', [vehicle_code])
+      if (existingCode.length > 0) {
+        return res.status(400).json({ data: null, error: { message: 'Bu araç kodu ile kayıtlı bir araç zaten mevcut.' } })
+      }
+    }
+
+    const query = `
+      INSERT INTO public.vehicles (
+        plate_number, vehicle_code, display_name, model, vehicle_type,
+        temperature_class, max_volume_m3, max_weight_kg,
+        inner_length_cm, inner_width_cm, inner_height_cm,
+        driver_name, driver_phone, branch_id, capacity_notes, active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING *
+    `
+    const values = [
+      plate_number, vehicle_code || null, display_name || null, model || null, vehicle_type || 'truck',
+      temperature_class || 'dry', Number(max_volume_m3) || 0, Number(max_weight_kg) || 0,
+      Number(inner_length_cm) || 0, Number(inner_width_cm) || 0, Number(inner_height_cm) || 0,
+      driver_name || null, driver_phone || null, branch_id || null, capacity_notes || null, active !== false
+    ]
+    const { rows } = await pool.query(query, values)
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('Error creating vehicle', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.put('/api/wms/vehicles/:id', async (req, res) => {
+  const { id } = req.params
+  const {
+    plate_number,
+    vehicle_code,
+    display_name,
+    model,
+    vehicle_type,
+    temperature_class,
+    max_volume_m3,
+    max_weight_kg,
+    inner_length_cm,
+    inner_width_cm,
+    inner_height_cm,
+    driver_name,
+    driver_phone,
+    branch_id,
+    capacity_notes,
+    active
+  } = req.body
+
+  if (!plate_number) {
+    return res.status(400).json({ data: null, error: { message: 'Plaka numarası zorunludur' } })
+  }
+
+  try {
+    const { rows: existing } = await pool.query('SELECT id FROM public.vehicles WHERE plate_number = $1 AND id <> $2', [plate_number, id])
+    if (existing.length > 0) {
+      return res.status(400).json({ data: null, error: { message: 'Bu plaka numarası ile kayıtlı bir başka araç zaten mevcut.' } })
+    }
+    if (vehicle_code) {
+      const { rows: existingCode } = await pool.query('SELECT id FROM public.vehicles WHERE vehicle_code = $1 AND id <> $2', [vehicle_code, id])
+      if (existingCode.length > 0) {
+        return res.status(400).json({ data: null, error: { message: 'Bu araç kodu ile kayıtlı bir başka araç zaten mevcut.' } })
+      }
+    }
+
+    const query = `
+      UPDATE public.vehicles SET
+        plate_number = $1, vehicle_code = $2, display_name = $3, model = $4, vehicle_type = $5,
+        temperature_class = $6, max_volume_m3 = $7, max_weight_kg = $8,
+        inner_length_cm = $9, inner_width_cm = $10, inner_height_cm = $11,
+        driver_name = $12, driver_phone = $13, branch_id = $14, capacity_notes = $15, active = $16,
+        updated_at = NOW()
+      WHERE id = $17
+      RETURNING *
+    `
+    const values = [
+      plate_number, vehicle_code || null, display_name || null, model || null, vehicle_type || 'truck',
+      temperature_class || 'dry', Number(max_volume_m3) || 0, Number(max_weight_kg) || 0,
+      Number(inner_length_cm) || 0, Number(inner_width_cm) || 0, Number(inner_height_cm) || 0,
+      driver_name || null, driver_phone || null, branch_id || null, capacity_notes || null, active !== false,
+      id
+    ]
+    const { rows } = await pool.query(query, values)
+    if (rows.length === 0) {
+      return res.status(404).json({ data: null, error: { message: 'Araç bulunamadı' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('Error updating vehicle', err)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+app.delete('/api/wms/vehicles/:id', async (req, res) => {
+  const { id } = req.params
+  try {
+    const query = `
+      UPDATE public.vehicles SET
+        active = false,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `
+    const { rows } = await pool.query(query, [id])
+    if (rows.length === 0) {
+      return res.status(404).json({ data: null, error: { message: 'Araç bulunamadı' } })
+    }
+    return res.json({ data: rows[0], error: null })
+  } catch (err) {
+    console.error('Error deactivating vehicle', err)
     return res.status(500).json({ data: null, error: { message: err.message } })
   }
 })
@@ -1252,6 +2159,45 @@ app.all('/api/query', rateLimiter, async (req, res) => {
       const { conditions: whereConds, values: whereVals, orders: whereOrders } = buildConditions(filters, cols.length + 1)
       const wStr = whereConds.length ? `WHERE ${whereConds.join(' AND ')}` : ''
       const oStr = whereOrders.length ? `ORDER BY ${whereOrders.join(', ')}` : ''
+
+      if (table === 'purchase_orders') {
+        const hasMetaUpdate = cols.includes('meta')
+        if (hasMetaUpdate) {
+          let nextMeta = {}
+          try {
+            const metaVal = data.meta
+            nextMeta = typeof metaVal === 'string' ? JSON.parse(metaVal) : (metaVal || {})
+          } catch (e) {
+            // ignore
+          }
+
+          if (nextMeta.supplier_marked_sent || (nextMeta.supplier_notes && nextMeta.supplier_notes.length > 0)) {
+            const { conditions: selectConds, values: selectVals } = buildConditions(filters, 1)
+            const selectWStr = selectConds.length ? `WHERE ${selectConds.join(' AND ')}` : ''
+            const checkSql = `
+              SELECT id, flow_channel, supplier_id
+              FROM public.purchase_orders
+              ${selectWStr}
+            `
+            const { rows: targets } = await pool.query(checkSql, selectVals)
+            for (const target of targets) {
+              if (target.flow_channel === 'warehouse_replenishment') {
+                throw new Error('Depo ikmal siparişleri tedarikçi paneli sevk/not aksiyonuna konu olamaz.')
+              }
+              if (target.supplier_id) {
+                const { rows: sup } = await pool.query(
+                  'SELECT supplier_kind FROM public.suppliers WHERE id = $1',
+                  [target.supplier_id]
+                )
+                if (sup.length > 0 && sup[0].supplier_kind === 'internal_warehouse') {
+                  throw new Error('Depo ikmal siparişleri tedarikçi paneli sevk/not aksiyonuna konu olamaz.')
+                }
+              }
+            }
+          }
+        }
+      }
+
       const sql = `UPDATE "${table}" SET ${setStr} ${wStr} ${oStr} RETURNING *`
       const { rows } = await pool.query(sql, [...dataVals, ...whereVals])
       return { data: rows, error: null }
@@ -1574,9 +2520,11 @@ Kısa, işlem odaklı, adım adım ve kullanıcıyı ekranda yönlendiren akıc�
 - Veritabanı tablo isimlerini veya backend teknik detaylarını kullanıcıya yansıtma.
 - Varsa kritik uyarıları kısa ve net biçimde ekle.
 
-4. LİNK YÖNLENDİRMESİ:
-Eğer Bilgi Bankası'nda ilgili işlemin sayfa yolu (Örn: /donem-kapanis, /pos-ayarlari) verilmişse, yanıtının sonuna MUTLAKA tıklanabilir bir link ekle. Link formatı KESİNLİKLE şu şekilde olmalıdır:
-[Sayfaya Git](${clientOrigin}/ilgili-link)
+4. LİNK YÖNLENDİRMESİ VE ROUTE MAP KURALI:
+Kullanıcıya tıklanabilir bir sayfa linki (URL) verirken SADECE VE SADECE Bilgi Bankası'nda bulunan \`route_map.md\` dosyasındaki "Geçerli Yol (Path)" sütunundaki yolları kullan.
+- Eğer aradığın modül \`route_map.md\` tablosunda YOKSA, KESİNLİKLE LİNK VERME ve uydurma.
+- Eğer bir modal (açılır pencere) yönlendirmesi yapıyorsan, doğrudan ana menü linkini ver ve modala tıklama adımını metinle anlat.
+- Link formatı KESİNLİKLE şu şekilde olmalıdır: [Sayfaya Git](${clientOrigin}/ilgili-link)
 
 ÇIKTI FORMATI:
 Yanıtını MUTLAKA geçerli bir JSON formatında ver. JSON formatı dışında hiçbir açıklama, selamlama veya markdown işareti (\`\`\`json gibi) KULLANMA.

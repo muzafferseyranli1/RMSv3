@@ -59,8 +59,8 @@ async function runTests() {
     console.log("1. Creating mock stock item...");
     const sku = 'WMS-TEST-SKU-' + Date.now();
     const stockItemRes = await client.query(
-      `INSERT INTO public.stock_items (sku, name, unit, packaging_units) 
-       VALUES ($1, 'WMS Test Product', 'Adet', '[]'::jsonb) 
+      `INSERT INTO public.stock_items (sku, name, unit, packaging_units)
+       VALUES ($1, 'WMS Test Product', 'Adet', '[]'::jsonb)
        RETURNING id`,
       [sku]
     )
@@ -125,15 +125,145 @@ async function runTests() {
     }
     console.log("✔ Volume auto-generated column works.\n");
 
+    // 2b. Testing comprehensive packaging_units JSONB payload (dimensions, weights, and barcodes)
+    console.log("2b. Testing comprehensive packaging_units JSONB payload (dimensions, weights, and barcodes)...");
+    const baseBc1Val = 'BASE-BC-1-' + Date.now();
+    const baseBc2Val = 'BASE-BC-2-' + Date.now();
+    const kutuBc1Val = 'KUTU-BC-1-' + Date.now();
+
+    const complexPackagingJson = [
+      {
+        id: 'base',
+        unit: 'Adet',
+        qty: 1,
+        is_base_unit: true,
+        length_cm: 10,
+        width_cm: 10,
+        height_cm: 10,
+        gross_weight_kg: 1.5,
+        net_weight_kg: 1.2,
+        barcodes: [
+          { barcode: baseBc1Val, barcode_type: 'EAN13', is_primary: true },
+          { barcode: baseBc2Val, barcode_type: 'EAN8', is_primary: false }
+        ]
+      },
+      {
+        id: 'u1',
+        unit: 'kutu',
+        qty: 10,
+        is_base_unit: false,
+        length_cm: 25,
+        width_cm: 25,
+        height_cm: 25,
+        gross_weight_kg: 16.0,
+        net_weight_kg: 15.0,
+        barcodes: [
+          { barcode: kutuBc1Val, barcode_type: 'CODE128', is_primary: true }
+        ]
+      }
+    ];
+
+    await client.query(
+      "UPDATE public.stock_items SET packaging_units = $1 WHERE id = $2",
+      [JSON.stringify(complexPackagingJson), mockStockItemId]
+    );
+
+    // Verify dimensions, weights, and volume sync
+    const complexUnitsRes = await client.query(
+      "SELECT id, unit_name, base_quantity, length_cm, width_cm, height_cm, gross_weight_kg, net_weight_kg, volume_m3, is_base_unit FROM public.stock_item_package_units WHERE stock_item_id = $1 ORDER BY level_no ASC",
+      [mockStockItemId]
+    );
+    console.log("Synchronized complex package units details:");
+    console.log(complexUnitsRes.rows);
+
+    if (complexUnitsRes.rows.length !== 2) {
+      throw new Error(`Expected 2 synchronized packaging units, got ${complexUnitsRes.rows.length}`);
+    }
+
+    const baseUnitData = complexUnitsRes.rows.find(u => u.is_base_unit);
+    const kutuUnitData = complexUnitsRes.rows.find(u => !u.is_base_unit);
+
+    if (!baseUnitData || Number(baseUnitData.length_cm) !== 10 || Number(baseUnitData.net_weight_kg) !== 1.2 || Number(baseUnitData.volume_m3) !== 0.001) {
+      throw new Error("Base unit dimensions or weight sync is incorrect!");
+    }
+    if (!kutuUnitData || Number(kutuUnitData.length_cm) !== 25 || Number(kutuUnitData.gross_weight_kg) !== 16.0 || Number(kutuUnitData.volume_m3) !== 0.015625) {
+      throw new Error("Kutu unit dimensions or weight sync is incorrect!");
+    }
+    console.log("✔ Dimensions, weights, and auto-volume synced correctly from JSONB payload.");
+
+    // Verify barcodes sync
+    const complexBarcodesRes = await client.query(
+      "SELECT gtin_barcode, barcode_type, is_primary, package_unit_id, active FROM public.product_external_barcodes WHERE stock_item_id = $1 AND active = true ORDER BY gtin_barcode ASC",
+      [mockStockItemId]
+    );
+    console.log("Synchronized barcodes details:");
+    console.log(complexBarcodesRes.rows);
+
+    if (complexBarcodesRes.rows.length !== 3) {
+      throw new Error(`Expected 3 active synchronized barcodes, got ${complexBarcodesRes.rows.length}`);
+    }
+
+    const baseBc1 = complexBarcodesRes.rows.find(b => b.gtin_barcode === baseBc1Val);
+    const baseBc2 = complexBarcodesRes.rows.find(b => b.gtin_barcode === baseBc2Val);
+    const kutuBc1 = complexBarcodesRes.rows.find(b => b.gtin_barcode === kutuBc1Val);
+
+    if (!baseBc1 || !baseBc1.is_primary || baseBc1.package_unit_id !== baseUnitData.id) {
+      throw new Error("BASE-BC-1 barcode details or linking is incorrect!");
+    }
+    if (!baseBc2 || baseBc2.is_primary || baseBc2.package_unit_id !== baseUnitData.id) {
+      throw new Error("BASE-BC-2 barcode details or linking is incorrect!");
+    }
+    if (!kutuBc1 || !kutuBc1.is_primary || kutuBc1.package_unit_id !== kutuUnitData.id) {
+      throw new Error("KUTU-BC-1 barcode details or linking is incorrect!");
+    }
+    console.log("✔ Barcodes correctly synchronized and linked to their respective package_unit_id.");
+
+    // Test DB validation trigger: net weight > gross weight
+    console.log("Testing DB trigger validation: net_weight > gross_weight...");
+    const invalidWeightJson = JSON.parse(JSON.stringify(complexPackagingJson));
+    invalidWeightJson[0].net_weight_kg = 5.0; // Gross was 1.5
+    try {
+      await client.query(
+        "UPDATE public.stock_items SET packaging_units = $1 WHERE id = $2",
+        [JSON.stringify(invalidWeightJson), mockStockItemId]
+      );
+      throw new Error("Allowed net weight > gross weight to be updated! Trigger validation failed.");
+    } catch (err) {
+      if (err.message.includes('Net agirlik brut agirliktan buyuk olamaz')) {
+        console.log("✔ Net weight > Gross weight rejected successfully by DB trigger.");
+      } else {
+        throw err;
+      }
+    }
+
+    // Test DB validation trigger: negative dimensions
+    console.log("Testing DB trigger validation: negative dimensions...");
+    const invalidDimJson = JSON.parse(JSON.stringify(complexPackagingJson));
+    invalidDimJson[1].length_cm = -2;
+    try {
+      await client.query(
+        "UPDATE public.stock_items SET packaging_units = $1 WHERE id = $2",
+        [JSON.stringify(invalidDimJson), mockStockItemId]
+      );
+      throw new Error("Allowed negative dimensions to be updated! Trigger validation failed.");
+    } catch (err) {
+      if (err.message.includes('0 veya negatif olamaz')) {
+        console.log("✔ Negative dimension value rejected successfully by DB trigger.");
+      } else {
+        throw err;
+      }
+    }
+    console.log("✔ DB-first trigger validations work perfectly.\n");
+
     // 3. Test active barcode unique index (fail-closed)
     console.log("3. Testing active barcode unique index...");
     const barcodeStr = 'WMS-TEST-BARCODE-' + Date.now();
-    
+
     // Insert first active barcode
     const bar1 = await client.query(
       `INSERT INTO public.product_external_barcodes (gtin_barcode, stock_item_id, package_unit_id, active, is_approved)
        VALUES ($1, $2, $3, true, true) RETURNING id`,
-      [barcodeStr, mockStockItemId, kutuRow.id]
+      [barcodeStr, mockStockItemId, kutuUnitData.id]
     );
     mockBarcodeIds.push(bar1.rows[0].id);
     console.log(`First active barcode inserted.`);
@@ -143,7 +273,7 @@ async function runTests() {
       await client.query(
         `INSERT INTO public.product_external_barcodes (gtin_barcode, stock_item_id, package_unit_id, active, is_approved)
          VALUES ($1, $2, $3, true, true)`,
-        [barcodeStr, mockStockItemId, koliRow.id]
+        [barcodeStr, mockStockItemId, baseUnitData.id]
       );
       throw new Error("Duplicate active barcode was inserted successfully! Index failed.");
     } catch (err) {
@@ -158,15 +288,17 @@ async function runTests() {
     const bar2 = await client.query(
       `INSERT INTO public.product_external_barcodes (gtin_barcode, stock_item_id, package_unit_id, active, is_approved)
        VALUES ($1, $2, $3, false, true) RETURNING id`,
-      [barcodeStr, mockStockItemId, koliRow.id]
+      [barcodeStr, mockStockItemId, baseUnitData.id]
     );
     mockBarcodeIds.push(bar2.rows[0].id);
     console.log("✔ Duplicate inactive barcode inserted successfully without unique constraint violation.");
     console.log("✔ Partial unique barcode constraint works perfectly.\n");
 
+
+
     // 4. Test server parse-barcode sequence
     console.log("4. Testing parse-barcode sequence internal queries...");
-    
+
     // Setup location and LPN mock data for testing priority
     const locationCode = 'LOC-WMS-TEST';
     const lpnCode = 'LPN-WMS-TEST';
@@ -188,7 +320,7 @@ async function runTests() {
     console.log(`Mock LPN created with ID: ${mockLpnId}`);
 
     console.log("\nTesting resolution helpers logic:");
-    
+
     // Test resolveProductByApprovedBarcode
     const resolvedApproved = await client.query(
       `SELECT s.id AS stock_item_id, s.name, p.package_unit_id

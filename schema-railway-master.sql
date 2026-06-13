@@ -1768,13 +1768,15 @@ CREATE TABLE IF NOT EXISTS public.stock_items (
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
   image_url TEXT,
+  temperature_class TEXT,
   CONSTRAINT stock_items_pkey PRIMARY KEY (id),
   CONSTRAINT stock_items_cat_l1_fkey FOREIGN KEY (cat_l1) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l2_fkey FOREIGN KEY (cat_l2) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l3_fkey FOREIGN KEY (cat_l3) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l4_fkey FOREIGN KEY (cat_l4) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l5_fkey FOREIGN KEY (cat_l5) REFERENCES categories(id) ON DELETE SET NULL,
-  CONSTRAINT stock_items_supp_id_fkey FOREIGN KEY (supp_id) REFERENCES suppliers(id) ON DELETE SET NULL
+  CONSTRAINT stock_items_supp_id_fkey FOREIGN KEY (supp_id) REFERENCES suppliers(id) ON DELETE SET NULL,
+  CONSTRAINT stock_items_temperature_class_check CHECK (temperature_class IN ('dry', 'cold', 'frozen'))
 );
 
 CREATE TABLE IF NOT EXISTS public.stock_templates (
@@ -3269,7 +3271,7 @@ BEGIN
       coalesce(sum(s.net_total_after_discount), 0)::numeric AS total_amount,
       count(s.id)::bigint AS order_count,
       coalesce(
-        CASE 
+        CASE
           WHEN p_allow_same_item_repeat THEN (
             SELECT sum(l.qty)
             FROM sale_lines l
@@ -3316,7 +3318,7 @@ BEGIN
       coalesce(sum(l.line_gross_after_discount), 0)::numeric AS total_amount,
       count(distinct s.id)::bigint AS order_count,
       coalesce(
-        CASE 
+        CASE
           WHEN p_allow_same_item_repeat THEN sum(l.qty)
           ELSE (
             SELECT count(distinct unioned.product_id)
@@ -4168,15 +4170,29 @@ CREATE INDEX IF NOT EXISTS idx_product_barcodes_approved    ON public.product_ex
 CREATE TABLE IF NOT EXISTS public.vehicles (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   plate_number TEXT NOT NULL,
-  model TEXT,
+  vehicle_code TEXT,
+  display_name TEXT,
+  vehicle_type TEXT,
+  temperature_class TEXT,
+  max_volume_m3 NUMERIC,
+  max_weight_kg NUMERIC,
+  inner_length_cm NUMERIC,
+  inner_width_cm NUMERIC,
+  inner_height_cm NUMERIC,
   driver_name TEXT,
   driver_phone TEXT,
   active BOOLEAN DEFAULT true NOT NULL,
+  branch_id UUID,
+  capacity_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   deleted_at TIMESTAMPTZ,
   CONSTRAINT vehicles_pkey PRIMARY KEY (id),
-  CONSTRAINT vehicles_plate_number_key UNIQUE (plate_number)
+  CONSTRAINT vehicles_plate_number_key UNIQUE (plate_number),
+  CONSTRAINT vehicles_vehicle_code_key UNIQUE (vehicle_code),
+  CONSTRAINT vehicles_vehicle_type_check CHECK (vehicle_type IN ('truck', 'van', 'pickup', 'container', 'other')),
+  CONSTRAINT vehicles_temperature_class_check CHECK (temperature_class IN ('dry', 'cold', 'frozen', 'multi_temp')),
+  CONSTRAINT vehicles_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES public.company_nodes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS public.warehouse_shipments (
@@ -4557,6 +4573,7 @@ DECLARE
   v_order_id UUID;
   v_draft_item RECORD;
   v_po_line RECORD;
+  v_pkg RECORD;
 
   -- variables for cursor / stock picking
   v_cursor_opened BOOLEAN := false;
@@ -4765,6 +4782,14 @@ BEGIN
             );
           END LOOP;
 
+          -- Fetch packaging unit details
+          SELECT id, base_quantity, volume_m3, gross_weight_kg
+          INTO v_pkg
+          FROM public.stock_item_package_units
+          WHERE stock_item_id = v_draft_item.stock_item_id AND active = true
+          ORDER BY is_default_shipping_unit DESC, is_base_unit DESC, created_at ASC
+          LIMIT 1;
+
           -- Create shipment line
           INSERT INTO public.warehouse_shipment_lines (
             id,
@@ -4774,7 +4799,12 @@ BEGIN
             shipped_qty,
             unit_price,
             line_total,
-            meta
+            meta,
+            package_unit_id,
+            package_qty,
+            base_qty,
+            line_volume_m3,
+            line_gross_weight_kg
           ) VALUES (
             v_shipment_line_id,
             v_shipment_id,
@@ -4783,7 +4813,12 @@ BEGIN
             v_initial_line_shipped_qty,
             v_po_line.unit_price,
             v_initial_line_shipped_qty * v_po_line.unit_price,
-            jsonb_build_object('picks', v_line_picks)
+            jsonb_build_object('picks', v_line_picks),
+            v_pkg.id,
+            v_initial_line_shipped_qty / COALESCE(NULLIF(v_pkg.base_quantity, 0), 1.0),
+            v_initial_line_shipped_qty,
+            COALESCE(v_pkg.volume_m3, 0) * (v_initial_line_shipped_qty / COALESCE(NULLIF(v_pkg.base_quantity, 0), 1.0)),
+            COALESCE(v_pkg.gross_weight_kg, 0) * (v_initial_line_shipped_qty / COALESCE(NULLIF(v_pkg.base_quantity, 0), 1.0))
           );
 
           -- Update purchase order line
@@ -5564,7 +5599,121 @@ BEGIN
 END;
 $$;
 
--- 3. Updated confirm_warehouse_shipment RPC with tasks guard check
+-- 3. Define or replace the shipment capacity calculation RPC
+CREATE OR REPLACE FUNCTION public.get_warehouse_shipment_capacity(p_shipment_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_shipment public.warehouse_shipments%ROWTYPE;
+  v_vehicle public.vehicles%ROWTYPE;
+  v_total_vol NUMERIC;
+  v_total_weight NUMERIC;
+  v_mismatched_items JSONB := '[]'::jsonb;
+  v_is_temp_mismatched BOOLEAN := false;
+  v_is_volume_exceeded BOOLEAN := false;
+  v_is_weight_exceeded BOOLEAN := false;
+  v_is_exceeded BOOLEAN := false;
+  v_is_override_active BOOLEAN := false;
+  v_vehicle_temp TEXT;
+BEGIN
+  -- Get shipment
+  SELECT * INTO v_shipment FROM public.warehouse_shipments WHERE id = p_shipment_id AND deleted_at IS NULL;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Sevkiyat bulunamadı');
+  END IF;
+
+  -- Get vehicle if exists
+  IF v_shipment.vehicle_id IS NOT NULL THEN
+    SELECT * INTO v_vehicle FROM public.vehicles WHERE id = v_shipment.vehicle_id;
+  END IF;
+
+  -- Sum shipment lines metrics
+  SELECT
+    COALESCE(SUM(line_volume_m3), 0),
+    COALESCE(SUM(line_gross_weight_kg), 0)
+  INTO v_total_vol, v_total_weight
+  FROM public.warehouse_shipment_lines
+  WHERE shipment_id = p_shipment_id AND deleted_at IS NULL;
+
+  -- Check override state
+  IF COALESCE(v_shipment.meta->>'capacity_override', 'false') = 'true' THEN
+    v_is_override_active := true;
+  END IF;
+
+  -- Temperature checks
+  IF v_vehicle.id IS NOT NULL THEN
+    v_vehicle_temp := COALESCE(v_vehicle.temperature_class, 'dry');
+
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+      'stock_item_id', m.stock_item_id,
+      'item_name', m.item_name,
+      'item_temp', m.item_temp,
+      'vehicle_temp', m.vehicle_temp
+    )), '[]'::jsonb)
+    INTO v_mismatched_items
+    FROM (
+      SELECT
+        wsl.stock_item_id,
+        si.name AS item_name,
+        COALESCE(si.temperature_class, 'dry') AS item_temp,
+        v_vehicle_temp AS vehicle_temp
+      FROM public.warehouse_shipment_lines wsl
+      JOIN public.stock_items si ON si.id = wsl.stock_item_id
+      WHERE wsl.shipment_id = p_shipment_id
+        AND wsl.deleted_at IS NULL
+        AND (
+          (v_vehicle_temp = 'dry' AND COALESCE(si.temperature_class, 'dry') NOT IN ('dry'))
+          OR
+          (v_vehicle_temp = 'cold' AND COALESCE(si.temperature_class, 'dry') NOT IN ('cold', 'dry'))
+          OR
+          (v_vehicle_temp = 'frozen' AND COALESCE(si.temperature_class, 'dry') NOT IN ('frozen'))
+          -- 'multi_temp' allows everything
+        )
+    ) m;
+
+    IF jsonb_array_length(v_mismatched_items) > 0 THEN
+      v_is_temp_mismatched := true;
+    END IF;
+
+    -- Volume limit check
+    IF v_vehicle.max_volume_m3 IS NOT NULL AND v_vehicle.max_volume_m3 > 0 AND v_total_vol > v_vehicle.max_volume_m3 THEN
+      v_is_volume_exceeded := true;
+    END IF;
+
+    -- Weight limit check
+    IF v_vehicle.max_weight_kg IS NOT NULL AND v_vehicle.max_weight_kg > 0 AND v_total_weight > v_vehicle.max_weight_kg THEN
+      v_is_weight_exceeded := true;
+    END IF;
+
+    IF v_is_volume_exceeded OR v_is_weight_exceeded THEN
+      v_is_exceeded := true;
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'shipment_id', p_shipment_id,
+    'vehicle_id', v_shipment.vehicle_id,
+    'plate_number', COALESCE(v_vehicle.plate_number, v_shipment.plate_number),
+    'total_volume_m3', round(v_total_vol::numeric, 4),
+    'total_weight_kg', round(v_total_weight::numeric, 2),
+    'vehicle_max_volume_m3', COALESCE(v_vehicle.max_volume_m3, 0),
+    'vehicle_max_weight_kg', COALESCE(v_vehicle.max_weight_kg, 0),
+    'remaining_volume_m3', round((COALESCE(v_vehicle.max_volume_m3, 0) - v_total_vol)::numeric, 4),
+    'remaining_weight_kg', round((COALESCE(v_vehicle.max_weight_kg, 0) - v_total_weight)::numeric, 2),
+    'is_volume_exceeded', v_is_volume_exceeded,
+    'is_weight_exceeded', v_is_weight_exceeded,
+    'is_exceeded', v_is_exceeded,
+    'is_temperature_mismatched', v_is_temp_mismatched,
+    'mismatched_items', v_mismatched_items,
+    'is_override_active', v_is_override_active,
+    'override_details', CASE WHEN v_is_override_active THEN v_shipment.meta ELSE NULL END
+  );
+END;
+$$;
+
+-- 4. Redefine confirm_warehouse_shipment to enforce capacity and temperature limits
 CREATE OR REPLACE FUNCTION public.confirm_warehouse_shipment(
   p_shipment_id UUID,
   p_branch_id UUID,
@@ -5593,8 +5742,8 @@ DECLARE
   v_res_status TEXT;
 BEGIN
   -- 1. Select and lock the shipment row to enforce idempotency
-  SELECT shipment_no, source_branch_id, plate_number, driver_info, notes, status
-  INTO v_shipment_no, v_source_branch_id, v_plate_number, v_driver_info, v_notes, v_status
+  SELECT shipment_no, source_branch_id, plate_number, driver_info, notes, status, meta
+  INTO v_shipment_no, v_source_branch_id, v_plate_number, v_driver_info, v_notes, v_status, v_meta
   FROM public.warehouse_shipments
   WHERE id = p_shipment_id AND deleted_at IS NULL
   FOR UPDATE;
@@ -5621,6 +5770,22 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Bu sevkiyata bağlı tamamlanmamış depo görevleri (toplama, paketleme vb.) bulunmaktadır. Lütfen önce görevleri tamamlayın.';
   END IF;
+
+  -- WMS-04G Capacity & Temperature Check
+  DECLARE
+    v_capacity_check JSONB;
+  BEGIN
+    v_capacity_check := public.get_warehouse_shipment_capacity(p_shipment_id);
+    IF (v_capacity_check->>'is_exceeded')::BOOLEAN OR (v_capacity_check->>'is_temperature_mismatched')::BOOLEAN THEN
+      IF COALESCE(v_meta->>'capacity_override', 'false') <> 'true' THEN
+        IF (v_capacity_check->>'is_temperature_mismatched')::BOOLEAN THEN
+          RAISE EXCEPTION 'Araç sıcaklık sınıfı ile sevk edilecek ürünlerin sıcaklık gereksinimleri uyuşmuyor. Onay için yönetici yetkilendirmesi (override) gerekmektedir.';
+        ELSE
+          RAISE EXCEPTION 'Araç taşıma kapasitesi (hacim veya ağırlık) aşılmıştır. Onay için yönetici yetkilendirmesi (override) gerekmektedir.';
+        END IF;
+      END IF;
+    END IF;
+  END;
 
   -- 2. Update status to 'in_transit'
   UPDATE public.warehouse_shipments
@@ -5759,40 +5924,27 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 4. Update associated Purchase Order meta
+  -- 4. Complete associated purchase orders if fully shipped
   FOR v_order IN
-    SELECT po.*
+    SELECT po.id, po.status
     FROM public.purchase_orders po
     JOIN public.warehouse_shipment_orders wso ON wso.purchase_order_id = po.id
-    WHERE wso.shipment_id = p_shipment_id AND wso.deleted_at IS NULL
+    WHERE wso.shipment_id = p_shipment_id AND po.deleted_at IS NULL
   LOOP
-    -- Build new metadata
-    v_meta := COALESCE(v_order.meta, '{}'::jsonb);
-    v_next_meta := v_meta || jsonb_build_object(
-      'supplier_marked_sent', true,
-      'supplier_sent_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'shipment_id', p_shipment_id,
-      'shipment_no', v_shipment_no,
-      'shipped_at', now(),
-      'plate_number', v_plate_number,
-      'driver_info', v_driver_info,
-      'supplier_dispatch', jsonb_build_object(
-        'delivered_on', to_char(now(), 'YYYY-MM-DD'),
-        'delivered_at', to_char(now(), 'HH24:MI'),
-        'doc_kind', 'irsaliye',
-        'doc_date', to_char(now(), 'YYYY-MM-DD'),
-        'doc_no', v_shipment_no,
-        'plate_number', v_plate_number,
-        'driver_info', v_driver_info,
-        'note', COALESCE(v_notes, 'Araç ile sevk edildi.')
-      )
-    );
-
+    -- check if all lines of this purchase order are shipped/satisfied
     UPDATE public.purchase_orders
-    SET meta = v_next_meta,
-        updated_at = now()
+    SET updated_at = now()
     WHERE id = v_order.id;
   END LOOP;
+
+  -- 5. Complete all finished WMS tasks related to this shipment (if any are still 'doing')
+  UPDATE public.warehouse_tasks
+  SET status = 'done',
+      completed_at = now(),
+      updated_at = now()
+  WHERE source_doc_type = 'warehouse_shipment'
+    AND source_doc_id = p_shipment_id
+    AND status IN ('doing', 'todo');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6404,15 +6556,15 @@ $$;
 -- Migration: WMS Phase 4 - Quality view for frontend (WMS-04B)
 
 CREATE OR REPLACE VIEW public.v_warehouse_quality_holds AS
-SELECT 
+SELECT
   q.*,
   s.name AS stock_item_name,
   s.sku AS stock_item_sku,
   s.unit AS stock_item_unit,
   c.name AS branch_name,
-  CASE 
-    WHEN l.id IS NULL THEN '—' 
-    ELSE COALESCE(l.zone_code, '') || 
+  CASE
+    WHEN l.id IS NULL THEN '—'
+    ELSE COALESCE(l.zone_code, '') ||
       CASE WHEN l.aisle IS NOT NULL AND l.aisle <> '' THEN '-K' || l.aisle ELSE '' END ||
       CASE WHEN l.rack IS NOT NULL AND l.rack <> '' THEN '-R' || l.rack ELSE '' END ||
       CASE WHEN l.level IS NOT NULL AND l.level <> '' THEN '-S' || l.level ELSE '' END ||
@@ -6439,7 +6591,7 @@ DECLARE
 BEGIN
   SELECT jsonb_agg(t) INTO v_res
   FROM (
-    SELECT 
+    SELECT
       m.id,
       m.item_name,
       m.item_sku,
@@ -6456,9 +6608,9 @@ BEGIN
       m.source_doc_no,
       m.lot_number,
       m.expiration_date,
-      CASE 
-        WHEN l.id IS NULL THEN '—' 
-        ELSE COALESCE(l.zone_code, '') || 
+      CASE
+        WHEN l.id IS NULL THEN '—'
+        ELSE COALESCE(l.zone_code, '') ||
           CASE WHEN l.aisle IS NOT NULL AND l.aisle <> '' THEN '-K' || l.aisle ELSE '' END ||
           CASE WHEN l.rack IS NOT NULL AND l.rack <> '' THEN '-R' || l.rack ELSE '' END ||
           CASE WHEN l.level IS NOT NULL AND l.level <> '' THEN '-S' || l.level ELSE '' END ||
@@ -6471,7 +6623,7 @@ BEGIN
     WHERE m.lot_number = p_lot_number AND m.deleted_at IS NULL AND m.is_cancelled = false
     ORDER BY m.movement_at ASC, m.id ASC
   ) t;
-  
+
   RETURN COALESCE(v_res, '[]'::jsonb);
 END;
 $$;
@@ -6488,7 +6640,7 @@ DECLARE
 BEGIN
   SELECT jsonb_agg(t) INTO v_res
   FROM (
-    SELECT 
+    SELECT
       e.id AS event_id,
       e.event_type,
       e.from_status,
@@ -6505,7 +6657,7 @@ BEGIN
       t.source_doc_id
     FROM public.warehouse_task_events e
     JOIN public.warehouse_tasks t ON e.task_id = t.id
-    WHERE 
+    WHERE
       -- Putaway task matches via source movement lot number
       (t.task_type = 'putaway' AND (t.meta->>'source_movement_id')::UUID IN (
         SELECT id FROM public.inventory_movements WHERE lot_number = p_lot_number
@@ -6517,7 +6669,7 @@ BEGIN
       ))
     ORDER BY e.created_at ASC
   ) t;
-  
+
   RETURN COALESCE(v_res, '[]'::jsonb);
 END;
 $$;
@@ -6528,18 +6680,206 @@ CREATE OR REPLACE FUNCTION public.sync_stock_item_package_units()
 RETURNS TRIGGER AS $$
 DECLARE
   v_item RECORD;
-  v_base_unit_id UUID;
-  v_prev_unit TEXT;
+  v_barcode_item RECORD;
+  v_unit_id UUID;
   v_prev_qty NUMERIC := 1.0;
   v_curr_qty NUMERIC;
-  v_level INT := 1;
+  v_level INT := 0;
   v_processed_names TEXT[] := ARRAY[]::TEXT[];
+  v_processed_barcodes TEXT[] := ARRAY[]::TEXT[];
   v_unit_name TEXT;
   v_qty NUMERIC;
+
+  -- Dimensions & Weights
+  v_length_cm NUMERIC;
+  v_width_cm NUMERIC;
+  v_height_cm NUMERIC;
+  v_gross_weight_kg NUMERIC;
+  v_net_weight_kg NUMERIC;
+  v_is_base BOOLEAN;
+
+  -- Barcodes
+  v_barcodes JSONB;
+  v_barcode TEXT;
+  v_barcode_type TEXT;
+  v_is_primary BOOLEAN;
 BEGIN
-  -- 1. Ensure the base unit exists in stock_item_package_units
-  IF NEW.unit IS NOT NULL AND NEW.unit <> '' THEN
-    SELECT id INTO v_base_unit_id
+  -- Process packaging_units from JSONB array
+  IF NEW.packaging_units IS NOT NULL AND jsonb_typeof(NEW.packaging_units) = 'array' THEN
+    FOR v_item IN
+      SELECT
+        (value->>'unit') AS unit_name,
+        COALESCE((value->>'qty')::NUMERIC, 1.0) AS qty,
+        COALESCE((value->>'is_base_unit')::BOOLEAN, false) AS is_base_unit,
+        (value->>'length_cm')::NUMERIC AS length_cm,
+        (value->>'width_cm')::NUMERIC AS width_cm,
+        (value->>'height_cm')::NUMERIC AS height_cm,
+        (value->>'gross_weight_kg')::NUMERIC AS gross_weight_kg,
+        (value->>'net_weight_kg')::NUMERIC AS net_weight_kg,
+        (value->'barcodes') AS barcodes,
+        (value->>'barcode') AS single_barcode,
+        (value->>'single_barcode_type') AS single_barcode_type
+      FROM jsonb_array_elements(NEW.packaging_units)
+    LOOP
+      v_unit_name := trim(v_item.unit_name);
+      v_is_base := v_item.is_base_unit;
+
+      IF v_unit_name IS NOT NULL AND v_unit_name <> '' THEN
+        v_qty := v_item.qty;
+
+        -- Dimensions & weights extraction
+        v_length_cm := v_item.length_cm;
+        v_width_cm := v_item.width_cm;
+        v_height_cm := v_item.height_cm;
+        v_gross_weight_kg := v_item.gross_weight_kg;
+        v_net_weight_kg := v_item.net_weight_kg;
+
+        -- Validation rules: if measurements are partially entered, they must be valid and complete
+        IF v_length_cm IS NOT NULL OR v_width_cm IS NOT NULL OR v_height_cm IS NOT NULL OR v_gross_weight_kg IS NOT NULL OR v_net_weight_kg IS NOT NULL THEN
+          IF COALESCE(v_length_cm, 0) <= 0 OR COALESCE(v_width_cm, 0) <= 0 OR COALESCE(v_height_cm, 0) <= 0 THEN
+            RAISE EXCEPTION 'Boyutlar (en, boy, yukseklik) 0 veya negatif olamaz. Birim: %', v_unit_name;
+          END IF;
+          IF COALESCE(v_gross_weight_kg, 0) <= 0 OR COALESCE(v_net_weight_kg, 0) <= 0 THEN
+            RAISE EXCEPTION 'Agirliklar (brut, net) 0 veya negatif olamaz. Birim: %', v_unit_name;
+          END IF;
+          IF v_net_weight_kg > v_gross_weight_kg THEN
+            RAISE EXCEPTION 'Net agirlik brut agirliktan buyuk olamaz. Birim: %', v_unit_name;
+          END IF;
+        END IF;
+
+        IF v_is_base THEN
+          v_curr_qty := 1.0;
+          v_level := 0;
+
+          -- Upsert the base package unit
+          UPDATE public.stock_item_package_units
+          SET unit_name = NEW.unit,
+              unit_symbol = NEW.unit,
+              base_unit_name = NEW.unit,
+              base_quantity = 1.0,
+              level_no = 0,
+              length_cm = v_length_cm,
+              width_cm = v_width_cm,
+              height_cm = v_height_cm,
+              gross_weight_kg = v_gross_weight_kg,
+              net_weight_kg = v_net_weight_kg,
+              updated_at = now(),
+              active = true
+          WHERE stock_item_id = NEW.id AND is_base_unit = true
+          RETURNING id INTO v_unit_id;
+
+          IF NOT FOUND THEN
+            INSERT INTO public.stock_item_package_units (
+              stock_item_id, unit_name, unit_symbol, base_unit_name, base_quantity,
+              level_no, is_base_unit, length_cm, width_cm, height_cm, gross_weight_kg, net_weight_kg, active
+            ) VALUES (
+              NEW.id, NEW.unit, NEW.unit, NEW.unit, 1.0,
+              0, true, v_length_cm, v_width_cm, v_height_cm, v_gross_weight_kg, v_net_weight_kg, true
+            ) RETURNING id INTO v_unit_id;
+          END IF;
+
+          v_processed_names := array_append(v_processed_names, NEW.unit);
+          v_prev_qty := 1.0;
+        ELSE
+          v_level := v_level + 1;
+          v_curr_qty := v_qty * v_prev_qty;
+
+          -- Upsert the package unit
+          UPDATE public.stock_item_package_units
+          SET base_unit_name = NEW.unit,
+              base_quantity = v_curr_qty,
+              level_no = v_level,
+              length_cm = v_length_cm,
+              width_cm = v_width_cm,
+              height_cm = v_height_cm,
+              gross_weight_kg = v_gross_weight_kg,
+              net_weight_kg = v_net_weight_kg,
+              updated_at = now(),
+              active = true
+          WHERE stock_item_id = NEW.id AND unit_name = v_unit_name AND is_base_unit = false
+          RETURNING id INTO v_unit_id;
+
+          IF NOT FOUND THEN
+            INSERT INTO public.stock_item_package_units (
+              stock_item_id, unit_name, unit_symbol, base_unit_name, base_quantity,
+              level_no, is_base_unit, length_cm, width_cm, height_cm, gross_weight_kg, net_weight_kg, active
+            ) VALUES (
+              NEW.id, v_unit_name, v_unit_name, NEW.unit, v_curr_qty,
+              v_level, false, v_length_cm, v_width_cm, v_height_cm, v_gross_weight_kg, v_net_weight_kg, true
+            ) RETURNING id INTO v_unit_id;
+          END IF;
+
+          v_processed_names := array_append(v_processed_names, v_unit_name);
+          v_prev_qty := v_curr_qty;
+        END IF;
+
+        -- Process unit barcodes
+        v_barcodes := v_item.barcodes;
+        IF v_barcodes IS NOT NULL AND jsonb_typeof(v_barcodes) = 'array' THEN
+          FOR v_barcode_item IN
+            SELECT
+              (value->>'barcode') AS barcode,
+              COALESCE(value->>'barcode_type', 'EAN13') AS barcode_type,
+              COALESCE((value->>'is_primary')::BOOLEAN, false) AS is_primary
+            FROM jsonb_array_elements(v_barcodes)
+          LOOP
+            v_barcode := trim(v_barcode_item.barcode);
+            v_barcode_type := v_barcode_item.barcode_type;
+            v_is_primary := v_barcode_item.is_primary;
+
+            IF v_barcode IS NOT NULL AND v_barcode <> '' THEN
+              UPDATE public.product_external_barcodes
+              SET package_unit_id = v_unit_id,
+                  barcode_type = v_barcode_type,
+                  is_primary = v_is_primary,
+                  active = true,
+                  is_approved = true,
+                  updated_at = now()
+              WHERE stock_item_id = NEW.id AND gtin_barcode = v_barcode;
+
+              IF NOT FOUND THEN
+                INSERT INTO public.product_external_barcodes (
+                  gtin_barcode, stock_item_id, package_unit_id, barcode_type, is_primary, active, is_approved
+                ) VALUES (
+                  v_barcode, NEW.id, v_unit_id, v_barcode_type, v_is_primary, true, true
+                );
+              END IF;
+
+              v_processed_barcodes := array_append(v_processed_barcodes, v_barcode);
+            END IF;
+          END LOOP;
+        ELSIF v_item.single_barcode IS NOT NULL AND trim(v_item.single_barcode) <> '' THEN
+          v_barcode := trim(v_item.single_barcode);
+          v_barcode_type := COALESCE(v_item.single_barcode_type, 'EAN13');
+          v_is_primary := true;
+
+          UPDATE public.product_external_barcodes
+          SET package_unit_id = v_unit_id,
+              barcode_type = v_barcode_type,
+              is_primary = v_is_primary,
+              active = true,
+              is_approved = true,
+              updated_at = now()
+              WHERE stock_item_id = NEW.id AND gtin_barcode = v_barcode;
+
+          IF NOT FOUND THEN
+            INSERT INTO public.product_external_barcodes (
+              gtin_barcode, stock_item_id, package_unit_id, barcode_type, is_primary, active, is_approved
+            ) VALUES (
+              v_barcode, NEW.id, v_unit_id, v_barcode_type, v_is_primary, true, true
+            );
+          END IF;
+
+          v_processed_barcodes := array_append(v_processed_barcodes, v_barcode);
+        END IF;
+
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- Ensure base unit row is active even if it was not in NEW.packaging_units (for fallback/default)
+  IF NOT (NEW.unit = ANY(v_processed_names)) AND NEW.unit IS NOT NULL AND NEW.unit <> '' THEN
+    SELECT id INTO v_unit_id
     FROM public.stock_item_package_units
     WHERE stock_item_id = NEW.id AND is_base_unit = true;
 
@@ -6549,8 +6889,9 @@ BEGIN
           unit_symbol = NEW.unit,
           base_unit_name = NEW.unit,
           base_quantity = 1.0,
-          updated_at = now()
-      WHERE id = v_base_unit_id;
+          updated_at = now(),
+          active = true
+      WHERE id = v_unit_id;
     ELSE
       INSERT INTO public.stock_item_package_units (
         stock_item_id, unit_name, unit_symbol, base_unit_name, base_quantity,
@@ -6559,54 +6900,12 @@ BEGIN
       ) VALUES (
         NEW.id, NEW.unit, NEW.unit, NEW.unit, 1.0,
         0, true, true, true, true, true
-      ) RETURNING id INTO v_base_unit_id;
+      ) RETURNING id INTO v_unit_id;
     END IF;
-
     v_processed_names := array_append(v_processed_names, NEW.unit);
-    v_prev_unit := NEW.unit;
   END IF;
 
-  -- 2. Process packaging_units from JSONB array
-  IF NEW.packaging_units IS NOT NULL AND jsonb_typeof(NEW.packaging_units) = 'array' THEN
-    FOR v_item IN
-      SELECT
-        (value->>'unit') AS unit_name,
-        COALESCE((value->>'qty')::NUMERIC, 1.0) AS qty
-      FROM jsonb_array_elements(NEW.packaging_units)
-    LOOP
-      v_unit_name := trim(v_item.unit_name);
-      IF v_unit_name IS NOT NULL AND v_unit_name <> '' THEN
-        v_qty := v_item.qty;
-        v_curr_qty := v_qty * v_prev_qty;
-
-        -- Upsert the package unit
-        UPDATE public.stock_item_package_units
-        SET base_unit_name = NEW.unit,
-            base_quantity = v_curr_qty,
-            level_no = v_level,
-            updated_at = now(),
-            active = true
-        WHERE stock_item_id = NEW.id AND unit_name = v_unit_name AND is_base_unit = false;
-
-        IF NOT FOUND THEN
-          INSERT INTO public.stock_item_package_units (
-            stock_item_id, unit_name, unit_symbol, base_unit_name, base_quantity,
-            level_no, is_base_unit, active
-          ) VALUES (
-            NEW.id, v_unit_name, v_unit_name, NEW.unit, v_curr_qty,
-            v_level, false, true
-          );
-        END IF;
-
-        v_processed_names := array_append(v_processed_names, v_unit_name);
-        v_prev_qty := v_curr_qty;
-        v_prev_unit := v_unit_name;
-        v_level := v_level + 1;
-      END IF;
-    END LOOP;
-  END IF;
-
-  -- 3. Delete or deactivate package units that are no longer in packaging_units
+  -- 3. Deactivate or delete package units that are no longer active/present
   UPDATE public.stock_item_package_units
   SET active = false, updated_at = now()
   WHERE stock_item_id = NEW.id AND NOT (unit_name = ANY(v_processed_names));
@@ -6618,6 +6917,18 @@ BEGIN
       SELECT DISTINCT package_unit_id FROM public.product_external_barcodes WHERE package_unit_id IS NOT NULL
       UNION
       SELECT DISTINCT package_unit_id FROM public.warehouse_shipment_lines WHERE package_unit_id IS NOT NULL
+    );
+
+  -- 4. Deactivate or delete barcodes that are no longer associated
+  UPDATE public.product_external_barcodes
+  SET active = false, updated_at = now()
+  WHERE stock_item_id = NEW.id AND NOT (gtin_barcode = ANY(v_processed_barcodes));
+
+  DELETE FROM public.product_external_barcodes
+  WHERE stock_item_id = NEW.id
+    AND NOT (gtin_barcode = ANY(v_processed_barcodes))
+    AND id NOT IN (
+      SELECT DISTINCT (payload->>'barcode_id')::UUID FROM public.warehouse_task_events WHERE (payload->>'barcode_id') IS NOT NULL
     );
 
   RETURN NEW;

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
@@ -159,14 +159,25 @@ export default function SupplierOrderPanel() {
       const [ordersResult, linesResult, suppliersResult] = await Promise.all([
         db.from('purchase_orders').select('*').is('deleted_at', null).order('order_date', { ascending: false }).order('created_at', { ascending: false }),
         db.from('purchase_order_lines').select('*').is('deleted_at', null).order('line_no'),
-        db.from('suppliers').select('id,name').eq('active', true).order('name'),
+        db.from('suppliers').select('id,name,supplier_kind').eq('active', true).order('name'),
       ])
       if (ordersResult.error) throw ordersResult.error
       if (linesResult.error) throw linesResult.error
       if (suppliersResult.error) throw suppliersResult.error
-      setOrders(ordersResult.data || [])
+
+      const allSuppliers = suppliersResult.data || []
+      const externalSuppliers = allSuppliers.filter(s => s.supplier_kind === 'external')
+      const externalSupplierIds = new Set(externalSuppliers.map(s => s.id))
+
+      const filteredOrders = (ordersResult.data || []).filter(order => {
+        if (order.flow_channel === 'warehouse_replenishment') return false
+        if (order.supplier_id && !externalSupplierIds.has(order.supplier_id)) return false
+        return true
+      })
+
+      setOrders(filteredOrders)
       setOrderLines(linesResult.data || [])
-      setSuppliers(suppliersResult.data || [])
+      setSuppliers(externalSuppliers)
     } catch (error) {
       toast(`Tedarikci panel verisi yuklenemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
@@ -248,6 +259,15 @@ export default function SupplierOrderPanel() {
 
   async function saveDispatch() {
     if (!dispatchOrder || !dispatchDraft) return
+    if (dispatchOrder.flow_channel === 'warehouse_replenishment') {
+      toast('Depo ikmal siparişleri tedarikçi paneli sevk aksiyonuna konu olamaz.', 'error')
+      return
+    }
+    const supplier = suppliers.find(s => s.id === dispatchOrder.supplier_id)
+    if (supplier?.supplier_kind === 'internal_warehouse') {
+      toast('Depo ikmal siparişleri tedarikçi paneli sevk aksiyonuna konu olamaz.', 'error')
+      return
+    }
     setDispatchSaving(true)
     try {
       const meta = getOrderMeta(dispatchOrder)
@@ -297,6 +317,15 @@ export default function SupplierOrderPanel() {
 
   async function sendSupplierNote() {
     if (!selectedOrder || !noteDraft.trim()) return
+    if (selectedOrder.flow_channel === 'warehouse_replenishment') {
+      toast('Depo ikmal siparişleri tedarikçi paneli not aksiyonuna konu olamaz.', 'error')
+      return
+    }
+    const supplier = suppliers.find(s => s.id === selectedOrder.supplier_id)
+    if (supplier?.supplier_kind === 'internal_warehouse') {
+      toast('Depo ikmal siparişleri tedarikçi paneli not aksiyonuna konu olamaz.', 'error')
+      return
+    }
     const meta = getOrderMeta(selectedOrder)
     const notes = Array.isArray(meta.supplier_notes) ? [...meta.supplier_notes] : []
     notes.push({

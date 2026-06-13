@@ -2,24 +2,52 @@ const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-const connectionString = 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway';
+function loadServerEnv() {
+  const envPath = path.join(__dirname, '../server/.env');
+  if (!fs.existsSync(envPath)) return;
 
-async function run() {
-  const sqlPath = path.join(__dirname, '../migrations/026_add_equipment_and_financial_form_support.sql');
-  if (!fs.existsSync(sqlPath)) {
-    console.error('Migration file not found at:', sqlPath);
-    process.exit(1);
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    if (!key || Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+
+    let value = line.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
   }
+}
+loadServerEnv();
 
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  console.log('Connecting to database...');
-  const client = new Client({ connectionString });
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error("DATABASE_URL is missing.");
+  process.exit(1);
+}
+
+async function main() {
+  const client = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  });
 
   try {
     await client.connect();
-    console.log('Connected successfully. Executing migration SQL...');
-    await client.query(sql);
-    console.log('Migration executed successfully! New tables and columns created, seed data inserted.');
+    console.log('Connected to database.');
+
+    const migrationSql = fs.readFileSync(path.join(__dirname, '../migrations/054_wms_pick_face_replenishment.sql'), 'utf8');
+    await client.query(migrationSql);
+    console.log('Migration successfully applied.');
+
   } catch (err) {
     console.error('Migration failed:', err);
     process.exit(1);
@@ -28,4 +56,4 @@ async function run() {
   }
 }
 
-run();
+main();

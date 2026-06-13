@@ -42,7 +42,11 @@ fun WmsPutawayScreen(
     onSelectPhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onCompleteTask: () -> Unit,
-    onCancelTask: () -> Unit
+    onCancelTask: () -> Unit,
+    isSourceVerified: Boolean = false,
+    scannedSourceCode: String = "",
+    sourceVerificationMessage: String? = null,
+    onSourceScanned: (String) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -164,6 +168,7 @@ fun WmsPutawayScreen(
         }
 
         // Önerilen Hedef Lokasyon ve Kaynak Lokasyon
+        val isMoveTask = task.taskType == "move"
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -176,13 +181,61 @@ fun WmsPutawayScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
-                        Text("KAYNAK LOKASYON", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    val sourceBorderColor = when {
+                        !isMoveTask -> Color.Transparent
+                        isSourceVerified -> Color(0xFF10B981)
+                        else -> Color(0xFF3B82F6)
+                    }
+                    Column(
+                        modifier = if (isMoveTask) {
+                            Modifier
+                                .weight(1f)
+                                .border(1.dp, sourceBorderColor, RoundedCornerShape(6.dp))
+                                .padding(8.dp)
+                        } else {
+                            Modifier
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("KAYNAK LOKASYON", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            if (isMoveTask && isSourceVerified) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Doğrulandı", tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(task.sourceLocation ?: "Bilinmiyor", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        if (isMoveTask && isSourceVerified && scannedSourceCode.isNotEmpty()) {
+                            Text("Okutulan: $scannedSourceCode", color = Color(0xFF10B981), fontSize = 10.sp)
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("ÖNERİLEN HEDEF LOKASYON", color = Color(0xFFa855f7), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    val targetBorderColor = when {
+                        !isMoveTask -> Color.Transparent
+                        isSourceVerified && isLocationVerified -> Color(0xFF10B981)
+                        isSourceVerified -> Color(0xFFa855f7)
+                        else -> Color.Transparent
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = if (isMoveTask) {
+                            Modifier
+                                .weight(1f)
+                                .border(1.dp, targetBorderColor, RoundedCornerShape(6.dp))
+                                .padding(8.dp)
+                        } else {
+                            Modifier
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isMoveTask && isSourceVerified && isLocationVerified) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Doğrulandı", tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text("HEDEF LOKASYON", color = Color(0xFFa855f7), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(task.targetLocation ?: "Bilinmiyor", color = Color(0xFFa855f7), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                     }
@@ -191,14 +244,18 @@ fun WmsPutawayScreen(
         }
 
         // Taranan lokasyon feedback alanı
+        val activeScannedCode = if (isMoveTask && !isSourceVerified) scannedSourceCode else scannedLocationCode
+        val isActiveVerified = if (isMoveTask && !isSourceVerified) isSourceVerified else isLocationVerified
+        val activeVerificationMessage = if (isMoveTask && !isSourceVerified) sourceVerificationMessage else verificationMessage
+
         val borderClr = when {
-            scannedLocationCode.isEmpty() -> Color(0xFF334155)
-            isLocationVerified -> Color(0xFF10B981)
+            activeScannedCode.isEmpty() -> Color(0xFF334155)
+            isActiveVerified -> Color(0xFF10B981)
             else -> Color(0xFFEF4444)
         }
         val bgClr = when {
-            scannedLocationCode.isEmpty() -> Color(0xFF1E293B)
-            isLocationVerified -> Color(0xFF065F46).copy(alpha = 0.2f)
+            activeScannedCode.isEmpty() -> Color(0xFF1E293B)
+            isActiveVerified -> Color(0xFF065F46).copy(alpha = 0.2f)
             else -> Color(0xFF991B1B).copy(alpha = 0.1f)
         }
 
@@ -214,7 +271,7 @@ fun WmsPutawayScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (scannedLocationCode.isEmpty()) {
+                if (activeScannedCode.isEmpty()) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
                         contentDescription = null,
@@ -223,7 +280,7 @@ fun WmsPutawayScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "LÜTFEN HEDEF LOKASYON BARKODUNU TARATIN",
+                        text = if (isMoveTask && !isSourceVerified) "LÜTFEN KAYNAK LOKASYON BARKODUNU TARATIN" else "LÜTFEN HEDEF LOKASYON BARKODUNU TARATIN",
                         color = Color(0xFF94A3B8),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -235,31 +292,36 @@ fun WmsPutawayScreen(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = if (isLocationVerified) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                            imageVector = if (isActiveVerified) Icons.Default.CheckCircle else Icons.Default.Cancel,
                             contentDescription = null,
-                            tint = if (isLocationVerified) Color(0xFF10B981) else Color(0xFFEF4444),
+                            tint = if (isActiveVerified) Color(0xFF10B981) else Color(0xFFEF4444),
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        val labelText = if (isMoveTask && !isSourceVerified) {
+                            if (isActiveVerified) "KAYNAK DOĞRULANDI" else "HATALI KAYNAK LOKASYONU"
+                        } else {
+                            if (isActiveVerified) "HEDEF DOĞRULANDI" else "HATALI HEDEF LOKASYONU"
+                        }
                         Text(
-                            text = if (isLocationVerified) "LOKASYON DOĞRULANDI" else "HATALI LOKASYON",
-                            color = if (isLocationVerified) Color(0xFF10B981) else Color(0xFFEF4444),
+                            text = labelText,
+                            color = if (isActiveVerified) Color(0xFF10B981) else Color(0xFFEF4444),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Okutulan: $scannedLocationCode",
+                        text = "Okutulan: $activeScannedCode",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    if (!verificationMessage.isNullOrBlank()) {
+                    if (!activeVerificationMessage.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = verificationMessage,
-                            color = if (isLocationVerified) Color(0xFF34D399) else Color(0xFFF87171),
+                            text = activeVerificationMessage,
+                            color = if (isActiveVerified) Color(0xFF34D399) else Color(0xFFF87171),
                             fontSize = 11.sp,
                             textAlign = TextAlign.Center
                         )
@@ -428,7 +490,7 @@ fun WmsPutawayScreen(
         Spacer(modifier = Modifier.weight(1f))
 
         // Onay / İptal Aksiyon Butonları
-        val isCompleteEnabled = isLocationVerified && (!isPhotoRequired || !evidencePhotoUrl.isNullOrBlank()) && !isLoading
+        val isCompleteEnabled = (!isMoveTask || isSourceVerified) && isLocationVerified && (!isPhotoRequired || !evidencePhotoUrl.isNullOrBlank()) && !isLoading
 
         Row(
             modifier = Modifier

@@ -112,6 +112,9 @@ const WmsStockParams = lazy(() => import('@/components/pages/WmsStockParams'))
 const WmsInternalTransfer = lazy(() => import('@/components/pages/WmsInternalTransfer'))
 const WmsQuality = lazy(() => import('@/components/pages/WmsQuality'))
 const WmsTraceability = lazy(() => import('@/components/pages/WmsTraceability'))
+const WmsVehicles = lazy(() => import('@/components/pages/WmsVehicles'))
+const WmsDashboard = lazy(() => import('@/components/pages/WmsDashboard'))
+const WmsReports = lazy(() => import('@/components/pages/WmsReports'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -526,8 +529,11 @@ function AppShell() {
               <Route path="/wms-stock-params" element={<WarehouseBranchRoute title="Stok Parametreleri"><WmsStockParams /></WarehouseBranchRoute>} />
               <Route path="/wms-quality" element={<WarehouseBranchRoute title="Kalite & Karantina"><WmsQuality /></WarehouseBranchRoute>} />
               <Route path="/wms-traceability" element={<WarehouseBranchRoute title="Lot İzlenebilirlik"><WmsTraceability /></WarehouseBranchRoute>} />
+              <Route path="/wms-vehicles" element={<WarehouseBranchRoute title="Araç Tanımları"><WmsVehicles /></WarehouseBranchRoute>} />
               <Route path="/depo-mal-kabul" element={<WarehouseBranchRoute title="Mal Kabul"><MalKabul /></WarehouseBranchRoute>} />
               <Route path="/depo-iclokasyon-tasima" element={<WarehouseBranchRoute title="Depo İçi Lokasyon Taşıma"><WmsInternalTransfer /></WarehouseBranchRoute>} />
+              <Route path="/wms-dashboard" element={<WarehouseBranchRoute title="WMS Dashboard"><WmsDashboard /></WarehouseBranchRoute>} />
+              <Route path="/wms-reports" element={<WarehouseBranchRoute title="WMS Raporları"><WmsReports /></WarehouseBranchRoute>} />
 
               {/* Merkez Mutfak İşlemleri */}
               <Route path="/merkezmutfak-uretim" element={<WarehouseBranchRoute title="Uretim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Production /></WarehouseBranchRoute>} />

@@ -321,6 +321,38 @@ class WmsRepository {
         }
     }
 
+    suspend fun completeMoveTask(
+        taskId: String, 
+        personnelId: String, 
+        sourceLocationId: String,
+        targetLocationId: String,
+        evidencePhotoUrl: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val params = mutableMapOf<String, Any>(
+                "p_task_id" to taskId,
+                "p_personnel_id" to personnelId,
+                "p_source_location_id" to sourceLocationId,
+                "p_target_location_id" to targetLocationId
+            )
+            if (evidencePhotoUrl != null) {
+                params["p_evidence_photo_url"] = evidencePhotoUrl
+            }
+            val request = QueryRequest(
+                rpc = "complete_warehouse_move_task",
+                params = params
+            )
+            val response = ApiClient.apiService.executeQuery(request)
+            if (response.error != null) {
+                throw Exception(response.error["message"]?.toString() ?: "RPC Hatası")
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("WmsRepository", "completeMoveTask hatası", e)
+            throw e
+        }
+    }
+
     suspend fun completeShipmentTask(
         taskId: String, 
         personnelId: String, 
@@ -439,6 +471,31 @@ class WmsRepository {
         } catch (e: Exception) {
             Log.e("WmsRepository", "Network exception in queryStock", e)
             null
+        }
+    }
+
+    suspend fun submitCountTask(
+        taskId: String,
+        personnelId: String?,
+        countedQty: Double,
+        reason: String?
+    ): SubmitCountTaskResult = withContext(Dispatchers.IO) {
+        try {
+            val response = ApiClient.apiService.submitCountTask(
+                SubmitCountTaskRequest(
+                    task_id = taskId,
+                    personnel_id = personnelId,
+                    counted_qty = countedQty,
+                    reason = reason
+                )
+            )
+            if (response.error != null) {
+                throw Exception(response.error["message"]?.toString() ?: "Sayım gönderilemedi.")
+            }
+            response.data ?: throw Exception("Boş sunucu yanıtı.")
+        } catch (e: Exception) {
+            Log.e("WmsRepository", "submitCountTask hatası", e)
+            throw e
         }
     }
 }

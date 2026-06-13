@@ -574,13 +574,14 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
       }
 
       const query = isNew
-        ? db.from('order_flows').insert(payload).select('*').single()
-        : db.from('order_flows').update(payload).eq('id',flow.id).select('*').single()
+        ? db.from('order_flows').insert(payload).select('*')
+        : db.from('order_flows').update(payload).eq('id',flow.id).select('*')
       const { data, error } = await query
       if(error){toast('Hata: '+error.message,'error');return}
 
+      const savedFlow = Array.isArray(data) ? data[0] : data
       toast(isNew?'İş akışı oluşturuldu':'Güncellendi','success')
-      await onSave(data||null)
+      await onSave(savedFlow||null)
     } catch (err) {
       const msg = err?.message || 'Kayıt sırasında beklenmeyen bir hata oluştu'
       toast('Hata: '+msg,'error')
@@ -1293,28 +1294,52 @@ export default function OrderFlows() {
   },[showDeleted])
 
   const onFormSaved = useCallback(async(savedFlow)=>{
-    if(savedFlow?.id){
-      setFlows(prev=>{
-        const next = prev.filter(f=>f.id!==savedFlow.id)
-        if (showDeleted || !savedFlow.deleted_at) next.push(savedFlow)
-        next.sort((a,b)=>(a?.name||'').localeCompare((b?.name||''),'tr'))
-        return next
-      })
+    try {
+      if(savedFlow?.id){
+        setFlows(prev=>{
+          const current = Array.isArray(prev) ? prev : []
+          const next = current.filter(f=>f && f.id!==savedFlow.id)
+          if (showDeleted || !savedFlow.deleted_at) next.push(savedFlow)
+          next.sort((a,b)=>(a?.name||'').localeCompare((b?.name||''),'tr'))
+          return next
+        })
+      }
+    } catch (e) {
+      console.error("Error in onFormSaved UI update:", e)
     }
     setPanel(null)
-    await load()
+    try {
+      await load()
+    } catch (e) {
+      console.error("Error in load after save:", e)
+    }
   },[load, showDeleted])
 
   useEffect(()=>{load()},[load])
 
   async function softDelete(id){
-    const {error}=await db.from('order_flows').update({deleted_at:new Date().toISOString()}).eq('id',id)
-    if(error){toast('Silinemedi: '+error.message,'error');return}
-    toast('İş akışı silindi','success'); setPanel(null); load()
+    const nowStr = new Date().toISOString()
+    setFlows(prev => prev.map(f => f.id === id ? { ...f, deleted_at: nowStr } : f).filter(f => showDeleted || !f.deleted_at))
+    const {error}=await db.from('order_flows').update({deleted_at:nowStr}).eq('id',id)
+    if(error){
+      toast('Silinemedi: '+error.message,'error')
+      load()
+      return
+    }
+    toast('İş akışı silindi','success')
+    setPanel(null)
+    load()
   }
   async function restore(id){
-    await db.from('order_flows').update({deleted_at:null}).eq('id',id)
-    toast('Geri alındı','success'); load()
+    setFlows(prev => prev.map(f => f.id === id ? { ...f, deleted_at: null } : f))
+    const {error}=await db.from('order_flows').update({deleted_at:null}).eq('id',id)
+    if(error){
+      toast('Geri alınamadı: '+error.message,'error')
+      load()
+      return
+    }
+    toast('Geri alındı','success')
+    load()
   }
 
   const filtered=flows.filter(f=>!search||

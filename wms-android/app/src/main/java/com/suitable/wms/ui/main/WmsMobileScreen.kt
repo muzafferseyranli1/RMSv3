@@ -82,6 +82,10 @@ fun WmsMobileScreen(
     var isLocationVerified by remember { mutableStateOf(false) }
     var verificationMessage by remember { mutableStateOf<String?>(null) }
     var verifiedLocationId by remember { mutableStateOf<String?>(null) }
+    var isSourceVerified by remember { mutableStateOf(false) }
+    var verifiedSourceLocationId by remember { mutableStateOf<String?>(null) }
+    var scannedSourceLocationCode by remember { mutableStateOf("") }
+    var sourceVerificationMessage by remember { mutableStateOf<String?>(null) }
 
     // Picking verification states
     var scannedProductCode by remember { mutableStateOf("") }
@@ -103,6 +107,12 @@ fun WmsMobileScreen(
     var scannedPackageUnit by remember { mutableStateOf<WmsScanPackageUnit?>(null) }
     var shipmentCapacityData by remember { mutableStateOf<ShipmentCapacityData?>(null) }
     var shipmentCapacityError by remember { mutableStateOf<String?>(null) }
+
+    // Cycle count verification states
+    var scannedLpnCode by remember { mutableStateOf("") }
+    var isLpnVerified by remember { mutableStateOf(false) }
+    var countQtyInput by remember { mutableStateOf("") }
+    var countReason by remember { mutableStateOf("") }
 
     val fetchCapacity = { shipmentId: String ->
         scope.launch {
@@ -159,6 +169,20 @@ fun WmsMobileScreen(
             } catch (e: Exception) {
                 Toast.makeText(context, "Fotoğraf yüklenemedi: ${e.message}", Toast.LENGTH_LONG).show()
                 evidencePhotoUrl = null
+                try {
+                    ApiClient.apiService.logEvent(mapOf(
+                        "task_id" to (activeTask?.id ?: ""),
+                        "event_type" to "evidence_upload_failed",
+                        "personnel_id" to staffSession.id,
+                        "terminal_id" to "TERMINAL-01",
+                        "payload" to mapOf(
+                            "error" to (e.message ?: "Unknown error during file upload"),
+                            "filename" to file.name
+                        )
+                    ))
+                } catch (logErr: Exception) {
+                    android.util.Log.e("WmsMobileScreen", "Failed to log evidence upload failure", logErr)
+                }
             } finally {
                 isUploadingPhoto = false
             }
@@ -282,6 +306,34 @@ fun WmsMobileScreen(
                             } else {
                                 scanFeedback = Pair("Lütfen hedef lokasyon barkodunu taratın (Taranan: ${result.scan_type})", false)
                             }
+                        } else if (currentTask.taskType == "move") {
+                            if (result.scan_type == "location") {
+                                if (!isSourceVerified) {
+                                    val isSourceMatch = isSuccess && result.message?.contains("Kaynak lokasyon") == true
+                                    scannedSourceLocationCode = result.barcode
+                                    isSourceVerified = isSourceMatch
+                                    sourceVerificationMessage = result.message
+                                    verifiedSourceLocationId = if (isSourceMatch) result.location?.id else null
+                                    if (!isSourceMatch) {
+                                        scanFeedback = Pair("Hata: Kaynak lokasyon doğrulanmadı", false)
+                                    } else {
+                                        scannedLocationCode = ""
+                                        verificationMessage = null
+                                        isLocationVerified = false
+                                    }
+                                } else {
+                                    val isTargetMatch = isSuccess && result.message?.contains("Hedef lokasyon") == true
+                                    scannedLocationCode = result.barcode
+                                    isLocationVerified = isTargetMatch
+                                    verificationMessage = result.message
+                                    verifiedLocationId = if (isTargetMatch) result.location?.id else null
+                                    if (!isTargetMatch) {
+                                        scanFeedback = Pair("Hata: Hedef lokasyon doğrulanmadı", false)
+                                    }
+                                }
+                            } else {
+                                scanFeedback = Pair("Lütfen geçerli bir lokasyon barkodu taratın (Taranan: ${result.scan_type})", false)
+                            }
                         } else if (currentTask.taskType == "pick") {
                             if (!isLocationVerified) {
                                 if (result.scan_type == "location") {
@@ -327,6 +379,58 @@ fun WmsMobileScreen(
                             } else {
                                 scanFeedback = Pair("Lütfen geçerli bir ürün veya paket barkodu taratın (Taranan: ${result.scan_type})", false)
                             }
+                        } else if (currentTask.taskType == "count") {
+                            val lpnRequired = !currentTask.lpnCode.isNullOrBlank()
+                            if (!isLocationVerified) {
+                                if (result.scan_type == "location") {
+                                    scannedLocationCode = result.barcode
+                                    isLocationVerified = isSuccess
+                                    verificationMessage = result.message
+                                } else {
+                                    scanFeedback = Pair("Lütfen önce lokasyon barkodunu taratın (Taranan: ${result.scan_type})", false)
+                                    verificationMessage = "Hata: Önce lokasyon barkodunu doğrulayın."
+                                }
+                            } else if (lpnRequired && !isLpnVerified) {
+                                if (result.scan_type == "lpn") {
+                                    scannedLpnCode = result.barcode
+                                    isLpnVerified = isSuccess
+                                    verificationMessage = result.message
+                                } else if (result.scan_type == "location") {
+                                    scannedLocationCode = result.barcode
+                                    isLocationVerified = isSuccess
+                                    verificationMessage = result.message
+                                    scannedLpnCode = ""
+                                    isLpnVerified = false
+                                    scannedProductCode = ""
+                                    isProductVerified = false
+                                } else {
+                                    scanFeedback = Pair("Lütfen LPN / Palet barkodunu taratın (Taranan: ${result.scan_type})", false)
+                                    verificationMessage = "Hata: Beklenen LPN barkodunu doğrulayın."
+                                }
+                            } else {
+                                if (result.scan_type == "product") {
+                                    scannedProductCode = result.barcode
+                                    isProductVerified = isSuccess
+                                    verificationMessage = result.message
+                                } else if (result.scan_type == "location") {
+                                    scannedLocationCode = result.barcode
+                                    isLocationVerified = isSuccess
+                                    verificationMessage = result.message
+                                    scannedLpnCode = ""
+                                    isLpnVerified = false
+                                    scannedProductCode = ""
+                                    isProductVerified = false
+                                } else if (lpnRequired && result.scan_type == "lpn") {
+                                    scannedLpnCode = result.barcode
+                                    isLpnVerified = isSuccess
+                                    verificationMessage = result.message
+                                    scannedProductCode = ""
+                                    isProductVerified = false
+                                } else {
+                                    scanFeedback = Pair("Lütfen ürün barkodunu taratın (Taranan: ${result.scan_type})", false)
+                                    verificationMessage = "Hata: Beklenen ürün barkodunu doğrulayın."
+                                }
+                            }
                         } else {
                             if (isSuccess) {
                                 if (result.scan_type == "product" && result.product != null) {
@@ -363,6 +467,10 @@ fun WmsMobileScreen(
                                 scannedPackageUnit = result.package_unit
                                 shipmentCapacityData = null
                                 shipmentCapacityError = null
+                                scannedLpnCode = ""
+                                isLpnVerified = false
+                                countQtyInput = ""
+                                countReason = ""
                                 if ((matchedTask.taskType == "pack" || matchedTask.taskType == "load") && !matchedTask.sourceDocId.isNullOrBlank()) {
                                     fetchCapacity(matchedTask.sourceDocId)
                                 }
@@ -385,6 +493,18 @@ fun WmsMobileScreen(
                         isLocationVerified = false
                         verificationMessage = errorMsg
                         verifiedLocationId = null
+                    } else if (currentTask.taskType == "move") {
+                        if (!isSourceVerified) {
+                            scannedSourceLocationCode = "Hata"
+                            isSourceVerified = false
+                            sourceVerificationMessage = errorMsg
+                            verifiedSourceLocationId = null
+                        } else {
+                            scannedLocationCode = "Hata"
+                            isLocationVerified = false
+                            verificationMessage = errorMsg
+                            verifiedLocationId = null
+                        }
                     } else if (currentTask.taskType == "pick") {
                         if (!isLocationVerified) {
                             scannedLocationCode = "Hata"
@@ -394,6 +514,20 @@ fun WmsMobileScreen(
                             scannedProductCode = "Hata"
                             isProductVerified = false
                             productVerificationMessage = errorMsg
+                        }
+                    } else if (currentTask.taskType == "count") {
+                        if (!isLocationVerified) {
+                            scannedLocationCode = "Hata"
+                            isLocationVerified = false
+                            verificationMessage = errorMsg
+                        } else if (!currentTask.lpnCode.isNullOrBlank() && !isLpnVerified) {
+                            scannedLpnCode = "Hata"
+                            isLpnVerified = false
+                            verificationMessage = errorMsg
+                        } else {
+                            scannedProductCode = "Hata"
+                            isProductVerified = false
+                            verificationMessage = errorMsg
                         }
                     }
                 }
@@ -726,7 +860,8 @@ fun WmsMobileScreen(
                                     "putaway" to "Yerleştir",
                                     "pick" to "Topla",
                                     "pack" to "Paketle",
-                                    "load" to "Yükle"
+                                    "load" to "Yükle",
+                                    "count" to "Sayım"
                                 )
                                 filters.forEach { (key, label) ->
                                     val isSelected = selectedFilterType == key
@@ -775,6 +910,14 @@ fun WmsMobileScreen(
                                                     scannedPackageUnit = null
                                                     shipmentCapacityData = null
                                                     shipmentCapacityError = null
+                                                    scannedLpnCode = ""
+                                                    isLpnVerified = false
+                                                    countQtyInput = ""
+                                                    countReason = ""
+                                                    isSourceVerified = false
+                                                    verifiedSourceLocationId = null
+                                                    scannedSourceLocationCode = ""
+                                                    sourceVerificationMessage = null
                                                     if ((task.taskType == "pack" || task.taskType == "load") && !task.sourceDocId.isNullOrBlank()) {
                                                         fetchCapacity(task.sourceDocId)
                                                     }
@@ -797,6 +940,8 @@ fun WmsMobileScreen(
                                                                     "pick" -> Color(0xFF3B82F6).copy(alpha = 0.2f)
                                                                     "pack" -> Color(0xFF8B5CF6).copy(alpha = 0.2f)
                                                                     "load" -> Color(0xFFF59E0B).copy(alpha = 0.2f)
+                                                                    "count" -> Color(0xFFEC4899).copy(alpha = 0.2f)
+                                                                    "move" -> Color(0xFF6366F1).copy(alpha = 0.2f)
                                                                     else -> Color.White.copy(alpha = 0.2f)
                                                                 }
                                                             )
@@ -808,6 +953,8 @@ fun WmsMobileScreen(
                                                                 "pick" -> "TOPLAMA"
                                                                 "pack" -> "PAKETLEME"
                                                                 "load" -> "YÜKLEME"
+                                                                "count" -> "SAYIM"
+                                                                "move" -> "İKMAL TRANSFERİ"
                                                                 else -> task.taskType.uppercase()
                                                             },
                                                             color = when(task.taskType) {
@@ -815,6 +962,8 @@ fun WmsMobileScreen(
                                                                 "pick" -> Color(0xFF3B82F6)
                                                                 "pack" -> Color(0xFF8B5CF6)
                                                                 "load" -> Color(0xFFF59E0B)
+                                                                "count" -> Color(0xFFEC4899)
+                                                                "move" -> Color(0xFF6366F1)
                                                                 else -> Color.White
                                                             },
                                                             fontSize = 9.sp,
@@ -867,7 +1016,7 @@ fun WmsMobileScreen(
                                 Text("Lütfen işlemler listesinden bir görev seçin veya barkod tarayın.", color = Color(0xFF64748b), fontSize = 13.sp, textAlign = TextAlign.Center)
                             }
                         } else {
-                        if (task.taskType == "putaway") {
+                        if (task.taskType == "putaway" || task.taskType == "move") {
                             WmsPutawayScreen(
                                 task = task,
                                 scannedLocationCode = scannedLocationCode,
@@ -896,12 +1045,28 @@ fun WmsMobileScreen(
                                     isLoading = true
                                     scope.launch {
                                         try {
-                                            val success = repository.completePutawayTask(
-                                                taskId = task.id,
-                                                personnelId = staffSession.id,
-                                                targetLocationId = locId,
-                                                evidencePhotoUrl = evidencePhotoUrl
-                                            )
+                                            val success = if (task.taskType == "move") {
+                                                val srcLocId = verifiedSourceLocationId
+                                                if (srcLocId == null) {
+                                                    Toast.makeText(context, "Lütfen kaynak lokasyon barkodunu doğrulayın", Toast.LENGTH_SHORT).show()
+                                                    isLoading = false
+                                                    return@launch
+                                                }
+                                                repository.completeMoveTask(
+                                                    taskId = task.id,
+                                                    personnelId = staffSession.id,
+                                                    sourceLocationId = srcLocId,
+                                                    targetLocationId = locId,
+                                                    evidencePhotoUrl = evidencePhotoUrl
+                                                )
+                                            } else {
+                                                repository.completePutawayTask(
+                                                    taskId = task.id,
+                                                    personnelId = staffSession.id,
+                                                    targetLocationId = locId,
+                                                    evidencePhotoUrl = evidencePhotoUrl
+                                                )
+                                            }
                                             if (success) {
                                                 Toast.makeText(context, "Görev başarıyla tamamlandı", Toast.LENGTH_LONG).show()
                                                 activeTask = null
@@ -918,6 +1083,10 @@ fun WmsMobileScreen(
                                                 evidencePhotoUrl = null
                                                 isUploadingPhoto = false
                                                 tempPhotoFile = null
+                                                isSourceVerified = false
+                                                verifiedSourceLocationId = null
+                                                scannedSourceLocationCode = ""
+                                                sourceVerificationMessage = null
                                                 loadTasks()
                                                 activeTab = "tasks"
                                             }
@@ -943,8 +1112,16 @@ fun WmsMobileScreen(
                                     evidencePhotoUrl = null
                                     isUploadingPhoto = false
                                     tempPhotoFile = null
+                                    isSourceVerified = false
+                                    verifiedSourceLocationId = null
+                                    scannedSourceLocationCode = ""
+                                    sourceVerificationMessage = null
                                     activeTab = "tasks"
-                                }
+                                },
+                                isSourceVerified = isSourceVerified,
+                                scannedSourceCode = scannedSourceLocationCode,
+                                sourceVerificationMessage = sourceVerificationMessage,
+                                onSourceScanned = {}
                             )
                         } else if (task.taskType == "pick") {
                             WmsPickingScreen(
@@ -1100,6 +1277,89 @@ fun WmsMobileScreen(
                                     evidencePhotoUrl = null
                                     isUploadingPhoto = false
                                     tempPhotoFile = null
+                                    activeTab = "tasks"
+                                }
+                            )
+                        } else if (task.taskType == "count") {
+                            WmsCycleCountScreen(
+                                task = task,
+                                scannedLocationCode = scannedLocationCode,
+                                isLocationVerified = isLocationVerified,
+                                scannedLpnCode = scannedLpnCode,
+                                isLpnVerified = isLpnVerified,
+                                scannedProductCode = scannedProductCode,
+                                isProductVerified = isProductVerified,
+                                verificationMessage = verificationMessage,
+                                countedQty = countQtyInput,
+                                onCountedQtyChange = { countQtyInput = it },
+                                reason = countReason,
+                                onReasonChange = { countReason = it },
+                                isLoading = isLoading,
+                                onSubmitCount = {
+                                    val qty = countQtyInput.toDoubleOrNull()
+                                    if (qty == null || qty < 0.0) {
+                                        Toast.makeText(context, "Lütfen geçerli bir miktar giriniz (en az 0)", Toast.LENGTH_SHORT).show()
+                                        return@WmsCycleCountScreen
+                                    }
+                                    isLoading = true
+                                    scope.launch {
+                                        try {
+                                            val result = repository.submitCountTask(
+                                                taskId = task.id,
+                                                personnelId = staffSession.id,
+                                                countedQty = qty,
+                                                reason = if (countReason.isBlank()) null else countReason
+                                            )
+                                            if (result.success) {
+                                                val msg = if (result.has_discrepancy) {
+                                                    "Sayım başarıyla gönderildi. Fark tespit edildiğinden onay kuyruğuna alındı."
+                                                } else {
+                                                    "Sayım başarıyla tamamlandı. Fark bulunmamaktadır."
+                                                }
+                                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+
+                                                // Reset state and return to tasks
+                                                activeTask = null
+                                                scannedLocationCode = ""
+                                                isLocationVerified = false
+                                                verificationMessage = null
+                                                verifiedLocationId = null
+                                                scannedProductCode = ""
+                                                isProductVerified = false
+                                                productVerificationMessage = null
+                                                scannedPackageUnit = null
+                                                shipmentCapacityData = null
+                                                shipmentCapacityError = null
+                                                scannedLpnCode = ""
+                                                isLpnVerified = false
+                                                countQtyInput = ""
+                                                countReason = ""
+                                                loadTasks()
+                                                activeTab = "tasks"
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Hata: ${e.message}", Toast.LENGTH_LONG).show()
+                                        } finally {
+                                            isLoading = false
+                                        }
+                                    }
+                                },
+                                onCancelTask = {
+                                    activeTask = null
+                                    scannedLocationCode = ""
+                                    isLocationVerified = false
+                                    verificationMessage = null
+                                    verifiedLocationId = null
+                                    scannedProductCode = ""
+                                    isProductVerified = false
+                                    productVerificationMessage = null
+                                    scannedPackageUnit = null
+                                    shipmentCapacityData = null
+                                    shipmentCapacityError = null
+                                    scannedLpnCode = ""
+                                    isLpnVerified = false
+                                    countQtyInput = ""
+                                    countReason = ""
                                     activeTab = "tasks"
                                 }
                             )

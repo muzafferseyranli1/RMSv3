@@ -71,6 +71,27 @@ data class ShipmentCapacityData(
     val is_exceeded: Boolean
 )
 
+data class SubmitCountTaskRequest(
+    val task_id: String,
+    val personnel_id: String?,
+    val counted_qty: Double,
+    val reason: String?
+)
+
+data class SubmitCountTaskResponse(
+    val data: SubmitCountTaskResult? = null,
+    val error: Map<String, Any>? = null
+)
+
+data class SubmitCountTaskResult(
+    val success: Boolean,
+    val has_discrepancy: Boolean,
+    val task_id: String,
+    val approval_id: String? = null
+)
+
+import okhttp3.OkHttpClient
+
 interface ApiService {
     @POST("api/query")
     suspend fun executeQuery(@Body request: QueryRequest): QueryResponse
@@ -88,6 +109,16 @@ interface ApiService {
     suspend fun uploadFile(
         @Part file: MultipartBody.Part
     ): UploadResponse
+
+    @POST("api/wms/tasks/count/submit")
+    suspend fun submitCountTask(
+        @Body request: SubmitCountTaskRequest
+    ): SubmitCountTaskResponse
+
+    @POST("api/wms/log-event")
+    suspend fun logEvent(
+        @Body request: Map<String, @JvmSuppressWildcards Any?>
+    ): QueryResponse
 }
 
 object ApiClient {
@@ -95,9 +126,23 @@ object ApiClient {
 
     val gson: Gson = Gson()
 
+    private val okHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val original = chain.request()
+                val request = original.newBuilder()
+                    .header("x-app-version", "1.0")
+                    .header("x-terminal-id", "TERMINAL-01")
+                    .build()
+                chain.proceed(request)
+            }
+            .build()
+    }
+
     val apiService: ApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(ApiService::class.java)

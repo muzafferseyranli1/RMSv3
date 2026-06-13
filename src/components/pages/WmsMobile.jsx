@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '@/lib/db'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useToast } from '@/hooks/useToast'
-import { WORKSPACE_SECTION, WORKSPACE_SCOPE } from '@/context/WorkspaceContext'
+import { WORKSPACE_SECTION } from '@/context/WorkspaceContext'
 
 // Predefined simulation barcode data
 const PREDEFINED_BARCODES = [

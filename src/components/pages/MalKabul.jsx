@@ -462,7 +462,8 @@ function ReceiptEditorModal({
   )
 }
 
-function stockVisibleInBranch(item, branchId) {
+function stockVisibleInBranch(item, branchId, branchType) {
+  if (branchType === 'anadepo' || branchType === 'mutfak') return true
   const locations = parseJsonValue(item?.location, [])
   if (!locations.length) return true
   const ids = new Set()
@@ -1033,7 +1034,7 @@ export default function MalKabul() {
   const visibleStockItems = useMemo(() => {
     const priceMap = buildLatestPurchasePriceMap(purchaseMovementRows, asUuidOrNull(selectedBranchRecord?.id) || '')
     return stockItems
-      .filter(item => stockVisibleInBranch(item, selectedBranch))
+      .filter(item => stockVisibleInBranch(item, selectedBranch, selectedBranchRecord?.type))
       .map(item => ({
         ...item,
         purchase_price: priceMap.get(item.id) || Number(item.purchase_price || 0),

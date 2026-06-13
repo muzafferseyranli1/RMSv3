@@ -206,6 +206,8 @@ const NAV = [
     section: 'Ana Depo / WMS',
     icon: 'fa-warehouse',
     items: [
+      { label: 'WMS Dashboard', path: '/wms-dashboard', icon: 'fa-chart-line', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
+      { label: 'WMS Raporları', path: '/wms-reports', icon: 'fa-chart-pie', color: '#6366f1', bg: 'rgba(99,102,241,.18)' },
       { label: 'Şube Talepleri / Sevk Konsolu', path: '/depo-orders', icon: 'fa-warehouse', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
       { label: 'Depo Satınalma Siparişleri', path: '/depo-satinalma', icon: 'fa-cart-shopping', color: '#fb923c', bg: 'rgba(251,146,60,.18)' },
       { label: 'Mal Kabul & Putaway', path: '/depo-mal-kabul', icon: 'fa-truck-ramp-box', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
@@ -234,6 +236,7 @@ const NAV = [
           { label: 'Lokasyonlar', path: '/wms-locations', icon: 'fa-map-location-dot', color: '#34d399', bg: 'rgba(52,211,153,.18)' },
           { label: 'LPN / Paletler', path: '/wms-lpns', icon: 'fa-pallet', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
           { label: 'Stok Parametreleri', path: '/wms-stock-params', icon: 'fa-sliders', color: '#6366f1', bg: 'rgba(99,102,241,.18)' },
+          { label: 'Araç Tanımları', path: '/wms-vehicles', icon: 'fa-truck', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
         ],
       },
     ],

@@ -11,7 +11,7 @@ Ekran yolu:
 Depo WMS > Araç Tanımları
 
 Link:
-/depo-araclar
+(Bu ekran henüz sisteme eklenmemiştir veya modal üzerinden yönetilmektedir)
 
 Adımlar:
 1. Araç Tanımları ekranına gidin ve "Yeni Araç" butonuna tıklayın.

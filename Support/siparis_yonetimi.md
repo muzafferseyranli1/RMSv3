@@ -11,7 +11,7 @@ Ekran yolu:
 Satınalma > Siparişler
 
 Link:
-/siparisler
+/orders (Şube) veya /depo-orders (Ana Depo)
 
 Adımlar:
 1. Siparişler sayfasına gidin ve ilgili birimi seçin.

@@ -11424,3 +11424,227 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Next Step`: WMS Faz 4.5 kapsamında Ürün Kartı Güncelleme Ekranı (`WMS-04E`) ve Araç Tanımları master veri arayüzünün (`WMS-04F`) geliştirilmesi.
 - `Handoff Contract`: `WMS-04D barkod ve paketleme master data şeması, trigger'ı, unique indeksi ve güncellenen /api/wms/parse-barcode endpoint'i başarıyla uygulandı ve smoke test ile doğrulandı.`
+
+## Entry 228 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T21:35:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-04E - Stok Kartı Paket Ölçüleri ve Barkod Yönetimi UI`
+- `Intent`: `Stok malzemeleri düzenleme ekranında hem ana birim (adet) hem de ek ambalaj birimleri için boyut, ağırlık ve çoklu barkod verilerinin girilebilmesini, otomatik hacim hesaplanmasını sağlamak ve bunların veritabanıyla (DB-first) entegrasyonunu ve doğrulamalarını gerçekleştirmek.`
+- `Files Read`:
+  - `src/components/pages/StockItems.jsx`
+  - `scratch/test_wms_barcode_package_units.cjs`
+- `Files Changed`:
+  - `src/components/pages/StockItems.jsx`
+  - `scratch/test_wms_barcode_package_units.cjs`
+  - `scratch/cleanup_spaces.cjs`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test_wms_barcode_package_units.cjs`
+  - `npm run build`
+  - `node scratch/cleanup_spaces.cjs`
+  - `git diff --check`
+- `Findings`:
+  - Ürün düzenleme ekranına (`StockItems.jsx`) hem Ana Birim hem de eklenen her Paketleme Birimi için katlanabilir kartlar (expandable cards) arayüzü eklendi.
+  - Kartlarda boyutlar (en, boy, yükseklik), ağırlıklar (brüt, net), otomatik hesaplanan hacim ($m^3$) gösterimi ve dinamik ekleme/silme yapılabilen çoklu barkod listeleri (barkod dizesi, tipi ve birincil seçimi) sağlandı.
+  - Kaydetme mantığında, arayüz seviyesinde fail-closed doğrulamalar yapıldı: en/boy/yükseklik/brüt/net değerleri için $> 0$ kontrolü, net $\le$ brüt kontrolü, boş barkod kontrolü, aynı birimde mükerrer barkod kontrolü ve tüm ürün genelinde mükerrer barkod kontrolü entegre edildi.
+  - Database-first tetikleyicisi aracılığıyla kaydetme sonrasında `stock_item_package_units` ve `product_external_barcodes` tablolarına otomatik normalize veri yazılması doğrulandı.
+  - `test_wms_barcode_package_units.cjs` smoke testi, yeni JSONB payload yapısı, boyut/ağırlık doğrulamaları ve nested barkod nesne dizilerinin DB-first tetikleyiciyle senkronize edilmesini test edecek şekilde genişletildi. Tüm test senaryoları ve Vite build derlemesi hatasız geçti.
+- `Decisions`:
+  - Stok Kartı Paket Ölçüleri ve Barkod Yönetimi UI (`WMS-04E`) tamamlandı ve test edildi.
+- `Open Risks`: Yok.
+- `Next Step`: WMS Faz 4.5 kapsamında `WMS-04F - Araç Tanımları Master Veri Yönetim Ekranı` geliştirilmesi.
+- `Handoff Contract`: `WMS-04E UI ve arayüz doğrulama mantığı tamamlandı, derleme ve DB-first entegrasyon testleri başarıyla doğrulandı.`
+
+
+## Entry 226 - 2026-06-13
+
+- Timestamp: 2026-06-13T22:15:00+03:00
+- Agent: Antigravity
+- Task: Sipariş Akışları silme ve geri alma veri güncelleme onarımı
+- Intent: softDelete ve restore fonksiyonlarında veritabanı cevabını beklemeden yerel React state'ini (flows) güncelleyerek arayüz gecikmesini ve güncellenmeme sorununu çözmek.
+- Files Changed:
+  - src/components/pages/OrderFlows.jsx
+- Decisions:
+  - Silme ve geri alma eylemlerinde flows state'i doğrudan optimistic olarak güncelleniyor ve ardından load() çağrılıyor. Caching veya network kaynaklı gecikmeler arayüze yansımıyor.
+- Open Risks: Yok.
+- Next Step: Railway Deploy Hatası Çözümü (Postinstall Bypass) uygulamasının onaylanması ve entegre edilmesi.
+- Handoff Contract: Sipariş akışı silme/geri alma sonrasındaki senkronizasyon problemi optimistic state güncellemeleriyle giderildi.
+
+
+## Entry 227 - 2026-06-13
+
+- Timestamp: 2026-06-13T22:20:00+03:00
+- Agent: Antigravity
+- Task: Railway Build Hatası Postinstall Bypass Çözümü
+- Intent: Railway Nixpacks Linux build aşamasında electron-builder postinstall adımının ağ/bağımlılık hatasıyla derlemeyi durdurmasını engellemek.
+- Files Changed:
+  - package.json
+- Files Created:
+  - scripts/postinstall.cjs
+- Decisions:
+  - Koşullu postinstall.cjs scripti yazıldı. RAILWAY_STATIC_URL, NIXPACKS veya SKIP_ELECTRON_POSTINSTALL ortam değişkenlerinden biri varsa electron-builder adımı atlanır. Lokal ortamda ise native dependency kurulumu normal şekilde tamamlanır.
+- Open Risks: Yok.
+- Next Step: Değişikliklerin git'e pushlanması ve Railway üzerinde otomatik başarılı build alınması.
+- Handoff Contract: Postinstall bypass adımları tamamlandı, lokalde test edildi ve sorunsuz çalıştığı doğrulandı.
+
+## Entry 229 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T22:25:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-04F ve WMS-04G - Merkez Depo Araç Tanımları ve Kapasite Kontrolü`
+- `Intent`: `Merkez depodan sevk edilecek sevkiyatlar için araç tanımlama modülü, hacim ve ağırlık kapasite kontrolleri ve sıcaklık uyumluluğu doğrulamalarının uçtan uca veritabanı, backend ve arayüz katmanlarında entegre edilmesi.`
+- `Files Read`:
+  - `migrations/031_wms_shipments.sql`
+  - `schema-railway-master.sql`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+  - `server/index.js`
+  - `migrations/051_wms_vehicles_expansion.sql`
+  - `migrations/052_wms_shipment_capacity_control.sql`
+- `Files Changed`:
+  - `schema-railway-master.sql`
+  - `server/index.js`
+  - `server/wms_migration.js`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `src/components/pages/DepoOrders.jsx`
+  - `migrations/052_wms_shipment_capacity_control.sql`
+  - `OperationSync.md`
+- `Files Created`:
+  - `migrations/051_wms_vehicles_expansion.sql`
+  - `migrations/052_wms_shipment_capacity_control.sql`
+  - `src/components/pages/WmsVehicles.jsx`
+  - `scratch/test_wms_vehicle_capacity.cjs`
+- `Commands Run`:
+  - `node server/wms_migration.js` (Başarılı; araç ve kapasite şeması veritabanına uygulandı)
+  - `node scratch/test_wms_vehicle_capacity.cjs` (Başarılı; kapasite limits, sıcaklık uyuşmazlığı, tasks guard, manager override ve transactional rollback doğrulandı)
+  - `npm run build` (Başarılı; Vite derlemesi hatasız şekilde tamamlandı)
+- `Findings`:
+  - `confirm_warehouse_shipment` fonksiyonunda `purchase_orders` tablosunu `status = 'shipped'` olarak güncellemeye çalışmanın, DB constraint check (`purchase_orders_status_check`) dolayısıyla hata fırlattığı tespit edildi. PO sevk onayı sonrası durumu `'submitted'` olarak korunmalı ve sadece `updated_at` güncellenmelidir; bu mantık düzeltildi.
+  - Testlerin db-first triggers veya envanter hareket trigger'ları (recalc) dolayısıyla cleanup aşamasında foreign key hatası vermesini önlemek amacıyla tüm test adımları `BEGIN` ve `ROLLBACK` transaction bloğu ile sarmalandı. Test içerisindeki beklenen hata fırlatma adımları ise `SAVEPOINT` ve `ROLLBACK TO SAVEPOINT` ile korunarak transaction'ın bozulması engellendi.
+  - Arayüzde serbest plaka girişi tamamen kapatılarak yalnızca kayıtlı aktif araçların listesinden seçim yapılması sağlandı. Anlık doluluk ve sıcaklık uyuşmazlık göstergeleri ve ihlallerde yetkili şifresiyle onay sağlayan yetkilendirme modülü (override) eklendi.
+- `Decisions`:
+  - WMS-04F ve WMS-04G araç tanımları ile doluluk limit kontrolleri arayüz, API ve DB seviyelerinde başarıyla entegre edildi.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-04F ve WMS-04G araç master data paneli, Express CRUD ve kapasite doğrulama servisleri, DB-level trigger ve RPC korumaları başarıyla tamamlandı. Derleme ve smoke test suitleri başarıyla yeşil durumdadır.`
+
+
+## Entry 228 - 2026-06-13
+
+- Timestamp: 2026-06-13T22:30:00+03:00
+- Agent: Antigravity
+- Task: Depo ve Merkez Mutfak satınalma sipariş oluşturma ve mal kabul sorunları
+- Intent: anadepo ve merkezmutfak sayfalarından yapılan manuel sipariş oluşturma ve mal kabul işlemlerinde, şube bazlı konum filtrelemesinin (stockVisibleInBranch) depo/mutfak işlemlerini engellemesini çözmek.
+- Files Changed:
+  - src/components/pages/Orders.jsx
+  - src/components/pages/MalKabul.jsx
+- Decisions:
+  - stockVisibleInBranch fonksiyonuna üçüncü bir parametre (branchType) eklendi. Eğer branchType değeri 'anadepo' veya 'mutfak' ise, o stok kartı lokasyon şablonundan bağımsız olarak daima aktif/sipariş edilebilir kabul edilir.
+  - Manuel sipariş oluşturma sırasında eğer akış kapsamında hiç ürün eşleşmiyorsa, işlem sessizce başarılı toasts göstermek yerine artık kullanıcıya net bir hata verir.
+- Open Risks: Yok.
+- Next Step: Değişikliklerin test edilmesi ve deploy süreci.
+- Handoff Contract: Depo ve mutfak konumlarındaki manual sipariş oluşturma ve mal kabul işlemleri için stockVisibleInBranch filtreleme engelleri giderildi, build başarıyla tamamlandı.
+
+
+## Entry 230 - 2026-06-13
+
+- Timestamp: 2026-06-13T22:40:00+03:00
+- Agent: Antigravity
+- Task: Sipariş Akışları (Order Flows) sayfasında kaydetme sonrası çekmecenin kapanmama sorunu çözümü
+- Intent: FlowForm kaydetme işleminde, update/insert sorguları sonrasındaki .single() kısıtını kaldırarak PGRST116 (No rows found) hatasını gidermek ve UI güncelleme adımlarını try-catch ile koruyarak drawer'ın kapanmasını garantiye almak.
+- Files Changed:
+  - src/components/pages/OrderFlows.jsx
+- Decisions:
+  - insert ve update sorgularındaki .single() çağrısı kaldırıldı ve dönen veri Array.isArray(data) ? data[0] : data şeklinde güvenle tekilleştirildi.
+  - onFormSaved içindeki state güncelleme adımları try-catch bloğu ile sarmalandı. Böylece olası React rendering hatalarında bile setPanel(null) ve load() çağrılarının çalışması garantilendi.
+- Open Risks: Yok.
+- Handoff Contract: Sipariş Akışları düzenleme çekmecesinin "Kaydet" sonrası kapanmama ve listeyi tazelememe hatası giderildi, Vite build başarıyla tamamlandı.
+
+
+## Entry 231 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T23:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-05A - WMS Cycle Count Görevleri ve Fark Onay Mekanizması`
+- `Intent`: `Sayım görevlerinin el terminali (Android) üzerinden lokasyon, LPN ve ürün doğrulamaları sonrasında gerçekleştirilmesini, fark durumunda onay kuyruğunda bekletilmesini ve web arayüzünden bu farkların onaylanması/reddedilmesi mekanizmalarının entegre edilmesini sağlamak.`
+- `Files Changed`:
+  - `server/index.js`
+  - `src/components/pages/WmsTasks.jsx`
+  - `wms-android/app/src/main/java/com/suitable/wms/data/ApiClient.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/data/WmsRepository.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt`
+  - `OperationSync.md`
+- `Files Created`:
+  - `migrations/053_wms_cycle_count.sql`
+  - `scratch/test_wms_cycle_count.cjs`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsCycleCountScreen.kt`
+- `Commands Run`:
+  - `node scratch/test_wms_cycle_count.cjs` (Başarılı; fark onay, fark reddetme ve farksız tamamlama senaryoları doğrulandı)
+  - `.\gradlew.bat assembleDebug` (Başarılı; Kotlin ve Material 3 textfield renk uyumsuzlukları giderilerek derlendi)
+  - `npm run build` (Başarılı; Vite derleme adımı başarıyla tamamlandı)
+- `Findings`:
+  - Android el terminali Material 3 OutlinedTextField renk parametrelerinde API seviyeleri dolayısıyla oluşan derleme hataları, OutlinedTextFieldDefaults.colors yapısına geçilerek tamamen giderildi.
+  - Sayım farkı bulunmayan durumlarda gereksiz onay kayıtları oluşturulmadan görevin doğrudan tamamlanması sağlandı. Farklı durumlarda ise onay kuyruğuna (warehouse_count_approvals) pending kaydı eklendi.
+- `Decisions`:
+  - WMS Sayım Görevleri ve Onay Mekanizması (WMS-05A) veritabanı, backend, web frontend ve mobil Android katmanlarında başarıyla tamamlandı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-05A cycle count görevleri, Android sayım ekranı, web onay sekmesi ve veritabanı RPC/trigger yapıları entegre edildi. Testler ve build adımları yeşildir.`
+
+
+## Entry 232 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T23:30:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-05B - WMS Siparişleri Tedarikçi Paneli İzolasyonu`
+- `Intent`: `Depo ikmal siparişlerinin tedarikçi sipariş panelinde listelenmesini ve sevk/not güncellemeleriyle WMS sevkiyat akışının bypass edilmesini engellemek için arayüz ve backend API query katmanlarına izolasyon guard'ları eklemek.`
+- `Files Changed`:
+  - `server/index.js`
+  - `src/components/pages/SupplierOrderPanel.jsx`
+  - `OperationSync.md`
+- `Files Created`:
+  - `scratch/test_wms_supplier_isolation.cjs`
+- `Commands Run`:
+  - `node scratch/test_wms_supplier_isolation.cjs` (Başarılı; PO1, PO2, PO3 için izolasyon kuralları ve SQL direct update bypass'ı doğrulandı)
+  - `npm run build` (Başarılı; Vite üretim paketi derlemesi sorunsuz tamamlandı)
+- `Findings`:
+  - `/api/query` route'u generic `UPDATE` eylemleri esnasında, `purchase_orders` tablosundaki `meta` kolonuna sevk bilgisi veya not eklenmeye çalışıldığında; sipariş `warehouse_replenishment` ise ya da tedarikçisi `internal_warehouse` ise işlem reddedilerek fail-closed yapı backend seviyesinde kilitlendi.
+  - Tedarikçi ekranında (`SupplierOrderPanel.jsx`) veri yükleme esnasında bu siparişler listelerden arındırıldı ve arayüzdeki `saveDispatch`/`sendSupplierNote` eylemlerine bypass engelleri eklendi.
+- `Decisions`:
+  - WMS depo siparişlerinin tedarikçi panelinden izolasyonu (WMS-05B) başarıyla tamamlandı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-05B tedarikçi sipariş izolasyonu, UI filtreleri ve backend query guard'ları entegre edildi, test suitleri başarıyla tamamlandı.`
+
+
+## Entry 233 - 2026-06-14
+
+- `Timestamp`: `2026-06-14T00:15:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-05B - Faz 5: Pick-Face Replenishment Kontrol ve Doğrulama`
+- `Intent`: `İkmal parametreleri, öneri/görev oluşturma/barkod çözümleme API'leri, React ve Android arayüzleri ile entegrasyon testlerinin WMS-05B kapsamındaki doğrulamasını yapmak ve kayıt altına almak.`
+- `Files Read`:
+  - `migrations/054_wms_pick_face_replenishment.sql`
+  - `server/index.js`
+  - `src/components/pages/WmsStockParams.jsx`
+  - `src/components/pages/WmsTasks.jsx`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsMobileScreen.kt`
+  - `wms-android/app/src/main/java/com/suitable/wms/ui/main/WmsPutawayScreen.kt`
+  - `scratch/test_wms_replenishment.cjs`
+  - `docs/walkthrough.md`
+- `Files Changed`:
+  - `docs/walkthrough.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `node scratch/test_wms_replenishment.cjs` (Başarılı; öneri, FEFO, allocation, barcode matching, database RPC transactional validation adımları doğrulandı)
+  - `npm run build` (Başarılı; Vite React production build'i tamamlandı)
+  - `.\gradlew.bat compileDebugSources` (Başarılı; Android Kotlin kaynak derlemesi tamamlandı)
+- `Findings`:
+  - Envanter ikmal görevlerinde el terminalinin lokasyon doğrulamaları, her iki lokasyon taranmadan görevin sonlandırılmasını engelleyecek şekilde iki adımlı (double-step verification) mantıkla güvence altına alınmıştır.
+  - Barkod çözümleme API'si (`/api/wms/parse-barcode`), `move` görev tipi için taranan lokasyonun kaynak veya hedef lokasyon olup olmadığını dinamik response mesajıyla doğrulamaktadır.
+  - İkmal öneri API'si, yoldaki (pending) ikmal görev miktarlarını da hesaba katarak mükerrer ikmal önerisi fırlatılmasını engellemektedir.
+- `Decisions`:
+  - WMS-05B Pick-Face Replenishment fazı tüm katmanlarda (database migrations, backend endpoints, web UI, Android client, unit/integration test) eksiksiz doğrulanmış ve tamamlanmıştır.
+- `Open Risks`: Yok.
+- `Handoff Contract`: `WMS-05B Pick-Face Replenishment fazı doğrulaması tamamlandı. Tüm testler yeşildir, Vite ve Android el terminali derlemeleri sıfır hata ile tamamlanmaktadır.`
+

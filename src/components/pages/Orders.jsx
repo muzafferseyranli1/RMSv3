@@ -178,7 +178,8 @@ function buildLastOrderQtyMap(allOrders, allLines, flowId, branch, excludeOrderI
   return result
 }
 
-function stockVisibleInBranch(item, branchId) {
+function stockVisibleInBranch(item, branchId, branchType) {
+  if (branchType === 'anadepo' || branchType === 'mutfak') return true
   const locations = parseJsonValue(item?.location, [])
   if (!locations.length) return true
   return isBranchIncluded(locations, branchId)
@@ -1261,7 +1262,7 @@ function createDraftLines({
   if (!flow || !branch) return []
 
   let items = resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, allSuppliers)
-    .filter(item => stockVisibleInBranch(item, branch.id))
+    .filter(item => stockVisibleInBranch(item, branch.id, branch.type))
 
   if (targetSupplierId) {
     items = items.filter(item => {
@@ -2630,7 +2631,7 @@ export default function Orders() {
 
       // Resolve items in the flow
       const matchedItems = resolveOrderFlowItemsForScope(flow, stockItems, stockTemplates, contracts, suppliers)
-        .filter(item => stockVisibleInBranch(item, branch.id))
+        .filter(item => stockVisibleInBranch(item, branch.id, branch.type))
 
       // Group draft lines by supplier
       const linesBySupplier = {}
@@ -2701,6 +2702,11 @@ export default function Orders() {
           contract_id: contractId,
           meta: {},
         })
+      }
+
+      if (Object.keys(linesBySupplier).length === 0) {
+        toast('Bu akış kapsamında sipariş edilebilecek aktif/tanımlı ürün bulunamadı.', 'error')
+        return
       }
 
       const existingOrderNumbers = orders.map(order => order.order_no)

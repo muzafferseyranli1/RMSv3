@@ -11,7 +11,7 @@ Ekran yolu:
 Ayarlar > Şirket Bilgileri
 
 Link:
-/sirket-bilgileri
+/company
 
 Adımlar:
 1. Organizasyon ağacından yeni şubenin doğrudan bağlanacağı Tüzel Kişilik veya Organizasyon Departmanını bulun.

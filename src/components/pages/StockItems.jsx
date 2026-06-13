@@ -12,14 +12,14 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 function getAllBranches(tree) {
   const r = []
-  function walk(n) { 
-    for (const x of n||[]) { 
+  function walk(n) {
+    for (const x of n||[]) {
       if(x.type==='sube' || x.type==='anadepo' || x.type === 'mutfak' || x.type === 'uretim' || x.type === 'uretim') {
         const scope = x.workspace_scope || (x.type === 'anadepo' ? 'anadepo' : (x.type === 'mutfak' || x.type === 'uretim' || x.type === 'uretim' ? 'merkezmutfak' : null))
         r.push({id:x.id, name:x.name, workspace_scope:scope})
       }
-      walk(x.children||[]) 
-    } 
+      walk(x.children||[])
+    }
   }
   walk(tree); return r
 }
@@ -350,6 +350,7 @@ const EMPTY = {
   sku:'', auto_sku:false, name:'', short_name:'',
   location:[], cat_id:null, acc_cat:'', acc_code:'',
   unit:'', packaging_units:[],
+  base_unit_details: { id: 'base', unit: '', qty: 1, is_base_unit: true, length_cm: '', width_cm: '', height_cm: '', gross_weight_kg: '', net_weight_kg: '', barcodes: [] },
   min_stock:0, max_stock:1000, reorder:'',
   order_unit:'ana', min_order:'', max_order:'',
   recipe_linked:false, daily_usage:'', auto_usage:false,
@@ -397,6 +398,7 @@ export default function StockItems() {
 
   const [whSettings, setWhSettings] = useState([])
   const [uploadingImg, setUploadingImg] = useState(false)
+  const [expandedUnits, setExpandedUnits] = useState({ base: false })
 
   const cropAndResizeImage = (file, targetAspect = 4 / 3, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
@@ -612,9 +614,9 @@ export default function StockItems() {
 
   // ── Modal open/close ──────────────────────────────────────
   function openAdd() { setForm(withDefaultLocationSelection(EMPTY, branchTpls)); setEditId(null); setTab(0); setSkuStatus({type:'idle',msg:''}); setModal(true) }
-  function openEdit(item) {
+  async function openEdit(item) {
     const derivedRecipeLinked = recipeLinkedIds.has(item.id)
-    
+
     // Build warehouse settings map for this item
     const wset = {}
     const myWhSet = whSettings.filter(w => w.stock_item_id === item.id)
@@ -631,13 +633,112 @@ export default function StockItems() {
       }
     }
 
+    // Load database-first package units and barcodes for legacy support
+    let finalPackagingUnits = item.packaging_units || []
+    try {
+      const { data: dbUnits } = await db.from('stock_item_package_units').select('*').eq('stock_item_id', item.id).eq('active', true)
+      const { data: dbBarcodes } = await db.from('product_external_barcodes').select('*').eq('stock_item_id', item.id).eq('active', true)
+
+      if (dbUnits && dbUnits.length > 0) {
+        const baseDbUnit = dbUnits.find(u => u.is_base_unit)
+        const otherDbUnits = dbUnits.filter(u => !u.is_base_unit).sort((a,b) => (a.level_no || 0) - (b.level_no || 0))
+
+        const mapUnit = (dbUnit, qtyVal) => {
+          const unitBarcodes = (dbBarcodes || [])
+            .filter(b => b.package_unit_id === dbUnit.id || (dbUnit.is_base_unit && !b.package_unit_id))
+            .map(b => ({
+              id: b.id,
+              barcode: b.gtin_barcode,
+              barcode_type: b.barcode_type || 'EAN13',
+              is_primary: !!b.is_primary
+            }))
+
+          return {
+            id: dbUnit.id,
+            unit: dbUnit.unit_name,
+            qty: qtyVal,
+            is_base_unit: dbUnit.is_base_unit,
+            length_cm: dbUnit.length_cm != null ? Number(dbUnit.length_cm) : '',
+            width_cm: dbUnit.width_cm != null ? Number(dbUnit.width_cm) : '',
+            height_cm: dbUnit.height_cm != null ? Number(dbUnit.height_cm) : '',
+            gross_weight_kg: dbUnit.gross_weight_kg != null ? Number(dbUnit.gross_weight_kg) : '',
+            net_weight_kg: dbUnit.net_weight_kg != null ? Number(dbUnit.net_weight_kg) : '',
+            barcodes: unitBarcodes
+          }
+        }
+
+        const baseUnitMapped = baseDbUnit ? mapUnit(baseDbUnit, 1) : null
+        const matchedOthers = []
+
+        for (const p of (item.packaging_units || []).filter(u => !u.is_base_unit)) {
+          const dbU = otherDbUnits.find(du => du.unit_name === p.unit)
+          if (dbU) {
+            matchedOthers.push(mapUnit(dbU, p.qty || 1))
+          } else {
+            matchedOthers.push({
+              id: p.id || uid(),
+              unit: p.unit,
+              qty: p.qty || 1,
+              length_cm: p.length_cm || '',
+              width_cm: p.width_cm || '',
+              height_cm: p.height_cm || '',
+              gross_weight_kg: p.gross_weight_kg || '',
+              net_weight_kg: p.net_weight_kg || '',
+              barcodes: p.barcodes || []
+            })
+          }
+        }
+
+        for (const dbU of otherDbUnits) {
+          if (!matchedOthers.find(o => o.unit === dbU.unit_name)) {
+            const idx = otherDbUnits.indexOf(dbU)
+            const prevBaseQty = idx === 0 ? 1 : Number(otherDbUnits[idx-1].base_quantity || 1)
+            const stepQty = Number(dbU.base_quantity || 1) / (prevBaseQty || 1)
+            matchedOthers.push(mapUnit(dbU, stepQty))
+          }
+        }
+
+        finalPackagingUnits = []
+        if (baseUnitMapped) finalPackagingUnits.push(baseUnitMapped)
+        finalPackagingUnits.push(...matchedOthers)
+      }
+    } catch (err) {
+      console.error('Error fetching db units or barcodes', err)
+    }
+
+    let baseUnitObj = finalPackagingUnits.find(p => p.is_base_unit === true)
+    let otherPkgs = finalPackagingUnits.filter(p => p.is_base_unit !== true)
+
+    if (!baseUnitObj) {
+      baseUnitObj = {
+        id: 'base',
+        unit: item.unit || '',
+        qty: 1,
+        is_base_unit: true,
+        length_cm: '',
+        width_cm: '',
+        height_cm: '',
+        gross_weight_kg: '',
+        net_weight_kg: '',
+        barcodes: []
+      }
+    } else {
+      baseUnitObj = {
+        ...baseUnitObj,
+        unit: item.unit || '',
+        qty: 1
+      }
+    }
+
     setForm({
       sku: item.sku||'', auto_sku: item.auto_sku||false,
       name: item.name||'', short_name: item.short_name||'',
       location: ensureDefaultLocationSelection(parseLocationValue(item.location), branchTpls),
       cat_id: item.cat_l5||item.cat_l4||item.cat_l3||item.cat_l2||item.cat_l1||null,
       acc_cat: item.acc_cat||'', acc_code: item.acc_code||'',
-      unit: item.unit||'', packaging_units: item.packaging_units||[],
+      unit: item.unit||'',
+      packaging_units: otherPkgs,
+      base_unit_details: baseUnitObj,
       min_stock: item.min_stock??0, max_stock: item.max_stock??1000,
       reorder: item.reorder||'', order_unit: item.order_unit||'ana',
       min_order: item.min_order||'', max_order: item.max_order||'',
@@ -674,6 +775,118 @@ export default function StockItems() {
     // Resolve cat levels
     const chain = form.cat_id ? catAncestry(cats, form.cat_id) : []
 
+    // Compile packaging units (base unit details + other packages)
+    const baseUnitObject = {
+      id: form.base_unit_details?.id || 'base',
+      unit: form.unit,
+      qty: 1,
+      is_base_unit: true,
+      length_cm: form.base_unit_details?.length_cm !== '' && form.base_unit_details?.length_cm != null ? parseFloat(form.base_unit_details.length_cm) : null,
+      width_cm: form.base_unit_details?.width_cm !== '' && form.base_unit_details?.width_cm != null ? parseFloat(form.base_unit_details.width_cm) : null,
+      height_cm: form.base_unit_details?.height_cm !== '' && form.base_unit_details?.height_cm != null ? parseFloat(form.base_unit_details.height_cm) : null,
+      gross_weight_kg: form.base_unit_details?.gross_weight_kg !== '' && form.base_unit_details?.gross_weight_kg != null ? parseFloat(form.base_unit_details.gross_weight_kg) : null,
+      net_weight_kg: form.base_unit_details?.net_weight_kg !== '' && form.base_unit_details?.net_weight_kg != null ? parseFloat(form.base_unit_details.net_weight_kg) : null,
+      barcodes: (form.base_unit_details?.barcodes || []).map(b => ({
+        barcode: b.barcode?.trim(),
+        barcode_type: b.barcode_type || 'EAN13',
+        is_primary: !!b.is_primary
+      })).filter(b => b.barcode)
+    }
+
+    const otherUnitsList = (form.packaging_units || []).map(u => ({
+      id: u.id,
+      unit: u.unit,
+      qty: parseFloat(u.qty) || 1,
+      is_base_unit: false,
+      length_cm: u.length_cm !== '' && u.length_cm != null ? parseFloat(u.length_cm) : null,
+      width_cm: u.width_cm !== '' && u.width_cm != null ? parseFloat(u.width_cm) : null,
+      height_cm: u.height_cm !== '' && u.height_cm != null ? parseFloat(u.height_cm) : null,
+      gross_weight_kg: u.gross_weight_kg !== '' && u.gross_weight_kg != null ? parseFloat(u.gross_weight_kg) : null,
+      net_weight_kg: u.net_weight_kg !== '' && u.net_weight_kg != null ? parseFloat(u.net_weight_kg) : null,
+      barcodes: (u.barcodes || []).map(b => ({
+        barcode: b.barcode?.trim(),
+        barcode_type: b.barcode_type || 'EAN13',
+        is_primary: !!b.is_primary
+      })).filter(b => b.barcode)
+    }))
+
+    const compiledPackagingUnits = [baseUnitObject, ...otherUnitsList]
+
+    // Client-side validations
+    const allUnitsForValidation = [
+      { label: 'Ana Birim', data: baseUnitObject },
+      ...otherUnitsList.map((u, i) => ({ label: `Paketleme Birimi ${i + 1} (${u.unit || 'Tanımsız'})`, data: u }))
+    ]
+
+    for (const item of allUnitsForValidation) {
+      const { label, data } = item
+
+      const hasLength = data.length_cm !== null
+      const hasWidth = data.width_cm !== null
+      const hasHeight = data.height_cm !== null
+      const hasGross = data.gross_weight_kg !== null
+      const hasNet = data.net_weight_kg !== null
+
+      if (hasLength || hasWidth || hasHeight || hasGross || hasNet) {
+        if (!hasLength || !hasWidth || !hasHeight) {
+          setTab(1);
+          toast(`${label}: Tüm boyut değerleri (en, boy, yükseklik) girilmelidir.`, 'error');
+          return;
+        }
+        if (data.length_cm <= 0 || data.width_cm <= 0 || data.height_cm <= 0) {
+          setTab(1);
+          toast(`${label}: Boyut değerleri sıfır veya negatif olamaz.`, 'error');
+          return;
+        }
+        if (!hasGross || !hasNet) {
+          setTab(1);
+          toast(`${label}: Brüt ve net ağırlık değerleri girilmelidir.`, 'error');
+          return;
+        }
+        if (data.gross_weight_kg <= 0 || data.net_weight_kg <= 0) {
+          setTab(1);
+          toast(`${label}: Ağırlık değerleri sıfır veya negatif olamaz.`, 'error');
+          return;
+        }
+        if (data.net_weight_kg > data.gross_weight_kg) {
+          setTab(1);
+          toast(`${label}: Net ağırlık, brüt ağırlıktan büyük olamaz.`, 'error');
+          return;
+        }
+      }
+
+      // Validate barcodes of this unit
+      const barcodes = data.barcodes || []
+      const barcodeStrings = barcodes.map(b => b.barcode)
+
+      if (barcodes.some(b => !b.barcode)) {
+        setTab(1);
+        toast(`${label}: Barkod alanı boş bırakılamaz.`, 'error');
+        return;
+      }
+
+      const uniqueBarcodes = new Set(barcodeStrings)
+      if (uniqueBarcodes.size !== barcodeStrings.length) {
+        setTab(1);
+        toast(`${label}: Aynı birim içinde mükerrer barkod tanımlanamaz.`, 'error');
+        return;
+      }
+    }
+
+    // Validate barcode uniqueness across all units of this product
+    const allProductBarcodes = []
+    for (const item of allUnitsForValidation) {
+      const barcodes = item.data.barcodes || []
+      for (const b of barcodes) {
+        if (allProductBarcodes.includes(b.barcode)) {
+          setTab(1);
+          toast(`Mükerrer Barkod hatası: "${b.barcode}" barkodu birden fazla birimde kullanılamaz.`, 'error');
+          return;
+        }
+        allProductBarcodes.push(b.barcode);
+      }
+    }
+
     const payload = {
       sku: form.sku, auto_sku: form.auto_sku,
       name: form.name.trim(), short_name: form.short_name.trim()||null,
@@ -682,7 +895,7 @@ export default function StockItems() {
       cat_l1: chain[0]?.id||null, cat_l2: chain[1]?.id||null,
       cat_l3: chain[2]?.id||null, cat_l4: chain[3]?.id||null, cat_l5: chain[4]?.id||null,
       unit: form.unit,
-      packaging_units: form.packaging_units,
+      packaging_units: compiledPackagingUnits,
       min_stock: parseFloat(form.min_stock)||0,
       max_stock: parseFloat(form.max_stock)||1000,
       reorder: parseFloat(form.reorder)||null,
@@ -708,11 +921,25 @@ export default function StockItems() {
     let finalId = editId
     if (editId) {
       const { error } = await db.from('stock_items').update(payload).eq('id', editId)
-      if (error) { toast('Hata: '+error.message,'error'); return }
+      if (error) {
+        if (error.message.includes('idx_product_barcodes_gtin') || error.message.includes('unique_barcode') || error.code === '23505') {
+          toast('Hata: Bu barkod zaten sistemde başka bir üründe tanımlı!', 'error')
+        } else {
+          toast('Hata: ' + error.message, 'error')
+        }
+        return
+      }
       toast(`"${payload.name}" güncellendi`,'success')
     } else {
       const { error, data } = await db.from('stock_items').insert(payload).select('id').single()
-      if (error) { toast('Hata: '+error.message,'error'); return }
+      if (error) {
+        if (error.message.includes('idx_product_barcodes_gtin') || error.message.includes('unique_barcode') || error.code === '23505') {
+          toast('Hata: Bu barkod zaten sistemde başka bir üründe tanımlı!', 'error')
+        } else {
+          toast('Hata: ' + error.message, 'error')
+        }
+        return
+      }
       finalId = data.id
       toast(`"${payload.name}" eklendi`,'success')
     }
@@ -738,7 +965,7 @@ export default function StockItems() {
           })
         }
       }
-      
+
       await db.from('stock_item_warehouse_settings').delete().eq('stock_item_id', finalId)
       if (whPayloads.length > 0) {
         await db.from('stock_item_warehouse_settings').upsert(whPayloads, { onConflict: 'stock_item_id,branch_id' })
@@ -768,10 +995,161 @@ export default function StockItems() {
     if (modal && tab === 3 && !hasWarehouseSupplier) setTab(2)
   }, [hasWarehouseSupplier, modal, tab])
 
-  // Packaging units
-  function addPkg()    { set('packaging_units',[...form.packaging_units,{id:uid(),unit:'',qty:1}]) }
-  function removePkg(id){ set('packaging_units',form.packaging_units.filter(p=>p.id!==id)) }
-  function updatePkg(id,k,v){ set('packaging_units',form.packaging_units.map(p=>p.id===id?{...p,[k]:v}:p)) }
+  // Packaging units and barcode helpers
+  function addPkg() {
+    set('packaging_units', [
+      ...form.packaging_units,
+      {
+        id: uid(),
+        unit: '',
+        qty: 1,
+        length_cm: '',
+        width_cm: '',
+        height_cm: '',
+        gross_weight_kg: '',
+        net_weight_kg: '',
+        barcodes: []
+      }
+    ])
+  }
+  function removePkg(id) {
+    set('packaging_units', form.packaging_units.filter(p => p.id !== id))
+    setExpandedUnits(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+  function updatePkg(id, k, v) {
+    set('packaging_units', form.packaging_units.map(p => p.id === id ? { ...p, [k]: v } : p))
+  }
+
+  function handleBaseUnitChange(newUnit) {
+    setForm(prev => ({
+      ...prev,
+      unit: newUnit,
+      base_unit_details: {
+        ...prev.base_unit_details,
+        unit: newUnit
+      }
+    }))
+  }
+
+  function toggleUnitExpand(id) {
+    setExpandedUnits(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function updateUnitMeasure(id, field, value) {
+    if (id === 'base') {
+      setForm(prev => ({
+        ...prev,
+        base_unit_details: {
+          ...prev.base_unit_details,
+          [field]: value
+        }
+      }))
+    } else {
+      setForm(prev => ({
+        ...prev,
+        packaging_units: prev.packaging_units.map(u => u.id === id ? { ...u, [field]: value } : u)
+      }))
+    }
+  }
+
+  function addBarcode(unitId) {
+    const newBarcode = { id: uid(), barcode: '', barcode_type: 'EAN13', is_primary: false }
+    if (unitId === 'base') {
+      setForm(prev => ({
+        ...prev,
+        base_unit_details: {
+          ...prev.base_unit_details,
+          barcodes: [...(prev.base_unit_details.barcodes || []), newBarcode]
+        }
+      }))
+      setExpandedUnits(prev => ({ ...prev, base: true }))
+    } else {
+      setForm(prev => ({
+        ...prev,
+        packaging_units: prev.packaging_units.map(u => {
+          if (u.id === unitId) {
+            return {
+              ...u,
+              barcodes: [...(u.barcodes || []), newBarcode]
+            }
+          }
+          return u
+        })
+      }))
+      setExpandedUnits(prev => ({ ...prev, [unitId]: true }))
+    }
+  }
+
+  function updateBarcode(unitId, barcodeId, field, value) {
+    if (unitId === 'base') {
+      let barcodes = [...(form.base_unit_details.barcodes || [])]
+      barcodes = barcodes.map(b => {
+        if (b.id === barcodeId) {
+          return { ...b, [field]: value }
+        }
+        if (field === 'is_primary' && value === true) {
+          return { ...b, is_primary: false }
+        }
+        return b
+      })
+      setForm(prev => ({
+        ...prev,
+        base_unit_details: {
+          ...prev.base_unit_details,
+          barcodes
+        }
+      }))
+    } else {
+      setForm(prev => ({
+        ...prev,
+        packaging_units: prev.packaging_units.map(u => {
+          if (u.id === unitId) {
+            let barcodes = [...(u.barcodes || [])]
+            barcodes = barcodes.map(b => {
+              if (b.id === barcodeId) {
+                return { ...b, [field]: value }
+              }
+              if (field === 'is_primary' && value === true) {
+                return { ...b, is_primary: false }
+              }
+              return b
+            })
+            return { ...u, barcodes }
+          }
+          return u
+        })
+      }))
+    }
+  }
+
+  function removeBarcode(unitId, barcodeId) {
+    if (unitId === 'base') {
+      setForm(prev => ({
+        ...prev,
+        base_unit_details: {
+          ...prev.base_unit_details,
+          barcodes: (prev.base_unit_details.barcodes || []).filter(b => b.id !== barcodeId)
+        }
+      }))
+    } else {
+      setForm(prev => ({
+        ...prev,
+        packaging_units: prev.packaging_units.map(u => {
+          if (u.id === unitId) {
+            return {
+              ...u,
+              barcodes: (u.barcodes || []).filter(b => b.id !== barcodeId)
+            }
+          }
+          return u
+        })
+      }))
+    }
+  }
 
   const tabs = [
     { label:'Temel Bilgiler',   icon:'fa-circle-info' },
@@ -1060,54 +1438,500 @@ export default function StockItems() {
               {/* ── Tab 1: Ölçüm & Stok ── */}
               {tab===1 && <div>
                 <SectionHead label="Ölçüm & Paketleme"/>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'end',marginBottom:10}}>
-                  <div>
-                    <label className="f-label">Ölçü Birimi <span style={{color:'#ef4444'}}>*</span></label>
-                    <SearchableSelect
-                      value={form.unit}
-                      onChange={v=>set('unit',v)}
-                      options={units.map(u=>({value:u.name,label:u.label+(u.symbol?` (${u.symbol})`:'')})) }
-                      placeholder="Birim seçiniz"
-                    />
-                  </div>
-                  <button className="btn-o" onClick={addPkg} style={{fontSize:'.83rem'}}>
-                    <i className="fa-solid fa-plus"/> Paketleme Birimi Ekle
+
+                {/* Base unit selector */}
+                <div style={{ marginBottom: 14 }}>
+                  <label className="f-label">Ölçü Birimi (Temel) <span style={{color:'#ef4444'}}>*</span></label>
+                  <SearchableSelect
+                    value={form.unit}
+                    onChange={handleBaseUnitChange}
+                    options={units.map(u=>({value:u.name,label:u.label+(u.symbol?` (${u.symbol})`:'')})) }
+                    placeholder="Birim seçiniz"
+                  />
+                </div>
+
+                {/* --- 1. ANA BİRİM KARTI --- */}
+                {form.unit && (() => {
+                  const unitName = form.unit;
+                  const unitLabel = units.find(u => u.name === unitName)?.label || unitName;
+                  const unitSymbol = units.find(u => u.name === unitName)?.symbol || '';
+                  const unitId = 'base';
+                  const data = form.base_unit_details || { barcodes: [] };
+                  const expanded = !!expandedUnits[unitId];
+
+                  const length = parseFloat(data.length_cm) || 0;
+                  const width = parseFloat(data.width_cm) || 0;
+                  const height = parseFloat(data.height_cm) || 0;
+                  const volume = length && width && height ? (length * width * height / 1000000).toFixed(6) : '0.000000';
+
+                  const netWeightError = data.gross_weight_kg && data.net_weight_kg && parseFloat(data.net_weight_kg) > parseFloat(data.gross_weight_kg);
+                  const invalidLength = data.length_cm !== '' && data.length_cm != null && parseFloat(data.length_cm) <= 0;
+                  const invalidWidth = data.width_cm !== '' && data.width_cm != null && parseFloat(data.width_cm) <= 0;
+                  const invalidHeight = data.height_cm !== '' && data.height_cm != null && parseFloat(data.height_cm) <= 0;
+                  const invalidGross = data.gross_weight_kg !== '' && data.gross_weight_kg != null && parseFloat(data.gross_weight_kg) <= 0;
+                  const invalidNet = data.net_weight_kg !== '' && data.net_weight_kg != null && parseFloat(data.net_weight_kg) <= 0;
+
+                  return (
+                    <div style={{
+                      border: '1.5px solid #6366f1',
+                      borderRadius: '12px',
+                      background: '#ffffff',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                      marginBottom: '14px',
+                      overflow: 'hidden'
+                    }}>
+                      {/* Card Header */}
+                      <div onClick={() => toggleUnitExpand(unitId)} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 16px',
+                        background: 'linear-gradient(135deg, #e0e7ff 0%, #e0e7ff 100%)',
+                        borderBottom: '1px solid #c7d2fe',
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: '#6366f1',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#ffffff'
+                          }}>
+                            <i className="fa-solid fa-box-open" style={{ fontSize: '.9rem' }} />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '.88rem', fontWeight: 800, color: '#1e1b4b' }}>
+                              Ana Birim: {unitLabel} {unitSymbol ? `(${unitSymbol})` : ''}
+                            </span>
+                            <span style={{ fontSize: '.75rem', display: 'block', color: '#4338ca', fontWeight: 500 }}>
+                              {(data.barcodes || []).length} barkod tanımlı • {volume !== '0.000000' ? `${volume} m³` : 'Boyut girilmemiş'}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ color: '#4f46e5' }}>
+                          <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'}`} />
+                        </div>
+                      </div>
+
+                      {/* Card Body */}
+                      {expanded && (
+                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {/* Dimensions */}
+                          <div>
+                            <p style={{ fontSize: '.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>Boyut Bilgileri (cm)</p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>En (cm)</label>
+                                <input
+                                  className="f-input"
+                                  type="number"
+                                  min="0.1"
+                                  step="0.1"
+                                  value={data.length_cm || ''}
+                                  onChange={e => updateUnitMeasure(unitId, 'length_cm', e.target.value)}
+                                  placeholder="cm"
+                                  style={{ borderColor: invalidLength ? '#ef4444' : '' }}
+                                />
+                                {invalidLength && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                              </div>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Boy (cm)</label>
+                                <input
+                                  className="f-input"
+                                  type="number"
+                                  min="0.1"
+                                  step="0.1"
+                                  value={data.width_cm || ''}
+                                  onChange={e => updateUnitMeasure(unitId, 'width_cm', e.target.value)}
+                                  placeholder="cm"
+                                  style={{ borderColor: invalidWidth ? '#ef4444' : '' }}
+                                />
+                                {invalidWidth && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                              </div>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Yükseklik (cm)</label>
+                                <input
+                                  className="f-input"
+                                  type="number"
+                                  min="0.1"
+                                  step="0.1"
+                                  value={data.height_cm || ''}
+                                  onChange={e => updateUnitMeasure(unitId, 'height_cm', e.target.value)}
+                                  placeholder="cm"
+                                  style={{ borderColor: invalidHeight ? '#ef4444' : '' }}
+                                />
+                                {invalidHeight && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Weights and Volume */}
+                          <div>
+                            <p style={{ fontSize: '.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>Ağırlık & Hacim</p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Brüt Ağırlık (kg)</label>
+                                <input
+                                  className="f-input"
+                                  type="number"
+                                  min="0.001"
+                                  step="0.001"
+                                  value={data.gross_weight_kg || ''}
+                                  onChange={e => updateUnitMeasure(unitId, 'gross_weight_kg', e.target.value)}
+                                  placeholder="kg"
+                                  style={{ borderColor: invalidGross ? '#ef4444' : '' }}
+                                />
+                                {invalidGross && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                              </div>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Net Ağırlık (kg)</label>
+                                <input
+                                  className="f-input"
+                                  type="number"
+                                  min="0.001"
+                                  step="0.001"
+                                  value={data.net_weight_kg || ''}
+                                  onChange={e => updateUnitMeasure(unitId, 'net_weight_kg', e.target.value)}
+                                  placeholder="kg"
+                                  style={{ borderColor: invalidNet || netWeightError ? '#ef4444' : '' }}
+                                />
+                                {invalidNet && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                {netWeightError && <p style={{ color: '#ef4444', fontSize: '.65rem', marginTop: '2px', fontWeight: 600, lineHeight: 1.1 }}>Net ağırlık brüt ağırlıktan büyük olamaz!</p>}
+                              </div>
+                              <div>
+                                <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Hacim (m³)</label>
+                                <input
+                                  className="f-input"
+                                  value={volume === '0.000000' ? '' : `${volume} m³`}
+                                  readOnly
+                                  placeholder="Otomatik"
+                                  style={{ background: '#f8fafc', color: '#64748b', fontWeight: 700 }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Barcodes list */}
+                          <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                            <p style={{ fontSize: '.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <i className="fa-solid fa-barcode" style={{ color: '#6366f1' }} /> BARKODLAR
+                            </p>
+
+                            {(data.barcodes || []).map((b, bIdx) => (
+                              <div key={b.id || bIdx} style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto auto', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                <input
+                                  className="f-input"
+                                  value={b.barcode || ''}
+                                  onChange={e => updateBarcode(unitId, b.id, 'barcode', e.target.value)}
+                                  placeholder="Barkod girin veya okutun"
+                                />
+                                <select
+                                  className="f-input"
+                                  value={b.barcode_type || 'EAN13'}
+                                  onChange={e => updateBarcode(unitId, b.id, 'barcode_type', e.target.value)}
+                                  style={{ padding: '0 8px', height: '36px', fontSize: '.8rem' }}
+                                >
+                                  <option value="EAN13">EAN13</option>
+                                  <option value="EAN8">EAN8</option>
+                                  <option value="UPC">UPC</option>
+                                  <option value="CODE128">CODE128</option>
+                                  <option value="QR">QR Code</option>
+                                </select>
+
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '.72rem', color: b.is_primary ? '#6366f1' : '#64748b', fontWeight: b.is_primary ? 700 : 400, whiteSpace: 'nowrap' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!b.is_primary}
+                                    onChange={e => updateBarcode(unitId, b.id, 'is_primary', e.target.checked)}
+                                    style={{ accentColor: '#6366f1' }}
+                                  />
+                                  Birincil
+                                </label>
+
+                                <button className="ico-btn del" onClick={() => removeBarcode(unitId, b.id)}>
+                                  <i className="fa-solid fa-trash-can" />
+                                </button>
+                              </div>
+                            ))}
+
+                            <button className="btn-o" onClick={() => addBarcode(unitId)} style={{ fontSize: '.75rem', padding: '4px 10px', height: 'auto', background: '#ffffff' }}>
+                              <i className="fa-solid fa-plus" /> Barkod Ekle
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* --- 2. EK PAKETLEME BİRİMLERİ --- */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '18px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em' }}>Paketleme Birimleri</span>
+                  <button className="btn-o" onClick={addPkg} style={{ fontSize: '.78rem', padding: '4px 10px', height: 'auto' }}>
+                    <i className="fa-solid fa-plus"/> Birim Ekle
                   </button>
                 </div>
-                {form.packaging_units.length>0 && (
-                  <div style={{marginBottom:18,display:'flex',flexDirection:'column',gap:8}}>
-                    {form.packaging_units.map((p, idx)=>{
-                      // Önceki birimi bul: ilk satır için ana birim, sonraki satır için bir önceki satırın birimi
-                      const prevUnit = idx===0
-                        ? (units.find(u=>u.name===form.unit)?.label || form.unit || 'ana birim')
-                        : (units.find(u=>u.name===form.packaging_units[idx-1].unit)?.label || form.packaging_units[idx-1].unit || '?')
-                      const thisUnit = units.find(u=>u.name===p.unit)?.label || p.unit
-                      const hasDesc = thisUnit && p.qty
+
+                {form.packaging_units.length === 0 && (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '.8rem', marginBottom: '18px' }}>
+                    Ek tanımlı ambalaj birimi bulunmuyor. Birim Ekle butonuyla kutu, koli, palet vb. tanımlayabilirsiniz.
+                  </div>
+                )}
+
+                {form.packaging_units.length > 0 && (
+                  <div style={{ marginBottom: 18, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {form.packaging_units.map((p, idx) => {
+                      const prevUnit = idx === 0
+                        ? (units.find(u => u.name === form.unit)?.label || form.unit || 'ana birim')
+                        : (units.find(u => u.name === form.packaging_units[idx - 1].unit)?.label || form.packaging_units[idx - 1].unit || '?');
+                      const thisUnit = units.find(u => u.name === p.unit)?.label || p.unit;
+                      const hasDesc = thisUnit && p.qty;
+                      const unitId = p.id;
+                      const expanded = !!expandedUnits[unitId];
+
+                      const length = parseFloat(p.length_cm) || 0;
+                      const width = parseFloat(p.width_cm) || 0;
+                      const height = parseFloat(p.height_cm) || 0;
+                      const volume = length && width && height ? (length * width * height / 1000000).toFixed(6) : '0.000000';
+
+                      const netWeightError = p.gross_weight_kg && p.net_weight_kg && parseFloat(p.net_weight_kg) > parseFloat(p.gross_weight_kg);
+                      const invalidLength = p.length_cm !== '' && p.length_cm != null && parseFloat(p.length_cm) <= 0;
+                      const invalidWidth = p.width_cm !== '' && p.width_cm != null && parseFloat(p.width_cm) <= 0;
+                      const invalidHeight = p.height_cm !== '' && p.height_cm != null && parseFloat(p.height_cm) <= 0;
+                      const invalidGross = p.gross_weight_kg !== '' && p.gross_weight_kg != null && parseFloat(p.gross_weight_kg) <= 0;
+                      const invalidNet = p.net_weight_kg !== '' && p.net_weight_kg != null && parseFloat(p.net_weight_kg) <= 0;
 
                       return (
-                        <div key={p.id}>
-                          <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                            <div style={{flex:1}}>
-                              <SearchableSelect
-                                value={p.unit}
-                                onChange={v=>updatePkg(p.id,'unit',v)}
-                                options={units.map(u=>({value:u.name,label:u.label+(u.symbol?` (${u.symbol})`:'')})) }
-                                placeholder="Birim seçin…"
-                              />
+                        <div key={p.id} style={{
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '12px',
+                          background: '#ffffff',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                          overflow: 'hidden'
+                        }}>
+                          {/* Card Header */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 16px',
+                            background: '#f8fafc',
+                            borderBottom: '1px solid #e2e8f0',
+                            cursor: 'pointer',
+                            userSelect: 'none'
+                          }} onClick={() => toggleUnitExpand(unitId)}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '6px',
+                                background: '#e2e8f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#475569'
+                              }}>
+                                <i className="fa-solid fa-boxes-packing" style={{ fontSize: '.85rem' }} />
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '.83rem', fontWeight: 700, color: '#334155' }}>
+                                  {thisUnit || 'Seçilmemiş Birim'} ({p.qty} {prevUnit})
+                                </span>
+                                {hasDesc && (
+                                  <span style={{ fontSize: '.72rem', display: 'block', color: '#6366f1', fontWeight: 600 }}>
+                                    1 {thisUnit} = {p.qty} {prevUnit} içerir
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <input className="f-input" style={{width:100}} type="number" min="1"
-                              value={p.qty} onChange={e=>updatePkg(p.id,'qty',e.target.value)} placeholder="Miktar"/>
-                            <button className="ico-btn del" onClick={()=>removePkg(p.id)}><i className="fa-solid fa-xmark"/></button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <button className="ico-btn del" onClick={(e) => { e.stopPropagation(); removePkg(p.id); }} style={{ padding: '4px' }}>
+                                <i className="fa-solid fa-xmark" />
+                              </button>
+                              <div style={{ color: '#64748b' }}>
+                                <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'}`} />
+                              </div>
+                            </div>
                           </div>
-                          {hasDesc && (
-                            <div style={{fontSize:'.78rem',color:'#6366f1',fontWeight:600,
-                              paddingLeft:4,marginTop:3,display:'flex',alignItems:'center',gap:5}}>
-                              <i className="fa-solid fa-circle-info" style={{fontSize:'.65rem',opacity:.7}}/>
-                              1 {thisUnit} = {p.qty} {prevUnit} içerir
+
+                          {/* Card Body */}
+                          {expanded && (
+                            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                              {/* Configuration: Unit select and factor input */}
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '10px' }}>
+                                <div>
+                                  <label className="f-label">Birim Seçimi</label>
+                                  <SearchableSelect
+                                    value={p.unit}
+                                    onChange={v => updatePkg(p.id, 'unit', v)}
+                                    options={units.map(u => ({ value: u.name, label: u.label + (u.symbol ? ` (${u.symbol})` : '') }))}
+                                    placeholder="Birim seçin…"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="f-label">Kat Miktar ({prevUnit})</label>
+                                  <input
+                                    className="f-input"
+                                    type="number"
+                                    min="1"
+                                    value={p.qty}
+                                    onChange={e => updatePkg(p.id, 'qty', e.target.value)}
+                                    placeholder="Miktar"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Dimensions */}
+                              <div>
+                                <p style={{ fontSize: '.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>Boyut Bilgileri (cm)</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>En (cm)</label>
+                                    <input
+                                      className="f-input"
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      value={p.length_cm || ''}
+                                      onChange={e => updateUnitMeasure(unitId, 'length_cm', e.target.value)}
+                                      placeholder="cm"
+                                      style={{ borderColor: invalidLength ? '#ef4444' : '' }}
+                                    />
+                                    {invalidLength && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                  </div>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Boy (cm)</label>
+                                    <input
+                                      className="f-input"
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      value={p.width_cm || ''}
+                                      onChange={e => updateUnitMeasure(unitId, 'width_cm', e.target.value)}
+                                      placeholder="cm"
+                                      style={{ borderColor: invalidWidth ? '#ef4444' : '' }}
+                                    />
+                                    {invalidWidth && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                  </div>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Yükseklik (cm)</label>
+                                    <input
+                                      className="f-input"
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      value={p.height_cm || ''}
+                                      onChange={e => updateUnitMeasure(unitId, 'height_cm', e.target.value)}
+                                      placeholder="cm"
+                                      style={{ borderColor: invalidHeight ? '#ef4444' : '' }}
+                                    />
+                                    {invalidHeight && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Weights and Volume */}
+                              <div>
+                                <p style={{ fontSize: '.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>Ağırlık & Hacim</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Brüt Ağırlık (kg)</label>
+                                    <input
+                                      className="f-input"
+                                      type="number"
+                                      min="0.001"
+                                      step="0.001"
+                                      value={p.gross_weight_kg || ''}
+                                      onChange={e => updateUnitMeasure(unitId, 'gross_weight_kg', e.target.value)}
+                                      placeholder="kg"
+                                      style={{ borderColor: invalidGross ? '#ef4444' : '' }}
+                                    />
+                                    {invalidGross && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                  </div>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Net Ağırlık (kg)</label>
+                                    <input
+                                      className="f-input"
+                                      type="number"
+                                      min="0.001"
+                                      step="0.001"
+                                      value={p.net_weight_kg || ''}
+                                      onChange={e => updateUnitMeasure(unitId, 'net_weight_kg', e.target.value)}
+                                      placeholder="kg"
+                                      style={{ borderColor: invalidNet || netWeightError ? '#ef4444' : '' }}
+                                    />
+                                    {invalidNet && <p style={{ color: '#ef4444', fontSize: '.68rem', marginTop: '2px', fontWeight: 600 }}>Hatalı değer!</p>}
+                                    {netWeightError && <p style={{ color: '#ef4444', fontSize: '.65rem', marginTop: '2px', fontWeight: 600, lineHeight: 1.1 }}>Net ağırlık brüt ağırlıktan büyük olamaz!</p>}
+                                  </div>
+                                  <div>
+                                    <label className="f-label" style={{ fontSize: '.7rem', color: '#64748b' }}>Hacim (m³)</label>
+                                    <input
+                                      className="f-input"
+                                      value={volume === '0.000000' ? '' : `${volume} m³`}
+                                      readOnly
+                                      placeholder="Otomatik"
+                                      style={{ background: '#f8fafc', color: '#64748b', fontWeight: 700 }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Barcodes list */}
+                              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                <p style={{ fontSize: '.72rem', fontWeight: 800, color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <i className="fa-solid fa-barcode" style={{ color: '#6366f1' }} /> BARKODLAR
+                                </p>
+
+                                {(p.barcodes || []).map((b, bIdx) => (
+                                  <div key={b.id || bIdx} style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto auto', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                    <input
+                                      className="f-input"
+                                      value={b.barcode || ''}
+                                      onChange={e => updateBarcode(unitId, b.id, 'barcode', e.target.value)}
+                                      placeholder="Barkod girin veya okutun"
+                                    />
+                                    <select
+                                      className="f-input"
+                                      value={b.barcode_type || 'EAN13'}
+                                      onChange={e => updateBarcode(unitId, b.id, 'barcode_type', e.target.value)}
+                                      style={{ padding: '0 8px', height: '36px', fontSize: '.8rem' }}
+                                    >
+                                      <option value="EAN13">EAN13</option>
+                                      <option value="EAN8">EAN8</option>
+                                      <option value="UPC">UPC</option>
+                                      <option value="CODE128">CODE128</option>
+                                      <option value="QR">QR Code</option>
+                                    </select>
+
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '.72rem', color: b.is_primary ? '#6366f1' : '#64748b', fontWeight: b.is_primary ? 700 : 400, whiteSpace: 'nowrap' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!b.is_primary}
+                                        onChange={e => updateBarcode(unitId, b.id, 'is_primary', e.target.checked)}
+                                        style={{ accentColor: '#6366f1' }}
+                                      />
+                                      Birincil
+                                    </label>
+
+                                    <button className="ico-btn del" onClick={() => removeBarcode(unitId, b.id)}>
+                                      <i className="fa-solid fa-trash-can" />
+                                    </button>
+                                  </div>
+                                ))}
+
+                                <button className="btn-o" onClick={() => addBarcode(unitId)} style={{ fontSize: '.75rem', padding: '4px 10px', height: 'auto', background: '#ffffff' }}>
+                                  <i className="fa-solid fa-plus" /> Barkod Ekle
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
@@ -1299,13 +2123,13 @@ export default function StockItems() {
                         const newWs = { ...form.warehouse_settings, [branch.id]: { ...wset, [k]: v } }
                         set('warehouse_settings', newWs)
                       }
-                      
+
                       return (
                         <div key={branch.id} style={{border:'1px solid #e2e8f0',borderRadius:10,padding:14,background:'#f8fafc'}}>
                           <div style={{fontWeight:700,color:'#0f172a',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
                             <i className="fa-solid fa-warehouse" style={{color:'#34d399'}}/> {branch.name}
                           </div>
-                          
+
                           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
                             <div>
                               <label className="f-label">Minimum Stok</label>
@@ -1316,7 +2140,7 @@ export default function StockItems() {
                               <input className="f-input" type="number" min="0" value={wset.safety_stock} onChange={e=>setW('safety_stock',e.target.value)} placeholder="(global default)"/>
                             </div>
                           </div>
-                          
+
                           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
                             <div>
                               <label className="f-label">Sipariş Birimi</label>

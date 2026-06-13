@@ -124,6 +124,8 @@ export default function WmsStockParams() {
           max_order: parseFloat(row.max_order) || null,
           min_stock: parseFloat(row.min_stock) || null,
           safety_stock: parseFloat(row.safety_stock) || null,
+          pick_face_min_qty: (row.pick_face_min_qty === '' || row.pick_face_min_qty == null) ? null : parseFloat(row.pick_face_min_qty),
+          pick_face_max_qty: (row.pick_face_max_qty === '' || row.pick_face_max_qty == null) ? null : parseFloat(row.pick_face_max_qty),
           transfer_price_adjustment_type: row.transfer_price_adjustment_type || 'none',
           transfer_price_adjustment_value: parseFloat(row.transfer_price_adjustment_value) || 0,
           default_location_id: row.default_location_id || null,
@@ -214,7 +216,7 @@ export default function WmsStockParams() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['Ürün', 'Min Stok', 'Güvenlik Stoğu', 'Sipariş Birimi', 'Min Sipariş', 'Max Sipariş', 'Sevk Fiyatı', 'Varsayılan Lokasyon', ''].map((h, i) => (
+                {['Ürün', 'Min Stok', 'Güvenlik Stoğu', 'Toplama Min', 'Toplama Max', 'Sipariş Birimi', 'Min Sipariş', 'Max Sipariş', 'Sevk Fiyatı', 'Varsayılan Lokasyon', ''].map((h, i) => (
                   <th key={i} style={{ padding: '9px 12px', textAlign: 'left', fontSize: '.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -248,6 +250,22 @@ export default function WmsStockParams() {
                       <input className="f-input" type="number" min="0" style={{ fontSize: '.78rem', padding: '5px 8px' }}
                         value={row.safety_stock ?? ''}
                         onChange={e => setField(item.id, 'safety_stock', e.target.value)}
+                        placeholder="—" />
+                    </td>
+
+                    {/* Toplama Min */}
+                    <td style={{ padding: '6px 8px', width: 90 }}>
+                      <input className="f-input" type="number" min="0" style={{ fontSize: '.78rem', padding: '5px 8px' }}
+                        value={row.pick_face_min_qty ?? ''}
+                        onChange={e => setField(item.id, 'pick_face_min_qty', e.target.value)}
+                        placeholder="—" />
+                    </td>
+
+                    {/* Toplama Max */}
+                    <td style={{ padding: '6px 8px', width: 90 }}>
+                      <input className="f-input" type="number" min="0" style={{ fontSize: '.78rem', padding: '5px 8px' }}
+                        value={row.pick_face_max_qty ?? ''}
+                        onChange={e => setField(item.id, 'pick_face_max_qty', e.target.value)}
                         placeholder="—" />
                     </td>
 

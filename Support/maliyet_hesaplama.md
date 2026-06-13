@@ -11,7 +11,7 @@ Ekran yolu:
 Raporlar > Kar/Zarar (PnL) (İlgili diğer ekranlar: Envanter Hareketleri, Ürün Seçenekleri ve Reçeteler)
 
 Link:
-/reports/pnl
+/pnl-report
 
 Adımlar:
 1. Tedarikçiden mal geldiğinde faturayı/irsaliyeyi sisteme geciktirmeden doğru miktar ve fiyatla girin.

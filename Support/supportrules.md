@@ -75,4 +75,5 @@ Kullanıcı sana **"supportrules.md dosyasını oku"** veya **"dokümanları sen
    * *Değişen Kurallar (Örn: X ekranında şube seçimi zorunlu oldu)* -> Yorum: Düzelt / düzeltme
    * *Yeni Eklenenler (Örn: WMS modülü geliştirildi)* -> Yorum: Yeni doküman oluştur / oluşturma
 5. **Onay ve Uygulama:** Kullanıcı bu açık sorulara yorumlarını (comment) yazdıktan sonra planı onayı doğrultusunda uygula. İlgili `.md` dosyalarını yarat veya güncelle. 
-6. **Marker Güncelleme:** İşlem bittiğinde, bir sonraki senkronizasyon için `OperationSync.md` dosyasının en sonuna güncel bir `[SUPPORT_SYNC_MARKER]` işareti koy.
+6. **Route Map (Harita) Güncellemesi (ÇOK ÖNEMLİ):** Yeni bir ekran, modül veya modal için kılavuz ürettiysen (veya var olanı güncellediysen), KESİNLİKLE `Support/route_map.md` dosyasını da aç ve o kılavuzun menü yolunu / linkini haritadaki uygun kategoriye (Merkez, Şube, Depo) yeni bir satır olarak ekle. Kılavuzlar ile harita her zaman birbirini doğrulamalıdır.
+7. **Marker Güncelleme:** İşlem bittiğinde, bir sonraki senkronizasyon için `OperationSync.md` dosyasının en sonuna güncel bir `[SUPPORT_SYNC_MARKER]` işareti koy.

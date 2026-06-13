@@ -289,6 +289,22 @@ const STEPS = [
   {
     desc: 'wms active barcode unique constraint and packaging unit sync trigger (WMS-04D)',
     sql: fs.readFileSync(path.join(__dirname, '../migrations/050_wms_barcode_and_package_sync.sql'), 'utf8')
+  },
+  {
+    desc: 'wms vehicles table expansion and stock items temperature class (WMS-04F)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/051_wms_vehicles_expansion.sql'), 'utf8')
+  },
+  {
+    desc: 'wms shipment capacity and temperature control (WMS-04G)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/052_wms_shipment_capacity_control.sql'), 'utf8')
+  },
+  {
+    desc: 'wms cycle count approvals and RPCs (WMS-05A)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/053_wms_cycle_count.sql'), 'utf8')
+  },
+  {
+    desc: 'wms pick face replenishment parameters and RPCs (WMS-05B)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/054_wms_pick_face_replenishment.sql'), 'utf8')
   }
 ]
 
