@@ -561,8 +561,7 @@ function buildConditions(filters, startIdx = 1) {
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
-async function resolveProductAndPackage(barcode, branch_id) {
-  // 1. Try to find in product_external_barcodes
+async function resolveProductByApprovedBarcode(barcode) {
   let extRes = await pool.query(
     `SELECT
       s.id AS stock_item_id,
@@ -573,49 +572,51 @@ async function resolveProductAndPackage(barcode, branch_id) {
       p.package_unit_id
      FROM product_external_barcodes p
      JOIN stock_items s ON p.stock_item_id = s.id
-     WHERE p.gtin_barcode = $1 AND p.is_approved = true`,
+     WHERE p.gtin_barcode = $1 AND p.is_approved = true AND p.active = true`,
     [barcode]
   )
 
-  let product = null
-  let package_unit_id = null
-
   if (extRes.rows.length > 0) {
     const row = extRes.rows[0]
-    product = {
+    const product = {
       id: row.stock_item_id,
       name: row.stock_item_name,
       sku: row.stock_item_sku,
       unit: row.stock_item_unit,
       image_url: row.stock_item_image_url
     }
-    package_unit_id = row.package_unit_id
-  } else {
-    // 2. Fallback to direct match on stock_items sku
-    let itemRes = await pool.query(
-      'SELECT id, name, sku, unit, image_url FROM stock_items WHERE sku = $1',
-      [barcode]
-    )
-    if (itemRes.rows.length > 0) {
-      const row = itemRes.rows[0]
-      product = {
-        id: row.id,
-        name: row.name,
-        sku: row.sku,
-        unit: row.unit,
-        image_url: row.image_url
-      }
-    }
+    const package_unit = await fetchPackageUnitOrDefault(product, row.package_unit_id, barcode)
+    return { product, package_unit }
   }
+  return null
+}
 
-  if (!product) return null
+async function resolveProductBySku(sku) {
+  let itemRes = await pool.query(
+    'SELECT id, name, sku, unit, image_url FROM stock_items WHERE sku = $1 AND deleted_at IS NULL',
+    [sku]
+  )
+  if (itemRes.rows.length > 0) {
+    const row = itemRes.rows[0]
+    const product = {
+      id: row.id,
+      name: row.name,
+      sku: row.sku,
+      unit: row.unit,
+      image_url: row.image_url
+    }
+    const package_unit = await fetchPackageUnitOrDefault(product, null, null)
+    return { product, package_unit }
+  }
+  return null
+}
 
-  // 3. Resolve package unit
+async function fetchPackageUnitOrDefault(product, package_unit_id, barcode) {
   let package_unit = null
   if (package_unit_id) {
     let unitRes = await pool.query(
       `SELECT id, unit_name, unit_symbol, base_quantity, length_cm, width_cm, height_cm, volume_m3, gross_weight_kg
-       FROM stock_item_package_units WHERE id = $1`,
+       FROM stock_item_package_units WHERE id = $1 AND active = true`,
       [package_unit_id]
     )
     if (unitRes.rows.length > 0) {
@@ -635,7 +636,6 @@ async function resolveProductAndPackage(barcode, branch_id) {
     }
   }
 
-  // If no package unit resolved, find default for this product
   if (!package_unit) {
     let unitRes = await pool.query(
       `SELECT id, unit_name, unit_symbol, base_quantity, length_cm, width_cm, height_cm, volume_m3, gross_weight_kg
@@ -659,7 +659,6 @@ async function resolveProductAndPackage(barcode, branch_id) {
         gross_weight_kg: u.gross_weight_kg ? Number(u.gross_weight_kg) : null
       }
     } else {
-      // Fallback: Generate default unit from stock_item unit
       package_unit = {
         package_unit_id: null,
         unit_name: product.unit || 'Adet',
@@ -674,8 +673,7 @@ async function resolveProductAndPackage(barcode, branch_id) {
       }
     }
   }
-
-  return { product, package_unit }
+  return package_unit
 }
 
 app.post('/api/wms/parse-barcode', async (req, res) => {
@@ -731,9 +729,9 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
       }
     }
 
-    // 3. Ürün sorgula (eğer lokasyon veya LPN değilse)
+    // 3. Onaylı ürün/paket barkodu (eğer lokasyon veya LPN değilse)
     if (!matched) {
-      const resolved = await resolveProductAndPackage(barcode, branch_id)
+      const resolved = await resolveProductByApprovedBarcode(barcode)
       if (resolved) {
         scan_type = 'product'
         matched = true
@@ -743,19 +741,36 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
       }
     }
 
-    // 4. Lot/SKT ayrıştır (opsiyonel)
-    if (barcode.includes('LOT:') || barcode.includes('EXP:')) {
-      const lotMatch = barcode.match(/LOT:([^;]+)/i)
-      const expMatch = barcode.match(/EXP:([^;]+)/i)
-      if (lotMatch || expMatch) {
-        lot_info = {
-          lot_number: lotMatch ? lotMatch[1].trim() : null,
-          expiration_date: expMatch ? expMatch[1].trim() : null
+    // 4. Lot/SKT ayrıştır (eğer lokasyon, LPN veya onaylı ürün/paket barkodu değilse)
+    if (!matched) {
+      if (barcode.includes('LOT:') || barcode.includes('EXP:')) {
+        const lotMatch = barcode.match(/LOT:([^;]+)/i)
+        const expMatch = barcode.match(/EXP:([^;]+)/i)
+        if (lotMatch || expMatch) {
+          scan_type = 'lot'
+          matched = true
+          lot_info = {
+            lot_number: lotMatch ? lotMatch[1].trim() : null,
+            expiration_date: expMatch ? expMatch[1].trim() : null
+          }
+          message = `Lot/SKT taranmıştır: Lot: ${lot_info.lot_number || 'Bilinmiyor'}, SKT: ${lot_info.expiration_date || 'Bilinmiyor'}`
         }
       }
     }
 
-    // 5. Seçili görevle eşleştir (varsa)
+    // 5. SKU yalnızca manuel ürün kodu fallback olarak (eğer hiçbiri eşleşmediyse)
+    if (!matched) {
+      const resolved = await resolveProductBySku(barcode)
+      if (resolved) {
+        scan_type = 'product'
+        matched = true
+        product = resolved.product
+        package_unit = resolved.package_unit
+        message = `Ürün SKU ile doğrulandı: ${product.name}`
+      }
+    }
+
+    // 6. Seçili görevle eşleştir (varsa)
     let activeTask = null
     if (task_id) {
       const taskRes = await pool.query(
@@ -829,7 +844,7 @@ app.post('/api/wms/parse-barcode', async (req, res) => {
       is_expected = matched
     }
 
-    // 6. Log attempt in warehouse_task_events
+    // 7. Log attempt in warehouse_task_events
     if (activeTask || task_id) {
       const targetTaskId = activeTask ? activeTask.id : task_id
       const eventType = is_expected ? 'scan_success' : 'scan_failed'
@@ -1547,11 +1562,11 @@ TALİMATLAR VE KURALLAR:
 1. ANLAM EŞLEŞTİRME KURALI:
 Kullanıcının ifadesi Bilgi Bankası'ndaki kelimelerle birebir aynı olmak zorunda değildir (Örn: "dönem kapatma", "ay kapanışı" veya "şube kapanışı" aynı anlama gelebilir). Kullanıcının ne yapmak istediğini anla ve Bilgi Bankası'nda bu işleme karşılık gelen adımları bul.
 
-2. BİLGİ KAYNAĞI VE HALÜSİNASYON YASAĞI:
+BİLGİ KAYNAĞI VE HALÜSİNASYON YASAĞI:
 Yanıtlarında SADECE Bilgi Bankası içindeki proje içi ekranları, butonları, uyarıları ve işlem adımlarını kullan.
 - "Muhasebede dönem kapanışı şudur" gibi teorik, sektörel veya genel geçer bilgiler verme.
 - Bilgi Bankası'nda olmayan hayali bir menü, sayfa veya buton uydurma (Örn: "Sistem Ayarları -> Ekipman Yönetimi" gibi dokümanda geçmeyen yollar üretme).
-- İlgili işlem Bilgi Bankası'nda hiç yoksa, zorlama bir cevap üretme.
+- Eğer kullanıcının sorusunun cevabı sana verilen kılavuzlarda kesinlikle yoksa, cevap uydurma. Yanıtına tam olarak şu cümleyi ekle: [UNANSWERED] ve ardından sorunun neden cevaplanamadığını nazikçe belirt.
 
 3. EYLEM ODAKLI CEVAP STİLİ:
 Kısa, işlem odaklı, adım adım ve kullanıcıyı ekranda yönlendiren akıcı bir Türkçe kullan.
@@ -1568,7 +1583,7 @@ Yanıtını MUTLAKA geçerli bir JSON formatında ver. JSON formatı dışında 
 
 {
   "foundInKb": true veya false (Bilgi Bankasında işlem yoksa kesinlikle false yap),
-  "reply": "Kullanıcıya gösterilecek adım adım cevap. (foundInKb false ise bu alanı boş bırak)"
+  "reply": "Kullanıcıya gösterilecek adım adım cevap. (foundInKb false ise bu alanı boş bırak, VEYA yukarıdaki kurala uyarak [UNANSWERED] mesajını yaz)"
 }
 
 BİLGİ BANKASI:
@@ -1595,7 +1610,7 @@ ${kbContent}`
     const rawText = data.candidates[0].content.parts[0].text
     try {
       const parsed = JSON.parse(rawText)
-      if (!parsed.foundInKb) {
+      if (parsed.reply && parsed.reply.includes('[UNANSWERED]')) {
         const logFile = path.join(__dirname, '../Support/unanswered.log');
         const logEntry = `[${new Date().toISOString()}] [UNANSWERED] Question: ${message}\n`;
         try {
@@ -1603,11 +1618,17 @@ ${kbContent}`
         } catch(logErr) {
           console.error('Failed to write to unanswered.log:', logErr);
         }
-        return res.json({ data: { reply: "Üzgünüm, cevabı bilmiyorum çünkü bu soruyu ilk defa siz sordunuz, ama size söz en kısa sürede cevabı öğreneceğim ;)" }, error: null })
       }
       return res.json({ data: { reply: parsed.reply }, error: null })
     } catch (e) {
       // JSON parse hatası olursa rawText'i döndür
+      if (rawText.includes('[UNANSWERED]')) {
+        const logFile = path.join(__dirname, '../Support/unanswered.log');
+        const logEntry = `[${new Date().toISOString()}] [UNANSWERED] Question: ${message}\n`;
+        try {
+          fs.appendFileSync(logFile, logEntry);
+        } catch(logErr) {}
+      }
       return res.json({ data: { reply: rawText }, error: null })
     }
   } catch (err) {

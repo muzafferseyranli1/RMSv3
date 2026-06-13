@@ -11390,3 +11390,37 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Next Step`: WMS Faz 4 kapsamında lot/SKT ambalaj ve barkod master veri yönetim şemalarının (`WMS-04D`) hazırlanması.
 - `Handoff Contract`: `WMS-04B karantina yönetim ve WMS-04C lot izlenebilirlik web ekranları, gerekli DB view ve RPC migration'ları (048, 049) ile birlikte entegre edildi, build edilerek doğrulandı.`
+
+## Entry 227 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T17:12:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-04D - Ürün Barkod ve Paketleme Master Data Şeması`
+- `Intent`: `WMS barkod, paket birimi, ölçü, hacim ve ağırlık bilgisini DB-first, normalize ve raporlanabilir hale getirmek; geriye dönük uyumluluk sağlamak; barkod tarayıcı öncelik sırasını uygulamak.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `server/wms_migration.js`
+  - `src/components/pages/StockItems.jsx`
+  - `server/index.js`
+- `Files Changed`:
+  - `server/wms_migration.js`
+  - `schema-railway-master.sql`
+  - `server/index.js`
+  - `OperationSync.md`
+- `Files Created`:
+  - `migrations/050_wms_barcode_and_package_sync.sql`
+  - `scratch/test_wms_barcode_package_units.cjs`
+- `Commands Run`:
+  - `node server/wms_migration.js`
+  - `node scratch/test_wms_barcode_package_units.cjs`
+  - `git diff --check`
+- `Findings`:
+  - Veritabanı katmanında, `stock_items` üzerindeki `packaging_units` JSONB alanı güncellendiğinde veya yeni ürün eklendiğinde `stock_item_package_units` normalize tablosunu otomatik (hiyerarşik çarpanlar halinde) dolduracak `sync_stock_item_package_units` trigger fonksiyonu ve trigger'ı yazıldı.
+  - Aktif barkodların tekil olmasını sağlayan ancak silinmiş/pasif barkodların mükerrer kullanımına izin veren kısmi unique indeks `idx_product_barcodes_gtin ... WHERE (active = true)` oluşturuldu.
+  - `/api/wms/parse-barcode` endpoint'i ve barkod çözümleme mantığı, sırasıyla lokasyon, LPN, onaylı barkod, lot/SKT payload'u ve SKU fallback sırasını takip edecek şekilde refaktör edildi.
+  - `scratch/test_wms_barcode_package_units.cjs` smoke testi veritabanına trigger, indeks, hacim (generated `volume_m3`) ve parse parser mantık doğrulamaları gerçekleştirdi ve tüm testler başarılı oldu.
+- `Decisions`:
+  - Barkod ve paketleme master verileri normalize tablolara taşınarak kilitlendi. Barkod parser'ın tarama öncelik akışı uygulandı.
+- `Open Risks`: Yok.
+- `Next Step`: WMS Faz 4.5 kapsamında Ürün Kartı Güncelleme Ekranı (`WMS-04E`) ve Araç Tanımları master veri arayüzünün (`WMS-04F`) geliştirilmesi.
+- `Handoff Contract`: `WMS-04D barkod ve paketleme master data şeması, trigger'ı, unique indeksi ve güncellenen /api/wms/parse-barcode endpoint'i başarıyla uygulandı ve smoke test ile doğrulandı.`

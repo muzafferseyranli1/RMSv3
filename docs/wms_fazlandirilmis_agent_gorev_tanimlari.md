@@ -933,7 +933,7 @@ Test/doğrulama:
 - Migration idempotent olmalı.
 - `scratch/test_wms_barcode_package_units.js` veya denk API smoke testi.
 - `git diff --check`
-
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ### Görev WMS-04E - Stok Kartı Paket Ölçüleri ve Barkod Yönetimi UI
 
 Amaç: Stok malı düzenleme ekranında her paketleme birimi için barkod, en, boy, yükseklik ve ağırlık girilebilsin.

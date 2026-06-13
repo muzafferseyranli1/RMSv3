@@ -285,6 +285,10 @@ const STEPS = [
   {
     desc: 'wms lot traceability reports RPCs (WMS-04C)',
     sql: fs.readFileSync(path.join(__dirname, '../migrations/049_add_wms_traceability_rpcs.sql'), 'utf8')
+  },
+  {
+    desc: 'wms active barcode unique constraint and packaging unit sync trigger (WMS-04D)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/050_wms_barcode_and_package_sync.sql'), 'utf8')
   }
 ]
 
