@@ -110,6 +110,8 @@ const WmsLocations = lazy(() => import('@/components/pages/WmsLocations'))
 const WmsLpns = lazy(() => import('@/components/pages/WmsLpns'))
 const WmsStockParams = lazy(() => import('@/components/pages/WmsStockParams'))
 const WmsInternalTransfer = lazy(() => import('@/components/pages/WmsInternalTransfer'))
+const WmsQuality = lazy(() => import('@/components/pages/WmsQuality'))
+const WmsTraceability = lazy(() => import('@/components/pages/WmsTraceability'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -522,6 +524,8 @@ function AppShell() {
               <Route path="/wms-locations" element={<WarehouseBranchRoute title="Lokasyonlar"><WmsLocations /></WarehouseBranchRoute>} />
               <Route path="/wms-lpns" element={<WarehouseBranchRoute title="LPN / Paletler"><WmsLpns /></WarehouseBranchRoute>} />
               <Route path="/wms-stock-params" element={<WarehouseBranchRoute title="Stok Parametreleri"><WmsStockParams /></WarehouseBranchRoute>} />
+              <Route path="/wms-quality" element={<WarehouseBranchRoute title="Kalite & Karantina"><WmsQuality /></WarehouseBranchRoute>} />
+              <Route path="/wms-traceability" element={<WarehouseBranchRoute title="Lot İzlenebilirlik"><WmsTraceability /></WarehouseBranchRoute>} />
               <Route path="/depo-mal-kabul" element={<WarehouseBranchRoute title="Mal Kabul"><MalKabul /></WarehouseBranchRoute>} />
               <Route path="/depo-iclokasyon-tasima" element={<WarehouseBranchRoute title="Depo İçi Lokasyon Taşıma"><WmsInternalTransfer /></WarehouseBranchRoute>} />
 

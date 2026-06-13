@@ -1,47 +1,37 @@
-# Görev WMS-04A: Kalite Hold Şeması Uygulama Planı
+# Implementation Plan - Railway Deploy Hatası Çözümü (Postinstall Bypass)
 
-Bu plan `warehouse_quality_holds` tablosunun eklenmesini ve karantina stok hareketlerinin (quarantine inventory movements) bu tabloya otomatik olarak yansımasını sağlayacak veritabanı şemasını içerir.
+Bu plan, Railway üretim (web) ortamında `npm ci` komutu çalışırken gereksiz yere tetiklenen Electron bağımlılık kurulumunun (`electron-builder install-app-deps`) engellenmesini ve deploy sürecinin başarıyla tamamlanmasını hedefler.
+
+---
 
 ## User Review Required
 
-Lütfen aşağıdaki tablo tasarımını ve otomatik trigger mantığını inceleyip onaylayın.
+> [!IMPORTANT]
+> **Sorunun Nedeni:**
+> `package.json` dosyasındaki `"postinstall": "electron-builder install-app-deps"` komutu, `npm ci` (veya `npm install`) sonrasında otomatik çalışmaktadır. 
+> Railway build sunucusu (Linux/Nixpacks) Electron masaüstü bağımlılıklarına ihtiyaç duymadığı halde bu komutu çalıştırmakta ve harici paketleri indirmeye çalışırken ağ hataları (got/http-timer timeout) alarak derleme sürecini (exit code 1 ile) durdurmaktadır.
+> 
+> **Çözüm Yaklaşımı:**
+> `"postinstall"` tetikleyicisini doğrudan çalıştırmak yerine, bir ara Node.js scripti (`scripts/postinstall.cjs`) üzerinden çalıştıracağız. Bu script, ortamda `RAILWAY_STATIC_URL` veya `NIXPACKS` değişkenleri (veya `NODE_ENV === 'production'`) varsa Electron kurulum adımını sessizce atlayacak; lokal bilgisayarda ise eskisi gibi normal şekilde kurmaya devam edecektir.
+
+---
 
 ## Proposed Changes
 
-### Database Schema
+### 1. Postinstall Koşullu Scripti
 
-#### [NEW] `migrations/047_add_warehouse_quality_holds.sql`
-Bu migration dosyasında `warehouse_quality_holds` tablosunu ve karantina hareketlerinden otomatik kayıt oluşturan DB Trigger'ını tanımlayacağız.
+#### [NEW] [postinstall.cjs](file:///c:/RMSv3/scripts/postinstall.cjs)
+- Railway veya production ortamı algılandığında postinstall adımını pas geçen, lokalde ise `electron-builder`'ı tetikleyen yeni bir script dosyası oluşturulacaktır.
 
-1. **Tablo Tanımı (`warehouse_quality_holds`)**:
-   - `id`: UUID PRIMARY KEY
-   - `branch_id`: UUID NOT NULL REFERENCES company_nodes
-   - `stock_item_id`: UUID NOT NULL REFERENCES stock_items
-   - `movement_id`: UUID REFERENCES inventory_movements (kaynak hareket referansı)
-   - `location_id`: UUID
-   - `lpn_id`: UUID
-   - `lot_number`: TEXT
-   - `expiration_date`: DATE
-   - `hold_qty`: NUMERIC(18,4) NOT NULL
-   - `status`: TEXT DEFAULT 'hold' (hold, released, rejected, scrapped)
-   - `reason`: TEXT
-   - `source_task_id`: UUID REFERENCES warehouse_tasks
-   - `source_event_id`: UUID REFERENCES warehouse_task_events
-   - `evidence_photo_url`: TEXT
-   - `released_by`: TEXT
-   - `released_at`: TIMESTAMPTZ
-   - `meta`: JSONB DEFAULT '{}'
+### 2. Bağımlılık Ayarı
 
-2. **Trigger Tanımı**:
-   - `inventory_movements` tablosu üzerinde `AFTER INSERT` çalışan bir trigger eklenecektir.
-   - Eğer yeni hareketin `meta->>'availability_status'` değeri `'quarantine'` ise (veya `direction = 'in'` gibi mantıklı bir filtre), `warehouse_quality_holds` tablosuna otomatik olarak bir kayıt (`status = 'hold'`) atılacaktır.
-   - Eğer bu hareket bir `warehouse_tasks` tarafından tetiklenmişse (`source_doc_type = 'warehouse_tasks'`), trigger ilgili task'ı bulacak ve en son event içindeki `payload->>'evidence_photo_url'` bilgisini ve `source_event_id` bilgisini çekerek `warehouse_quality_holds` kaydına ekleyecektir. Böylece Android'den gelen exception fotoğrafları otomatik olarak kalite onay ekranında görülebilecektir.
+#### [MODIFY] [package.json](file:///c:/RMSv3/package.json)
+- `"postinstall"` scripti `"electron-builder install-app-deps"` yerine `"node scripts/postinstall.cjs"` olarak güncellenecektir.
 
-#### [MODIFY] `schema-railway-master.sql`
-- Yeni eklenen tabloyu ve trigger'ı Railway için ana schema dosyasına dahil edeceğiz.
+---
 
 ## Verification Plan
 
-### Manual Verification
-- Bir `inventory_movements` kaydı (quarantine statüsünde) manuel olarak atılarak `warehouse_quality_holds` tablosuna başarılı şekilde kaydın düşüp düşmediği incelenecek.
-- Fotoğraf ve event referanslarının doğru bir şekilde doldurulduğu kontrol edilecek.
+### Automated Tests
+- Lokal terminalde `npm run build` ve `npm install` komutları çalıştırılarak lokalde Electron bağımlılıklarının kurulabildiği ve Vite build sürecinin sorunsuz çalıştığı test edilecektir.
+- Railway'e pushlanarak build logları kontrol edilecektir.

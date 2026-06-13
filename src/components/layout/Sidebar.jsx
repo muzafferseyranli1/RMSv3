@@ -225,6 +225,8 @@ const NAV = [
       { label: 'GÃ¶revler', path: '/depo-tasks', icon: 'fa-list-check', color: '#38bdf8', bg: 'rgba(56,189,248,.18)' },
       { label: 'WMS Görevleri', path: '/depo-wms-tasks', icon: 'fa-tasks', color: '#818cf8', bg: 'rgba(129,140,248,.18)' },
       { label: 'WMS Mobil Panel', path: '/wms-mobile', icon: 'fa-mobile-screen-button', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
+      { label: 'Karantina Yönetimi', path: '/wms-quality', icon: 'fa-shield-virus', color: '#dc2626', bg: 'rgba(220,38,38,.18)' },
+      { label: 'Lot İzlenebilirlik Raporu', path: '/wms-traceability', icon: 'fa-barcode', color: '#ec4899', bg: 'rgba(236,72,153,.18)' },
       {
         label: 'Depo Ayarları', icon: 'fa-gear', color: '#f59e0b', bg: 'rgba(245,158,11,.18)',
         group: 'anadepo-ayarlar',

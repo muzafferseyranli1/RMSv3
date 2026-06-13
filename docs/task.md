@@ -1,7 +1,6 @@
-- [x] Create migration file `migrations/047_add_warehouse_quality_holds.sql`
-- [x] Add the migration to `server/wms_migration.js`
-- [x] Update `schema-railway-master.sql`
-- [x] Run migration script and verify database updates
-- [x] Verify logic changes (e.g. check triggers work)
-- [x] Write walkthrough.md
-- [x] Update OperationSync.md
+# Task List - Railway Deploy Hatası Çözümü (Postinstall Bypass)
+
+- `[ ]` Koşullu postinstall script'inin (`scripts/postinstall.cjs`) oluşturulması
+- `[ ]` `package.json` dosyasındaki `"postinstall"` adımının güncellenmesi
+- `[ ]` Lokal ortamda `npm install` ve `npm run build` ile entegrasyonun doğrulanması
+- `[ ]` Değişikliklerin kaydedilerek Git status kontrolünün yapılması ve deploy doğrulaması

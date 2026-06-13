@@ -277,6 +277,14 @@ const STEPS = [
   {
     desc: 'wms quality hold schema and trigger (WMS-04A)',
     sql: fs.readFileSync(path.join(__dirname, '../migrations/047_add_warehouse_quality_holds.sql'), 'utf8')
+  },
+  {
+    desc: 'wms quality view for frontend (WMS-04B)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/048_add_wms_quality_view.sql'), 'utf8')
+  },
+  {
+    desc: 'wms lot traceability reports RPCs (WMS-04C)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/049_add_wms_traceability_rpcs.sql'), 'utf8')
   }
 ]
 

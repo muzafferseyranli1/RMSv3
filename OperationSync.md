@@ -11352,3 +11352,41 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Handoff Contract: Dokümantasyonlar şablona uyumlandı ve asistanın unanswered kaydetme eksiği giderildi. UI olmadığından Kalite Hold dokümanı sonraya bırakıldı.
 
 [SUPPORT_SYNC_MARKER] - Support dokümantasyon senkronizasyonu başarıyla tamamlandı, unanswered.log sorunu çözüldü.
+
+## Entry 226 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T16:55:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-04B - Karantina Yönetim Ekranı & WMS-04C - Lot/SKT Traceability Raporu`
+- `Intent`: `Kalite hold kayıtlarını ve aksiyonlarını (release, reject, scrap) yöneten web arayüzünü (WmsQuality) ve Lot/SKT izlenebilirlik zaman çizgisi, şube dağılımı ve recall CSV raporu üreten arayüzü (WmsTraceability) entegre etmek.`
+- `Files Read`:
+  - `src/components/layout/Sidebar.jsx`
+  - `src/App.jsx`
+  - `src/components/pages/WmsLocations.jsx`
+  - `src/components/pages/Personnel.jsx`
+  - `src/lib/personnelConfig.js`
+- `Files Changed`:
+  - `server/wms_migration.js`
+  - `schema-railway-master.sql`
+  - `src/App.jsx`
+  - `src/components/layout/Sidebar.jsx`
+  - `OperationSync.md`
+- `Files Created`:
+  - `migrations/048_add_wms_quality_view.sql`
+  - `migrations/049_add_wms_traceability_rpcs.sql`
+  - `src/components/pages/WmsQuality.jsx`
+  - `src/components/pages/WmsTraceability.jsx`
+- `Commands Run`:
+  - `node server/wms_migration.js`
+  - `npm run build`
+- `Findings`:
+  - Frontend query gateway'in ilişkisel nested select (PostgREST style) joins desteklemediği `warehouse_locations(...)` SQL hatasıyla (`Error: column "zone_code" does not exist`) kanıtlandı.
+  - İlişkisel sorgu sorunlarını gidermek için `v_warehouse_quality_holds` SQL görünümü (`048`) ve `get_lot_movements_report` / `get_lot_android_events` veritabanı RPC'leri (`049`) yazıldı ve uygulandı.
+  - Karantina Yönetim ekranı (`WmsQuality.jsx`) tamamlandı. Aksiyonlar için gerekçe zorunluluğu, thumbnail kanıt fotoğrafı ve modal gösterim özellikleri entegre edildi.
+  - Lot İzlenebilirlik raporu (`WmsTraceability.jsx`) tamamlandı. Recall summary şube tablosu, CSV dışa aktarımı, stok defteri (ledger) ve personellerin ad-soyad bilgilerini (settings mapper) çözen Android okuma zaman çizelgesi (vertical timeline) yapıldı.
+  - `npm run build` komutu başarıyla çalıştırılarak arayüz derlemesi doğrulandı.
+- `Decisions`:
+  - WMS Faz 4 kalite/karantina yönetim ve lot izlenebilirlik web ekranları (`WMS-04B` ve `WMS-04C`) tamamlanarak kilitlenmiştir.
+- `Open Risks`: Yok.
+- `Next Step`: WMS Faz 4 kapsamında lot/SKT ambalaj ve barkod master veri yönetim şemalarının (`WMS-04D`) hazırlanması.
+- `Handoff Contract`: `WMS-04B karantina yönetim ve WMS-04C lot izlenebilirlik web ekranları, gerekli DB view ve RPC migration'ları (048, 049) ile birlikte entegre edildi, build edilerek doğrulandı.`
