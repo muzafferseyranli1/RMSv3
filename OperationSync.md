@@ -11648,3 +11648,10 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Handoff Contract`: `WMS-05B Pick-Face Replenishment fazı doğrulaması tamamlandı. Tüm testler yeşildir, Vite ve Android el terminali derlemeleri sıfır hata ile tamamlanmaktadır.`
 
+
+## 2026-06-14 - Codex - WMS E2E Test Harness HTML
+- `wms-e2e-test-harness.html` eklendi.
+- Sayfa proje route/build zincirine baglanmadan canli Railway API veya local API secimiyle WMS uctan uca test akisini yonetir.
+- Veri yukleme, QR/barkod etiketleri, kontrollu WMS-E2E test siparisi, tedarikci panel bypass kontrolu, shipment RPC, kapasite kontrolu, sevk onayi ve JSON rapor indirme eklendi.
+- Demo stok mali olusturma butonu otomatik degil; kullanici onayi ile WMS-E2E etiketli kayit acacak sekilde tasarlandi.
+- Dogrulama: inline script `new Function` syntax kontrolu basarili, `git diff --check -- wms-e2e-test-harness.html` basarili.

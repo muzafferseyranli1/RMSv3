@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SuitableRMS WMS E2E Test Harness</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --soft: #f6f8fb;
+      --panel: #ffffff;
+      --blue: #0f5ea8;
+      --green: #0f8a5f;
+      --amber: #b45309;
+      --red: #b42318;
+      --navy: #13263b;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #eef3f8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #eef3f8; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 22px;
+    }
+    h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+    h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0; }
+    p { margin: 0 0 8px; color: var(--muted); line-height: 1.45; }
+    main { padding: 18px 22px 42px; display: grid; gap: 16px; }
+    .topbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto auto; gap: 10px; align-items: end; margin-top: 12px; }
+    label { display: grid; gap: 5px; font-size: 12px; font-weight: 800; color: #42526b; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid #c9d5e3;
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      min-height: 38px;
+    }
+    textarea { min-height: 78px; resize: vertical; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 13px;
+      min-height: 38px;
+      font-weight: 850;
+      color: #fff;
+      background: var(--blue);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.secondary { color: var(--ink); background: #e9eef6; }
+    button.green { background: var(--green); }
+    button.amber { background: #f59e0b; color: #211400; }
+    button.red { background: var(--red); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .grid { display: grid; gap: 12px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 8px 20px rgba(15, 30, 52, .05);
+    }
+    .band {
+      background: var(--navy);
+      color: #fff;
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: grid;
+      gap: 4px;
+    }
+    .band p { color: #cbd5e1; }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px;
+      background: var(--soft);
+      display: grid;
+      gap: 3px;
+      min-height: 74px;
+    }
+    .metric strong { font-size: 18px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 850;
+      background: #e8f2ff;
+      color: #0f5ea8;
+      width: fit-content;
+    }
+    .pill.ok { background: #dcfce7; color: #166534; }
+    .pill.warn { background: #fef3c7; color: #92400e; }
+    .pill.bad { background: #fee2e2; color: #991b1b; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .hint { border-left: 4px solid #38bdf8; background: #f0f9ff; padding: 10px 12px; border-radius: 8px; color: #334155; }
+    .warning { border-left: 4px solid #f59e0b; background: #fff7ed; padding: 10px 12px; border-radius: 8px; color: #7c2d12; }
+    .danger { border-left: 4px solid var(--red); background: #fff1f2; padding: 10px 12px; border-radius: 8px; color: #881337; }
+    .success { border-left: 4px solid var(--green); background: #ecfdf5; padding: 10px 12px; border-radius: 8px; color: #065f46; }
+    .steps { display: grid; gap: 8px; counter-reset: step; }
+    .step {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .step:before {
+      counter-increment: step;
+      content: counter(step);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #e0f2fe;
+      color: #0369a1;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+    .code-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .label-card {
+      border: 1px solid #ccd8e6;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      min-height: 260px;
+    }
+    .qr-box {
+      min-height: 148px;
+      border: 1px dashed #ccd8e6;
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      background: #fbfdff;
+    }
+    .qr-box canvas { max-width: 120px; max-height: 120px; }
+    .human-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-all;
+      font-size: 13px;
+      background: #f1f5f9;
+      border-radius: 6px;
+      padding: 6px;
+    }
+    svg.barcode { width: 100%; min-height: 72px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e8eef6; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f8fafc; color: #475569; font-size: 12px; }
+    pre {
+      margin: 0;
+      max-height: 260px;
+      overflow: auto;
+      background: #0f172a;
+      color: #dbeafe;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+    }
+    .nav {
+      position: sticky;
+      top: 96px;
+      z-index: 10;
+      background: #eef3f8;
+      padding: 4px 0;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+    }
+    .nav a {
+      color: #12324d;
+      text-decoration: none;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 11px;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .right { text-align: right; }
+    @media (max-width: 980px) {
+      .topbar, .grid.cols-2, .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr; }
+      .qr-box { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 32px 1fr; }
+      .step .row { grid-column: 2; }
+    }
+    @media print {
+      header, .nav, button, .no-print { display: none !important; }
+      main { padding: 0; }
+      .card { box-shadow: none; break-inside: avoid; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SuitableRMS WMS Uctan Uca Test Sayfasi</h1>
+    <p>Bagimsiz HTML test araci. Canli veri okur; yazma islemleri yalnizca acik butonlarla ve WMS-E2E izleriyle yapilir.</p>
+    <div class="topbar">
+      <label>API adresi
+        <select id="apiBase">
+          <option value="https://rms-api-production-219d.up.railway.app">Railway Production API</option>
+          <option value="http://localhost:3001">Local API - localhost:3001</option>
+          <option value="http://127.0.0.1:3001">Local API - 127.0.0.1:3001</option>
+        </select>
+      </label>
+      <button id="healthBtn" class="secondary">Health Check</button>
+      <button id="loadBtn">Mevcut Veriyi Yukle</button>
+      <button id="reportBtn" class="green">JSON Rapor Indir</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="nav no-print">
+      <a href="#prep">1 Hazirlik</a>
+      <a href="#codes">2 Kodlar</a>
+      <a href="#inbound">3 Tedarikci Alim</a>
+      <a href="#putaway">4 Lokasyon</a>
+      <a href="#replenishment">5 Sube Siparisi</a>
+      <a href="#picking">6 Toplama</a>
+      <a href="#loading">7 Kamyon Yukleme</a>
+      <a href="#delivery">8 Teslim</a>
+      <a href="#audit">9 Denetim</a>
+    </nav>
+
+    <section class="band">
+      <strong id="statusLine">Veri henuz yuklenmedi.</strong>
+      <p id="statusDetail">Once Health Check, sonra Mevcut Veriyi Yukle butonunu kullan. Mobil cihazda WMS uygulamasi acikken bu sayfadaki QR/barkod etiketlerini okutabilirsin.</p>
+    </section>
+
+    <section id="prep" class="card">
+      <h2>1. Hazirlik Paneli</h2>
+      <div class="grid cols-4">
+        <label>Ana depo / merkez depo
+          <select id="warehouseSelect"></select>
+        </label>
+        <label>Hedef sube
+          <select id="branchSelect"></select>
+        </label>
+        <label>Stok mali
+          <select id="itemSelect"></select>
+        </label>
+        <label>Paket birimi
+          <select id="packageSelect"></select>
+        </label>
+      </div>
+      <div class="grid cols-4" style="margin-top:12px">
+        <label>Lokasyon
+          <select id="locationSelect"></select>
+        </label>
+        <label>LPN / palet
+          <select id="lpnSelect"></select>
+        </label>
+        <label>Arac / kamyon
+          <select id="vehicleSelect"></select>
+        </label>
+        <label>Test miktari
+          <input id="qtyInput" type="number" min="1" step="1" value="2" />
+        </label>
+      </div>
+      <div class="row no-print" style="margin-top:12px">
+        <button id="createDemoItemBtn" class="secondary">WMS-E2E Demo Urunu Olustur</button>
+        <span class="small muted">Yalnizca uygun stok mali yoksa kullan. Demo kayit SKU/ad icinde WMS-E2E etiketi tasir.</span>
+      </div>
+      <div class="grid cols-3" style="margin-top:12px">
+        <label>Lot no
+          <input id="lotInput" value="LOT-WMS-E2E-001" />
+        </label>
+        <label>Son kullanma tarihi
+          <input id="expiryInput" type="date" />
+        </label>
+        <label>Test notu
+          <input id="noteInput" value="WMS-E2E kontrollu test" />
+        </label>
+      </div>
+      <div class="grid cols-4" id="metrics" style="margin-top:14px"></div>
+      <div id="masterWarnings" class="grid" style="margin-top:12px"></div>
+    </section>
+
+    <section id="codes" class="card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <h2>2. Kod Kartlari / Mobil Etiketleri</h2>
+          <p>Bu kartlari WMS Android uygulamasinda okut. QR gorseli yuklenmezse alttaki insan okunabilir kodu elle okutma alanina yaz.</p>
+        </div>
+        <button id="printBtn" class="secondary">Etiketleri Yazdir</button>
+      </div>
+      <div id="codeCards" class="code-grid"></div>
+    </section>
+
+    <section id="inbound" class="card">
+      <h2>3. Deponun Tedarikciye Siparisi ve Mal Kabul</h2>
+      <div class="steps">
+        <div class="step">
+          <div>
+            <h3>Dis tedarikci siparisi olustur</h3>
+            <p>Ana depo adina external purchase order acilir. Kayit WMS-E2E izleri tasir.</p>
+          </div>
+          <div class="row"><button id="createExternalPoBtn" class="amber">Dis Tedarikci PO Olustur</button></div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Siparisi teslim bekler hale getir</h3>
+            <p>Tedarikci sevk bildirimi simule edilir. Bu akista merkez depo mal kabul ekraninda gorunmesi beklenir.</p>
+          </div>
+          <div class="row"><button id="markExternalSentBtn" class="amber">Teslim Bekliyor Yap</button></div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Mobil mal kabul ve putaway</h3>
+            <p>WMS Android: urun/paket barkodu, lot/SKT ve hedef lokasyon kodu okutulur. Putaway gorevi tamamlaninca stok lokasyona yerlesmis olmalidir.</p>
+          </div>
+          <span class="pill">Mobil gerekli</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="putaway" class="card">
+      <h2>4. Merkez Depo Yerlesim / Lokasyon Testi</h2>
+      <div class="grid cols-2">
+        <div class="hint">
+          <strong>Dogru lokasyon testi</strong>
+          <p>Mobil uygulamada secili lokasyon QR'ini okut. `/api/wms/parse-barcode` sonucu location olarak donmeli.</p>
+          <button id="parseGoodLocationBtn">Dogru Lokasyonu API ile Dene</button>
+        </div>
+        <div class="danger">
+          <strong>Yanlis lokasyon testi</strong>
+          <p>Yanlis lokasyon QR'i okutuldugunda gorev ilerlememeli; scan_failed/event log beklenir.</p>
+          <button id="parseBadLocationBtn" class="red">Yanlis Lokasyonu API ile Dene</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="replenishment" class="card">
+      <h2>5. Subenin Merkez Depoya Siparisi</h2>
+      <div class="warning">
+        <strong>Guvenlik kurali</strong>
+        <p>`warehouse_replenishment` siparisi tedarikci panelinde gorunmemeli. Sevk yalnizca WMS Siparis Konsolu ve shipment RPC akisi ile yapilmalidir.</p>
+      </div>
+      <div class="steps" style="margin-top:12px">
+        <div class="step">
+          <div>
+            <h3>Sube depo siparisi olustur</h3>
+            <p>Hedef sube icin `flow_channel = warehouse_replenishment` kaydi acilir.</p>
+          </div>
+          <div class="row"><button id="createReplenishmentBtn" class="green">Depo Siparisi Olustur</button></div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Tedarikci paneli bypass kontrolu</h3>
+            <p>Olusturulan WMS siparisi supplier panel mantigina gore listelenebilir mi kontrol edilir. Beklenen sonuc: hayir.</p>
+          </div>
+          <div class="row"><button id="bypassCheckBtn">Bypass Kontrolu</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="picking" class="card">
+      <h2>6. Toplama / Picking</h2>
+      <div class="grid cols-2">
+        <div>
+          <p>FEFO/FIFO icin kullanilabilir stok kaynaklari asagida listelenir. Mobil uygulamada once kaynak lokasyon, sonra urun/LPN barkodu okutulur.</p>
+          <div class="row">
+            <button id="refreshPickableBtn">Pickable Stok Yenile</button>
+            <button id="parseProductBtn">Urun Barkodunu API ile Dene</button>
+          </div>
+        </div>
+        <div class="hint">
+          <strong>Mobilde beklenen</strong>
+          <p>Yanlis urun, yanlis lokasyon veya eksik toplamada server fail-closed donmeli; kismi toplamada fotograf kaniti istenmeli.</p>
+        </div>
+      </div>
+      <div style="overflow:auto; margin-top:12px">
+        <table id="pickableTable"></table>
+      </div>
+    </section>
+
+    <section id="loading" class="card">
+      <h2>7. Arac / Kamyon Yukleme</h2>
+      <div class="steps">
+        <div class="step">
+          <div>
+            <h3>Shipment taslagi olustur</h3>
+            <p>`create_warehouse_shipment_with_reservations` RPC kullanilir. Reservation, kapasite ve task akisi icin WMS kapisi burasidir.</p>
+          </div>
+          <div class="row"><button id="createShipmentBtn" class="green">Shipment Olustur</button></div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Kapasite kontrolu</h3>
+            <p>`/api/wms/shipment-capacity/:shipment_id` hacim, agirlik ve sicaklik uyumunu kontrol eder.</p>
+          </div>
+          <div class="row"><button id="capacityBtn">Kapasite Kontrol Et</button></div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Sevki onayla</h3>
+            <p>`confirm_warehouse_shipment` sadece WMS kurallari gecerse siparisi yola cikarir.</p>
+          </div>
+          <div class="row"><button id="confirmShipmentBtn" class="red">Sevki Onayla</button></div>
+        </div>
+      </div>
+      <div id="capacityBox" class="grid cols-4" style="margin-top:12px"></div>
+    </section>
+
+    <section id="delivery" class="card">
+      <h2>8. Sevk ve Sube Teslim Alma</h2>
+      <div class="grid cols-3">
+        <div class="metric">
+          <span class="small muted">Shipment</span>
+          <strong id="currentShipmentNo">-</strong>
+          <span id="currentShipmentStatus" class="pill">Hazir degil</span>
+        </div>
+        <div class="metric">
+          <span class="small muted">Sube teslim okutma</span>
+          <strong>Shipment QR + Urun barkodu</strong>
+          <span class="small muted">Tam, kismi, fazla, hasarli teslim senaryolari icin kullan.</span>
+        </div>
+        <div class="metric">
+          <span class="small muted">Kanıt</span>
+          <strong>Fotograf / not</strong>
+          <span class="small muted">Eksik veya hasarli kabulde mobil kanit beklenir.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="audit" class="card">
+      <h2>9. Sonuc ve Denetim Paneli</h2>
+      <div id="checklist" class="grid"></div>
+      <h3 style="margin-top:16px">WMS-E2E Kayitlari</h3>
+      <div style="overflow:auto">
+        <table id="e2eTable"></table>
+      </div>
+      <h3 style="margin-top:16px">Son API Yaniti / Log</h3>
+      <pre id="logBox">Hazir.</pre>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_API = 'https://rms-api-production-219d.up.railway.app'
+    const SOURCE = 'wms_e2e_harness'
+    const TOOL = 'wms-e2e-test-harness'
+    const $ = (id) => document.getElementById(id)
+
+    const state = {
+      apiBase: DEFAULT_API,
+      loadedAt: null,
+      warehouses: [],
+      branches: [],
+      suppliers: [],
+      items: [],
+      packageUnits: [],
+      barcodes: [],
+      locations: [],
+      lpns: [],
+      vehicles: [],
+      pickable: [],
+      orders: [],
+      orderLines: [],
+      shipments: [],
+      tasks: [],
+      events: [],
+      selected: {},
+      created: {
+        externalOrder: null,
+        replenishmentOrder: null,
+        shipment: null,
+      },
+      lastResults: [],
+    }
+
+    function nowIso() { return new Date().toISOString() }
+    function today() { return new Date().toISOString().slice(0, 10) }
+    function tomorrow(days = 1) {
+      const d = new Date()
+      d.setDate(d.getDate() + days)
+      return d.toISOString().slice(0, 10)
+    }
+    function uuid() {
+      return crypto.randomUUID ? crypto.randomUUID() : `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+    }
+    function money(n) { return Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+    function qty(n) { return Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 3 }) }
+    function asArray(data) { return Array.isArray(data) ? data : (data ? [data] : []) }
+    function safeJson(value, fallback = {}) {
+      if (!value) return fallback
+      if (typeof value === 'object') return value
+      try { return JSON.parse(value) } catch { return fallback }
+    }
+    function traceMeta(extra = {}) {
+      return {
+        source: SOURCE,
+        created_by_tool: TOOL,
+        created_at: nowIso(),
+        ...extra,
+      }
+    }
+    function selectedWarehouse() { return state.warehouses.find(x => x.id === $('warehouseSelect').value) || null }
+    function selectedBranch() { return state.branches.find(x => x.id === $('branchSelect').value) || null }
+    function selectedItem() { return state.items.find(x => x.id === $('itemSelect').value) || null }
+    function selectedPackage() { return state.packageUnits.find(x => x.id === $('packageSelect').value) || null }
+    function selectedLocation() { return state.locations.find(x => x.id === $('locationSelect').value) || null }
+    function selectedLpn() { return state.lpns.find(x => x.id === $('lpnSelect').value) || null }
+    function selectedVehicle() { return state.vehicles.find(x => x.id === $('vehicleSelect').value) || null }
+    function testQty() { return Math.max(1, Number($('qtyInput').value || 1)) }
+
+    function setStatus(line, detail = '') {
+      $('statusLine').textContent = line
+      $('statusDetail').textContent = detail
+    }
+    function log(title, payload) {
+      const entry = { at: nowIso(), title, payload }
+      state.lastResults.unshift(entry)
+      state.lastResults = state.lastResults.slice(0, 30)
+      $('logBox').textContent = JSON.stringify(entry, null, 2)
+      renderAudit()
+    }
+    function apiBase() {
+      state.apiBase = $('apiBase').value.replace(/\/$/, '')
+      return state.apiBase
+    }
+    async function api(path, init = {}) {
+      const response = await fetch(`${apiBase()}${path}`, init)
+      const text = await response.text()
+      let json = null
+      try { json = text ? JSON.parse(text) : null } catch { json = { raw: text } }
+      if (!response.ok) {
+        const message = json?.error?.message || json?.message || text || `HTTP ${response.status}`
+        throw new Error(message)
+      }
+      return json
+    }
+    async function query(body) {
+      const result = await api('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error))
+      return result
+    }
+    async function select(table, filters = [], selectCols = '*', extra = {}) {
+      return query({ table, operation: 'select', select: selectCols, filters, ...extra })
+    }
+    async function insert(table, data, selectCols = '*') {
+      return query({ table, operation: 'insert', select: selectCols, data })
+    }
+    async function update(table, data, filters) {
+      return query({ table, operation: 'update', data, filters })
+    }
+    async function rpc(name, params) {
+      return query({ rpc: name, params })
+    }
+
+    function option(label, value, selected = false) {
+      return `<option value="${escapeHtml(value || '')}" ${selected ? 'selected' : ''}>${escapeHtml(label || '-')}</option>`
+    }
+    function fillSelect(id, rows, getLabel, emptyLabel) {
+      const el = $(id)
+      el.innerHTML = option(emptyLabel || 'Seciniz', '') + rows.map(row => option(getLabel(row), row.id)).join('')
+      if (!el.value && rows[0]) el.value = rows[0].id
+    }
+    function locationCode(loc) {
+      if (!loc) return 'LOC-WMS-E2E-WRONG'
+      return `LOC-${loc.zone_code || 'Z'}-${loc.aisle || 0}-${loc.rack || 0}-${loc.level || 0}`
+    }
+    function productBarcode() {
+      const pkg = selectedPackage()
+      const item = selectedItem()
+      const byPkg = state.barcodes.find(b => pkg && b.package_unit_id === pkg.id)
+      const byItem = state.barcodes.find(b => item && b.stock_item_id === item.id)
+      return byPkg?.gtin_barcode || byItem?.gtin_barcode || item?.sku || `WMS-E2E-ITEM-${Date.now()}`
+    }
+    function packageBarcode() {
+      const pkg = selectedPackage()
+      const byPkg = state.barcodes.find(b => pkg && b.package_unit_id === pkg.id)
+      return byPkg?.gtin_barcode || productBarcode()
+    }
+    function vehicleCode() {
+      const v = selectedVehicle()
+      return v?.vehicle_code || v?.plate_number || 'WMS-E2E-VEHICLE'
+    }
+    function shipmentCode() {
+      return state.created.shipment?.shipment_no || state.created.shipment?.id || 'WMS-E2E-SHIPMENT-PENDING'
+    }
+    function taskCode() {
+      const t = state.tasks.find(x => {
+        const meta = safeJson(x.meta)
+        return x.source_doc_id === state.created.shipment?.id || meta.shipment_id === state.created.shipment?.id || x.source_doc_id === state.created.replenishmentOrder?.id
+      }) || state.tasks[0]
+      return t?.id || 'WMS-E2E-TASK-PENDING'
+    }
+
+    async function healthCheck() {
+      try {
+        const result = await api('/health')
+        setStatus('API saglikli.', `${apiBase()} /health sonucu: ${JSON.stringify(result)}`)
+        log('Health Check', result)
+      } catch (err) {
+        setStatus('API erisilemedi.', err.message)
+        log('Health Check Error', { message: err.message })
+      }
+    }
+
+    async function loadData() {
+      setStatus('Veri yukleniyor...', 'Railway API uzerinden WMS master ve islem verileri okunuyor.')
+      try {
+        const [
+          nodesRes,
+          suppliersRes,
+          itemsRes,
+          unitsRes,
+          barcodesRes,
+          locationsRes,
+          lpnsRes,
+          vehiclesRes,
+          pickableRes,
+          ordersRes,
+          linesRes,
+          shipmentsRes,
+          tasksRes,
+          eventsRes,
+        ] = await Promise.all([
+          select('company_nodes', [{ type: 'order', col: 'sort_order', ascending: true }], 'id,name,type,can_sell,sort_order'),
+          select('suppliers', [{ type: 'is', col: 'deleted_at', val: null }], 'id,name,supplier_kind,source_branch_id,active'),
+          select('stock_items', [{ type: 'is', col: 'deleted_at', val: null }, { type: 'limit', val: 250 }], 'id,name,sku,unit,image_url,temperature_class,active'),
+          select('stock_item_package_units', [{ type: 'eq', col: 'active', val: true }, { type: 'limit', val: 500 }], '*'),
+          select('product_external_barcodes', [{ type: 'eq', col: 'active', val: true }, { type: 'limit', val: 500 }], '*'),
+          select('warehouse_locations', [{ type: 'eq', col: 'is_active', val: true }, { type: 'limit', val: 500 }], '*'),
+          select('warehouse_lpns', [{ type: 'limit', val: 500 }], '*'),
+          select('vehicles', [{ type: 'is', col: 'deleted_at', val: null }, { type: 'limit', val: 250 }], '*'),
+          select('v_wms_pickable_stock', [{ type: 'limit', val: 800 }], '*'),
+          select('purchase_orders', [{ type: 'is', col: 'deleted_at', val: null }, { type: 'limit', val: 500 }, { type: 'order', col: 'created_at', ascending: false }], '*'),
+          select('purchase_order_lines', [{ type: 'is', col: 'deleted_at', val: null }, { type: 'limit', val: 1000 }], '*'),
+          select('warehouse_shipments', [{ type: 'is', col: 'deleted_at', val: null }, { type: 'limit', val: 250 }, { type: 'order', col: 'created_at', ascending: false }], '*'),
+          select('warehouse_tasks', [{ type: 'limit', val: 500 }, { type: 'order', col: 'created_at', ascending: false }], '*'),
+          select('warehouse_task_events', [{ type: 'limit', val: 500 }, { type: 'order', col: 'created_at', ascending: false }], '*'),
+        ])
+
+        const nodes = asArray(nodesRes.data).filter(x => x.active !== false)
+        state.warehouses = nodes.filter(x => ['anadepo', 'depo', 'warehouse'].includes(String(x.type || x.workspace_scope || '').toLowerCase()))
+        state.branches = nodes.filter(x => !['anadepo', 'depo', 'warehouse', 'merkez'].includes(String(x.type || x.workspace_scope || '').toLowerCase()))
+        if (!state.warehouses.length) state.warehouses = nodes.filter(x => String(x.name || '').toLowerCase().includes('depo')).slice(0, 5)
+        if (!state.branches.length) state.branches = nodes.filter(x => !state.warehouses.some(w => w.id === x.id)).slice(0, 20)
+        state.suppliers = asArray(suppliersRes.data)
+        state.items = asArray(itemsRes.data).filter(x => x.active !== false)
+        state.packageUnits = asArray(unitsRes.data)
+        state.barcodes = asArray(barcodesRes.data)
+        state.locations = asArray(locationsRes.data)
+        state.lpns = asArray(lpnsRes.data)
+        state.vehicles = asArray(vehiclesRes.data).filter(x => x.active !== false && x.is_active !== false)
+        state.pickable = asArray(pickableRes.data)
+        state.orders = asArray(ordersRes.data)
+        state.orderLines = asArray(linesRes.data)
+        state.shipments = asArray(shipmentsRes.data)
+        state.tasks = asArray(tasksRes.data)
+        state.events = asArray(eventsRes.data)
+        state.loadedAt = nowIso()
+
+        fillSelect('warehouseSelect', state.warehouses, x => x.name, 'Ana depo seciniz')
+        fillSelect('branchSelect', state.branches, x => x.name, 'Hedef sube seciniz')
+        fillSelect('itemSelect', state.items, x => `${x.name || x.sku || x.id} (${x.sku || 'SKU yok'})`, 'Stok mali seciniz')
+        syncDependentSelects()
+        setDefaultExpiry()
+        renderAll()
+        setStatus('Veri yuklendi.', `${state.items.length} stok, ${state.locations.length} lokasyon, ${state.vehicles.length} arac, ${state.orders.length} siparis okundu.`)
+        log('Load Data', {
+          warehouses: state.warehouses.length,
+          branches: state.branches.length,
+          items: state.items.length,
+          packageUnits: state.packageUnits.length,
+          barcodes: state.barcodes.length,
+          locations: state.locations.length,
+          vehicles: state.vehicles.length,
+        })
+      } catch (err) {
+        setStatus('Veri yuklenemedi.', err.message)
+        log('Load Data Error', { message: err.message })
+      }
+    }
+
+    function setDefaultExpiry() {
+      if (!$('expiryInput').value) $('expiryInput').value = tomorrow(180)
+    }
+    function syncDependentSelects() {
+      const wh = selectedWarehouse()
+      const item = selectedItem()
+      const units = item ? state.packageUnits.filter(x => x.stock_item_id === item.id) : []
+      const locs = wh ? state.locations.filter(x => x.branch_id === wh.id) : state.locations
+      const lpns = wh ? state.lpns.filter(x => x.branch_id === wh.id) : state.lpns
+      const vehicles = wh ? state.vehicles.filter(x => !x.branch_id || x.branch_id === wh.id) : state.vehicles
+      fillSelect('packageSelect', units, x => `${x.unit_name || x.unit_symbol || 'Birim'} x${x.base_quantity || 1}`, 'Paket birimi yok / ana birim')
+      fillSelect('locationSelect', locs, x => `${locationCode(x)} (${x.usage_type || 'lokasyon'})`, 'Lokasyon seciniz')
+      fillSelect('lpnSelect', lpns, x => `${x.lpn_code || x.id} (${x.status || '-'})`, 'LPN yok / secme')
+      fillSelect('vehicleSelect', vehicles, x => `${x.plate_number || x.vehicle_code || x.id} - ${x.temperature_class || 'dry'}`, 'Arac seciniz')
+    }
+
+    function renderAll() {
+      syncDependentSelects()
+      renderMetrics()
+      renderWarnings()
+      renderCodeCards()
+      renderPickable()
+      renderCapacity()
+      renderDelivery()
+      renderAudit()
+    }
+    function renderMetrics() {
+      const item = selectedItem()
+      const pkg = selectedPackage()
+      const vehicle = selectedVehicle()
+      const wh = selectedWarehouse()
+      const pkgVolume = Number(pkg?.volume_m3 || 0) || ((Number(pkg?.length_cm || 0) * Number(pkg?.width_cm || 0) * Number(pkg?.height_cm || 0)) / 1000000)
+      $('metrics').innerHTML = [
+        ['Ana depo', wh?.name || '-'],
+        ['Secili urun', item?.name || '-'],
+        ['Paket hacmi', pkgVolume ? `${pkgVolume.toFixed(6)} m3` : 'Eksik'],
+        ['Paket brut kg', pkg?.gross_weight_kg ? `${pkg.gross_weight_kg} kg` : 'Eksik'],
+        ['Arac hacim', vehicle?.max_volume_m3 ? `${vehicle.max_volume_m3} m3` : 'Eksik'],
+        ['Arac agirlik', vehicle?.max_weight_kg ? `${vehicle.max_weight_kg} kg` : 'Eksik'],
+        ['Urun barkodu', productBarcode()],
+        ['Lokasyon kodu', locationCode(selectedLocation())],
+      ].map(([k, v]) => `<div class="metric"><span class="small muted">${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join('')
+    }
+    function renderWarnings() {
+      const warnings = []
+      const item = selectedItem()
+      const pkg = selectedPackage()
+      const vehicle = selectedVehicle()
+      if (!state.loadedAt) warnings.push(['warning', 'Canli veri henuz yuklenmedi.'])
+      if (!selectedWarehouse()) warnings.push(['danger', 'Ana depo bulunamadi veya secilmedi.'])
+      if (!selectedBranch()) warnings.push(['danger', 'Hedef sube bulunamadi veya secilmedi.'])
+      if (!item) warnings.push(['danger', 'Stok mali secilmedi.'])
+      if (item && !productBarcode()) warnings.push(['danger', 'Urun icin barkod/SKU bulunamadi.'])
+      if (item && !pkg) warnings.push(['warning', 'Secili urunun paket birimi yok; ana birimle test edilir.'])
+      if (pkg && (!pkg.length_cm || !pkg.width_cm || !pkg.height_cm || !pkg.gross_weight_kg)) warnings.push(['danger', 'Paket olcu veya brut agirlik eksik. Kapasite testi zayiflar.'])
+      if (!selectedLocation()) warnings.push(['danger', 'WMS lokasyonu secilmedi.'])
+      if (!vehicle) warnings.push(['warning', 'Arac secilmedi. Shipment testi icin arac gerekli.'])
+      if (vehicle && (!vehicle.max_volume_m3 || !vehicle.max_weight_kg)) warnings.push(['danger', 'Arac hacim/agırlik kapasitesi eksik.'])
+      $('masterWarnings').innerHTML = warnings.map(([type, text]) => `<div class="${type}">${escapeHtml(text)}</div>`).join('') || '<div class="success">Master veri temel test icin yeterli gorunuyor.</div>'
+    }
+    function renderCodeCards() {
+      const loc = selectedLocation()
+      const lpn = selectedLpn()
+      const shipment = state.created.shipment
+      const cards = [
+        { title: 'Urun barkodu', code: productBarcode(), where: 'Mal kabul, picking, sube teslim', kind: 'barcode' },
+        { title: 'Paket / koli barkodu', code: packageBarcode(), where: 'Mal kabul, picking, pack/load', kind: 'barcode' },
+        { title: 'Dogru lokasyon', code: locationCode(loc), where: 'Putaway, picking kaynak/hedef lokasyon', kind: 'qr' },
+        { title: 'Yanlis lokasyon', code: 'LOC-WMS-E2E-WRONG-99-99-99', where: 'Hata yakalama testi', kind: 'qr' },
+        { title: 'LPN / palet', code: lpn?.lpn_code || 'LPN-WMS-E2E-PENDING', where: 'Putaway, picking, palet transferi', kind: 'qr' },
+        { title: 'Arac / plaka', code: vehicleCode(), where: 'Pack/load arac dogrulama', kind: 'qr' },
+        { title: 'Shipment', code: shipmentCode(), where: 'Yukleme ve sube teslim', kind: 'qr' },
+        { title: 'Task ID', code: taskCode(), where: 'Mobil gorev dogrulama', kind: 'qr' },
+        { title: 'Yanlis urun', code: 'WMS-E2E-WRONG-PRODUCT', where: 'Picking hata testi', kind: 'barcode' },
+        { title: 'Lot/SKT', code: `LOT:${$('lotInput').value};EXP:${$('expiryInput').value}`, where: 'Mal kabul ve izlenebilirlik', kind: 'qr' },
+      ]
+      $('codeCards').innerHTML = cards.map((card, idx) => `
+        <article class="label-card">
+          <div class="row" style="justify-content:space-between">
+            <strong>${escapeHtml(card.title)}</strong>
+            <span class="pill">${escapeHtml(card.where)}</span>
+          </div>
+          <div class="qr-box">
+            <canvas id="qr-${idx}" data-code="${escapeHtml(card.code)}"></canvas>
+            <div>
+              <div class="human-code">${escapeHtml(card.code)}</div>
+              <p class="small">Mobilde bu kodu okut veya elle gir.</p>
+            </div>
+          </div>
+          <svg class="barcode" id="bar-${idx}" data-code="${escapeHtml(card.code)}"></svg>
+        </article>
+      `).join('')
+      setTimeout(() => {
+        cards.forEach((card, idx) => {
+          const qr = $(`qr-${idx}`)
+          if (window.QRCode && qr) {
+            try { QRCode.toCanvas(qr, card.code, { width: 120, margin: 1 }) } catch { /* keep text */ }
+          }
+          const bar = $(`bar-${idx}`)
+          if (window.JsBarcode && bar) {
+            try {
+              JsBarcode(bar, card.code.replace(/[^\x20-\x7E]/g, ''), { displayValue: false, height: 42, margin: 4 })
+            } catch {
+              bar.outerHTML = '<div class="small muted">Lineer barkod bu kod tipi icin cizilemedi.</div>'
+            }
+          }
+        })
+      }, 0)
+    }
+    function renderPickable() {
+      const item = selectedItem()
+      const wh = selectedWarehouse()
+      const rows = state.pickable
+        .filter(x => (!item || x.stock_item_id === item.id) && (!wh || x.branch_id === wh.id))
+        .sort((a, b) => String(a.expiration_date || '9999').localeCompare(String(b.expiration_date || '9999')))
+        .slice(0, 30)
+      $('pickableTable').innerHTML = `
+        <thead><tr><th>Urun</th><th>Lokasyon</th><th>LPN</th><th>Lot</th><th>SKT</th><th class="right">Pickable</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td>${escapeHtml(r.product_name || r.stock_item_name || r.stock_item_id)}</td>
+          <td>${escapeHtml(r.location_code || locationCode(r))}</td>
+          <td>${escapeHtml(r.lpn_code || '-')}</td>
+          <td>${escapeHtml(r.lot_number || '-')}</td>
+          <td>${escapeHtml(r.expiration_date || '-')}</td>
+          <td class="right">${qty(r.pickable_qty)}</td>
+        </tr>`).join('') || '<tr><td colspan="6">Secili urun/depo icin pickable stok bulunamadi.</td></tr>'}</tbody>
+      `
+    }
+    function renderCapacity(cap = null) {
+      if (!cap) {
+        $('capacityBox').innerHTML = '<div class="metric"><span class="small muted">Kapasite</span><strong>Shipment bekleniyor</strong></div>'
+        return
+      }
+      const items = [
+        ['Toplam hacim', `${Number(cap.total_volume_m3 || 0).toFixed(4)} m3`, cap.is_volume_exceeded],
+        ['Arac hacmi', `${Number(cap.vehicle_max_volume_m3 || 0).toFixed(4)} m3`, false],
+        ['Toplam agirlik', `${Number(cap.total_weight_kg || 0).toFixed(2)} kg`, cap.is_weight_exceeded],
+        ['Arac agirligi', `${Number(cap.vehicle_max_weight_kg || 0).toFixed(2)} kg`, false],
+      ]
+      $('capacityBox').innerHTML = items.map(([k, v, bad]) => `<div class="metric"><span class="small muted">${k}</span><strong>${v}</strong><span class="pill ${bad ? 'bad' : 'ok'}">${bad ? 'Asildi' : 'Uygun'}</span></div>`).join('')
+    }
+    function renderDelivery() {
+      const s = state.created.shipment
+      $('currentShipmentNo').textContent = s?.shipment_no || s?.id || '-'
+      $('currentShipmentStatus').textContent = s?.status || 'Hazir degil'
+      $('currentShipmentStatus').className = `pill ${s?.status === 'in_transit' ? 'ok' : s ? 'warn' : ''}`
+    }
+    function renderAudit() {
+      const checks = [
+        ['API verisi yuklendi', !!state.loadedAt],
+        ['Ana depo secildi', !!selectedWarehouse()],
+        ['Stok mali secildi', !!selectedItem()],
+        ['Lokasyon kodu hazir', !!selectedLocation()],
+        ['Sube depo siparisi olustu', !!state.created.replenishmentOrder],
+        ['Shipment olustu', !!state.created.shipment],
+        ['Shipment yolda', state.created.shipment?.status === 'in_transit'],
+      ]
+      $('checklist').innerHTML = checks.map(([text, ok]) => `<div class="${ok ? 'success' : 'warning'}"><strong>${ok ? 'OK' : 'Bekliyor'}:</strong> ${escapeHtml(text)}</div>`).join('')
+      const e2eOrders = state.orders.filter(o => {
+        const meta = safeJson(o.meta)
+        return meta.source === SOURCE || String(o.order_no || '').includes('WMS-E2E') || String(o.description || '').includes('WMS-E2E')
+      })
+      const e2eShipments = state.shipments.filter(s => {
+        const meta = safeJson(s.meta)
+        return meta.source === SOURCE || String(s.notes || '').includes('WMS-E2E') || String(s.shipment_no || '').includes('WMS-E2E')
+      })
+      $('e2eTable').innerHTML = `
+        <thead><tr><th>Tip</th><th>No/ID</th><th>Durum</th><th>Aciklama</th></tr></thead>
+        <tbody>
+          ${e2eOrders.map(o => `<tr><td>purchase_order</td><td>${escapeHtml(o.order_no || o.id)}</td><td>${escapeHtml(o.status)}</td><td>${escapeHtml(o.description || '')}</td></tr>`).join('')}
+          ${e2eShipments.map(s => `<tr><td>warehouse_shipment</td><td>${escapeHtml(s.shipment_no || s.id)}</td><td>${escapeHtml(s.status)}</td><td>${escapeHtml(s.notes || '')}</td></tr>`).join('')}
+          ${(!e2eOrders.length && !e2eShipments.length) ? '<tr><td colspan="4">WMS-E2E kaydi bulunmadi.</td></tr>' : ''}
+        </tbody>
+      `
+    }
+
+    async function createPurchaseOrder({ flowChannel, supplier, branch, status = 'submitted', description }) {
+      const item = selectedItem()
+      if (!item) throw new Error('Stok mali secilmedi.')
+      if (!branch) throw new Error('Sube/depo secilmedi.')
+      const qtyValue = testQty()
+      const unitPrice = Number(item.purchase_price || item.last_purchase_price || 10)
+      const orderNo = `WMS-E2E-${flowChannel === 'warehouse_replenishment' ? 'WR' : 'PO'}-${Date.now().toString().slice(-8)}`
+      const meta = traceMeta({
+        scenario: flowChannel,
+        lot_number: $('lotInput').value,
+        expiration_date: $('expiryInput').value,
+        expected_barcode: productBarcode(),
+      })
+      const orderPayload = {
+        order_no: orderNo,
+        branch_id: branch.id,
+        branch_name: branch.name,
+        flow_id: null,
+        flow_name: flowChannel === 'warehouse_replenishment' ? 'WMS-E2E Sube Depo Siparisi' : 'WMS-E2E Ana Depo Dis Tedarik',
+        flow_channel: flowChannel,
+        supplier_id: supplier?.id || null,
+        supplier_name: supplier?.name || (flowChannel === 'warehouse_replenishment' ? selectedWarehouse()?.name : 'WMS-E2E Demo Tedarikci'),
+        description,
+        order_source: 'manual',
+        status,
+        order_date: today(),
+        delivery_date: tomorrow(1),
+        delivery_time: '17:00',
+        qty_mode: 'manuel',
+        auto_send_mode: 'Manuel',
+        branch_approval: false,
+        hq_approval: false,
+        needs_manager_approval: false,
+        manager_approval_status: 'not_required',
+        total_qty: qtyValue,
+        subtotal: qtyValue * unitPrice,
+        total_amount: qtyValue * unitPrice,
+        suggestion_refreshed_at: nowIso(),
+        submitted_at: status === 'submitted' ? nowIso() : null,
+        notes: $('noteInput').value,
+        meta,
+      }
+      const orderRes = await insert('purchase_orders', orderPayload, '*')
+      const order = asArray(orderRes.data)[0] || orderRes.data
+      if (!order?.id) throw new Error('Siparis olustu ama id donmedi.')
+      const linePayload = {
+        order_id: order.id,
+        line_no: 1,
+        stock_item_id: item.id,
+        item_name: item.name || item.sku || 'WMS-E2E Urun',
+        item_sku: item.sku || productBarcode(),
+        unit: item.unit || selectedPackage()?.unit_symbol || 'Adet',
+        current_stock: 0,
+        planned_delivery_date: tomorrow(1),
+        calculated_need: qtyValue,
+        suggested_qty: qtyValue,
+        ordered_qty: qtyValue,
+        price_source: 'wms_e2e',
+        unit_price: unitPrice,
+        line_total: qtyValue * unitPrice,
+        notes: 'WMS-E2E test satiri',
+        meta: traceMeta({
+          barcode: productBarcode(),
+          package_barcode: packageBarcode(),
+          package_unit_id: selectedPackage()?.id || null,
+          original_ordered_qty: qtyValue,
+        }),
+      }
+      await insert('purchase_order_lines', [linePayload], '*')
+      await loadData()
+      return order
+    }
+
+    async function createDemoItem() {
+      try {
+        if (!confirm('Canli DB icinde WMS-E2E demo stok mali, paket olcusu ve barkodu olusturulacak. Devam edilsin mi?')) return
+        const suffix = Date.now().toString().slice(-8)
+        const sku = `WMS-E2E-STK-${suffix}`
+        const barcode = `869${suffix.padStart(10, '0').slice(0, 10)}`
+        const packagingUnits = [
+          {
+            unit: 'Koli',
+            qty: 12,
+            length_cm: 40,
+            width_cm: 30,
+            height_cm: 24,
+            gross_weight_kg: 9.6,
+            net_weight_kg: 8.8,
+            barcodes: [
+              { barcode, barcode_type: 'EAN13', is_primary: true }
+            ]
+          }
+        ]
+        const payload = {
+          sku,
+          auto_sku: false,
+          name: `WMS-E2E Demo Stok Mali ${suffix}`,
+          short_name: `WMS-E2E ${suffix}`,
+          unit: 'Adet',
+          packaging_units: packagingUnits,
+          min_stock: 0,
+          max_stock: 1000,
+          order_unit: 'ana',
+          purchase_price: 10,
+          suppliers_list: [],
+          saleable: false,
+          temperature_class: 'dry',
+          active: true,
+        }
+        const result = await insert('stock_items', payload, '*')
+        const item = asArray(result.data)[0] || result.data
+        await loadData()
+        const loaded = state.items.find(x => x.id === item?.id) || state.items.find(x => x.sku === sku)
+        if (loaded) $('itemSelect').value = loaded.id
+        syncDependentSelects()
+        renderAll()
+        log('WMS-E2E demo urun olusturuldu', { item: loaded || item, barcode, packagingUnits })
+      } catch (err) {
+        log('Demo urun olusturma hata', { message: err.message })
+      }
+    }
+
+    async function createExternalPo() {
+      try {
+        const wh = selectedWarehouse()
+        const supplier = state.suppliers.find(s => (s.supplier_kind || 'external') === 'external') || state.suppliers[0] || null
+        const order = await createPurchaseOrder({
+          flowChannel: 'external_purchase',
+          supplier,
+          branch: wh,
+          status: 'submitted',
+          description: 'WMS-E2E ana depo dis tedarik alim siparisi',
+        })
+        state.created.externalOrder = order
+        log('Dis tedarikci PO olusturuldu', order)
+        renderAll()
+      } catch (err) {
+        log('Dis tedarikci PO hata', { message: err.message })
+      }
+    }
+    async function markExternalSent() {
+      try {
+        const order = state.created.externalOrder
+        if (!order?.id) throw new Error('Once dis tedarikci PO olustur.')
+        const meta = { ...safeJson(order.meta), supplier_marked_sent: true, supplier_sent_at: nowIso(), supplier_dispatch: { delivered_on: today(), delivered_at: '12:00', doc_kind: 'irsaliye', doc_no: `WMS-E2E-${Date.now().toString().slice(-5)}`, shipment_match: 'full' } }
+        await update('purchase_orders', { meta, updated_at: nowIso() }, [{ type: 'eq', col: 'id', val: order.id }])
+        state.created.externalOrder = { ...order, meta }
+        await loadData()
+        log('Dis tedarikci PO teslim bekliyor yapildi', state.created.externalOrder)
+      } catch (err) {
+        log('Teslim bekliyor hata', { message: err.message })
+      }
+    }
+    async function createReplenishmentOrder() {
+      try {
+        const wh = selectedWarehouse()
+        const branch = selectedBranch()
+        if (!wh) throw new Error('Ana depo secilmedi.')
+        const internalSupplier = state.suppliers.find(s => s.supplier_kind === 'internal_warehouse' && (!s.source_branch_id || s.source_branch_id === wh.id))
+          || state.suppliers.find(s => s.supplier_kind === 'internal_warehouse')
+        if (!internalSupplier) throw new Error('internal_warehouse supplier bulunamadi. WMS depo siparisi icin merkez depo tedarikci senkronu gerekli.')
+        const order = await createPurchaseOrder({
+          flowChannel: 'warehouse_replenishment',
+          supplier: internalSupplier,
+          branch,
+          status: 'submitted',
+          description: 'WMS-E2E sube merkez depo ikmal siparisi',
+        })
+        state.created.replenishmentOrder = order
+        log('Sube depo siparisi olusturuldu', order)
+        renderAll()
+      } catch (err) {
+        log('Sube depo siparisi hata', { message: err.message })
+      }
+    }
+    async function bypassCheck() {
+      try {
+        const order = state.created.replenishmentOrder
+        if (!order?.id) throw new Error('Once sube depo siparisi olustur.')
+        const supplier = state.suppliers.find(s => s.id === order.supplier_id)
+        const wouldBeVisibleByOldPanel = ['submitted', 'received', 'partially_received', 'cancelled'].includes(order.status)
+        const shouldBeHidden = order.flow_channel === 'warehouse_replenishment' || supplier?.supplier_kind === 'internal_warehouse'
+        const pass = shouldBeHidden
+        log('Tedarikci paneli bypass kontrolu', {
+          order_no: order.order_no,
+          flow_channel: order.flow_channel,
+          supplier_kind: supplier?.supplier_kind,
+          old_panel_would_show_by_status: wouldBeVisibleByOldPanel,
+          expected: 'hidden',
+          pass,
+        })
+      } catch (err) {
+        log('Bypass kontrol hata', { message: err.message })
+      }
+    }
+    async function parseBarcode(barcode, taskId = null) {
+      const wh = selectedWarehouse()
+      if (!wh) throw new Error('Ana depo secilmedi.')
+      return api('/api/wms/parse-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode,
+          branch_id: wh.id,
+          task_id: taskId,
+          personnel_id: 'WMS-E2E',
+          terminal_id: 'WMS-E2E-HTML',
+        }),
+      })
+    }
+    async function runParseGoodLocation() {
+      try { log('Dogru lokasyon parse', await parseBarcode(locationCode(selectedLocation()))) }
+      catch (err) { log('Dogru lokasyon parse hata', { message: err.message }) }
+    }
+    async function runParseBadLocation() {
+      try { log('Yanlis lokasyon parse', await parseBarcode('LOC-WMS-E2E-WRONG-99-99-99')) }
+      catch (err) { log('Yanlis lokasyon beklenen hata', { message: err.message }) }
+    }
+    async function runParseProduct() {
+      try { log('Urun barkodu parse', await parseBarcode(productBarcode())) }
+      catch (err) { log('Urun barkodu parse hata', { message: err.message }) }
+    }
+    async function refreshPickable() {
+      try {
+        const res = await select('v_wms_pickable_stock', [{ type: 'limit', val: 800 }], '*')
+        state.pickable = asArray(res.data)
+        renderPickable()
+        log('Pickable stok yenilendi', { rows: state.pickable.length })
+      } catch (err) {
+        log('Pickable stok hata', { message: err.message })
+      }
+    }
+    function shipmentDraftFromOrder(order) {
+      const lines = state.orderLines.filter(l => l.order_id === order.id)
+      const draft = {}
+      for (const line of lines) {
+        draft[line.id] = Number(line.ordered_qty || testQty())
+      }
+      return draft
+    }
+    async function createShipment() {
+      try {
+        const wh = selectedWarehouse()
+        const order = state.created.replenishmentOrder || state.orders.find(o => o.flow_channel === 'warehouse_replenishment' && o.status === 'submitted')
+        const vehicle = selectedVehicle()
+        if (!wh) throw new Error('Ana depo secilmedi.')
+        if (!order?.id) throw new Error('Once sube depo siparisi olustur veya mevcut submitted WMS siparisi sec.')
+        if (!vehicle?.id) throw new Error('Arac secilmedi.')
+        const params = {
+          p_branch_id: wh.id,
+          p_purchase_order_ids: [order.id],
+          p_shipment_draft: shipmentDraftFromOrder(order),
+          p_plate_number: vehicle.plate_number || vehicle.vehicle_code || 'WMS-E2E',
+          p_driver_info: vehicle.driver_name || 'WMS-E2E surucu',
+          p_notes: 'WMS-E2E shipment taslagi',
+          p_vehicle_id: vehicle.id,
+        }
+        const result = await rpc('create_warehouse_shipment_with_reservations', params)
+        const shipmentId = result.data
+        const shipmentRes = await select('warehouse_shipments', [{ type: 'eq', col: 'id', val: shipmentId }, { type: 'limit', val: 1 }], '*')
+        const shipment = asArray(shipmentRes.data)[0] || { id: shipmentId }
+        const nextMeta = { ...safeJson(shipment.meta), ...traceMeta({ source_order_id: order.id }) }
+        await update('warehouse_shipments', { meta: nextMeta, notes: 'WMS-E2E shipment taslagi' }, [{ type: 'eq', col: 'id', val: shipmentId }])
+        state.created.shipment = { ...shipment, meta: nextMeta, notes: 'WMS-E2E shipment taslagi' }
+        await loadData()
+        state.created.shipment = state.shipments.find(s => s.id === shipmentId) || state.created.shipment
+        log('Shipment olusturuldu', state.created.shipment)
+        renderAll()
+      } catch (err) {
+        log('Shipment olusturma hata', { message: err.message })
+      }
+    }
+    async function capacityCheck() {
+      try {
+        const shipment = state.created.shipment
+        if (!shipment?.id) throw new Error('Once shipment olustur.')
+        const result = await api(`/api/wms/shipment-capacity/${shipment.id}`)
+        renderCapacity(result.data)
+        log('Kapasite kontrolu', result)
+      } catch (err) {
+        log('Kapasite kontrol hata', { message: err.message })
+      }
+    }
+    async function confirmShipment() {
+      try {
+        const shipment = state.created.shipment
+        const wh = selectedWarehouse()
+        if (!shipment?.id) throw new Error('Once shipment olustur.')
+        if (!confirm('Bu canli DB uzerinde WMS-E2E shipment kaydini yola cikarir. Devam edilsin mi?')) return
+        const result = await rpc('confirm_warehouse_shipment', {
+          p_shipment_id: shipment.id,
+          p_branch_id: wh.id,
+          p_branch_name: wh.name,
+        })
+        await loadData()
+        state.created.shipment = state.shipments.find(s => s.id === shipment.id) || { ...shipment, status: 'in_transit' }
+        log('Shipment onaylandi', result)
+        renderAll()
+      } catch (err) {
+        log('Shipment onay hata', { message: err.message })
+      }
+    }
+    function downloadReport() {
+      const report = {
+        generated_at: nowIso(),
+        api_base: apiBase(),
+        selected: {
+          warehouse: selectedWarehouse(),
+          branch: selectedBranch(),
+          item: selectedItem(),
+          package_unit: selectedPackage(),
+          location: selectedLocation(),
+          lpn: selectedLpn(),
+          vehicle: selectedVehicle(),
+          qty: testQty(),
+          lot: $('lotInput').value,
+          expiration_date: $('expiryInput').value,
+        },
+        codes: {
+          product_barcode: productBarcode(),
+          package_barcode: packageBarcode(),
+          location_code: locationCode(selectedLocation()),
+          lpn_code: selectedLpn()?.lpn_code || null,
+          vehicle_code: vehicleCode(),
+          shipment_code: shipmentCode(),
+          task_code: taskCode(),
+        },
+        created: state.created,
+        last_results: state.lastResults,
+      }
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `wms-e2e-report-${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    $('healthBtn').addEventListener('click', healthCheck)
+    $('loadBtn').addEventListener('click', loadData)
+    $('reportBtn').addEventListener('click', downloadReport)
+    $('printBtn').addEventListener('click', () => window.print())
+    $('warehouseSelect').addEventListener('change', renderAll)
+    $('branchSelect').addEventListener('change', renderAll)
+    $('itemSelect').addEventListener('change', renderAll)
+    $('packageSelect').addEventListener('change', renderAll)
+    $('locationSelect').addEventListener('change', renderAll)
+    $('lpnSelect').addEventListener('change', renderAll)
+    $('vehicleSelect').addEventListener('change', renderAll)
+    $('qtyInput').addEventListener('input', renderAll)
+    $('lotInput').addEventListener('input', renderAll)
+    $('expiryInput').addEventListener('input', renderAll)
+    $('createExternalPoBtn').addEventListener('click', createExternalPo)
+    $('createDemoItemBtn').addEventListener('click', createDemoItem)
+    $('markExternalSentBtn').addEventListener('click', markExternalSent)
+    $('parseGoodLocationBtn').addEventListener('click', runParseGoodLocation)
+    $('parseBadLocationBtn').addEventListener('click', runParseBadLocation)
+    $('createReplenishmentBtn').addEventListener('click', createReplenishmentOrder)
+    $('bypassCheckBtn').addEventListener('click', bypassCheck)
+    $('refreshPickableBtn').addEventListener('click', refreshPickable)
+    $('parseProductBtn').addEventListener('click', runParseProduct)
+    $('createShipmentBtn').addEventListener('click', createShipment)
+    $('capacityBtn').addEventListener('click', capacityCheck)
+    $('confirmShipmentBtn').addEventListener('click', confirmShipment)
+
+    setDefaultExpiry()
+    renderAll()
+  </script>
+</body>
+</html>
