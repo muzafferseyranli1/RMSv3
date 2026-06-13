@@ -1,27 +1,23 @@
-# Sipariş Yönetimi ve Merkez Mutfak Satınalma
+## İşlem: Sipariş Yönetimi ve Merkez Mutfak Satınalma
+Alternatif kullanıcı ifadeleri:
+- Şubeden merkeze nasıl sipariş verilir?
+- Manuel sipariş nasıl oluşturulur?
+- Merkez mutfak satınalma işlemleri nasıl yapılır?
 
-## Modülün Amacı
-Bu modül, restoran şubelerinizin Merkez Depo veya Merkez Mutfak birimlerinden manuel veya otomatik olarak sipariş oluşturmasına, taslak siparişleri yönetmesine olanak tanır. Merkez Mutfak, bu ekran üzerinden kendi hammadde satınalma süreçlerini yönetebilir.
+Amaç:
+Şubelerin Merkez Depo veya Merkez Mutfak birimlerinden sipariş oluşturmasını sağlamak ve merkez mutfağın hammadde satınalma süreçlerini yönetmek.
 
-## Ekranlara Erişim
-* **Şube ve Depo Siparişleri:** [http://localhost:5173/siparisler](http://localhost:5173/siparisler)
-* **Merkez Mutfak Satınalma:** [http://localhost:5173/merkezmutfak-satinalma](http://localhost:5173/merkezmutfak-satinalma)
+Ekran yolu:
+Satınalma > Siparişler
 
-## Önemli Adımlar ve Kurallar
+Link:
+/siparisler
 
-1. **Manuel Sipariş Oluşturma:** 
-   Siparişler sayfasından ilgili birimi seçtikten sonra, sistemin otomatik hesaplamalarını beklemeden acil ihtiyaçlarınız için manuel sipariş (taslak) oluşturabilirsiniz. "Manuel Sipariş Oluştur" işlemine tıkladığınızda açılan detay ekranından miktarları doğrudan girebilirsiniz.
-   
-2. **Otomatik Birim Kilitlenmesi:**
-   Sisteme Merkez Depo (Ana Depo) veya Merkez Mutfak kullanıcısı olarak giriş yaptıysanız, Siparişler ekranındaki birim seçimi (dropdown) otomatik olarak sizin bulunduğunuz merkezi birime kilitlenecektir. Bu sayede yanlış şube adına işlem yapmanız engellenir.
+Adımlar:
+1. Siparişler sayfasına gidin ve ilgili birimi seçin.
+2. Acil ihtiyaçlar için "Manuel Sipariş Oluştur" işlemine tıklayın.
+3. Açılan detay ekranından talep edilen ürün miktarlarını girin ve kaydedin.
+4. Merkez mutfak yetkilisiyseniz, dış tedarikçilerden yapılacak satınalmalar için /merkezmutfak-satinalma ekranını kullanarak süreci takip edin.
 
-3. **Merkez Mutfak Satınalma:**
-   Merkez mutfak yetkilileri, üretim süreçleri için dış tedarikçilerden veya merkez depodan yapacakları satınalmaları özel `/merkezmutfak-satinalma` ekranı üzerinden takip ederler. Bu ekran, mutfağa özel hammadde gereksinimlerini listeler.
-
-## Sık Sorulan Sorular / Sorun Giderme
-
-**Soru:** Manuel sipariş oluşturdum ancak sayfada göremiyorum?
-**Cevap:** Oluşturulan manuel sipariş başlangıçta "Taslak" statüsündedir. Filtreler bölümünden durumunu "Tümü" veya "Taslak" olarak işaretleyip kontrol edin.
-
-**Soru:** Birim seçme menüsü neden kilitli?
-**Cevap:** Merkez Depo veya Mutfak yetkisiyle oturum açtığınızda sistem, güvenlik gereği yalnızca kendi biriminiz üzerinden işlem yapabilmeniz için seçimi otomatik kilitler. Şubeler için işlem yapmak istiyorsanız şube yetkilisi (veya merkez yöneticisi) hesabıyla giriş yapmanız gerekir.
+Önemli uyarı:
+Merkez Depo veya Mutfak yetkisiyle oturum açıldığında, güvenlik gereği birim seçimi otomatik kilitlenir. Şubeler için işlem yapmak isteniyorsa şube yetkilisi hesabı ile giriş yapılmalıdır. Oluşturulan manuel siparişler başlangıçta "Taslak" statüsündedir.

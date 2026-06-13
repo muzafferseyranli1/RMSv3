@@ -1,56 +1,23 @@
-# Yeni Müşteri Kazanımı Kampanya Rehberi
+## İşlem: Yeni Müşteri Kazanımı Kampanyaları
+Alternatif kullanıcı ifadeleri:
+- Arkadaşını getir kampanyası nasıl yapılır?
+- Hoş geldin kuponu nasıl oluşturulur?
+- İlk üyeliğe hediye puan nasıl verilir?
+- Yeni müşteriler için kampanya nasıl hazırlanır?
 
-Bu kılavuz, SuitableRMS sadakat ve kampanya modüllerini kullanarak işletmenize yeni müşteriler kazandırmak için uygulayabileceğiniz en etkili 3 kampanya modelini ve bunların sistemdeki kurulum adımlarını açıklar.
+Amaç:
+Sadakat ve kampanya modüllerini kullanarak işletmeye yeni müşteriler kazandırmak için etkili kampanya modellerini (Referans, Kupon Serisi, Hoş Geldin Puanı) kurmak.
 
----
+Ekran yolu:
+Sadakat > Kampanyalar / Kuponlar / Referanslar
 
-## 🚀 Öneri 1: "Arkadaşını Getir" Referans Kampanyası (Referral Program)
-Mevcut sadık müşterilerinizi birer marka elçisine dönüştürerek organik olarak yeni müşteri kazanmanın en az maliyetli yoludur.
+Link:
+/sadakat/kampanya/yeni
 
-### Nasıl Çalışır?
-1. Mevcut müşteri sistem üzerinden kendine özel üretilen referans kodunu arkadaşıyla paylaşır.
-2. Yeni müşteri bu kodla üye olur ve ilk alışverişini gerçekleştirir (`success_criteria: 'nth_purchase'`).
-3. Alışveriş tamamlandığında hem davet eden hem de yeni gelen müşteri ödüllendirilir (örn: indirim kuponu veya bonus puan).
+Adımlar:
+1. "Arkadaşını Getir" (Referans) kampanyası için `/sadakat/referanslar` ekranına gidin ve success_criteria ayarını 'registration' veya 'nth_purchase' olarak belirleyin.
+2. "Hoş Geldin" Kupon kampanyası için `/sadakat/kuponlar` ekranına gidin, yeni kupon serisi oluşturarak kullanım sınırını 1 yapın.
+3. "İlk Üyeliğe Hediye Puan" kampanyası için `/sadakat/kampanya/yeni` ekranından kampanya tipini "bonus_points" ve tetikleyici tipini "registration" olarak ayarlayın.
 
-### Kurulum Adımları:
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/referanslar](http://localhost:5173/sadakat/referanslar)
-* **Kaynak Kod Dosyası:** [LoyaltyReferralPrograms.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyReferralPrograms.jsx)
-* **Veritabanı Tabloları:** `public.loyalty_referral_programs`, `public.loyalty_referral_codes`, `public.loyalty_referral_tracking`.
-* **Ayarlama Kriterleri:** Arayüzden `success_criteria` alanını `registration` (üyelik anında ödül) veya `nth_purchase` (satın alma anında ödül) olarak belirleyip başarı satın alma sayısını `1` yapın.
-
----
-
-## 🎫 Öneri 2: "Hoş Geldin" Kupon Kampanyası (Coupon Series)
-Sosyal medya, el ilanları veya SMS yoluyla dağıtılan, sadece yeni müşterilerin ilk siparişlerinde geçerli tek kullanımlık indirim kodlarıdır.
-
-### Nasıl Çalışır?
-* "MERHABA100" gibi tek bir genel kod veya kişiye özel benzersiz kodlardan oluşan bir seri tanımlanır.
-* Bu kuponlar sadece yeni üyelerin ilk sepetlerinde geçerli olacak şekilde sınırlandırılır.
-
-### Kurulum Adımları:
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/kuponlar](http://localhost:5173/sadakat/kuponlar)
-* **Kaynak Kod Dosyası:** [LoyaltyCouponSets.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyCouponSets.jsx)
-* **Veritabanı Tabloları:** `public.loyalty_coupon_series`, `public.loyalty_coupons`.
-* **Ayarlama Kriterleri:** "Yeni Kupon Serisi" oluştururken indirim tipini (Tutar veya Oran) seçin, maksimum kullanım sınırını `1` yapın ve geçerlilik sürelerini belirleyin.
-
----
-
-## 🎁 Öneri 3: İlk Üyeliğe Hediye Puan Kampanyası (Welcome Points)
-Kullanıcıların mobil uygulamayı indirmelerini ve ilk kez üye olmalarını teşvik eden cüzdan puanı kampanyasıdır.
-
-### Nasıl Çalışır?
-* Müşteri ilk kez kayıt olduğunda cüzdanına (wallet) otomatik olarak 50 TL değerinde "Hoş Geldin Puanı" yüklenir. Müşteri bu puanları ilk siparişinde harcayabilir.
-
-### Kurulum Adımları:
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/kampanya/yeni](http://localhost:5173/sadakat/kampanya/yeni) (Kampanya Sihirbazı)
-* **Kaynak Kod Dosyası:** [LoyaltyManagement.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyManagement.jsx)
-* **Veritabanı Tabloları:** `public.loyalty_campaigns`, `public.loyalty_wallets`.
-* **Ayarlama Kriterleri:** Kampanya tipini `bonus_points` (veya `reward_type: 'points'`) seçin. Tetikleyici tipini `registration` (üye olma) olarak ayarlayıp ödül puan tutarını girin.
-
----
-
-## 🛡️ Kampanya Yönetiminde Önemli Güvenlik Ayarları
-
-> [!WARNING]
-> * **Suistimal Koruması (Limits):** Kampanyalarda kişi başı maksimum katılım sınırını (`limits_json`) mutlaka `1` olarak ayarlayın.
-> * **Bütçe Sınırı (Budget):** Dağıtılacak toplam puan veya indirim tutarını sınırlamak için `budget_json` alanından kampanya toplam bütçesini sınırlandırın.
+Önemli uyarı:
+Suistimalleri önlemek için kampanyalarda kişi başı maksimum katılım sınırını (limits_json) mutlaka 1 olarak ayarlayın ve dağıtılacak toplam puan veya indirim tutarını sınırlamak için bütçe sınırı belirleyin.

@@ -273,6 +273,10 @@ const STEPS = [
   {
     desc: 'wms packaging and capacity schema and functions (WMS-03G)',
     sql: fs.readFileSync(path.join(__dirname, '../migrations/046_wms_packaging_and_capacity_schema.sql'), 'utf8')
+  },
+  {
+    desc: 'wms quality hold schema and trigger (WMS-04A)',
+    sql: fs.readFileSync(path.join(__dirname, '../migrations/047_add_warehouse_quality_holds.sql'), 'utf8')
   }
 ]
 

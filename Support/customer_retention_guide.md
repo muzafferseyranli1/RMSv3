@@ -1,32 +1,23 @@
-# Kayıp Müşteri Geri Kazanım (Win-Back) Kılavuzu
+## İşlem: Kayıp Müşteri Geri Kazanım (Win-Back) Operasyonu
+Alternatif kullanıcı ifadeleri:
+- Gelmeyen müşterileri nasıl geri getiririm?
+- Uykudaki müşterilere nasıl kampanya yaparım?
+- Seni özledik kuponu nasıl gönderilir?
 
-Bu kılavuz, işletmenize gelmeyi bırakan veya son zamanlarda sipariş sıklığı azalan eski (uykudaki) müşterileri tekrar kazanmak için SuitableRMS sadakat ve segmentasyon modülleriyle uygulayabileceğiniz stratejileri ve kurulum adımlarını açıklar.
+Amaç:
+İşletmeye gelmeyi bırakan veya sipariş sıklığı azalan (uykudaki) müşterileri tekrar kazanmak için sadakat ve segmentasyon stratejileri uygulamak.
 
----
+Ekran yolu:
+Müşteriler > Sadakat > Kategoriler / Kampanyalar
 
-## 🛠️ Adım Adım Geri Kazanım Operasyonu
+Link:
+/sadakat/kategoriler
 
-### Adım 1: Uykudaki Müşterilerin Tespit Edilmesi
-Son sipariş tarihi (`last_order_at`) veya son ziyaret tarihi (`last_visit_at`) uzun süredir (örneğin 45 günden fazla) güncellenmemiş olan müşterileri belirleyin.
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/company](http://localhost:5173/company) (Müşteriler Sekmesi)
-* **Kaynak Kod Dosyası:** [Musteriler.jsx](file:///c:/RMSv3/src/components/pages/Musteriler.jsx)
-* **Veritabanı Karşılığı:** `public.musteriler` tablosundaki `last_order_at` ve `total_order_count` alanları taranır.
+Adımlar:
+1. Müşteriler sayfasından son sipariş tarihi (last_order_at) üzerinden uykudaki müşterileri tespit edin.
+2. Sadakat Kategorileri ekranına giderek bu müşteriler için "Uykudaki Müşteriler" veya "Seni Özledik" isimli özel bir müşteri segmenti oluşturun.
+3. Kampanya Sihirbazına giderek, hedef kitle olarak sadece oluşturduğunuz "Uykudaki Müşteriler" kategorisini seçin ve geri kazanım kampanyası tanımlayın.
+4. Veya Kuponlar ekranından bu kitleye özel gönderilecek tek kullanımlık kupon kodları üretin.
 
-### Adım 2: "Seni Özledik" Müşteri Segmentinin Oluşturulması
-Belirlediğiniz bu uykudaki/kayıp müşterileri hedefleyebilmek için özel bir müşteri kategorisi oluşturun.
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/kategoriler](http://localhost:5173/sadakat/kategoriler)
-* **Kaynak Kod Dosyası:** [LoyaltyCustomerCategories.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyCustomerCategories.jsx)
-* **Veritabanı Karşılığı:** `public.loyalty_customer_categories` ve `public.loyalty_customer_category_members` tabloları.
-
-### Adım 3: Sadece Bu Kitleye Özel Kampanya Sihirbazının Çalıştırılması
-Oluşturduğunuz "Uykudaki Müşteriler" segmentine özel, onları geri getirecek yüksek puan veya indirim içeren bir kampanya tanımlayın.
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/kampanya/yeni](http://localhost:5173/sadakat/kampanya/yeni)
-* **Kaynak Kod Dosyası:** [LoyaltyManagement.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyManagement.jsx)
-* **Veritabanı Karşılığı:** `public.loyalty_campaigns` tablosu (`audience_json` kolonunda ilgili müşteri kategorisinin UUID'si eşleştirilir).
-* **Kritik Ayar:** Kampanya sihirbazında hedef kitle (Audience) adımından sadece "Uykudaki Müşteriler" kategorisini seçin.
-
-### Adım 4: Kişiye Özel Geri Kazanım Kuponu Dağıtılması
-Geri kazanım kampanyasını tetiklemek amacıyla, sadece bu hedef kitledeki müşterilerin telefonlarına veya maillerine gönderilecek özel kupon kodları üretin.
-* **Canlı Ekran Bağlantısı:** [http://localhost:5173/sadakat/kuponlar](http://localhost:5173/sadakat/kuponlar)
-* **Kaynak Kod Dosyası:** [LoyaltyCouponSets.jsx](file:///c:/RMSv3/src/components/pages/LoyaltyCouponSets.jsx)
-* **Veritabanı Karşılığı:** `public.loyalty_coupon_series` ve `public.loyalty_coupons` tabloları.
+Önemli uyarı:
+Bu işlemlerin doğru çalışması için müşterilerin sistemde kayıtlı olması (telefon numarası veya iletişim bilgisi ile) ve sadakat programına dahil olması gereklidir.

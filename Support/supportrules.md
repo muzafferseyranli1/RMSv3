@@ -15,12 +15,31 @@ Bu dosya, herhangi bir makine değişikliğinde veya yeni bir sohbette Yapay Zek
 ## 2. DESTEK (SUPPORT) SİSTEMİNİN KURALLARI
 1. **Dosya Formatı:** Destek sisteminin okuduğu tüm kılavuzlar `Support/` klasörü içerisinde ve `.md` (Markdown) formatında olmalıdır.
 2. **RAG Mimarisi:** Backend (`server/index.js` içerisindeki `/api/support/chat`), buradaki tüm `.md` dosyalarını birleştirip Gemini API'ye gönderir. Dosya isimlerinin açıklayıcı olmasına (örn: `wms_depo.md`, `maliyet_hesaplama.md`) dikkat et.
-3. **Doküman Yapısı:** Yeni bir kılavuz oluştururken şu hiyerarşiyi kullan:
-   * Modülün Amacı (Ne işe yarar?)
-   * Ekranlara Erişim (Nasıl girilir? MUTLAKA frontend URL yolunu belirtin, Örn: `/donem-kapanis`)
-   * Önemli Adımlar / Kurallar (Kullanım detayları)
-   * Sık Sorulan Sorular / Sorun Giderme
-4. **Linklerin Önemi:** Asistanın kullanıcıyı doğru sayfaya yönlendirebilmesi için hazırladığın dokümanın içinde o sayfanın doğrudan link (URL path) karşılığı mutlaka bulunmalıdır.
+3. **Doküman Yapısı:** Yeni bir kılavuz oluştururken asistanın (LLM) kolayca ayrıştırabilmesi için **kesinlikle aşağıdaki şablonu (template)** kullan:
+
+\`\`\`markdown
+## İşlem: [Modül veya İşlem Adı]
+Alternatif kullanıcı ifadeleri:
+- [Kullanıcının sorabileceği farklı kelimeler/cümleler 1]
+- [Kullanıcının sorabileceği farklı kelimeler/cümleler 2]
+
+Amaç:
+[Bu modülün ne işe yaradığının çok kısa özeti]
+
+Ekran yolu:
+[Menü 1] > [Menü 2] > [Ekran Adı]
+
+Link:
+/[frontend-url-yolu]
+
+Adımlar:
+1. [Birinci eylem, örn: Sayfaya git.]
+2. [İkinci eylem, örn: Üstteki yeşil "Kaydet" düğmesine bas.]
+3. [Üçüncü eylem...]
+
+Önemli uyarı:
+[Varsa kritik uyarılar, örn: İşlem geri alınamaz.]
+\`\`\`
 5. **Geliştirme Döngüsü (Workflow):** Kullanıcı "X modülünü anlat" dediğinde; 
    - Önce ilgili bileşen kodunu oku.
    - Modülün iş mantığını anla.

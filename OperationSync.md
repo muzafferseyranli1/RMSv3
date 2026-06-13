@@ -11301,3 +11301,54 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 
 
 [SUPPORT_SYNC_MARKER] - Support documentation synced successfully.
+
+## Entry 224 - 2026-06-13
+
+- `Timestamp`: `2026-06-13T16:25:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `WMS-04A - Kalite Hold Şeması`
+- `Intent`: `Karantina stoku, release, reject ve scrap süreçlerini yönetmek için kalite kayıt şemasını, otomatik tetiklenen karantina trigger'ını ve hold çözümleme RPC fonksiyonunu entegre etmek.`
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `src/components/pages/MalKabul.jsx`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `migrations/047_add_warehouse_quality_holds.sql`
+  - `server/wms_migration.js`
+  - `schema-railway-master.sql`
+  - `OperationSync.md`
+- `Files Created`:
+  - `scratch/test_wms_quality_hold_regression.cjs`
+- `Commands Run`:
+  - `node server/wms_migration.js`
+  - `node scratch/test_wms_quality_hold_regression.cjs`
+- `Findings`:
+  - `warehouse_quality_holds` tablosu başarıyla oluşturuldu.
+  - `inventory_movements` üzerinde çalışan trigger (`after_inventory_movement_quarantine`), karantina stok girişlerinde otomatik hold kaydı oluşturuyor.
+  - Eğer kaynak bir WMS göreviyse, trigger otomatik olarak son görev event'indeki `evidence_photo_url` ve `note` bilgilerini çekerek hold kaydına bağlıyor.
+  - `resolve_warehouse_quality_hold` RPC'si, beklemedeki kalite kayıtlarını atomik olarak çözümlüyor, stoku karantinadan çıkartıyor ve transfer hareketleri (veya fire/iade hareketleri) oluşturup audit izi bırakıyor.
+  - Karantina stoku `v_wms_pickable_stock` görünümü tarafından filtrelendiği için toplanamaz durumdadır (pickable_qty = 0).
+  - Yazılan regression testi (`test_wms_quality_hold_regression.cjs`) başarıyla çalıştı ve tüm mekanizmaları doğruladı.
+- `Decisions`:
+  - Kalite ve karantina veri tabanı katmanı (WMS-04A) tamamlanarak onaylanmıştır.
+- `Open Risks`: Yok.
+- `Next Step`: WMS Faz 4 kapsamında karantina yönetim ekranının (UI) (`WMS-04B`) geliştirilmesi.
+- `Handoff Contract`: `WMS-04A kalite hold şeması, trigger'ı ve çözümleme RPC'si veritabanına uygulandı ve regression testiyle doğrulandı. Bir sonraki adım, bu şemayı tüketen WMS-04B karantina yönetim ekranının kodlanmasıdır.`
+
+
+## Entry 225 - 2026-06-13
+
+- Timestamp: 2026-06-13T16:40:00+03:00
+- Agent: Antigravity
+- Task: Support dokümantasyon senkronizasyonu ve AI Asistan loglama onarımı
+- Intent: Support klasöründeki eski dokümanları yeni şablona taşımak ve AI asistanının cevapsız soruları unanswered.log dosyasına kaydetmesini sağlamak. WMS-04A dokümantasyonu arayüz tamamlanana kadar ertelendi.
+- Files Changed:
+  - C:\RMSv3\server\index.js
+  - Support klasöründeki 13 adet .md dosyası
+- Decisions:
+  - AI asistanı artık foundInKb false döndüğünde kullanıcının sorusunu Support/unanswered.log dosyasına yazıyor.
+- Open Risks: Yok.
+- Next Step: WMS-04B karantina yönetim ekranı (UI) kodlanması ve arayüz tamamlandıktan sonra WMS-04A/04B için Support dokümanı hazırlanması.
+- Handoff Contract: Dokümantasyonlar şablona uyumlandı ve asistanın unanswered kaydetme eksiği giderildi. UI olmadığından Kalite Hold dokümanı sonraya bırakıldı.
+
+[SUPPORT_SYNC_MARKER] - Support dokümantasyon senkronizasyonu başarıyla tamamlandı, unanswered.log sorunu çözüldü.

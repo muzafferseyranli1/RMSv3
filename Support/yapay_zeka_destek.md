@@ -1,25 +1,23 @@
-# Yapay Zeka Destek Masası
+## İşlem: Yapay Zeka Destek Masası
+Alternatif kullanıcı ifadeleri:
+- Yapay zekaya nasıl soru sorarım?
+- Sistem kılavuzlarına nasıl ulaşırım?
+- Destek asistanını nasıl kullanırım?
 
-## Modülün Amacı
-Yapay Zeka Destek Masası, SuitableRMS sistemini kullanırken aklınıza takılan soruları (örn: "Dönem nasıl kapatılır?", "Sipariş nasıl oluşturulur?") sorabileceğiniz, sistem kılavuzlarını sizin için anında tarayıp cevaplayan sanal bir asistandır.
+Amaç:
+Sistem işleyişiyle ilgili sorularınızı sorabileceğiniz ve resmi kılavuzlara anında ulaşıp ilgili ekranlara yönlendirilebileceğiniz sanal asistanı kullanmak.
 
-## Ekranlara Erişim
-* **Destek Masası:** [http://localhost:5173/destek](http://localhost:5173/destek)
-*(Not: Bu ekrana erişim için Merkez Yöneticisi veya ilgili destek yetkisine sahip olmanız gerekmektedir.)*
+Ekran yolu:
+Destek > Yapay Zeka Destek Masası
 
-## Önemli Adımlar ve Kurallar
+Link:
+/destek
 
-1. **Soru Sorma:**
-   Destek sayfasına girdiğinizde alt kısımdaki mesaj alanına sistemin işleyişiyle ilgili sorunuzu yazıp gönderebilirsiniz. 
-2. **Kılavuz Yönlendirmeleri:**
-   Yapay zeka asistanı, size sadece işlemin nasıl yapılacağını anlatmakla kalmaz, aynı zamanda o işlemi yapabileceğiniz ekranların doğrudan linklerini de (Örn: Dönem Kapanışı için `/donem-kapanis`) sunar. Bu linklere tıklayarak doğrudan ilgili sayfaya gidebilirsiniz.
-3. **Gerçekçi Cevaplar:**
-   Sistem sadece resmi SuitableRMS kılavuzlarına dayanarak cevap verir. Eğer sistemin bilmediği veya mevcut olmayan bir özellik hakkında soru sorarsanız, asistan sizi yanıltmamak adına sorunun cevabının kılavuzlarda bulunamadığını nazikçe belirtecektir.
+Adımlar:
+1. Destek Masası ekranına gidin.
+2. Alt kısımdaki mesaj alanına sistemle ilgili sorunuzu yazın ve gönderin.
+3. Asistanın verdiği kılavuz yönlendirmelerini okuyun ve belirtilen bağlantılara (link) tıklayarak doğrudan ilgili işlem sayfasına gidin.
+4. Eğer sorunuzun cevabı mevcut değilse, sistem bu soruyu otomatik kaydederek gelecekte kılavuza ekleyecektir.
 
-## Sık Sorulan Sorular / Sorun Giderme
-
-**Soru:** Asistan soruma "Bilmiyorum" veya "[UNANSWERED]" şeklinde bir dönüş yaptı, ne yapmalıyım?
-**Cevap:** Bu durum, sorduğunuz sorunun mevcut kılavuzlarda henüz yer almadığı anlamına gelir. Sistemimiz bu cevapsız soruları arka planda otomatik olarak kaydetmekte ve düzenli aralıklarla yeni kılavuzlar hazırlanarak asistanın bilgi bankası genişletilmektedir.
-
-**Soru:** Destek linkine tıkladığımda yetkisiz erişim hatası alıyorum.
-**Cevap:** Yapay Zeka Destek Masası genellikle Merkez/Genel Müdürlük yetkililerine veya "Destek" rolü atanmış kullanıcılara açıktır. Yetkinizi restoran müdürünüz veya sistem yöneticiniz üzerinden kontrol ettirebilirsiniz.
+Önemli uyarı:
+Bu ekrana erişim için Merkez Yöneticisi veya Destek yetkisine sahip olunması gerekir. Asistan sadece resmi kılavuzlara dayanarak yanıt verir; yanıt "Bilmiyorum" ise sorunuz henüz dokümante edilmemiştir.
