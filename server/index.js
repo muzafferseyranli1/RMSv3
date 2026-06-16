@@ -2547,27 +2547,59 @@ Hayali adım veya menü uydurma.
 ## BİLGİ BANKASI
 ${kbContent}`
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: message }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 2000,
-          responseMimeType: 'application/json'
-        }
-      })
-    })
-
-    const geminiData = await response.json()
-    if (geminiData.error) {
-      return res.status(500).json({ data: null, error: { message: geminiData.error.message } })
+    // Gemini API çağrısı — aşırı yükleme durumunda 3 denemeye kadar retry
+    const geminiPayload = {
+      contents: [{ parts: [{ text: message }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 2000,
+        responseMimeType: 'application/json'
+      }
     }
 
-    if (!geminiData.candidates?.[0]?.content?.parts?.[0]) {
-      return res.status(500).json({ data: null, error: { message: 'Gemini API geçerli yanıt döndürmedi.', details: geminiData } })
+    let geminiData = null
+    let lastError = null
+    const MAX_RETRIES = 3
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geminiPayload)
+      })
+      const data = await response.json()
+
+      // Başarılı veya düzeltilemeyen hata — çık
+      if (!data.error) { geminiData = data; break }
+
+      const isOverload = data.error.code === 429 || data.error.code === 503 ||
+        (data.error.message || '').toLowerCase().includes('high demand') ||
+        (data.error.message || '').toLowerCase().includes('quota') ||
+        (data.error.message || '').toLowerCase().includes('overloaded')
+
+      if (!isOverload || attempt === MAX_RETRIES) {
+        lastError = data.error
+        break
+      }
+
+      console.warn(`[Support] Gemini aşırı yükleme, ${attempt}. deneme. ${attempt}s bekleniyor...`)
+      await new Promise(r => setTimeout(r, attempt * 1000))
+    }
+
+    if (lastError) {
+      const isOverload = lastError.code === 429 || lastError.code === 503 ||
+        (lastError.message || '').toLowerCase().includes('high demand')
+      return res.status(503).json({
+        data: null,
+        error: {
+          message: lastError.message,
+          error_type: isOverload ? 'overload' : 'api_error'
+        }
+      })
+    }
+
+    if (!geminiData?.candidates?.[0]?.content?.parts?.[0]) {
+      return res.status(500).json({ data: null, error: { message: 'Gemini API geçerli yanıt döndürmedi.', error_type: 'no_response' } })
     }
 
     const rawText = geminiData.candidates[0].content.parts[0].text
@@ -2584,7 +2616,7 @@ ${kbContent}`
     }
   } catch (err) {
     console.error('[POST /api/support/chat]', err.message)
-    return res.status(500).json({ data: null, error: { message: err.message } })
+    return res.status(500).json({ data: null, error: { message: err.message, error_type: 'network_error' } })
   }
 })
 

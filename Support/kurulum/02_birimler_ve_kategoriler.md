@@ -23,52 +23,69 @@ Hammadde ve ürün eklemeden önce, bunların hangi birimlerde ölçüleceğini 
 ## 🔑 Ön Koşullar
 - **[Adım 1]** Şube tanımlaması tamamlanmış olmalı
 
+---
+
 ## 📋 Adım Adım İşlem
 
-### Birim Ekleme
-1. **[Birimler sayfasına gidin]** `/units` adresine gidin.
-2. **[Yeni birim ekleyin]** Sağ üst köşedeki **"+ Yeni Birim"** butonuna tıklayın.
-3. **[Formu doldurun]** Açılan formda:
-   - **Birim Adı** (Zorunlu): Örn. "Kilogram", "Litre", "Adet", "Kutu", "Porsiyon"
-   - **Kısa Kod** (Zorunlu): Örn. `kg`, `lt`, `adet`, `kutu`, `por`
-4. **"Kaydet"** butonuna tıklayın.
-5. Tüm kullandığınız birimler için tekrarlayın.
-
-> **💡 Tavsiye:** En yaygın birimler: kg, gr, lt, ml, adet, kutu, paket, porsiyon, dilim
-
-### Hammadde Kategorisi Ekleme
-Hammaddelerinizi (un, et, sebze, içecek hammaddesi vb.) gruplamak için kullanılır.
-
-1. **[Kategoriler sayfasına gidin]** `/categories` adresine gidin.
-2. **[Yeni kategori ekleyin]** **"+ Yeni Kategori"** butonuna tıklayın.
-3. **[Formu doldurun]**:
-   - **Kategori Adı**: Örn. "Etler", "Sebzeler", "Baharatlar", "İçecekler"
-   - **Üst Kategori**: Hiyerarşik yapı için bir üst kategori seçebilirsiniz
-   - **Renk**: Listelerde kolayca ayırt etmek için renk seçin
+### Yeni Birim Ekleme
+1. **[Birimler sayfasına gidin]** `/units` adresine gidin. Sayfa açıldığında iki grup görürsünüz:
+   - **Sistem Birimleri** — Sisteme önceden tanımlı, silinemez ve düzenlenemez (kg, lt, adet vb.)
+   - **Özel Birimler** — Sizin eklediğiniz birimler
+2. **[Yeni birim ekleyin]** Sayfanın sağ üst köşesindeki **"Birim Ekle"** butonuna tıklayın.
+3. **[Açılan modalı doldurun]** Tam olarak 3 alan vardır, başka alan yoktur:
+   - **Birim Adı** *(Zorunlu)*: Kullanıcıya gösterilecek tam ad. Örn: `Sepet`, `Varil`, `Torba`
+   - **Kısa Kod** *(Zorunlu)*: Sistem içinde kullanılan benzersiz kod. Küçük harf, boşluksuz olmalı. Örn: `sepet`, `varil`, `torba`
+   - **Sembol** *(İsteğe bağlı)*: Kısa gösterim için. Örn: `spt`, `vrl`
 4. **"Kaydet"** butonuna tıklayın.
 
-### Satış Ürünü Kategorisi Ekleme
-POS ekranında ürünlerin hangi gruplarda görüneceğini belirler. (Hammadde kategorisinden **ayrı**!)
+> ⚠️ **Dikkat:** Aynı kısa kodu daha önce tanımladıysanız sistem **"Bu kod zaten mevcut"** hatası verir. Farklı bir kısa kod seçin.
 
-1. **[Satış Kategorileri sayfasına gidin]** `/sale-categories` adresine gidin.
-2. **[Yeni kategori ekleyin]** **"+ Yeni Satış Kategorisi"** butonuna tıklayın.
-3. **[Formu doldurun]**:
-   - **Kategori Adı**: Örn. "Izgara Çeşitleri", "İçecekler", "Tatlılar", "Ana Yemekler"
-   - **Üst Kategori**: Hiyerarşik yapı için seçebilirsiniz
-   - **Görsel**: İsteğe bağlı kategori görseli yükleyebilirsiniz
-   - **Renk**: POS ekranında gösterilecek renk
-4. **"Kaydet"** butonuna tıklayın.
+---
+
+### Birimi Düzenleme
+1. Listede düzenlemek istediğiniz birimin satırında **kalem (✏️) ikonuna** tıklayın.
+2. Birim Adı, Kısa Kod ve Sembol alanlarını güncelleyin.
+3. **"Kaydet"** butonuna tıklayın.
+
+> **Not:** Sistem birimleri (kg, lt vb.) düzenlenemez — satırlarında kalem ikonu görünmez, yerine tire (—) gösterilir.
+
+---
+
+### Birimi Silme
+1. Silmek istediğiniz birimin satırında **çöp kutusu (🗑️) ikonuna** tıklayın.
+2. **"Silme Onayı"** ekranı açılır: `"[Birim Adı] birimi silinsin mi? Bu birimi kullanan stok malları etkilenebilir."` mesajı görürsünüz.
+3. Onaylarsanız birim listeden kalkar, ancak tamamen silinmez — geri alınabilir.
+
+> ⚠️ **Uyarı:** Stok kartlarında kullanımda olan birimleri silmeden önce tüm stok kartlarını kontrol edin. Silme işlemi geri alınabilir olsa da, aradaki süreçte stok kartı kaydedilmeye çalışılırsa sorun yaşanabilir.
+
+---
+
+### Silinen Birimi Geri Alma
+Yanlışlıkla sildiğiniz birimi geri alabilirsiniz:
+1. Sayfanın sağ üst köşesindeki **"Silinmişleri Göster"** toggle'ını açın (kırmızıya döner).
+2. Listede silinen birimler kırmızı/üzeri çizili görünür.
+3. Geri almak istediğiniz birimin satırında **geri al (↩️) ikonuna** tıklayın.
+4. Birim tekrar aktif hale gelir.
+
+---
+
+### Birim Arama
+Sayfanın üst kısmında bir arama kutusu bulunur. Birim adı veya kısa koda göre anlık filtreleme yapabilirsiniz.
+
+---
 
 ## ⚠️ Sık Yapılan Hatalar ve Çözümler
 | Hata / Sorun | Neden Olur? | Çözüm |
 |---|---|---|
 | Stok kartı eklerken birim listesi boş geliyor | Birim tanımlanmamış | `/units` sayfasından birim ekleyin |
-| POS'ta ürün kategorisi seçilemiyor | Satış kategorisi tanımlanmamış | `/sale-categories` sayfasından kategori ekleyin |
-| "Hammadde kategorisi" ile "Satış kategorisi" karıştırıldı | İki farklı sistem | Hammadde: `/categories` / Ürün: `/sale-categories` |
+| "Bu kod zaten mevcut" hatası | Aynı kısa kod daha önce tanımlı | Farklı bir kısa kod kullanın (ör: `torba2`) |
+| Kalem / çöp ikonu görünmüyor | Sistem birimi — değiştirilemez | Sistem birimlerini düzenleyemezsiniz; satırda tire (—) görürseniz bu sistemin kendi birimidir |
+| Silinen birim listede gözükmüyor | "Silinmişleri Göster" toggle kapalı | Sağ üstteki toggle'ı açın (kırmızıya döner) |
 
 ## 💡 İpuçları
-- Hammadde ve satış kategorileri **tamamen ayrı** sistemlerdir. Un için "Unlu Mamuller" hammadde kategorisi, Hamburger için "Sandviçler" satış kategorisi oluşturursunuz.
-- Kategorileri baştan iyi planlayın — sonradan değiştirmek zor olmasa da tutarlılık önemlidir.
+- Sisteme gelen hazır birimler (kg, lt, adet, porsiyon vb.) büyük ihtimalle ihtiyacınızı karşılar — önce onları kontrol edin.
+- Kendi özel biriminizi eklerken kısa kodu anlamlı tutun: `varil` yerine `vrl` gibi.
+- Hammadde ve satış kategorileri **tamamen ayrı** sistemlerdir (bir sonraki adımda açıklanır).
 
 ## 🔗 Bir Sonraki Adım
 - **[Adım 3 →]** Tedarikçi ve Hammadde Tanımlama (`/suppliers` ve `/stock-items`)

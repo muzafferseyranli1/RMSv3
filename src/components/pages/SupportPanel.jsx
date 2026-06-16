@@ -102,7 +102,28 @@ Nasıl yardımcı olabilirim?`,
 
       const result = await response.json()
       if (!response.ok || result.error) {
-        throw new Error(result.error?.message || 'Bir hata oluştu.')
+        const err = result.error || {}
+        const errorType = err.error_type || 'unknown'
+        let friendlyMsg = ''
+
+        if (errorType === 'overload') {
+          friendlyMsg = `Yapay zeka şu an yoğun talep altında — biraz bekleyip tekrar deneyin. 🕐\n\n_(Hata: ${err.message})_`
+        } else if (errorType === 'api_error') {
+          friendlyMsg = `Yapay zeka servisinden bir hata döndü. Lütfen birkaç dakika sonra tekrar deneyin.\n\n_(Hata: ${err.message})_`
+        } else if (errorType === 'network_error') {
+          friendlyMsg = `Sunucuya ulaşılamadı. Sunucunun çalıştığından emin olun.\n\n_(Hata: ${err.message})_`
+        } else {
+          friendlyMsg = `Bir sorun oluştu: **${err.message || 'Bilinmeyen hata'}**`
+        }
+
+        const errorMsg = {
+          id: `err-${Date.now()}`,
+          sender: 'ai',
+          text: friendlyMsg,
+          timestamp: new Date()
+        }
+        setMessages((prev) => [...prev, errorMsg])
+        return
       }
 
       const aiMsg = {
@@ -117,14 +138,10 @@ Nasıl yardımcı olabilirim?`,
       setMessages((prev) => [...prev, aiMsg])
     } catch (err) {
       console.error('Destek mesajı gönderilirken hata oluştu:', err)
-      toast(err.message || 'Yapay zeka asistanına bağlanılamadı.', 'error')
-      
       const errorMsg = {
         id: `err-${Date.now()}`,
         sender: 'ai',
-        text: `Destek asistanıyla bağlantı kurulurken bir sorun yaşandı: **${err.message}**. 
-
-Lütfen sunucu çevre değişkenlerinde \`GEMINI_API_KEY\` değerinin doğru tanımlandığından emin olun.`,
+        text: `Sunucuya bağlanılamadı. Sunucunun çalıştığından emin olun.\n\n_(${err.message})_`,
         timestamp: new Date()
       }
       setMessages((prev) => [...prev, errorMsg])

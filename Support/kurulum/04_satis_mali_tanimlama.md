@@ -1,81 +1,116 @@
-# Kurulum Adım 4 — Satış Malı Tanımlama (Menüye Ürün Ekleme)
+# Kurulum Adım 4 — Satış Malı Tanımlama
 
 ## 🎯 Bu Rehber Ne Zaman İşe Yarar?
-Kasada (POS) satılacak her ürünü (yemek, içecek, tatlı vb.) sisteme kaydetmek için bu kılavuzu kullanın. Satış malı oluşturduğunuzda; reçeteyle maliyete, fiyat listeleriyle satış fiyatına ve POS kategorisiyle kasada görünürlüğe kavuşursunuz.
+Menünüzdeki ürünleri (yemek, içecek, tatlı vb.) sisteme ekleyeceğinizde bu adımı uygularsınız. Satış malı, POS ekranında görünen ve müşteriye satılan üründür.
 
 ## 📍 Nerede Bulunur?
-- **Menü Yolu:** Sol menü > Katalog > Satış Ürünleri
+- **Menü Yolu:** Sol menü > Katalog > Satış Malı
 - **Doğrudan Link:** /products
 - **Gerekli Oturum:** Merkez bölüm PIN'i
 
 ## 🔑 Ön Koşullar
-- **[Adım 1]** Şube tanımlanmış olmalı
-- **[Adım 2]** Satış kategorileri tanımlanmış olmalı
-- **[Adım 3]** Reçete için kullanılacak hammaddeler/stok kalemleri girilmiş olmalı
+- **[Adım 1]** Şube tanımlaması tamamlanmış olmalı
+- **[Adım 2]** Kategoriler tanımlanmış olmalı (opsiyonel ama önerilir)
+
+---
 
 ## 📋 Adım Adım İşlem
 
-### Yeni Satış Malı Oluşturma
-1. **[Satış Ürünleri sayfasına gidin]** `/products` adresine gidin.
-2. **[Yeni ürün ekleyin]** Sağ üst köşedeki **"+ Yeni Satış Kalemi"** butonuna tıklayın.
-3. **Açılan form birkaç sekmeden oluşur:**
+1. `/products` sayfasına gidin.
+2. Sağ üst köşedeki **"Satış Malı Ekle"** butonuna tıklayın.
+3. Açılan modal **6 sekmeli**dir:
 
-#### Sekme 1 — Genel Bilgiler
-- **Ürün Adı** (Zorunlu): Örn. "Klasik Hamburger", "Ayran 200ml", "Cheesecake"
-- **SKU/Ürün Kodu** (Zorunlu): Benzersiz bir kod (Örn: `URN-001`, `IC-AYR-200`)
-- **Satış Kategorisi** (Zorunlu): POS'ta hangi kategoride görüneceği (Örn: "Sandviçler")
-- **Birim**: Genellikle "Porsiyon" veya "Adet"
-- **KDV Oranı**: Satış KDV'si (Örn: %10)
-- **Durum**: **Aktif** seçilmeli ki POS'ta görünsün
+---
 
-#### Sekme 2 — Fiyatlandırma
-- **Satış Fiyatı**: KDV dahil veya hariç girin (sistem otomatik hesaplar)
-- **Birden fazla fiyat listesi** varsa her biri için ayrı fiyat girin (Örn: Masada, Paket servis, Online)
-- **Kanal bazlı fiyatlandırma**: POS, Garson, Kiosk için farklı fiyat girebilirsiniz
+### Sekme 1 — Temel Bilgiler
+| Alan | Açıklama |
+|---|---|
+| **SKU Kodu** | Ürün kodu. "Otomatik" checkbox'ını işaretlerseniz sistem üretir |
+| **Satış Malı İsmi** *(Zorunlu)* | Ürünün tam adı (menüde ve raporlarda görünür) |
+| **Kısa İsim** | POS butonunda yer kısıtlıysa bu görünür |
+| **Lokasyon** *(Zorunlu)* | Bu ürünün satıldığı şube(ler). En az bir şube seçilmeden kaydedilemez |
+| **Kategori** | Ürün kategorisi (opsiyonel) |
 
-#### Sekme 3 — Şube/Lokasyon
-- En az **bir şube seçin** (Zorunlu!) — ürünün hangi şubede satılacağı
-- Her şubeyi checkbox'tan işaretleyin
+---
 
-#### Sekme 4 — Reçete (Maliyet Hesabı)
-- **"Reçete Bağlı"** seçeneğini aktif edin
-- **"+ Hammadde Ekle"** butonuna tıklayın ve stok kalemlerini seçin:
-  - Her hammadde için **miktar** girin (Örn: Dana Kıyma — 0.150 kg)
-  - Sistem bu girişlerden otomatik maliyet hesaplar
-- Yarı mamul (yarı hazır ürün) kullanıyorsanız **"+ Yarı Mamul Ekle"** butonunu kullanın
+### Sekme 2 — Satış & Fiyat
+Ürününüzün kanal bazında fiyatlarını bu sekmede tanımlarsınız.
 
-#### Sekme 5 — Seçenekler (Opsiyonel)
-- Ürüne "Ekstra sos", "Soğansız", "Büyük boy" gibi seçenekler eklemek için kullanılır
-- Önce `/options` sayfasından seçenek grupları tanımlanmış olmalıdır
-- Tanımlanmış seçenek gruplarını buradan ürüne atayın
+- **"Tüm Fiyatlar Aynı"** toggle'ını açarsanız tüm kanallara tek fiyat girersiniz.
+- Her satış kanalı (Hızlı Satış, Kiosk, Garson vb.) için:
+  - **Durum**: Toggle ile o kanalda aktif/pasif
+  - **Satış Fiyatı**: ₺ cinsinden fiyat
+  - **KDV Oranı**: Kanala özel KDV
 
-4. **"Kaydet"** butonuna tıklayın.
+> ⚠️ **POS'ta görünmesi için:** İlgili kanalın (örn. "Hızlı Satış") **Durum toggle'ı açık** olmalı ve **fiyat girilmiş** olmalı.
 
-### POS'ta Ürünü Görüntüleme
-Ürünü kaydettikten sonra POS ekranında görünmesi için şunları kontrol edin:
-- **Durum:** "Aktif" olarak işaretli mi?
-- **Şube:** POS'u açtığınız şube, ürünün lokasyon listesinde var mı?
-- **Satış Kategorisi:** Kategori POS'ta aktif mi?
+---
 
-### Toplu Ürün Yönetimi
-- Ürün listesinde **birden fazla ürünü checkbox ile seçin** → Toplu aktif/pasif yapma, toplu kategori değiştirme yapabilirsiniz.
-- **Arama kutusuna** ürün adı veya SKU yazarak hızlıca bulun.
-- **Kategori filtresi** ile belirli bir kategorinin ürünlerini listeleyin.
+### Sekme 3 — Seçenekler
+Ürüne porsiyon ve seçenek grupları eklemek için kullanılır.
+
+**Porsiyon / Boyut:**
+- **"Porsiyon Ekle"** butonu ile Small, Medium, Large gibi boyutlar tanımlanır.
+
+**Seçenek Grupları:**
+- **"Seçenek Grubu Ekle"** butonu ile daha önce `/options` sayfasında tanımladığınız seçenek grupları eklenir.
+- Her grup için **Zorunlu** toggle'ı ve min/maks seçim sayısı ayarlanabilir.
+
+---
+
+### Sekme 4 — Görsel
+POS butonunun nasıl görüneceğini bu sekmede ayarlarsınız.
+
+**POS / Hızlı Satış Görseli:**
+- **Buton Rengi**: Renk paleti veya özel renk seçin
+- **Metin Rengi**: Buton yazı rengi
+- Veya **"Resim Yükle"** ile görsel ekleyin
+- Küçük bir önizleme (120×120 px) anlık gösterilir
+
+**Satış Kanalı Görseli (Online, Kiosk vb.):**
+- **Ürün Görseli**: Kiosk ve online kanallar için ayrı görsel
+- **Açıklama**: Ürün açıklama metni
+
+---
+
+### Sekme 5 — Ayarlar
+| Ayar | Varsayılan | Açıklama |
+|---|---|---|
+| **Satış Durumu** | Açık | Kapatılırsa hiçbir kanalda satılamaz |
+| **Favori Ürün** | Kapalı | Açılırsa POS'ta öne çıkar |
+| **Ödemede bölünebilir** | Kapalı | Masada hesap bölme için |
+| **Açıklama Yazdırma** | Kapalı | Mutfak fişine açıklama yazdırır |
+| **Mutfakta Gizle** | Kapalı | Mutfak ekranında görünmez |
+
+---
+
+### Sekme 6 — Reçete
+Bu ürünün üretilmesi için hangi hammaddelerden ne kadar kullanılacağını tanımlarsınız.
+- **Malzeme** (stok malı), **Miktar**, **Birim**, **Fire %** alanları satır satır eklenir.
+- Kanal ve porsiyon bazında farklı reçete tanımlanabilir.
+- Reçete girilince maliyet otomatik hesaplanır.
+
+---
 
 ## ⚠️ Sık Yapılan Hatalar ve Çözümler
 | Hata / Sorun | Neden Olur? | Çözüm |
 |---|---|---|
-| Ürün POS'ta görünmüyor | Şube seçilmemiş veya pasif | Şube seçin ve "Aktif" yapın |
-| Maliyet hesaplanamıyor | Reçete eklenmemiş veya hammadde fiyatsız | Reçete ekleyin, hammadde alış fiyatını girin |
-| Fiyat sıfır görünüyor | İlgili fiyat listesine fiyat girilmemiş | Fiyatlandırma sekmesinden fiyatı girin |
-| SKU hatası alıyorum | Bu SKU zaten kullanımda | Farklı ve benzersiz bir SKU kullanın |
+| Ürün POS'ta çıkmıyor | Kanal toggle'ı kapalı veya fiyat girilmemiş | Sekme 2'de ilgili kanalı aktif edip fiyat girin |
+| "Lokasyon seçmelisiniz" hatası | Şube seçilmemiş | Sekme 1'den şube seçin |
+| Ürün görsel bulanık çıkıyor | Görsel yüksek çözünürlükte yüklendi | 500×500 px civarı PNG önerilir |
+| Seçenek grubu eklenemiyor | Grup daha önce `/options` sayfasında tanımlanmamış | Önce `/options` sayfasından grup oluşturun |
+
+## 🗑️ Silme ve Geri Alma
+- Silme **geri alınabilir** (soft delete).
+- Silinen ürünleri görmek için sayfanın sağ üstündeki **"Silinmişleri Göster"** toggle'ını açın.
+- Satırdaki **↩️ Geri Al** ikonuna tıklayarak geri alabilirsiniz.
 
 ## 💡 İpuçları
-- Ürün adını POS'ta nasıl görünmesini istiyorsanız öyle girin — kasiyerler bu adı görecek.
-- Reçete olmadan da kayıt yapılabilir, ancak maliyet sıfır gösterilir.
-- Aynı ürünü farklı porsiyonlarda satmak istiyorsanız (küçük/büyük): Her porsiyon için **ayrı bir satış kalemi** oluşturun.
+- Reçete girilmiş ürünlerin maliyeti otomatik hesaplanır — fiyat-maliyet oranını raporlarda takip edebilirsiniz.
+- Kiosk veya online satış yapıyorsanız Sekme 4'te mutlaka ürün görseli ekleyin.
+- "Kısa İsim" alanını doldurun — POS butonunda yer az olduğunda kısa isim görünür, okunabilirliği artırır.
 
-## 🔗 İlgili Diğer Kılavuzlar
-- **Seçenek Grupları Tanımlama** — `/options`
-- **Fiyat Listeleri** — `/prices`
-- **[Adım 5 →]** Sipariş ve Mal Kabul işlemleri
+## 🔗 İlgili Kılavuzlar
+- **[Adım 3 ←]** Tedarikçi ve Hammadde Tanımlama (`/stock-items`)
+- **[Sipariş & Mal Kabul]** (`/orders`)
+- **[Sadakat Sistemi]** (`/sadakat`)

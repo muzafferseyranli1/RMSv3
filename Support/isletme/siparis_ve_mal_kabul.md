@@ -1,94 +1,118 @@
-# Sipariş Oluşturma ve Mal Kabul İşlemleri
+# Sipariş Oluşturma ve Mal Kabul Rehberi
 
 ## 🎯 Bu Rehber Ne Zaman İşe Yarar?
-Şubelerinizin tedarikçilerden veya merkez depodan malzeme sipariş etmesi, bu siparişlerin takibi ve mal geldiğinde kayıt yapılması gerektiğinde bu kılavuzu kullanın.
+Tedarikçilerinizden hammadde sipariş etmek veya gelen malı stoka işlemek istediğinizde bu rehberi kullanın.
 
-## 📍 Nerede Bulunur?
+---
 
-### Sipariş Yönetimi
-- **Menü Yolu:** Sol menü > Şube > Siparişler
+## Bölüm 1 — Sipariş Oluşturma
+
+### 📍 Nerede Bulunur?
+- **Menü Yolu:** Sol menü > Satın Alma > Siparişler
 - **Doğrudan Link:** /orders
-- **Gerekli Oturum:** Şube bölüm PIN'i
+- **Sayfa Başlığı:** Şubeye göre değişir:
+  - Normal şube: **"Siparişler"**
+  - Ana depo: **"Depo Satinalma Siparişleri"**
+  - Merkez mutfak: **"Mutfak Satinalma Siparişleri"**
 
-### Mal Kabul
-- **Menü Yolu:** Sol menü > Şube > Mal Kabul
-- **Doğrudan Link:** /mal-kabul
-- **Gerekli Oturum:** Şube bölüm PIN'i
-
-### Tedarikçi Sipariş Paneli
-- **Menü Yolu:** Sol menü > Satınalma > Tedarikçi Paneli
-- **Doğrudan Link:** /depo-satinalma
-- **Gerekli Oturum:** Merkez bölüm PIN'i
-
-## 🔑 Ön Koşullar
-- Şube tanımlanmış olmalı
-- Tedarikçiler ve hammaddeler (stok kartları) tanımlanmış olmalı
-- Sipariş akışları (sipariş şablonları) yapılandırılmış olmalı (opsiyonel ama önerilir)
-
-## 📋 Adım Adım İşlem
-
-### Manuel Sipariş Oluşturma (Şube'den)
-1. **[Sipariş sayfasına gidin]** `/orders` adresine gidin.
-2. **[Yeni sipariş başlatın]** Sağ üst köşedeki **"+ Yeni Sipariş"** butonuna tıklayın.
-3. **[Sipariş bilgilerini seçin]**:
-   - **Tedarikçi**: Siparişi vereceğiniz tedarikçiyi seçin
-   - **Teslimat Tarihi**: İstediğiniz teslim tarihini girin
-   - **Teslimat Yeri**: Malın teslim alınacağı şubeyi/depoyu seçin
-4. **[Kalem ekleyin]** Sayfada çıkan stok listesinden sipariş vereceğiniz malları seçin:
-   - İlgili stok kaleminin satırında **miktar kutusuna** ne kadar sipariş verdiğinizi girin
-   - Sistem önerilen sipariş miktarını gösterebilir (stok seviyesine göre)
-5. **[Sipariş notunu girin]** (İsteğe bağlı): Tedarikçiye iletmek istediğiniz özel notu girin.
-6. **"Siparişi Gönder"** butonuna tıklayın.
-7. Sipariş "Gönderildi" statüsüne geçer ve tedarikçi sipariş panelinde görünür.
-
-### Sipariş Durumu Takibi
-Sipariş listesinde her siparişin durumu şu sırayı izler:
-| Durum | Açıklama |
+### 📋 Sipariş Durumları
+| Durum | Anlamı |
 |---|---|
-| **Taslak** | Henüz gönderilmemiş |
-| **Gönderildi** | Tedarikçiye iletildi |
-| **Onaylandı** | Tedarikçi onayladı |
-| **Sevk Edildi** | Tedarikçi yola çıkardı |
-| **Tamamlandı** | Mal kabul yapıldı |
-| **İptal** | İptal edildi |
+| **Taslak** | Henüz onaylanmamış |
+| **İşlem Bekleniyor** | Aksiyon gerekiyor |
+| **Onay Bekleniyor** | Yönetici onayı bekleniyor |
+| **Sipariş Verildi** | Tedarikçiye iletildi |
+| **Kısmi Kabul** | Bir kısmı teslim alındı |
+| **Kabul Tamam** | Tamamı teslim alındı |
+| **İptal** | Sipariş iptal edildi |
 
-### Mal Kabul İşlemi
-Sipariş edilen mal geldiğinde stok giriş yapılması için:
+Sayfada bu durumlar **3 sekme** altında gruplanmıştır:
+- **İşlem Bekleniyor** (Taslak + Bekleyen)
+- **Onay Bekleniyor**
+- **Sipariş Verildi** (Verilmiş + Kısmi + Tamamlanmış)
 
-1. **[Mal Kabul sayfasına gidin]** `/mal-kabul` adresine gidin.
-2. **[İlgili siparişi bulun]** Sayfada bekleyen siparişler listelenir. İlgili siparişi seçin.
-3. **[Gelen miktarları girin]**:
-   - Sipariş edilen her kalem için **"Gelen Miktar"** kutusuna fiili gelen miktarı girin
-   - Sipariş miktarıyla gelen miktar farklıysa sistem bu farkı gösterir
-   - **Lot Numarası / SKT** (son kullanma tarihi): WMS kullananlar için girin
-4. **[Fatura bilgisini girin]** (İsteğe bağlı):
-   - Fatura No, Fatura Tarihi, Fatura Tutarı
-5. **"Mal Kabulü Tamamla"** butonuna tıklayın.
-6. Stok miktarları otomatik güncellenir, maliyet hesaplaması güncellenir.
+### 📋 Manuel Sipariş Oluşturma
+1. Sağ üstteki **"Manuel Sipariş Oluştur"** butonuna tıklayın.
+2. Açılan modalda **tek bir alan** vardır: **"Sipariş Akışı Seçin"** — daha önce tanımlanmış aktif sipariş akışlarından birini seçin (akış adı + tedarikçi + Otomatik/Manuel tipi görünür).
+3. **"Sipariş Oluştur"** butonuna tıklayın.
 
-### Kısmi Teslimat (Eksik Mal Gelirse)
-- Gelen miktarı sipariş miktarından az girerseniz sistem **"Kısmi Teslim"** durumuna alır.
-- Kalan miktar için sipariş açık kalır, ikinci bir teslimat yapılabilir.
+> **Not:** **"Bugünün Siparişlerini Oluştur"** butonu otomatik akışları toplu tetikler — manuel müdahale gerektirmez.
 
-### Sipariş İptal Etme
-1. Sipariş listesinde iptal etmek istediğiniz siparişi bulun.
-2. Sağdaki **"İptal"** butonuna veya üç nokta menüsünden **"İptal Et"** seçeneğine tıklayın.
-3. İptal nedenini girin ve onaylayın.
+### 🔍 Arama & Filtreleme
+- **Metin arama:** Sipariş no, akış adı, açıklama veya tedarikçi adına göre
+- **Sekme filtreleme:** Duruma göre 3 sekme
+- **Şube/Depo seçimi:** Sayfa üstündeki dropdown ile farklı lokasyona geçilebilir
+
+---
+
+## Bölüm 2 — Mal Kabul
+
+### 📍 Nerede Bulunur?
+- **Menü Yolu:** Sol menü > Satın Alma > Mal Kabul
+- **Doğrudan Link:** /mal-kabul
+- **Sayfa Başlığı:** **"Mal Kabul"**
+
+### 📋 Adım Adım Mal Kabul Akışı
+
+1. **Şube seçin** — Sayfanın üstündeki dropdown'dan teslim alan şubeyi seçin.
+2. **Sipariş listesinden seçin** — Durumu "Sipariş Verildi" veya "Kısmi Kabul" olan siparişler listelenir. İlgili siparişin yanındaki **"İşlem Yap"** butonuna tıklayın.
+3. **Formu doldurun:**
+
+#### Belge Bilgileri
+| Alan | Zorunlu | Açıklama |
+|---|---|---|
+| **Tedarikçi** | ✅ Her zaman | Gönderen firma |
+| **Teslim Tarihi** | ✅ | Malın geldiği tarih |
+| **Teslim Saati** | - | Opsiyonel |
+| **Sevk Belgesi** | ✅ | İrsaliye / İrsaliyeli Fatura / Belgesiz |
+| **Belge No** | ✅ (belgesiz değilse) | İrsaliye/fatura numarası (max 16 karakter) |
+| **Belge Tarihi** | ✅ (belgesiz değilse) | İrsaliye/fatura tarihi |
+| **Not** | - | Teslim alan personel notu |
+| **Açıklama** | ✅ (belgesiz ise) | Belgesiz kabulde zorunlu açıklama |
+
+#### Satır Bazında Teslim Miktarı
+Tabloda her ürün satırı için:
+- **Sipariş Önerisi** — Sistemin hesapladığı ihtiyaç miktarı
+- **Teslim Alınan** — Gerçekte gelen miktarı girin (kısmi olabilir)
+- **Birim Fiyatı** — Güncel alış fiyatı (WAC hesabına dahil edilir)
+
+> ✅ **Kısmi Teslimat:** Tüm miktarı almak zorunda değilsiniz. Daha az girerseniz sipariş "Kısmi Kabul" durumuna geçer ve kalan için tekrar işlem yapabilirsiniz.
+
+#### WMS Modu Ek Alanlar (Ana Depoda)
+Ana depo (WMS) modunda her satır için ek bilgi girilir:
+| Alan | Açıklama |
+|---|---|
+| **Lokasyon** | Malın deponun hangi rafına kaldırılacağı (Zorunlu) |
+| **LPN / Palet** | Palet numarası (opsiyonel) |
+| **Lot No** | Parti/lot numarası |
+| **SKT** | Son kullanma tarihi |
+| **Durum** | Kullanılabilir / Karantina / Putaway Bekliyor |
+
+4. **"Mal Kabulü Kaydet ve Stoğa İşle"** butonuna tıklayın.
+   - Stok hareketi otomatik işlenir
+   - WAC (Ağırlıklı Ortalama Maliyet) güncellenir
+   - Tüm kalemler tam alındıysa sipariş "Kabul Tamam", kısmi ise "Kısmi Kabul" olur
+   - Toast: `"Mal kabul kaydedildi ve stok güncellendi"`
+
+### Manuel Mal Kabul (Siparişsiz)
+Elinizdeki mal için önceden sipariş oluşturmadıysanız:
+1. Sayfanın sağ üstündeki **"Manuel Mal Kabul"** butonuna tıklayın.
+2. Boş form açılır — stok mallarını kendiniz ekleyerek kabul yapabilirsiniz.
+
+---
 
 ## ⚠️ Sık Yapılan Hatalar ve Çözümler
 | Hata / Sorun | Neden Olur? | Çözüm |
 |---|---|---|
-| Sipariş listesinde ürünler çıkmıyor | Stok kartı bu şubeye atanmamış | Stok kartına şubeyi ekleyin |
-| Mal kabul sonrası stok güncellenmedi | Mal kabul tamamlanmadı (taslakta kaldı) | "Tamamla" butonuna basıldığını kontrol edin |
-| Tedarikçi seçilemiyor | Tedarikçi tanımlanmamış | `/suppliers` sayfasından ekleyin |
-| Sipariş WMS depo siparişiyle karışıyor | WMS depo siparişleri ayrı sistemdir | Şube siparişi için `/orders`, depo replenishment için `/depo-orders` kullanın |
+| Sipariş listede görünmüyor | Sipariş durumu "Verildi" değil | `/orders` sayfasından sipariş durumunu kontrol edin |
+| WMS lokasyon seçimi zorunlu hatası | Ana depoda lokasyon boş bırakıldı | Her satır için depo lokasyonu seçin |
+| "Belgesiz kabulde açıklama zorunlu" | Sevk belgesi "Belgesiz" seçildi | Açıklama alanını doldurun |
 
 ## 💡 İpuçları
-- **Sipariş Akışları** (düzenli tedarikçilerle çalışıyorsanız): Haftalık otomatik sipariş şablonları kurabilirsiniz — böylece her pazartesi aynı tedarikçiye aynı ürünler otomatik siparişe gider.
-- Mal geldiğinde **aynı gün** mal kabul yapın — stok ve maliyet tutarlılığı için kritiktir.
-- Lot numarası girilen mallar WMS üzerinde tam takip edilir.
+- İrsaliye numarasını mutlaka girin — denetim ve muhasebe için kritik
+- Kısmi teslimatı kabul edin, kalan miktar için tedarikçiyle iletişime geçin
+- Lot numarası girmek izlenebilirlik açısından önemlidir (özellikle gıda güvenliği için)
 
-## 🔗 İlgili Diğer Kılavuzlar
-- **WMS Depo Görevleri** — `/depo-wms-tasks`
-- **Tedarikçi Yönetimi** — `/suppliers`
-- **Sadakat Sistemi** — Kapsamlı sadakat kılavuzu
+## 🔗 İlgili Kılavuzlar
+- **[Adım 3 ←]** Tedarikçi ve Hammadde Tanımlama (`/stock-items`)
+- **[Sadakat Sistemi]** (`/sadakat`)

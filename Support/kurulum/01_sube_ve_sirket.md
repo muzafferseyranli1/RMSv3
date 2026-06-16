@@ -1,45 +1,75 @@
-# Kurulum Adım 1 — Şube ve Şirket Yapısı Tanımlama
+# Kurulum Adım 1 — Şirket ve Şube Yapısı Tanımlama
 
 ## 🎯 Bu Rehber Ne Zaman İşe Yarar?
-Sistemi ilk kez kuruyorsanız ya da yeni bir şube, depo veya mutfak birimi açıyorsanız buradan başlayın. Şube tanımlanmadan sisteme başka hiçbir şey eklenemez — tüm stok kartları, ürünler ve siparişler bir şubeye bağlıdır.
+SuitableRMS'e ilk başladığınızda yapmanız gereken **ilk işlem** budur. Sistemdeki tüm modüller (stok, sipariş, sadakat) mutlaka bir şube veya merkez yapısına bağlı olmalıdır. Bu adım tamamlanmadan başka hiçbir şey eklenemez.
 
 ## 📍 Nerede Bulunur?
-- **Menü Yolu:** Sol menü > Ayarlar > Şirket Bilgileri
+- **Menü Yolu:** Sol menü > Ayarlar > Şirket Kuruluşu
 - **Doğrudan Link:** /company
 - **Gerekli Oturum:** Merkez bölüm PIN'i
 
 ## 🔑 Ön Koşullar
-Başka bir ön koşul yoktur — bu ilk yapılacak işlemdir.
+Ön koşul yoktur — bu sistemin ilk adımıdır.
+
+---
+
+## 📋 Yapı Mantığı
+
+Sistemde şirket yapısı bir **ağaç hiyerarşisi** şeklinde çalışır. Her bir düğüm (node) farklı bir tip olabilir:
+
+| Tip | Ne İfade Eder? |
+|---|---|
+| **Şirket** | En üst düzey — tüm yapının kökü |
+| **Tüzel** | Hukuki kuruluş (holding, grup şirketi) |
+| **Org** | Organizasyonel birim |
+| **Şube** | Fiziksel restoran/mağaza lokasyonu |
+| **Ana Depo** | Merkezi depo |
+| **Üretim** | Merkez mutfak |
+| **GM** | Genel Müdürlük |
+| **Depo** | Şubeye bağlı alt depo |
+
+---
 
 ## 📋 Adım Adım İşlem
 
-### Sistem İlk Açılışında Şirket ve Şube Tanımı
-1. **[Ayarlar ekranına gidin]** Sol menüde **Ayarlar** bölümünü açın ve **Şirket Bilgileri** sayfasına gidin.
-2. **[Genel bilgileri doldurun]** Şirket adı, vergi numarası, adres ve iletişim bilgilerini girin.
-3. **[Şube ağacını oluşturun]** Sayfada **"Şube Yapısı"** veya **"Lokasyon Ağacı"** bölümüne inin. Burası sistemin omurgasıdır.
-4. **[Yeni şube ekleyin]** **"+ Yeni Şube Ekle"** butonuna tıklayın. Açılan formda:
-   - **Şube Adı** (Zorunlu): Örn. "Kadıköy Şubesi", "Merkez Depo", "Merkez Mutfak"
-   - **Şube Tipi**: Şube / Depo / Mutfak seçeneklerinden birini seçin
-   - **Şube Kodu**: Kısa ve benzersiz bir kod girin (Örn: `KDK`, `MRKZ-DPO`)
-5. **[Kaydedin]** **"Kaydet"** butonuna tıklayın. Şube listede görünecektir.
-6. **[Gerekirse tekrarlayın]** Her şube, depo veya mutfak için adımları tekrarlayın.
-
-### Şube Bilgilerini Düzenleme
-1. **Şirket Bilgileri** sayfasında mevcut şubenin yanındaki **kalem (✏️) ikonuna** tıklayın.
-2. Değiştirmek istediğiniz alanları güncelleyin.
+### 1. İlk Şirket Kaydını Oluşturun
+1. `/company` sayfasına gidin. Sayfa boşsa (henüz hiç kayıt yoksa) sağ üst köşedeki **"Şirket Ekle"** butonuna tıklayın.
+2. Açılan modalda alanları doldurun:
+   - **Tür**: `Şirket` seçin
+   - **Ad** *(Zorunlu)*: Firmanızın ticaret ünvanı
+   - **Logo** *(İsteğe bağlı)*: Firma logosu yükleyin
+   - **Para Birimi** *(Zorunlu)*: `TRY` (Türk Lirası) seçin
+   - **Satış Varsayılan Vergi**: Genel KDV oranınızı seçin (önce `/taxes` sayfasından tanımlanmış olmalı)
 3. **"Kaydet"** butonuna tıklayın.
+
+### 2. Şube Ekleyin
+Şirket kaydı oluşturduktan sonra ağaçta o şirkete tıklayın. Sağ tarafta **detay paneli** açılır.
+1. Detay panelinde **"＋ Alt Düğüm"** butonuna tıklayın.
+2. Açılan modalda:
+   - **Tür**: `Şube` seçin
+   - **Ad** *(Zorunlu)*: Şube adını girin (örn: "Kadıköy Şubesi")
+   - **Enlem / Boylam** *(İsteğe bağlı)*: Harita konumu için GPS koordinatları
+3. **"Kaydet"** butonuna tıklayın.
+4. Her yeni şube için bu adımı tekrarlayın.
+
+### 3. Ana Depo veya Merkez Mutfak Ekleyin (Varsa)
+Aynı şekilde şirkete **"＋ Alt Düğüm"** butonuyla `Ana Depo` veya `Üretim` tipinde düğümler ekleyebilirsiniz.
+
+---
 
 ## ⚠️ Sık Yapılan Hatalar ve Çözümler
 | Hata / Sorun | Neden Olur? | Çözüm |
 |---|---|---|
-| Stok kartı eklerken şube seçilemiyor | Şube tanımlanmamış | Önce bu kılavuzdaki adımları uygulayın |
-| Sipariş oluşturulurken lokasyon boş geliyor | Şube tipi yanlış seçilmiş | Şube tipini (Şube/Depo/Mutfak) doğru seçin |
+| "Şube Ekle" butonu yok | Şube ağaçtaki bir üst düğüme bağlı eklenir | Önce ağaçta şirkete tıklayın, detay panelinde "＋ Alt Düğüm" çıkar |
+| Stok/sipariş sayfalarında şube seçilemiyor | Şube henüz tanımlanmamış | Bu adımı tamamlayın |
+| KDV seçenekleri boş geliyor | Vergi tanımlanmamış | Önce `/taxes` sayfasından KDV oranı ekleyin |
+
+## ⚠️ Kritik Uyarı — Silme İşlemi
+> **Dikkat:** Şirket yapısında bir düğümü silmek **GERİ ALINAMAZ**. Silme onay ekranında `"Tüm alt düğümler de silinecektir. Bu işlem geri alınamaz."` uyarısı görürsünüz. Şube silmeden önce o şubeye bağlı tüm stok, sipariş ve personel kayıtlarını kontrol edin.
 
 ## 💡 İpuçları
-- Şube kodu sonradan değiştirmeniz güçleşebilir; başta düşünerek belirleyin.
-- Sisteminizde tek şube olsa bile şube tanımlaması zorunludur.
-- Depo ve Mutfak birimleri de birer "şube" olarak girilir, sadece tipi farklıdır.
+- Birden fazla şubeniz varsa hepsini baştan ekleyin; sonraki adımlarda her stok/ürün kaydı bir şubeye bağlanacak.
+- Şube adını kısa ve tanımlayıcı tutun — POS ekranında bu ad görünür.
 
 ## 🔗 Bir Sonraki Adım
-Şubenizi tanımladıktan sonra:
 - **[Adım 2 →]** Birimler ve Kategoriler Tanımlama (`/units` ve `/categories`)
