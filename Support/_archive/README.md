@@ -20,6 +20,11 @@ Aşağıdaki tabloda, sistemdeki temel iş süreçleri ve bunlara ait teknik reh
 | [Yeni Müşteri Kazanımı Kampanya Rehberi](file:///c:/RMSv3/Support/campaign_recommendations.md) | Yeni müşteriler kazanmak için referans, kupon ve hoş geldin puan kampanyaları kurulumu. | Destek / Pazarlama |
 | [Kayıp Müşteri Geri Kazanım Kılavuzu](file:///c:/RMSv3/Support/customer_retention_guide.md) | Uykudaki/gelmeyi bırakan eski müşterileri segmente etme ve geri kazanma kampanyaları oluşturma. | Destek / Pazarlama |
 | [Sistem Mimarisi ve Dosya Haritası](file:///c:/RMSv3/Support/system_architecture_overview.md) | Projenin genel modülleri, ilgili kod yolları, veritabanı tabloları ve sayfa bağlantıları. | Destek / Teknik Ekip |
+| [Depo Araç Tanımları Kılavuzu](file:///c:/RMSv3/Support/wms_arac_yonetimi.md) | Sevkiyat araçları, kasa hacim/ağırlık limitleri, sıcaklık sınıfı ve override yetkisi tanımları. | Destek / Depo Yönetimi |
+| [Kalite & Karantina Yönetimi Kılavuzu](file:///c:/RMSv3/Support/wms_karantina.md) | Karantinadaki hold stokların release, reject ve scrap kararları, fotoğraf kanıtı inceleme. | Destek / Kalite Güvence |
+| [Lot & SKT İzlenebilirlik Kılavuzu](file:///c:/RMSv3/Support/wms_izlenebilirlik.md) | Lot arama, geri çağırma (Recall) CSV dışa aktarımı, stok defteri (ledger) ve mobil tarama akışı. | Destek / Depo & Muhasebe |
+| [Sayım & Fark Onayları Kılavuzu](file:///c:/RMSv3/Support/wms_sayim_fark_onay.md) | Sayım görevi oluşturma, Android'den sayım ve farkların yönetici tarafından onay/red süreci ile ikmal. | Destek / Depo & Yönetim |
+| [Stok Paket Ölçüleri ve Barkod Kılavuzu](file:///c:/RMSv3/Support/wms_stok_paket_barkod.md) | Ambalaj birimleri, boyut/ağırlık/hacim verileri ve çoklu barkod yönetimi. | Destek / Backoffice |
 
 ---
 

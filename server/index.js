@@ -2461,7 +2461,35 @@ app.get('/api/manual/pages/:id', async (req, res) => {
   }
 })
 
-// AI SUPPORT CHAT ENDPOINT (RAG ENTEGRASYONU)
+// ── Support KB: Alt klasörleri de dahil eden recursive .md okuyucu ──────────
+function readSupportKb(dir) {
+  let content = ''
+  let entries
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch (e) { return content }
+  for (const entry of entries) {
+    // _ ile başlayan dosya/dizinleri (agent kuralları, gaps logu vb.) RAG'a dahil etme
+    if (entry.name.startsWith('_')) continue
+    if (entry.isDirectory()) {
+      content += readSupportKb(path.join(dir, entry.name))
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      try {
+        const fileContent = fs.readFileSync(path.join(dir, entry.name), 'utf8')
+        content += `\n=== DOKÜMAN: ${entry.name} ===\n${fileContent}\n`
+      } catch (e) { /* dosya okunamazsa atla */ }
+    }
+  }
+  return content
+}
+
+// Gaps log helper: bilinmeyen soruyu _gaps.md'ye yazar
+function logGap(question) {
+  const gapsFile = path.join(__dirname, '../Support/_gaps.md')
+  const isoDate = new Date().toISOString().split('T')[0]
+  const entry = `\n## [AÇIK] ${isoDate} — ${question}\n- Kullanıcının sorusu: "${question}"\n- Status: DOC_AGENT_PENDING\n`
+  try { fs.appendFileSync(gapsFile, entry) } catch (e) { console.error('gaps.md yazılamadı:', e.message) }
+}
+
+// AI SUPPORT CHAT ENDPOINT (RAG ENTEGRASYONU — v2)
 app.post('/api/support/chat', async (req, res) => {
   try {
     const { message, origin } = req.body
@@ -2475,112 +2503,109 @@ app.post('/api/support/chat', async (req, res) => {
       return res.status(500).json({ data: null, error: { message: 'GEMINI_API_KEY is not configured on the server environment.' } })
     }
 
-    // Support klasöründeki tüm .md dosyalarını oku
+    // Support klasörünü recursive oku (alt klasörler dahil, _ ile başlayanlar hariç)
     const supportDir = path.join(__dirname, '../Support')
-    let kbContent = ''
-    if (fs.existsSync(supportDir)) {
-      const files = fs.readdirSync(supportDir)
-      for (const file of files) {
-        if (file.endsWith('.md')) {
-          const filePath = path.join(supportDir, file)
-          const content = fs.readFileSync(filePath, 'utf8')
-          kbContent += `\n=== DOKÜMAN: ${file} ===\n${content}\n`
-        }
-      }
-    }
+    const kbContent = readSupportKb(supportDir)
+
+    const systemPrompt = `Sen SuitableRMS'in eğitim danışmanısın. Restoran yöneticileri sana sistem hakkında soru sorar ve sen onlara sistemi nasıl kullanacaklarını öğretirsin.
+
+## TEMEL KURALLAR
+
+1. SADECE BİLGİ BANKASINA GÜVENİRSİN
+   Yanıtlarında yalnızca sana verilen Bilgi Bankası belgelerine dayanırsın. Genel muhasebe, restoran sektörü veya başka sistemler hakkında bilgi vermezsin.
+
+2. ANLAM EŞLEŞTIRMESI YAPARSIN
+   Kullanıcı "ürün ekle", "menüye yemek gir", "satışa çıkar" gibi farklı şeyler söyleyebilir — bunların aynı işleme denk düşebileceğini anlarsın. Bire bir kelime eşleşmesi aramadan, ne yapmak istediğini kavra ve ilgili kılavuzdan yanıtı üret.
+
+3. SOMUT VE YÖNLENDİRİCİ ANLATIRSIN
+   Adımları "Sayfanın sağ üst köşesindeki mavi + butonuna tıklayın" gibi somut biçimde tarif edersin. Kullanıcı ekranda tam olarak ne yapacağını bilmeli.
+
+4. TEKNİK TERİMLER KULLANMAZSIN
+   Veritabanı tablosu adı, kod satırı, dosya yolu gibi teknik detayları asla söylemezsin.
+
+5. DANIŞMAN GİBİ DAVRANIRSIN
+   Kullanıcı "satışlar düştü" veya "müşterilerimi kaybettim" gibi bir problem anlattığında, Bilgi Bankası'ndaki ilgili senaryoyu bulup somut bir eylem planı önerirsin.
+
+6. SADECE ONAYLANAN URL'LERİ KULLANIRSIN
+   Link verirken yalnızca Bilgi Bankası'nda bulunan route_map.md dosyasındaki onaylı sayfa yollarını kullan. Tabloda olmayan bir URL uydurma.
+   Link formatı: [Sayfaya Git](${clientOrigin}/ilgili-path)
+
+## CEVAP VEREMEDİĞİNDE
+Eğer kullanıcının sorusuna Bilgi Bankası'nda gerçekten cevap yoksa, dürüstçe söyle ama bunu biraz espri ile yap:
+- "Ah bu konuyu henüz öğrenmedim ama öğreneceğim! 📚"
+- "Bu konu kılavuzlarımda yok gibi görünüyor — yakında ekleyeceğiz!"
+- "Bu bölümü henüz hazırlayamadık, ama not aldım! 😊"
+Yanıtının son satırına SADECE şu token'ı yaz: [UNKNOWN_QUERY: ${message}]
+Hayali adım veya menü uydurma.
+
+## ÇIKTI FORMATI (JSON — Başka hiçbir şey yazma)
+{
+  "foundInKb": true veya false,
+  "reply": "Kullanıcıya gösterilecek cevap metni"
+}
+
+## BİLGİ BANKASI
+${kbContent}`
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: message }]
-        }],
-        systemInstruction: {
-          parts: [{
-            text: `Sen SuitableRMS uygulamasının proje içi kullanım asistanısın.
-Görevin genel işletme, muhasebe, restoran yönetimi veya yasal mevzuat bilgisi vermek DEĞİLDİR. Sadece kullanıcının SuitableRMS içinde hangi ekrana gidip, hangi işlemi yapacağını adım adım anlatmaktır.
-
-TALİMATLAR VE KURALLAR:
-
-1. ANLAM EŞLEŞTİRME KURALI:
-Kullanıcının ifadesi Bilgi Bankası'ndaki kelimelerle birebir aynı olmak zorunda değildir (Örn: "dönem kapatma", "ay kapanışı" veya "şube kapanışı" aynı anlama gelebilir). Kullanıcının ne yapmak istediğini anla ve Bilgi Bankası'nda bu işleme karşılık gelen adımları bul.
-
-BİLGİ KAYNAĞI VE HALÜSİNASYON YASAĞI:
-Yanıtlarında SADECE Bilgi Bankası içindeki proje içi ekranları, butonları, uyarıları ve işlem adımlarını kullan.
-- "Muhasebede dönem kapanışı şudur" gibi teorik, sektörel veya genel geçer bilgiler verme.
-- Bilgi Bankası'nda olmayan hayali bir menü, sayfa veya buton uydurma (Örn: "Sistem Ayarları -> Ekipman Yönetimi" gibi dokümanda geçmeyen yollar üretme).
-- Eğer kullanıcının sorusunun cevabı sana verilen kılavuzlarda kesinlikle yoksa, cevap uydurma. Yanıtına tam olarak şu cümleyi ekle: [UNANSWERED] ve ardından sorunun neden cevaplanamadığını nazikçe belirt.
-
-3. EYLEM ODAKLI CEVAP STİLİ:
-Kısa, işlem odaklı, adım adım ve kullanıcıyı ekranda yönlendiren akıcı bir Türkçe kullan.
-- Menü yolu, sayfa adı ve butonları (Örn: "Sağ üstteki yeşil Kaydet butonu") sırasıyla ver.
-- Veritabanı tablo isimlerini veya backend teknik detaylarını kullanıcıya yansıtma.
-- Varsa kritik uyarıları kısa ve net biçimde ekle.
-
-4. LİNK YÖNLENDİRMESİ VE ROUTE MAP KURALI:
-Kullanıcıya tıklanabilir bir sayfa linki (URL) verirken SADECE VE SADECE Bilgi Bankası'nda bulunan \`route_map.md\` dosyasındaki "Geçerli Yol (Path)" sütunundaki yolları kullan.
-- Eğer aradığın modül \`route_map.md\` tablosunda YOKSA, KESİNLİKLE LİNK VERME ve uydurma.
-- Eğer bir modal (açılır pencere) yönlendirmesi yapıyorsan, doğrudan ana menü linkini ver ve modala tıklama adımını metinle anlat.
-- Link formatı KESİNLİKLE şu şekilde olmalıdır: [Sayfaya Git](${clientOrigin}/ilgili-link)
-
-ÇIKTI FORMATI:
-Yanıtını MUTLAKA geçerli bir JSON formatında ver. JSON formatı dışında hiçbir açıklama, selamlama veya markdown işareti (\`\`\`json gibi) KULLANMA.
-
-{
-  "foundInKb": true veya false (Bilgi Bankasında işlem yoksa kesinlikle false yap),
-  "reply": "Kullanıcıya gösterilecek adım adım cevap. (foundInKb false ise bu alanı boş bırak, VEYA yukarıdaki kurala uyarak [UNANSWERED] mesajını yaz)"
-}
-
-BİLGİ BANKASI:
-${kbContent}`
-          }]
-        },
+        contents: [{ parts: [{ text: message }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1500,
+          temperature: 0.4,
+          maxOutputTokens: 2000,
           responseMimeType: 'application/json'
         }
       })
     })
 
-    const data = await response.json()
-    if (data.error) {
-      return res.status(500).json({ data: null, error: { message: data.error.message } })
+    const geminiData = await response.json()
+    if (geminiData.error) {
+      return res.status(500).json({ data: null, error: { message: geminiData.error.message } })
     }
 
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
-      return res.status(500).json({ data: null, error: { message: 'Gemini API did not return a valid response candidate.', details: data } })
+    if (!geminiData.candidates?.[0]?.content?.parts?.[0]) {
+      return res.status(500).json({ data: null, error: { message: 'Gemini API geçerli yanıt döndürmedi.', details: geminiData } })
     }
 
-    const rawText = data.candidates[0].content.parts[0].text
+    const rawText = geminiData.candidates[0].content.parts[0].text
     try {
       const parsed = JSON.parse(rawText)
-      if (parsed.reply && parsed.reply.includes('[UNANSWERED]')) {
-        const logFile = path.join(__dirname, '../Support/unanswered.log');
-        const logEntry = `[${new Date().toISOString()}] [UNANSWERED] Question: ${message}\n`;
-        try {
-          fs.appendFileSync(logFile, logEntry);
-        } catch(logErr) {
-          console.error('Failed to write to unanswered.log:', logErr);
-        }
+      // Bilinmeyen soruysa _gaps.md'ye logla
+      if (parsed.reply && parsed.reply.includes('[UNKNOWN_QUERY:')) {
+        logGap(message)
       }
-      return res.json({ data: { reply: parsed.reply }, error: null })
+      return res.json({ data: { reply: parsed.reply, foundInKb: parsed.foundInKb }, error: null })
     } catch (e) {
-      // JSON parse hatası olursa rawText'i döndür
-      if (rawText.includes('[UNANSWERED]')) {
-        const logFile = path.join(__dirname, '../Support/unanswered.log');
-        const logEntry = `[${new Date().toISOString()}] [UNANSWERED] Question: ${message}\n`;
-        try {
-          fs.appendFileSync(logFile, logEntry);
-        } catch(logErr) {}
-      }
-      return res.json({ data: { reply: rawText }, error: null })
+      if (rawText.includes('[UNKNOWN_QUERY:')) logGap(message)
+      return res.json({ data: { reply: rawText, foundInKb: false }, error: null })
     }
   } catch (err) {
     console.error('[POST /api/support/chat]', err.message)
+    return res.status(500).json({ data: null, error: { message: err.message } })
+  }
+})
+
+// AI SUPPORT FEEDBACK ENDPOINT (👍/👎)
+app.post('/api/support/feedback', async (req, res) => {
+  try {
+    const { rating, question, answer } = req.body
+    if (!rating || !question) {
+      return res.status(400).json({ data: null, error: { message: 'rating and question are required' } })
+    }
+    if (rating === 'negative') {
+      // Olumsuz feedback → _gaps.md'ye yaz (cevap varsa da yetersizmiş demek)
+      logGap(`[FEEDBACK-NEGATİF] ${question}`)
+    }
+    const feedbackDir = path.join(__dirname, '../Support')
+    const feedbackFile = path.join(feedbackDir, '_feedback.log')
+    const entry = `[${new Date().toISOString()}] ${rating.toUpperCase()} | Q: ${question.substring(0, 120)}\n`
+    try { fs.appendFileSync(feedbackFile, entry) } catch (e) {}
+    return res.json({ data: { ok: true }, error: null })
+  } catch (err) {
+    console.error('[POST /api/support/feedback]', err.message)
     return res.status(500).json({ data: null, error: { message: err.message } })
   }
 })

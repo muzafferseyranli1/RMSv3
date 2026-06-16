@@ -8,14 +8,20 @@ export default function SupportPanel() {
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Merhaba! Ben **SuitableRMS Yapay Zeka Destek Asistanıyım**. 
+      text: `Merhaba! Ben **SuitableRMS Eğitim Danışmanınızım** 🎓
 
-Nasıl yardımcı olabilirim? İster programın kullanımıyla ilgili, ister işinizi geliştirmeyle ilgili, ister günlük operasyonunuzla ilgili... Nasıl yardımcı olabilirim?`,
+Sistemi kullanmakla ilgili her türlü sorunuzu sorabilirsiniz. Adım adım yönlendiririm. Örneğin:
+- *"Menüye yeni ürün nasıl eklenir?"*
+- *"Müşterilerim azaldı, ne yapabilirim?"*
+- *"Sipariş oluşturmayı anlat"*
+
+Nasıl yardımcı olabilirim?`,
       timestamp: new Date()
     }
   ])
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(false)
+  const [feedbackSent, setFeedbackSent] = useState({}) // { messageId: 'positive'|'negative' }
   const messagesEndRef = useRef(null)
   const toast = useToast()
 
@@ -103,6 +109,8 @@ Nasıl yardımcı olabilirim? İster programın kullanımıyla ilgili, ister iş
         id: `ai-${Date.now()}`,
         sender: 'ai',
         text: result.data.reply,
+        question: trimmed, // feedback için soruyu sakla
+        foundInKb: result.data.foundInKb,
         timestamp: new Date()
       }
 
@@ -125,6 +133,19 @@ Lütfen sunucu çevre değişkenlerinde \`GEMINI_API_KEY\` değerinin doğru tan
     }
   }
 
+  // Feedback gönderme
+  const handleFeedback = async (msgId, rating, question, answer) => {
+    if (feedbackSent[msgId]) return
+    setFeedbackSent(prev => ({ ...prev, [msgId]: rating }))
+    try {
+      await fetch(buildApiUrl('/api/support/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, question: question || '', answer: answer?.substring(0, 200) || '' })
+      })
+    } catch (e) { /* sessiz hata */ }
+  }
+
   return (
     <div className="flex flex-col h-screen bg-slate-50">
       <Header title="Yapay Zeka Destek Masası" />
@@ -137,9 +158,9 @@ Lütfen sunucu çevre değişkenlerinde \`GEMINI_API_KEY\` değerinin doğru tan
           <div className="bg-slate-50 border-b border-slate-100 px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-semibold text-slate-600">Destek Asistanı Aktif</span>
+              <span className="text-xs font-semibold text-slate-600">Eğitim Danışmanı Aktif</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-medium">SuitableRMS AI v1.0</span>
+            <span className="text-[10px] text-slate-400 font-medium">SuitableRMS AI v2.0</span>
           </div>
 
           {/* Mesaj Listesi */}
@@ -158,9 +179,9 @@ Lütfen sunucu çevre değişkenlerinde \`GEMINI_API_KEY\` değerinin doğru tan
                 >
                   {/* Gönderici İsmi */}
                   <div className="flex items-center gap-1.5 mb-1">
-                    <i className={`fa ${msg.sender === 'user' ? 'fa-user' : 'fa-robot'} text-[10px] opacity-75`} />
+                    <i className={`fa ${msg.sender === 'user' ? 'fa-user' : 'fa-graduation-cap'} text-[10px] opacity-75`} />
                     <span className="text-[10px] font-bold tracking-wide uppercase opacity-75">
-                      {msg.sender === 'user' ? 'Siz' : 'Destek Asistanı'}
+                      {msg.sender === 'user' ? 'Siz' : 'Eğitim Danışmanı'}
                     </span>
                   </div>
 
@@ -173,9 +194,33 @@ Lütfen sunucu çevre değişkenlerinde \`GEMINI_API_KEY\` değerinin doğru tan
                     )}
                   </div>
 
-                  {/* Saat */}
-                  <div className={`text-[9px] mt-1.5 flex justify-end opacity-60 ${msg.sender === 'user' ? 'text-white' : 'text-slate-500'}`}>
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {/* Saat + Feedback Butonları (sadece AI mesajları için) */}
+                  <div className={`mt-1.5 flex items-center ${msg.sender === 'user' ? 'justify-end' : 'justify-between'} gap-2`}>
+                    <div className={`text-[9px] opacity-60 ${msg.sender === 'user' ? 'text-white' : 'text-slate-500'}`}>
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {msg.sender === 'ai' && msg.id !== 'welcome' && (
+                      <div className="flex items-center gap-1">
+                        {feedbackSent[msg.id] ? (
+                          <span className="text-[9px] text-slate-400 italic">
+                            {feedbackSent[msg.id] === 'positive' ? '✓ Teşekkürler!' : '✓ Not aldım!'}
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleFeedback(msg.id, 'positive', msg.question, msg.text)}
+                              className="text-[11px] hover:scale-110 transition-transform opacity-50 hover:opacity-100"
+                              title="Bu cevap yardımcı oldu"
+                            >👍</button>
+                            <button
+                              onClick={() => handleFeedback(msg.id, 'negative', msg.question, msg.text)}
+                              className="text-[11px] hover:scale-110 transition-transform opacity-50 hover:opacity-100"
+                              title="Bu cevap yetersizdi"
+                            >👎</button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

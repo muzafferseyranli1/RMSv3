@@ -11655,3 +11655,61 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Veri yukleme, QR/barkod etiketleri, kontrollu WMS-E2E test siparisi, tedarikci panel bypass kontrolu, shipment RPC, kapasite kontrolu, sevk onayi ve JSON rapor indirme eklendi.
 - Demo stok mali olusturma butonu otomatik degil; kullanici onayi ile WMS-E2E etiketli kayit acacak sekilde tasarlandi.
 - Dogrulama: inline script `new Function` syntax kontrolu basarili, `git diff --check -- wms-e2e-test-harness.html` basarili.
+
+## Entry 234 - 2026-06-16
+
+- `Timestamp`: `2026-06-16T13:04:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Destek Dokümantasyonu Senkronizasyonu`
+- `Intent`: `Son WMS modül geliştirmelerini (araç, kalite/karantina, lot izlenebilirlik, sayım fark onayları, paket/barkod) kapsayacak şekilde destek rehberlerini güncellemek ve yeni kılavuzlar oluşturmak.`
+- `Files Changed`:
+  - `Support/wms_arac_yonetimi.md`
+  - `Support/route_map.md`
+  - `Support/README.md`
+- `Files Created`:
+  - `Support/wms_karantina.md`
+  - `Support/wms_izlenebilirlik.md`
+  - `Support/wms_sayim_fark_onay.md`
+  - `Support/wms_stok_paket_barkod.md`
+- `Decisions`:
+  - Kalite/karantina için mobil el terminali kanıt fotoğrafları izleme adımları ve override yetkileri dökümante edildi.
+  - Sayım fark onay süreci, yönetici onay yetkileri ve pick-face ikmal mantığı detaylandırıldı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: WMS modül geliştirmelerini kapsayan 5 adet son kullanıcı dokümanı/güncellemesi yapıldı, route haritası ve dizin senkronize edildi.
+
+[SUPPORT_SYNC_MARKER] - Support dokümantasyon senkronizasyonu başarıyla tamamlandı.
+
+
+## Entry 235 - 2026-06-16
+
+- `Timestamp`: `2026-06-16T13:54:00+03:00`
+- `Agent`: `Antigravity`
+- `Task`: `Egitim Danisma Sistemi Yeniden Tasarimi (Iki Ajan Modeli)`
+- `Intent`: `Mevcut Support klasoründeki yuzeysel kilavuz yapisini, iki ajanli (Doc Agent + Chat Agent) bir egitim danisma sistemine donusturmek.`
+- `Files Changed`:
+  - `server/index.js` (RAG recursive okuyucu, system prompt v2, _gaps.md loglama, /api/support/feedback endpoint, temperature 0.4)
+  - `src/components/pages/SupportPanel.jsx` (feedback butonlari, hosgeldin mesaji, foundInKb destegi)
+  - `Support/route_map.md` (tum kilavuz referanslari yeni klasor yoluyla guncellendi)
+  - `.antigravityrules.md` (Madde 11: Egitim ve Danisma Sistemi eklendi)
+- `Files Created`:
+  - `Support/_agent1_rules.md`
+  - `Support/_gaps.md`
+  - `Support/_DOKUMAN_FORMAT.md`
+  - `Support/kurulum/01_sube_ve_sirket.md`
+  - `Support/kurulum/02_birimler_ve_kategoriler.md`
+  - `Support/kurulum/03_tedarikci_ve_hammadde.md`
+  - `Support/kurulum/04_satis_mali_tanimlama.md`
+  - `Support/isletme/siparis_ve_mal_kabul.md`
+  - `Support/sadakat/sadakat_sistemi_kapsamli.md`
+- `Files Archived`: Support/_archive/ — 21 adet eski/yuzeysel .md dosyasi arsivlendi
+- `Decisions`:
+  - DB bagimlilik sirasina gore kurulum klavuzlari yazildi (Sube → Birim/Kategori → Tedarikci/Hammadde → Satis Mali → Siparis)
+  - [UNANSWERED] token'i [UNKNOWN_QUERY:] ile degistirildi, _gaps.md'ye yaziyor
+  - RAG mekanizmasi recursive alt klasor okumaya gectiridi; _ ile baslayan dosyalar haric
+  - Temperature 0.1 → 0.4
+  - Negatif feedback de _gaps.md'ye yaziliyor
+  - DOKUMAN_FORMAT.md _DOKUMAN_FORMAT.md olarak yeniden adlandirildi (RAG kirlenmesi onlendi)
+- `Handoff Contract`: Iki ajanli egitim danisma sistemi tamamlandi. Vite build basarili (53.44s, sifir hata).
+
+[SUPPORT_SYNC_MARKER] - Egitim danisma sistemi v2 senkronizasyonu tamamlandi.
+
