@@ -396,6 +396,28 @@ export default function Count({ scopeVariant }) {
     loadWmsData()
   }, [isWmsMode, branchId, toast])
 
+  const branchFlows = useMemo(() => (
+    flows.filter(flow => {
+      if (!branchId) return false
+      const branchIds = resolveFlowBranchIds(flow, [])
+      return flow.branches.allBranches || branchIds.includes(String(branchId))
+    })
+  ), [flows, branchId])
+
+  useEffect(() => {
+    if (selectedFlowId && branchFlows.some(flow => flow.id === selectedFlowId)) return
+    setSelectedFlowId(branchFlows[0]?.id || '')
+  }, [branchFlows, selectedFlowId])
+
+  useEffect(() => {
+    setMovingFilterIds([])
+  }, [selectedFlowId, selectedDate])
+
+  const selectedFlow = branchFlows.find(flow => flow.id === selectedFlowId) || null
+  const baseProducts = useMemo(() => (
+    selectedFlow ? buildCountFlowProductItems(selectedFlow, stockItems, stockTemplates) : []
+  ), [selectedFlow, stockItems, stockTemplates])
+
   useEffect(() => {
     if (!isWmsMode || !selectedFlow || !balances || balances.size === 0 || currentEntry.lines.length > 0 || currentEntry.inventoryPostedAt) return
 
@@ -426,28 +448,6 @@ export default function Count({ scopeVariant }) {
       updateEntry({ lines: newLines })
     }
   }, [isWmsMode, selectedFlow, balances, baseProducts, currentEntry.lines.length, currentEntry.inventoryPostedAt])
-
-  const branchFlows = useMemo(() => (
-    flows.filter(flow => {
-      if (!branchId) return false
-      const branchIds = resolveFlowBranchIds(flow, [])
-      return flow.branches.allBranches || branchIds.includes(String(branchId))
-    })
-  ), [flows, branchId])
-
-  useEffect(() => {
-    if (selectedFlowId && branchFlows.some(flow => flow.id === selectedFlowId)) return
-    setSelectedFlowId(branchFlows[0]?.id || '')
-  }, [branchFlows, selectedFlowId])
-
-  useEffect(() => {
-    setMovingFilterIds([])
-  }, [selectedFlowId, selectedDate])
-
-  const selectedFlow = branchFlows.find(flow => flow.id === selectedFlowId) || null
-  const baseProducts = useMemo(() => (
-    selectedFlow ? buildCountFlowProductItems(selectedFlow, stockItems, stockTemplates) : []
-  ), [selectedFlow, stockItems, stockTemplates])
 
   const filteredBaseProducts = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')

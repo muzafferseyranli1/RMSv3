@@ -2294,6 +2294,42 @@ app.all('/api/query', rateLimiter, async (req, res) => {
 // OPERASYON EL KİTABI (OPERATION MANUAL) API ENDPOINTS
 // ============================================================
 
+// --- SALE ITEMS LIST (seeding / manual bağlantısı için) ---
+app.get('/api/sale-items-list', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, name, sku, description, channel_description,
+             channel_image, pos_image, prep_time_minutes,
+             recipe_rows, recipe_linked, active, deleted_at
+      FROM public.sale_items
+      WHERE deleted_at IS NULL AND active = true
+      ORDER BY name ASC
+    `)
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/sale-items-list]', err.message)
+    return res.status(500).json({ data: null, error: err.message })
+  }
+})
+
+// --- STOCK ITEMS LIST (hammadde seeding / manual bağlantısı için) ---
+app.get('/api/stock-items-list', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, name, sku, unit, temperature_class,
+             min_stock, max_stock, min_order, order_unit,
+             purchase_price, image_url, deleted_at
+      FROM public.stock_items
+      WHERE deleted_at IS NULL
+      ORDER BY name ASC
+    `)
+    return res.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('[GET /api/stock-items-list]', err.message)
+    return res.status(500).json({ data: null, error: err.message })
+  }
+})
+
 // --- KATEGORİLER (manual_categories) CRUD ---
 
 // 1. GET ALL CATEGORIES

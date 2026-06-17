@@ -11713,3 +11713,53 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 
 [SUPPORT_SYNC_MARKER] - Egitim danisma sistemi v2 senkronizasyonu tamamlandi.
 
+
+---
+
+## LOG ENTRY — 2026-06-17 — /manual Academy ic Sayfa Dark Tema + Hammadde Seeding
+
+- `Agent`: Antigravity
+- `Status`: TAMAMLANDI
+- `Build`: Vite build basarili (onceki)
+
+### Yapilan Degisiklikler
+
+**1. src/styles/manual-academy.css (GUNCELLENDI)**
+- 300+ satir ic sayfa dark tema override eklendi
+- Etkilenen her element: mr-header, mr-nav, mr-dropdown, mr-search,
+  mr-breadcrumb, mr-toolbar, mr-title, mr-hero-img, mr-product-story,
+  mr-specs-banner, mr-shelf-section, mr-recipe-table, mr-ingredient-link,
+  mr-step-card, mr-equip-section, mr-hammadde-spec, mr-red-criteria,
+  mr-visual-comp-card, mr-prev-next, mr-nav-prev/next, mr-content-body,
+  mr-sidebar, mr-mobile-overlay, mr-fault-modal
+- Scrollbar dark tema eklendi
+- Outfit + Inter fontlari ic sayfalarda aktif
+
+**2. server/index.js (GUNCELLENDI)**
+- GET /api/stock-items-list endpoint eklendi (hammadde seeding icin)
+
+**3. Veri Dolumu (Seeding) TAMAMLANDI**
+- 73 satis mali (sale_items) Urunler kategorisine eklendi (onceki)
+- 58 hammadde (stock_items) Hammaddeler kategorisine eklendi
+- Toplam: 131 manual_pages kaydi olusturuldu
+- Tum linked_item_id bagli, cross-link calisiyor
+
+**4. docs/scripts/seed_hammadde_pages.js (YENÝ)**
+- Hammadde seeding scripti oluþturuldu
+
+### Mimari Kararlar
+- Inner page dark tema: CSS override kullanildi (inline style degistirmeye gerek kalmadi)
+- stock_items icin linked_item_type = 'stock_item' kullanildi
+- FIFO, sicaklik sinifi, red kriterleri metadata'ya yazildi
+
+### Sonraki Agent Icin Bekleyen Gorevler
+1. Build calistir: npx vite build --mode development
+2. ManualReader cross-link (ingredients tiklayinca drawer acilmasi) implementasyonu
+   - mr-ingredient-link sinifi zaten CSS ile stilize edildi
+   - Drawer container (mr-link-drawer) CSS'de mevcut
+   - Eksik: ManualReader.jsx icinde onClick handler + drawer state
+3. Test Cold Item / Test Dry Item gibi demo veriler DB'de var, bunlar gerçek urun
+   degil. Uretim ortaminda silinecek.
+4. ManualManagement uzerinden icerikler zenginlestirilebilir (resim, adim, specs)
+
+[MANUAL_ACADEMY_SYNC_V2] - ic sayfa dark tema + hammadde seeding tamamlandi.

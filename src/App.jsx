@@ -290,16 +290,18 @@ function RouteActivityTracker() {
 
 function AdminLayout({ children }) {
   const { sidebarWidth, mode } = useSidebar()
-  const pl = mode === 'closed' ? 28 : sidebarWidth + 28
+  const location = useLocation()
+  const isAcademy = location.pathname === '/manual'
+  const pl = isAcademy ? 0 : (mode === 'closed' ? 28 : sidebarWidth + 28)
   return (
     <div
       id="main"
       style={{
         minHeight: '100vh',
-        background: 'var(--app-bg)',
-        paddingTop: 24,
-        paddingRight: 28,
-        paddingBottom: 24,
+        background: isAcademy ? 'transparent' : 'var(--app-bg)',
+        paddingTop: isAcademy ? 0 : 24,
+        paddingRight: isAcademy ? 0 : 28,
+        paddingBottom: isAcademy ? 0 : 24,
         paddingLeft: pl,
         transition: 'padding-left .25s cubic-bezier(.4,0,.2,1)',
       }}

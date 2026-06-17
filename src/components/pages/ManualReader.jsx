@@ -3,6 +3,7 @@ import { useToast } from '@/hooks/useToast'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db, resolveImageUrl, buildApiUrl } from '@/lib/db'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import '@/styles/manual-academy.css'
 
 /* ════════════════════════════════════════════════════════════════
    ManualReader — E-Learning Knowledge Base
@@ -590,7 +591,7 @@ export default function ManualReader() {
   /* ════════════════════  RENDER  ════════════════════ */
 
   return (
-    <div className="page-enter mr-root">
+    <div className="page-enter mr-root mr-academy-active">
       <style>{`
         /* ─── LAYOUT ─── */
         .mr-root {
@@ -2797,73 +2798,133 @@ export default function ManualReader() {
             <p>Sayfa yükleniyor...</p>
           </div>
         ) : !pageDetails ? (
-          /* ── WELCOME SCREEN ── */
-          <div className="mr-welcome mr-page-animate">
-            <div className="mr-welcome-hero">
-              <div className="mr-welcome-icon-wrap">
+          /* ── ACADEMY HERO SCREEN ── */
+          <div className="mr-academy-hero mr-page-animate">
+            {/* Floating orbs */}
+            <div className="mr-orb mr-orb-1" />
+            <div className="mr-orb mr-orb-2" />
+            <div className="mr-orb mr-orb-3" />
+            <div className="mr-orb mr-orb-4" />
+
+            {/* Floating particles */}
+            {[...Array(12)].map((_, i) => (
+              <div key={i} className="mr-particle" style={{
+                left: `${8 + i * 7.5}%`,
+                bottom: `${10 + (i % 4) * 15}%`,
+                animationDuration: `${4 + (i % 5)}s`,
+                animationDelay: `${i * 0.4}s`,
+                width: i % 3 === 0 ? '6px' : '3px',
+                height: i % 3 === 0 ? '6px' : '3px',
+                opacity: 0.4 + (i % 3) * 0.15,
+              }} />
+            ))}
+
+            {/* Hero Content */}
+            <div className="mr-academy-hero-content">
+              {/* Badge */}
+              <div className="mr-academy-badge">
                 <i className="fa-solid fa-graduation-cap" />
+                Eğitim Platformu
               </div>
-              <h1>Operasyon El Kitabı</h1>
-              <p className="mr-welcome-sub">Prosedürleri, ürün kılavuzlarını ve standartları buradan inceleyebilirsiniz.</p>
+
+              {/* Title */}
+              <h1 className="mr-academy-title">
+                Operasyon El Kitabı
+              </h1>
+
+              <p className="mr-academy-subtitle">
+                Prosedürleri, ürün kılavuzlarını ve standartları tek yerden öğrenin.<br />
+                Her şey hazır — sadece keşfetmeniz yeterli.
+              </p>
+
+              {/* Search */}
+              <div className="mr-academy-search-wrap">
+                <i className="fa-solid fa-magnifying-glass mr-academy-search-icon" />
+                <input
+                  ref={globalSearchRef}
+                  placeholder="Sayfa, ürün veya hammadde ara..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onFocus={() => { setSearchFocused(true) }}
+                />
+                <span className="mr-academy-search-kbd">Ctrl+K</span>
+              </div>
+
+              {/* Stats */}
+              <div className="mr-academy-stats">
+                <div className="mr-academy-stat">
+                  <div className="mr-academy-stat-num">{categories.length}</div>
+                  <div className="mr-academy-stat-label">Kategori</div>
+                </div>
+                <div className="mr-academy-stat">
+                  <div className="mr-academy-stat-num">{pages.length}</div>
+                  <div className="mr-academy-stat-label">Kılavuz</div>
+                </div>
+                <div className="mr-academy-stat">
+                  <div className="mr-academy-stat-num">{pages.reduce((s, p) => s + (p.metadata?.steps?.length || 0), 0)}</div>
+                  <div className="mr-academy-stat-label">Adım</div>
+                </div>
+                <div className="mr-academy-stat">
+                  <div className="mr-academy-stat-num">{pages.filter(p => p.linked_item_id).length}</div>
+                  <div className="mr-academy-stat-label">Ürün</div>
+                </div>
+              </div>
+
+              {/* Category Cards */}
+              {categories.length > 0 && (
+                <>
+                  <div className="mr-academy-cats-title">Kategoriler</div>
+                  <div className="mr-academy-cats">
+                    {categories.map((cat, idx) => {
+                      const color = getCategoryColor(cat.name)
+                      const icon = getCategoryIcon(cat.name)
+                      const catPages = pages.filter(p => p.category_id === cat.id)
+                      return (
+                        <div
+                          key={cat.id}
+                          className="mr-academy-cat-card"
+                          style={{ '--cat-color': color, animationDelay: `${idx * 0.07}s` }}
+                          onClick={() => {
+                            setExpandedCategories(prev => ({ ...prev, [cat.id]: true }))
+                            // navigate to first page of category
+                            const first = catPages[0]
+                            if (first) navigateToPage(first.id)
+                          }}
+                        >
+                          <div className="mr-academy-cat-icon">
+                            <i className={`fa-solid ${icon}`} />
+                          </div>
+                          <div className="mr-academy-cat-name">{cat.name}</div>
+                          <div className="mr-academy-cat-count">{catPages.length} kılavuz</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Global search */}
-            <div className="mr-global-search">
-              <i className="fa-solid fa-magnifying-glass mr-gs-icon" />
-              <input
-                ref={globalSearchRef}
-                placeholder="Sayfa ara... (ör: Hamburger, Temizlik)"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onFocus={() => { setSearchFocused(true); searchRef.current?.querySelector('input')?.focus() }}
-              />
-              <span className="mr-gs-kbd">Ctrl+K</span>
-            </div>
-
-            {/* Stats */}
-            <div className="mr-stats">
-              <div className="mr-stat-card">
-                <div className="mr-stat-icon" style={{ background: 'rgba(245,166,35,.1)', color: '#f59e0b' }}>
-                  <i className="fa-solid fa-layer-group" />
-                </div>
-                <div>
-                  <div className="mr-stat-num">{categories.length}</div>
-                  <div className="mr-stat-label">Kategori</div>
-                </div>
-              </div>
-              <div className="mr-stat-card">
-                <div className="mr-stat-icon" style={{ background: 'rgba(16,185,129,.1)', color: '#10b981' }}>
-                  <i className="fa-solid fa-file-lines" />
-                </div>
-                <div>
-                  <div className="mr-stat-num">{pages.length}</div>
-                  <div className="mr-stat-label">Sayfa</div>
-                </div>
-              </div>
-              <div className="mr-stat-card">
-                <div className="mr-stat-icon" style={{ background: 'rgba(99,102,241,.1)', color: '#6366f1' }}>
-                  <i className="fa-solid fa-list-check" />
-                </div>
-                <div>
-                  <div className="mr-stat-num">{pages.reduce((s, p) => s + (p.metadata?.steps?.length || 0), 0)}</div>
-                  <div className="mr-stat-label">Toplam Adım</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent */}
+            {/* Recent Pages */}
             {recentPages.length > 0 && (
-              <>
-                <div className="mr-recent-title">Son Güncellenen Sayfalar</div>
-                <div className="mr-recent-grid">
-                  {recentPages.map(p => {
+              <div className="mr-academy-recent">
+                <div className="mr-academy-section-title">
+                  <i className="fa-solid fa-clock-rotate-left" style={{ color: '#f59e0b', fontSize: '0.9rem' }} />
+                  Son Güncellenen Kılavuzlar
+                </div>
+                <div className="mr-academy-recent-grid">
+                  {recentPages.map((p, idx) => {
                     const catName = categories.find(c => c.id === p.category_id)?.name || ''
                     const color = getCategoryColor(catName)
                     return (
-                      <div key={p.id} className="mr-recent-card" onClick={() => navigateToPage(p.id)}>
-                        <div className="mr-recent-card-title">{p.title}</div>
-                        <div className="mr-recent-card-meta">
-                          <span className="mr-recent-card-cat" style={{ background: `${color}14`, color }}>
+                      <div
+                        key={p.id}
+                        className="mr-academy-recent-card"
+                        style={{ animationDelay: `${idx * 0.06}s` }}
+                        onClick={() => navigateToPage(p.id)}
+                      >
+                        <div className="mr-academy-recent-card-title">{p.title}</div>
+                        <div className="mr-academy-recent-card-meta">
+                          <span className="mr-academy-recent-card-cat" style={{ background: `${color}22`, color }}>
                             {catName}
                           </span>
                           <span>v{p.version || 1}</span>
@@ -2874,7 +2935,7 @@ export default function ManualReader() {
                     )
                   })}
                 </div>
-              </>
+              </div>
             )}
           </div>
         ) : (

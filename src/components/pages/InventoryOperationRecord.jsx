@@ -561,6 +561,15 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
     }
   }
 
+  const [stockItems, setStockItems] = useState([])
+  const [semiItems, setSemiItems] = useState([])
+  const [saleItems, setSaleItems] = useState([])
+  const [drafts, setDrafts] = useState([])
+  const [savedDocuments, setSavedDocuments] = useState([])
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [listBranchId, setListBranchId] = useState(branchLocked ? workspaceBranchId || '' : '')
+  const [form, setForm] = useState(() => createInitialForm(operation, branchLocked ? workspaceBranchId || '' : ''))
+
   useEffect(() => {
     if (!editorOpen || !isWmsMode) return
     const rows = form.rows || []
@@ -570,14 +579,6 @@ export default function InventoryOperationRecord({ operationKey = 'waste', scope
       }
     })
   }, [editorOpen, form.rows, isWmsMode])
-  const [stockItems, setStockItems] = useState([])
-  const [semiItems, setSemiItems] = useState([])
-  const [saleItems, setSaleItems] = useState([])
-  const [drafts, setDrafts] = useState([])
-  const [savedDocuments, setSavedDocuments] = useState([])
-  const [editorOpen, setEditorOpen] = useState(false)
-  const [listBranchId, setListBranchId] = useState(branchLocked ? workspaceBranchId || '' : '')
-  const [form, setForm] = useState(() => createInitialForm(operation, branchLocked ? workspaceBranchId || '' : ''))
 
   useEffect(() => {
     let cancelled = false
