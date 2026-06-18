@@ -379,6 +379,12 @@ export default function ManualReader() {
   const [faultDescription, setFaultDescription] = useState('')
   const [submittingFault, setSubmittingFault] = useState(false)
 
+  /* ── Cross-Link Drawer ── */
+  const [drawerPageId, setDrawerPageId] = useState(null)
+  const [drawerPageDetails, setDrawerPageDetails] = useState(null)
+  const [drawerRecipeContext, setDrawerRecipeContext] = useState([])
+  const [drawerLoading, setDrawerLoading] = useState(false)
+
   /* ════════════════════  DATA LOADING  ════════════════════ */
 
   const loadSidebarData = async () => {
@@ -473,6 +479,13 @@ export default function ManualReader() {
         globalSearchRef.current?.focus()
       }
       if (e.key === 'Escape') {
+        // Önce drawer'ı kapat (varsa)
+        if (drawerPageId) {
+          setDrawerPageId(null)
+          setDrawerPageDetails(null)
+          setDrawerRecipeContext([])
+          return
+        }
         setSearchQuery('')
         setSearchFocused(false)
         globalSearchRef.current?.blur()
@@ -480,7 +493,7 @@ export default function ManualReader() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [drawerPageId])
 
   /* ════════════════════  SEARCH  ════════════════════ */
 
@@ -523,6 +536,32 @@ export default function ManualReader() {
 
   const toggleCategory = (catId) =>
     setExpandedCategories(prev => ({ ...prev, [catId]: !prev[catId] }))
+
+  const closeDrawer = useCallback(() => {
+    setDrawerPageId(null)
+    setDrawerPageDetails(null)
+    setDrawerRecipeContext([])
+  }, [])
+
+  const openIngredientDrawer = useCallback(async (linkedPageId) => {
+    if (!linkedPageId) return
+    setDrawerPageId(linkedPageId)
+    setDrawerPageDetails(null)
+    setDrawerLoading(true)
+    try {
+      const [res, ctxRes] = await Promise.all([
+        fetch(buildApiUrl(`/api/manual/pages/${linkedPageId}`)).then(r => r.json()),
+        fetch(buildApiUrl(`/api/manual/pages/${linkedPageId}/context`)).then(r => r.json())
+      ])
+      setDrawerPageDetails(res.data || null)
+      setDrawerRecipeContext(ctxRes.data?.recipe || [])
+    } catch (err) {
+      toast('Hammadde sayfası yüklenemedi: ' + err.message, 'error')
+      closeDrawer()
+    } finally {
+      setDrawerLoading(false)
+    }
+  }, [toast, closeDrawer])
 
   /* ════════════════════  HELPERS  ════════════════════ */
 
@@ -3278,8 +3317,13 @@ export default function ManualReader() {
                                           />
                                         )}
                                         {targetPageId ? (
-                                          <button className={`mr-recipe-link ${itemClass}`} onClick={() => navigateToPage(targetPageId)}>
+                                          <button
+                                            className={`mr-recipe-link ${itemClass} mr-ingredient-link`}
+                                            onClick={() => openIngredientDrawer(targetPageId)}
+                                            title="Hammadde sayfasını aç"
+                                          >
                                             {r.name}
+                                            <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: '0.6em', marginLeft: 5, opacity: 0.6 }} />
                                           </button>
                                         ) : (
                                           <span className={itemClass}>{r.name}</span>
@@ -3841,7 +3885,174 @@ export default function ManualReader() {
           </div>
         </div>
       )}
-      
+
+      {/* ── Cross-Link Drawer ── */}
+      {drawerPageId && (
+        <>
+          {/* Overlay */}
+          <div
+            className="mr-link-drawer-overlay"
+            onClick={closeDrawer}
+          />
+          {/* Drawer Panel */}
+          <div className="mr-link-drawer">
+            {/* Header */}
+            <div className="mr-link-drawer-header">
+              <button className="mr-link-drawer-back" onClick={closeDrawer}>
+                <i className="fa-solid fa-arrow-left" />
+                Geri
+              </button>
+              <span className="mr-link-drawer-title">
+                {drawerPageDetails?.title || 'Hammadde Detayı'}
+              </span>
+              <button className="mr-link-drawer-close" onClick={closeDrawer} title="Kapat">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="mr-link-drawer-body">
+              {drawerLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, paddingTop: 40, color: 'rgba(255,255,255,0.4)' }}>
+                  <i className="fa-solid fa-circle-notch fa-spin" style={{ fontSize: '1.6rem', color: '#6366f1' }} />
+                  <span style={{ fontSize: '0.85rem' }}>Sayfa yükleniyor...</span>
+                </div>
+              ) : drawerPageDetails ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+                  {/* Ürün görseli */}
+                  {drawerPageDetails.metadata?.product_image && (
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <img
+                        src={resolveImageUrl(drawerPageDetails.metadata.product_image)}
+                        alt={drawerPageDetails.title}
+                        style={{
+                          maxHeight: 180,
+                          maxWidth: '100%',
+                          objectFit: 'contain',
+                          borderRadius: 12,
+                          border: '1px solid rgba(255,255,255,0.08)'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Kategori badge */}
+                  {drawerPageDetails.category_id && (
+                    <div>
+                      {(() => {
+                        const cat = categories.find(c => c.id === drawerPageDetails.category_id)
+                        if (!cat) return null
+                        return (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            background: 'rgba(16,185,129,0.1)',
+                            border: '1px solid rgba(16,185,129,0.25)',
+                            borderRadius: 100,
+                            padding: '3px 12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            color: '#10b981',
+                            fontFamily: 'Inter, sans-serif'
+                          }}>
+                            <i className={`fa-solid ${getCategoryIcon(cat.name)}`} style={{ fontSize: '0.65rem' }} />
+                            {cat.name}
+                          </span>
+                        )
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Açıklama */}
+                  {drawerPageDetails.metadata?.description && (
+                    <div style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 10,
+                      padding: '14px 16px',
+                      fontSize: '0.85rem',
+                      lineHeight: 1.7,
+                      color: 'rgba(255,255,255,0.75)'
+                    }}>
+                      {renderFormattedDescription(drawerPageDetails.metadata.description)}
+                    </div>
+                  )}
+
+                  {/* Specs */}
+                  {drawerPageDetails.metadata?.specs?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Özellikler</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {drawerPageDetails.metadata.specs.map((spec, si) => (
+                          <div key={si} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.07)',
+                            borderRadius: 8, padding: '8px 12px'
+                          }}>
+                            <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{spec.key}</span>
+                            <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 600 }}>{spec.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reçete (hammaddenin de reçetesi varsa) */}
+                  {drawerRecipeContext.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Bileşenler</div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                            <th style={{ textAlign: 'left', padding: '6px 0', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>Malzeme</th>
+                            <th style={{ textAlign: 'right', padding: '6px 0', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>Miktar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {drawerRecipeContext.map((dr, di) => (
+                            <tr key={di} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '7px 0', color: 'rgba(255,255,255,0.8)' }}>{dr.name}</td>
+                              <td style={{ padding: '7px 0', textAlign: 'right', color: '#fff', fontWeight: 600 }}>
+                                {renderChannelsTooltipInline(dr, globalChannels)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Tam sayfaya git butonu */}
+                  <button
+                    onClick={() => { closeDrawer(); navigateToPage(drawerPageId) }}
+                    style={{
+                      marginTop: 8,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      border: 'none', borderRadius: 10, padding: '12px 20px',
+                      color: '#fff', fontWeight: 700, fontSize: '0.85rem',
+                      cursor: 'pointer', transition: 'all 0.2s', width: '100%',
+                      fontFamily: 'Inter, sans-serif'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    <i className="fa-solid fa-book-open" />
+                    Tam Sayfada Aç
+                  </button>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', paddingTop: 40, fontSize: '0.85rem' }}>
+                  <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '2rem', display: 'block', marginBottom: 12 }} />
+                  Sayfa bulunamadı
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Hand-drawn SVG Filter for sketch borders */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true" focusable="false">
         <filter id="hand-drawn-filter" x="-10%" y="-10%" width="120%" height="120%">

@@ -42,8 +42,13 @@ git add .
 git commit -m "feat: /manual Academy dark theme + 131 manual pages seeded"
 ```
 
-### Öncelik 2: Cross-Link Drawer Implementasyonu
-**Amaç:** Ürün sayfasındaki reçete malzemesine tıklandığında sağdan kayan drawer açılacak, hammadde sayfası orada gösterilecek, kullanıcı geri dönebilecek.
+### Öncelik 2: Cross-Link Drawer İmplementasyonu — ✅ TAMAM
+**Tamamlanan:** Reçete satırındaki her malzeme ismi tıklanabilir `mr-ingredient-link` button'a dönüştürüldü.
+- `openIngredientDrawer(linkedPageId)` callback: `/api/manual/pages/:id` + `/api/manual/pages/:id/context` paralel çeker
+- Sağdan animasyonlu drawer açılır (CSS `drawerSlideIn` + overlay)
+- İçerik: Ürün görseli, kategori badge, açıklama, specs, bileşenler (reçete varsa)
+- **"Tam Sayfada Aç"** butonu: drawer kapanır, `navigateToPage` ile tam sayfaya gidilir
+- Kapatma: Overlay tıklama · Geri butonu · Sağ üst × · **Escape** tuşu
 
 **CSS hazır:** `.mr-link-drawer`, `.mr-link-drawer-open`, `.mr-ingredient-link` — `manual-academy.css`'de mevcut.
 
