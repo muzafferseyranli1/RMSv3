@@ -1,4 +1,4 @@
-
+﻿
 
 
 _________________________________________________________________________________________________________________________
@@ -471,7 +471,7 @@ Bu fazda yapılacak iş **web route, responsive ekran, WebView veya PWA simülas
 
 Kesin uygulama yolu:
 
-- Windows mutlak yol: `C:\RMSv3\wms-android`
+- Windows mutlak yol: `X:\RMSv3\wms-android`
 - Repo içi yol: `wms-android/`
 - Android package önerisi: `com.suitable.wms`
 - Ana kaynak yolu: `wms-android/app/src/main/java/com/suitable/wms/`
@@ -1224,3 +1224,4 @@ Kabul kriterleri:
 ## Son Not
 
 Bu dosyadaki en üst bölüm, agent koordinasyonu için bağlayıcı kabul edilmelidir. Faz detayları görev kapsamını anlatır; paralellik ve sıra kararlarında her zaman "En Baştaki Yürütme Sırası ve Paralellik Kuralları" bölümü esas alınır.
+

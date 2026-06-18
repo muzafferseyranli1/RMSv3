@@ -1,4 +1,4 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 
 const searchTerms = [
@@ -33,9 +33,9 @@ function walk(dir) {
 }
 
 const foldersToSearch = [
-  'C:\\RMSv3\\src',
-  'C:\\RMSv3\\scripts',
-  'C:\\RMSv3\\server'
+  'X:\\\\RMSv3\\src',
+  'X:\\\\RMSv3\\scripts',
+  'X:\\\\RMSv3\\server'
 ];
 
 const allFiles = [];
@@ -63,3 +63,4 @@ allFiles.forEach(file => {
     // Ignore read errors
   }
 });
+

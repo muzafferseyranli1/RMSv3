@@ -65,7 +65,7 @@ function normalizeImageUrl(value) {
   return text
 }
 
-function parseTimeMinutes(value) {
+export function parseTimeMinutes(value) {
   const text = normalizeText(value, '')
   const match = text.match(/^(\d{2}):(\d{2})$/)
   if (!match) return -1
@@ -75,11 +75,11 @@ function parseTimeMinutes(value) {
   return hours * 60 + minutes
 }
 
-function nowDayCode(date = new Date()) {
+export function nowDayCode(date = new Date()) {
   return DAY_CODES[(date.getDay() + 6) % 7] || 'mon'
 }
 
-function nowMinutes(date = new Date()) {
+export function nowMinutes(date = new Date()) {
   return date.getHours() * 60 + date.getMinutes()
 }
 
@@ -92,6 +92,8 @@ function normalizeCategorySchedule(rule = {}) {
     visible: rule.visible !== false,
     order: clampNumber(rule.order, 100, 0, 9999),
     note: normalizeText(rule.note, ''),
+    visibilityMode: normalizeText(rule.visibilityMode, 'show'),
+    redirectCategoryId: normalizeText(rule.redirectCategoryId, ''),
   }
 }
 
@@ -105,6 +107,16 @@ function normalizeOperatingHoursRule(rule = {}) {
   }
 }
 
+function normalizeCategoryScheduleGlobal(rule = {}) {
+  return {
+    id: String(rule.id || uid('cat_sched')),
+    name: normalizeText(rule.name, 'Saat Kuralı'),
+    days: normalizeStringList(rule.days).filter(value => DAY_CODES.includes(value)),
+    start: normalizeText(rule.start, '08:00'),
+    end: normalizeText(rule.end, '12:00'),
+  }
+}
+
 function normalizeCategoryConfig(config = {}, index = 0) {
   return {
     categoryId: String(config.categoryId || ''),
@@ -112,6 +124,8 @@ function normalizeCategoryConfig(config = {}, index = 0) {
     buttonLabel: normalizeText(config.buttonLabel, ''),
     defaultVisible: config.defaultVisible !== false,
     defaultOrder: clampNumber(config.defaultOrder, index + 1, 0, 9999),
+    visibilityMode: normalizeText(config.visibilityMode, 'show'),
+    redirectCategoryId: normalizeText(config.redirectCategoryId, ''),
     schedules: Array.isArray(config.schedules) ? config.schedules.map(normalizeCategorySchedule) : [],
   }
 }
@@ -288,6 +302,7 @@ export const KIOSK_DEFAULT_SETTINGS = {
   success_message_table: 'Masaniza servis yapilacaktir.',
   kiosk_stations: [],
   category_configs: [],
+  category_schedules: [],
   coupons: [],
   suggestion_limits: {
     productFlow: 2,
@@ -359,7 +374,7 @@ function normalizeSettings(input = {}) {
       ? base.quick_pick_product_ids.map(item => normalizeText(item, '')).slice(0, 2)
       : [],
     tablet_quick_pick_product_ids: Array.isArray(base.tablet_quick_pick_product_ids)
-      ? base.tablet_quick_pick_product_ids.map(item => normalizeText(item, '')).slice(0, 3)
+      ? base.tablet_quick_pick_product_ids.map(item => normalizeText(item, '')).slice(0, 2)
       : [],
     main_banner_title: normalizeText(base.main_banner_title, ''),
     main_banner_subtitle: normalizeText(base.main_banner_subtitle, ''),
@@ -387,6 +402,7 @@ function normalizeSettings(input = {}) {
         : [],
     ),
     category_configs: Array.isArray(base.category_configs) ? base.category_configs.map(normalizeCategoryConfig) : [],
+    category_schedules: Array.isArray(base.category_schedules) ? base.category_schedules.map(normalizeCategoryScheduleGlobal) : [],
     coupons: Array.isArray(base.coupons) ? base.coupons.map(normalizeCoupon).filter(item => item.code) : [],
     suggestion_limits: normalizeSuggestionLimits(base.suggestion_limits),
     product_suggestions: Array.isArray(base.product_suggestions) ? base.product_suggestions.map(normalizeSuggestion) : [],
@@ -611,9 +627,10 @@ function matchesTimeRule(rule, date = new Date()) {
   return matchesDay && matchesTime
 }
 
-export function getKioskOperatingState(settings, date = new Date()) {
+export function getKioskOperatingState(settings, date = new Date(), forceEnabled = null) {
   const normalizedSettings = normalizeSettings(settings)
-  if (!normalizedSettings.operating_hours_enabled) {
+  const isEnabled = forceEnabled !== null ? forceEnabled : normalizedSettings.operating_hours_enabled
+  if (!isEnabled) {
     return { isOpen: true, activeRule: null }
   }
 
@@ -629,23 +646,99 @@ export function getKioskOperatingState(settings, date = new Date()) {
   }
 }
 
+export function findActiveGlobalSchedule(settings, date = new Date()) {
+  const dayCode = nowDayCode(date)
+  const minute = nowMinutes(date)
+  const schedules = Array.isArray(settings.category_schedules) ? settings.category_schedules : []
+  return schedules.find(rule => {
+    const days = normalizeStringList(rule.days)
+    const start = parseTimeMinutes(rule.start)
+    const end = parseTimeMinutes(rule.end)
+    const matchesDay = days.length === 0 || days.includes(dayCode)
+    const matchesTime = start >= 0 && end >= 0
+      ? (minute >= start && minute <= end)
+      : true
+    return matchesDay && matchesTime
+  }) || null
+}
+
+export function getActiveCategoryRedirects(settings, date = new Date()) {
+  const normalizedSettings = normalizeSettings(settings)
+  const activeGlobalSchedule = findActiveGlobalSchedule(normalizedSettings, date)
+  const redirects = new Map()
+
+  for (const config of normalizedSettings.category_configs || []) {
+    const activeScheduleConfig = activeGlobalSchedule
+      ? (config.schedules || []).find(s => s.id === activeGlobalSchedule.id)
+      : null
+    
+    const mode = activeScheduleConfig ? activeScheduleConfig.visibilityMode : config.visibilityMode
+    const target = activeScheduleConfig ? activeScheduleConfig.redirectCategoryId : config.redirectCategoryId
+    if (mode === 'redirect' && target) {
+      redirects.set(normalizeId(config.categoryId), normalizeId(target))
+    }
+  }
+  return redirects
+}
+
+export function getCategoryIdsForKioskCategory(catId, categories, settings, date = new Date()) {
+  const redirects = getActiveCategoryRedirects(settings, date)
+  const targetId = normalizeId(catId)
+
+  function resolvesTo(id) {
+    let current = normalizeId(id)
+    const visited = new Set()
+    while (current && !visited.has(current)) {
+      visited.add(current)
+      if (current === targetId) return true
+      current = redirects.get(current)
+    }
+    return false
+  }
+
+  const sourceCategoryIds = (categories || []).filter(c => resolvesTo(c.id)).map(c => normalizeId(c.id))
+
+  const finalIds = new Set()
+  for (const id of sourceCategoryIds) {
+    finalIds.add(id)
+    for (const c of categories || []) {
+      if (normalizeId(c.parent_id) === id) {
+        finalIds.add(normalizeId(c.id))
+      }
+    }
+  }
+
+  return finalIds
+}
+
 export function resolveKioskCategories(categories, settings, date = new Date()) {
   const normalizedSettings = normalizeSettings(settings)
+  const activeGlobalSchedule = findActiveGlobalSchedule(normalizedSettings, date)
   const configMap = new Map((normalizedSettings.category_configs || []).map(config => [normalizeId(config.categoryId), config]))
 
   return (categories || []).map((category, index) => {
     const config = configMap.get(normalizeId(category.id)) || normalizeCategoryConfig({ categoryId: category.id }, index)
-    const activeSchedule = findActiveSchedule(config, date)
+    const activeScheduleConfig = activeGlobalSchedule
+      ? (config.schedules || []).find(s => s.id === activeGlobalSchedule.id)
+      : null
+
     const repairedCategoryName = repairTurkishText(category?.name || '')
     const repairedButtonLabel = repairTurkishText(config.buttonLabel || repairedCategoryName)
+
+    const mode = activeScheduleConfig ? activeScheduleConfig.visibilityMode : config.visibilityMode
+    const target = activeScheduleConfig ? activeScheduleConfig.redirectCategoryId : config.redirectCategoryId
+
+    const isVisible = mode === 'show' || (mode !== 'hide' && mode !== 'redirect' && (activeScheduleConfig ? activeScheduleConfig.visible : config.defaultVisible))
+    const order = activeScheduleConfig ? activeScheduleConfig.order : config.defaultOrder
+
     return {
       ...category,
       name: repairedCategoryName,
       kioskImageUrl: category.image_url || config.imageUrl || '',
       kioskButtonLabel: repairedButtonLabel,
-      kioskVisible: activeSchedule ? activeSchedule.visible : config.defaultVisible,
-      kioskOrder: activeSchedule ? activeSchedule.order : config.defaultOrder,
-      kioskScheduleNote: repairTurkishText(activeSchedule?.note || ''),
+      kioskVisible: isVisible,
+      kioskOrder: order,
+      kioskScheduleNote: activeGlobalSchedule ? repairTurkishText(activeGlobalSchedule.name) : '',
     }
   }).filter(category => category.kioskVisible !== false)
     .sort((left, right) => (

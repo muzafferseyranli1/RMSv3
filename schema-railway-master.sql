@@ -1977,11 +1977,31 @@ CREATE TABLE IF NOT EXISTS public.stock_item_warehouse_settings (
   CONSTRAINT stock_item_warehouse_settings_unique_stock_branch UNIQUE (stock_item_id, branch_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.kiosk_operating_hours_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES public.company_nodes(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  days TEXT[] NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.kiosk_terminal_operating_rules (
+  terminal_id UUID NOT NULL REFERENCES public.pos_terminals(id) ON DELETE CASCADE,
+  rule_id UUID NOT NULL REFERENCES public.kiosk_operating_hours_rules(id) ON DELETE CASCADE,
+  PRIMARY KEY (terminal_id, rule_id)
+);
+
 -- ------------------------------------------------------------
 -- INDEXES
 -- ------------------------------------------------------------
 
 CREATE INDEX idx_activity_logs_action_type_created_at ON public.activity_logs USING btree (action_type, created_at DESC);
+CREATE INDEX idx_kiosk_operating_hours_rules_branch ON public.kiosk_operating_hours_rules USING btree (branch_id);
+CREATE INDEX idx_kiosk_terminal_operating_rules_terminal ON public.kiosk_terminal_operating_rules USING btree (terminal_id);
 CREATE INDEX idx_activity_logs_created_at ON public.activity_logs USING btree (created_at DESC);
 CREATE INDEX idx_activity_logs_user_id_created_at ON public.activity_logs USING btree (user_id, created_at DESC);
 CREATE UNIQUE INDEX allowed_users_email_key ON public.allowed_users USING btree (email);
@@ -3409,6 +3429,11 @@ CREATE TRIGGER order_flows_updated_at
   BEFORE UPDATE ON public.order_flows
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_kiosk_operating_hours_rules_updated_at
+  BEFORE UPDATE ON public.kiosk_operating_hours_rules
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
 
 -- ------------------------------------------------------------
 -- TASK DOMAIN

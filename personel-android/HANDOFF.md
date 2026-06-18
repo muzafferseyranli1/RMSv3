@@ -1,4 +1,4 @@
-# Personel App (Native Android) - Handoff / Devir Belgesi
+﻿# Personel App (Native Android) - Handoff / Devir Belgesi
 
 Bu belge, **Personel App**'in native Android versiyonu üzerindeki çalışmaları başka bir bilgisayarda (veya farklı bir geliştirme ortamında) sürdürebilmeniz için gerekli tüm mimari, ortam ve ilerleme bilgilerini içerir.
 
@@ -59,7 +59,7 @@ Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla
   - Görev başlangıç (`startDate`) ve bitiş/teslim (`dueDate`) tarihlerinin güncellenmesini sağlayan modern Compose `DatePicker` takvim seçicileri entegre edildi.
   - Görevi izleyen personellerin (watchers) onay kutularıyla yönetimi sağlandı.
   - Görev kapatma/tamamlama sırasında kapatma özeti ve açıklama girilmesini sağlayan diyalog pencereleri eklendi.
-  - Projenin son durumunu içeren debug sürümü Gradle paketi (`.\gradlew.bat assembleDebug`) başarıyla derlenerek [app-debug.apk](file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) konumunda hazırlandı.
+  - Projenin son durumunu içeren debug sürümü Gradle paketi (`.\gradlew.bat assembleDebug`) başarıyla derlenerek [app-debug.apk](file:///X:/RMSv3/personel-android/app/build/outputs/apk/debug/app-debug.apk) konumunda hazırlandı.
 - **Tek Atanan (Sorumlu) Arama Modali Entegrasyonu (Tamamlandı):**
   - Görev oluşturulurken tek sorumlu seçimi için dropdown yerine arama filtreleme ve listeleme özelliğine sahip `SinglePersonnelSelectDialog` entegre edildi.
   - Sorumlu ve diğer tüm görevli seçimleri (`collaboratorIds`, `observerIds`), şube çalışanlarının kısıtlanması amacıyla, sadece genel merkez personelleriyle (`authorityLevel === 'Genel Merkez'`) sınırlandırıldı.
@@ -68,12 +68,13 @@ Proje şu anda sıfır hata ile derlenmekte ve debug APK çıktısı başarıyla
 
 
 ## 6. Önemli Dosyaların Konumları
-- Navigasyon ve Kontrolör: [MainScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt)
-- PIN Girişi ve Oturum Modeli: [PinLoginScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt)
-- Personel Dashboard (PDKS & Vardiya Toleransı & Konumlu QR): [HomeScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
-- Çalışma Planı Ekranı (Vardiyalar & Net Çalışma): [ShiftPlanScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/ShiftPlanScreen.kt)
-- Masalar ve Çağrı Yönetimi: [TableScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt)
-- Görevler ve Tekrarlayan Kurallar: [TasksScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
-- Sipariş Alma: [TableOrderScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt)
-- Masa Hesap & Adisyonlar: [TableOrdersScreen.kt](file:///C:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt)
-- İzin Tanımları: [AndroidManifest.xml](file:///C:/RMSv3/personel-android/app/src/main/AndroidManifest.xml)
+- Navigasyon ve Kontrolör: [MainScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt)
+- PIN Girişi ve Oturum Modeli: [PinLoginScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/PinLoginScreen.kt)
+- Personel Dashboard (PDKS & Vardiya Toleransı & Konumlu QR): [HomeScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
+- Çalışma Planı Ekranı (Vardiyalar & Net Çalışma): [ShiftPlanScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/ShiftPlanScreen.kt)
+- Masalar ve Çağrı Yönetimi: [TableScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt)
+- Görevler ve Tekrarlayan Kurallar: [TasksScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TasksScreen.kt)
+- Sipariş Alma: [TableOrderScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt)
+- Masa Hesap & Adisyonlar: [TableOrdersScreen.kt](file:///X:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt)
+- İzin Tanımları: [AndroidManifest.xml](file:///X:/RMSv3/personel-android/app/src/main/AndroidManifest.xml)
+

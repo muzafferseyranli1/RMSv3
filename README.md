@@ -1,4 +1,4 @@
-# SuitableRMS
+﻿# SuitableRMS
 
 Bu dosya artik kanonik baslangic ve hizli yonlendirme dosyasidir.
 
@@ -11,7 +11,7 @@ Bu iki dosya, tarihsel notlar ve eski README iceriklerinin uzerindedir.
 
 ## Proje Gercegi
 
-- Proje dizini: `C:\RMSv3`
+- Proje dizini: `X:\RMSv3`
 - Tek uretim ortami: Railway
 - Tek veri kaynagi: Railway Postgres
 - Frontend veri erisimi: `src/lib/db.js`
@@ -56,3 +56,5 @@ Tarihsel README icerigi korunmustur:
 
 Bu dosya sadece gecmis baglami saklamak icindir. Kanonik karar kaynagi
 degildir.
+
+Antigravity testi

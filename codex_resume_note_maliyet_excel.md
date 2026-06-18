@@ -1,9 +1,9 @@
-# Devam Notu - Restoran Maliyet Excel Dosyasi
+﻿# Devam Notu - Restoran Maliyet Excel Dosyasi
 
 Kullanici bilgisayari kapatmak zorunda oldugunu soyledi. Kaldigim nokta:
 
 - Excel dosyasi olusturuldu:
-  - `C:\RMSv3\restoran_maliyet_yontemleri_buyuk_data.xlsx`
+  - `X:\RMSv3\restoran_maliyet_yontemleri_buyuk_data.xlsx`
 - Dosya icerigi:
   - `00_Ozet`
   - `01_Ham_Veri`
@@ -23,4 +23,5 @@ Kullanici bilgisayari kapatmak zorunda oldugunu soyledi. Kaldigim nokta:
   - PowerShell uyumlu kisa kontrol komutuyla bazi formulleri tekrar okumak.
   - Gerekirse formullerde veya anlatimlarda son duzeltmeyi yapmak.
   - Kullaniciya dosya yolunu ve kisa ozetini vermek.
+
 

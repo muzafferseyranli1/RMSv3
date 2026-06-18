@@ -1,4 +1,4 @@
-{
+﻿{
   "permissions": {
     "allow": [
       "Bash(npm.cmd run:*)",
@@ -60,3 +60,4 @@
     ]
   }
 }
+

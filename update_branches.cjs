@@ -1,6 +1,6 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const glob = require('glob');
-const files = glob.sync('c:/RMSv3/src/**/*.{js,jsx}');
+const files = glob.sync('X:/RMSv3/src/**/*.{js,jsx}');
 let changed = 0;
 for (const file of files) {
   let content = fs.readFileSync(file, 'utf8');
@@ -15,3 +15,4 @@ for (const file of files) {
   }
 }
 console.log('Total files changed:', changed);
+

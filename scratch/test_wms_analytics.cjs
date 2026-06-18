@@ -1,4 +1,4 @@
-const { Client } = require('pg')
+﻿const { Client } = require('pg')
 const fs = require('fs')
 const path = require('path')
 
@@ -6,7 +6,7 @@ function loadServerEnv() {
   const envPaths = [
     path.join(__dirname, '../server/.env'),
     path.join(__dirname, '.env'),
-    'C:/RMSv3/server/.env'
+    'X:/RMSv3/server/.env'
   ]
   
   let found = false
@@ -243,3 +243,4 @@ async function runTest() {
 }
 
 runTest().catch(err => { console.error(err); process.exit(1) })
+

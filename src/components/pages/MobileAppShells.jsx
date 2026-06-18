@@ -1,4 +1,4 @@
-import React from 'react'
+﻿import React from 'react'
 import Header from '@/components/layout/Header'
 
 export default function MobileAppShells({ screenKey = 'personnel' }) {
@@ -32,12 +32,12 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
             Lütfen test için aşağıdaki klasörden APK dosyasını yükleyin:
           </p>
           <code style={{ display: 'block', wordBreak: 'break-all', backgroundColor: '#0f172a', padding: 12, borderRadius: 6, color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-            C:\RMSv3\personel-android\app\build\outputs\apk\debug
+            X:\RMSv3\personel-android\app\build\outputs\apk\debug
           </code>
         </div>
 
         <a 
-          href="file:///C:/RMSv3/personel-android/app/build/outputs/apk/debug"
+          href="file:///X:/RMSv3/personel-android/app/build/outputs/apk/debug"
           style={{ textDecoration: 'none', color: '#38bdf8', fontWeight: 'bold', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
           <i className="fa-solid fa-folder-open" /> Klasörü Aç (Local Tarayıcılar İçin)
@@ -65,12 +65,12 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
             Lütfen test için aşağıdaki klasörden APK dosyasını yükleyin:
           </p>
           <code style={{ display: 'block', wordBreak: 'break-all', backgroundColor: '#0f172a', padding: 12, borderRadius: 6, color: '#fb7185', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-            C:\RMSv3\musteri-android\app\build\outputs\apk\debug
+            X:\RMSv3\musteri-android\app\build\outputs\apk\debug
           </code>
         </div>
 
         <a 
-          href="file:///C:/RMSv3/musteri-android/app/build/outputs/apk/debug"
+          href="file:///X:/RMSv3/musteri-android/app/build/outputs/apk/debug"
           style={{ textDecoration: 'none', color: '#fb7185', fontWeight: 'bold', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
           <i className="fa-solid fa-folder-open" /> Klasörü Aç (Local Tarayıcılar İçin)
@@ -99,3 +99,4 @@ export default function MobileAppShells({ screenKey = 'personnel' }) {
     </>
   )
 }
+

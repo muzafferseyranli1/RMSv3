@@ -1,4 +1,4 @@
-# Operasyon El Kitabı Tanımları Analiz Raporu
+﻿# Operasyon El Kitabı Tanımları Analiz Raporu
 
 Bu rapor, SuitableRMS projesinde yer alan satış ürünleri ve hammadde stok kartlarının operasyon el kitabı (Operation Manual) içeriklerinin tamamlanma durumunu (kapsama oranını) gösterir.
 
@@ -30,9 +30,10 @@ Eksik olan 73 ürünün ve 34 hammaddenin operasyon kılavuzlarını ve ekipman 
 * **El Kitabı Yönetim Ekranı:** [http://localhost:5173/manual-management](http://localhost:5173/manual-management)
 * **El Kitabı Okuma Ekranı (Personel):** [http://localhost:5173/manual-reader](http://localhost:5173/manual-reader)
 * **İlgili Kaynak Kod Dosyaları:**
-  * Yönetim Paneli: [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
-  * Okuyucu Paneli: [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
+  * Yönetim Paneli: [ManualManagement.jsx](file:///X:/RMSv3/src/components/pages/ManualManagement.jsx)
+  * Okuyucu Paneli: [ManualReader.jsx](file:///X:/RMSv3/src/components/pages/ManualReader.jsx)
 * **İlgili Veritabanı Tabloları:**
   * `public.manual_pages` (Kılavuz sayfaları ve içerikleri)
   * `public.manual_categories` (Kılavuz kategorileri)
   * `public.manual_page_equipments` (Kılavuza bağlı hazırlık ekipmanları)
+

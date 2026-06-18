@@ -1,4 +1,4 @@
-# SuitableRMS POS — LAN Master-Slave Mimari Planı
+﻿# SuitableRMS POS — LAN Master-Slave Mimari Planı
 > **Son Güncelleme:** 2026-05-29 v2.1 — POS/Garson Ekran Modu Seçimi Eklendi
 
 > **Revizyon:** 2026-05-29 v2.0 — Multi-Terminal LAN Edge Server Mimarisi  
@@ -54,7 +54,7 @@
 ## 📦 Dosya Mimarisi — Yeni & Değişen Dosyalar
 
 ```
-c:\RMSv3\
+X:\RMSv3\
 ├── desktop/
 │   ├── main.cjs                    [DEĞİŞİR] — Edge server başlatma, IPC, ekran modu
 │   ├── updater.cjs                 [YENİ]    — electron-updater / GitHub Releases
@@ -1238,3 +1238,4 @@ Yan Kasa yalnızca son SQLite cache verisiyle çalışmaya devam eder
 
 > `better-sqlite3` devDependencies'te olsa da Electron asar paketiyle build'e dahil edilmelidir.  
 > `files` array'inde `node_modules/better-sqlite3/**/*` açıkça belirtilmelidir.
+

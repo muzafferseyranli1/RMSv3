@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import { useToast } from '@/hooks/useToast'
@@ -28,25 +28,23 @@ const DAY_OPTIONS = [
 ]
 
 const DESKTOP_SECTIONS = [
-  { id: 'kioskler', label: 'Kioskler', icon: 'fa-tablet-screen-button', accent: '#0f766e' },
-  { id: 'temel-akis', label: 'Temel Akış', icon: 'fa-sliders', accent: '#2563eb' },
+  { id: 'kioskler', label: 'Kioskler', icon: 'fa-tablet-screen-button', accent: '#0d9488' },
+  { id: 'temel-akis', label: 'Çalışma Saatleri', icon: 'fa-sliders', accent: '#2563eb' },
   { id: 'gorsel-kimlik', label: 'Görsel Kimlik', icon: 'fa-palette', accent: '#7c3aed' },
   { id: 'karsilama-ekrani', label: 'Karşılama Ekranı', icon: 'fa-hand-pointer', accent: '#0891b2' },
-  { id: 'ana-banner', label: 'Ana Banner', icon: 'fa-panorama', accent: '#ef4444' },
+  { id: 'ana-banner', label: 'Ana Banner', icon: 'fa-panorama', accent: '#dc2626' },
   { id: 'hizli-secim', label: 'Hızlı Seçim', icon: 'fa-bolt', accent: '#16a34a' },
-  { id: 'kategori-yonetimi', label: 'Kategori Yönetimi', icon: 'fa-layer-group', accent: '#f97316' },
-  { id: 'urunler', label: 'Ürünler', icon: 'fa-utensils', accent: '#0f766e' },
-  { id: 'sira-ekrani', label: 'Sıra Ekranı', icon: 'fa-tv', accent: '#0ea5e9' },
-  { id: 'kds-pickup', label: 'KDS ve Pickup', icon: 'fa-kitchen-set', accent: '#eab308' },
-  { id: 'oneriler', label: 'Öneriler', icon: 'fa-bullhorn', accent: '#ec4899' },
-  { id: 'diger', label: 'Diğer Ayarlar', icon: 'fa-ellipsis', accent: '#64748b' },
+  { id: 'kategori-yonetimi', label: 'Kategori Yönetimi', icon: 'fa-layer-group', accent: '#ea580c' },
+  { id: 'urunler', label: 'Ürünler', icon: 'fa-utensils', accent: '#4f46e5' },
+  { id: 'oneriler', label: 'Öneriler', icon: 'fa-bullhorn', accent: '#c026d3' },
+  { id: 'diger', label: 'Diğer Ayarlar', icon: 'fa-ellipsis', accent: '#475569' },
 ]
 
 function uid(prefix = 'kiosk') {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
 
-async function uploadFileAndGetUrl(file) {
+async function uploadFileAndGetUrl(file, targetWidth = null, targetHeight = null) {
   if (file?.type?.startsWith('image/')) {
     const objectUrl = URL.createObjectURL(file)
     try {
@@ -57,16 +55,144 @@ async function uploadFileAndGetUrl(file) {
         nextImage.src = objectUrl
       })
 
-      const maxDimension = 1600
-      const scale = Math.min(1, maxDimension / Math.max(image.width || 1, image.height || 1))
-      const width = Math.max(1, Math.round((image.width || 1) * scale))
-      const height = Math.max(1, Math.round((image.height || 1) * scale))
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
+      let finalWidth = image.width || 1
+      let finalHeight = image.height || 1
+      let canvas = document.createElement('canvas')
+
+      if (targetWidth && targetHeight) {
+        finalWidth = targetWidth
+        finalHeight = targetHeight
+        canvas.width = finalWidth
+        canvas.height = finalHeight
+        const context = canvas.getContext('2d')
+
+        if (context) {
+          const imgWidth = image.width || 1
+          const imgHeight = image.height || 1
+          const targetRatio = targetWidth / targetHeight
+          const imgRatio = imgWidth / imgHeight
+
+          let sourceX = 0
+          let sourceY = 0
+          let sourceWidth = imgWidth
+          let sourceHeight = imgHeight
+
+          if (Math.abs(imgRatio - targetRatio) > 0.01) {
+            const analyzeCanvas = document.createElement('canvas')
+            const scale = Math.min(1, 400 / Math.max(imgWidth, imgHeight))
+            analyzeCanvas.width = Math.round(imgWidth * scale)
+            analyzeCanvas.height = Math.round(imgHeight * scale)
+            const actx = analyzeCanvas.getContext('2d')
+            if (actx) {
+              actx.drawImage(image, 0, 0, analyzeCanvas.width, analyzeCanvas.height)
+              const imgData = actx.getImageData(0, 0, analyzeCanvas.width, analyzeCanvas.height)
+              const pixels = imgData.data
+              const aw = analyzeCanvas.width
+              const ah = analyzeCanvas.height
+
+              const energy = new Float32Array(aw * ah)
+              for (let y = 1; y < ah - 1; y++) {
+                for (let x = 1; x < aw - 1; x++) {
+                  const idx = (y * aw + x) * 4
+                  const r = pixels[idx]
+                  const g = pixels[idx + 1]
+                  const b = pixels[idx + 2]
+
+                  const idxR = idx + 4
+                  const gradX = Math.abs(r - pixels[idxR]) + Math.abs(g - pixels[idxR + 1]) + Math.abs(b - pixels[idxR + 2])
+
+                  const idxB = idx + aw * 4
+                  const gradY = Math.abs(r - pixels[idxB]) + Math.abs(g - pixels[idxB + 1]) + Math.abs(b - pixels[idxB + 2])
+
+                  energy[y * aw + x] = gradX + gradY
+                }
+              }
+
+              if (imgRatio > targetRatio) {
+                const wCrop = imgHeight * targetRatio
+                const wCropScale = wCrop * scale
+                const maxScaleX = aw - wCropScale
+
+                let bestScaleX = 0
+                let maxEnergy = -1
+
+                for (let sx = 0; sx <= maxScaleX; sx += 2) {
+                  let windowEnergy = 0
+                  for (let y = 0; y < ah; y++) {
+                    const rowOffset = y * aw
+                    for (let x = Math.floor(sx); x < Math.min(aw, sx + wCropScale); x++) {
+                      windowEnergy += energy[rowOffset + x]
+                    }
+                  }
+
+                  const centerX = maxScaleX / 2
+                  const distFromCenter = Math.abs(sx - centerX) / (maxScaleX || 1)
+                  const bias = (1 - distFromCenter) * (maxEnergy * 0.05)
+                  const biasedEnergy = windowEnergy + bias
+
+                  if (biasedEnergy > maxEnergy) {
+                    maxEnergy = biasedEnergy
+                    bestScaleX = sx
+                  }
+                }
+
+                sourceX = bestScaleX / scale
+                sourceWidth = wCrop
+              } else {
+                const hCrop = imgWidth / targetRatio
+                const hCropScale = hCrop * scale
+                const maxScaleY = ah - hCropScale
+
+                let bestScaleY = 0
+                let maxEnergy = -1
+
+                for (let sy = 0; sy <= maxScaleY; sy += 2) {
+                  let windowEnergy = 0
+                  for (let y = Math.floor(sy); y < Math.min(ah, sy + hCropScale); y++) {
+                    const rowOffset = y * aw
+                    for (let x = 0; x < aw; x++) {
+                      windowEnergy += energy[rowOffset + x]
+                    }
+                  }
+
+                  const centerY = maxScaleY / 2
+                  const distFromCenter = Math.abs(sy - centerY) / (maxScaleY || 1)
+                  const bias = (1 - distFromCenter) * (maxEnergy * 0.05)
+                  const biasedEnergy = windowEnergy + bias
+
+                  if (biasedEnergy > maxEnergy) {
+                    maxEnergy = biasedEnergy
+                    bestScaleY = sy
+                  }
+                }
+
+                sourceY = bestScaleY / scale
+                sourceHeight = hCrop
+              }
+            }
+          }
+
+          context.drawImage(
+            image,
+            sourceX, sourceY, sourceWidth, sourceHeight,
+            0, 0, finalWidth, finalHeight
+          )
+        }
+      } else {
+        const maxDimension = 1600
+        const scale = Math.min(1, maxDimension / Math.max(image.width || 1, image.height || 1))
+        finalWidth = Math.max(1, Math.round((image.width || 1) * scale))
+        finalHeight = Math.max(1, Math.round((image.height || 1) * scale))
+        canvas.width = finalWidth
+        canvas.height = finalHeight
+        const context = canvas.getContext('2d')
+        if (context) {
+          context.drawImage(image, 0, 0, finalWidth, finalHeight)
+        }
+      }
+
       const context = canvas.getContext('2d')
       if (context) {
-        context.drawImage(image, 0, 0, width, height)
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.86))
         if (blob) {
           const formData = new FormData()
@@ -77,8 +203,8 @@ async function uploadFileAndGetUrl(file) {
           return buildApiUrl(uploaded.file_url)
         }
       }
-    } catch {
-      // Fallback to original uploader below.
+    } catch (e) {
+      console.error("Image processing failed:", e)
     } finally {
       URL.revokeObjectURL(objectUrl)
     }
@@ -177,17 +303,29 @@ function SaveChip({ active }) {
   )
 }
 
-function SectionBlock({ id, icon, accent, title, subtitle, children }) {
+function SectionBlock({ id, icon, accent, title, subtitle, headerRight = null, children }) {
+  const matchedSection = DESKTOP_SECTIONS.find(s => s.id === id)
+  const finalAccent = matchedSection ? matchedSection.accent : accent
+
   return (
-    <section id={id} style={shellCardStyle()}>
-      <div style={sectionTitleStyle()}>
-        <div style={iconBadgeStyle(`${accent}18`, accent)}>
-          <i className={`fa-solid ${icon}`} />
+    <section
+      id={id}
+      style={{
+        ...shellCardStyle(),
+        borderLeft: `6px solid ${finalAccent}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={iconBadgeStyle(`${finalAccent}18`, finalAccent)}>
+            <i className={`fa-solid ${icon}`} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a' }}>{title}</div>
+            {subtitle ? <div style={{ fontSize: '.82rem', color: '#64748b', marginTop: 3 }}>{subtitle}</div> : null}
+          </div>
         </div>
-        <div>
-          <div style={{ fontWeight: 800, color: '#0f172a' }}>{title}</div>
-          {subtitle ? <div style={{ fontSize: '.82rem', color: '#64748b', marginTop: 3 }}>{subtitle}</div> : null}
-        </div>
+        {headerRight && <div style={{ display: 'flex', alignItems: 'center' }}>{headerRight}</div>}
       </div>
       <div style={{ display: 'grid', gap: 16 }}>
         {children}
@@ -222,11 +360,11 @@ function ToggleRow({ label, hint, checked, onChange }) {
         background: checked ? '#fffaf0' : '#fff',
       }}
     >
-      <div>
-        <div style={{ fontWeight: 700, color: '#0f172a' }}>{label}</div>
-        {hint ? <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4, lineHeight: 1.45 }}>{hint}</div> : null}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, color: '#0f172a', wordBreak: 'break-word' }}>{label}</div>
+        {hint ? <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{hint}</div> : null}
       </div>
-      <label className="tog" style={{ marginTop: 2 }}>
+      <label className="tog" style={{ marginTop: 2, flexShrink: 0 }}>
         <input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} />
         <span className="tog-sl" />
       </label>
@@ -243,6 +381,8 @@ function UploadField({
   previewKind = 'image',
   aspect = '16 / 9',
   fit = 'cover',
+  targetWidth = null,
+  targetHeight = null,
 }) {
   const inputId = useId()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -252,16 +392,18 @@ function UploadField({
     const file = event.target.files?.[0]
     if (!file) return
     setLastFileName(file.name || '')
-    onChange(await uploadFileAndGetUrl(file))
+    onChange(await uploadFileAndGetUrl(file, targetWidth, targetHeight))
   }
 
   const hasValue = Boolean(value)
   const fileLabel = lastFileName || (hasValue ? (previewKind === 'video' ? 'Yuklu video' : 'Yuklu dosya') : 'Dosya secilmedi')
   const infoText = ''
 
+  const finalHint = hint || (targetWidth && targetHeight ? `Önerilen boyut: ${targetWidth}x${targetHeight} px` : '')
+
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <Field label={label} hint={hint}>
+      <Field label={label} hint={finalHint}>
         <div />
       </Field>
       <div
@@ -368,7 +510,7 @@ function DaySelector({ value = [], onChange }) {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 4 }}>
       {DAY_OPTIONS.map(([code, label]) => {
         const active = selected.has(code)
         return (
@@ -377,15 +519,16 @@ function DaySelector({ value = [], onChange }) {
             type="button"
             onClick={() => toggleDay(code)}
             style={{
-              minWidth: 38,
-              minHeight: 28,
-              borderRadius: 8,
+              padding: '2px 5px',
+              borderRadius: 6,
               border: active ? '1px solid #fdba74' : '1px solid #dbe2ea',
               background: active ? '#fff7ed' : '#fff',
               color: active ? '#c2410c' : '#475569',
               fontWeight: 700,
-              fontSize: '.72rem',
+              fontSize: '.68rem',
               cursor: 'pointer',
+              minWidth: 28,
+              height: 24,
             }}
           >
             {label}
@@ -402,101 +545,119 @@ function ScheduleRuleEditor({
   onRemove,
   includeVisibility = false,
   includeOrder = false,
+  includeName = false,
 }) {
-  const columnCount = 2 + (includeVisibility ? 1 : 0) + (includeOrder ? 1 : 0)
+  const startTime = includeName ? (rule.start_time || '09:00') : (rule.start || '09:00')
+  const endTime = includeName ? (rule.end_time || '22:00') : (rule.end || '22:00')
+
   return (
-    <div style={{ borderRadius: 14, border: '1px solid #e2e8f0', background: '#fff', padding: 12, display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 7 }}>
-        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '.82rem' }}>Gunler</div>
+    <div style={{
+      borderRadius: 10,
+      border: '1px solid #e2e8f0',
+      background: '#fff',
+      padding: '8px 12px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap'
+    }}>
+      {includeName && (
+        <div style={{ flex: '1 1 150px', minWidth: 120 }}>
+          <input
+            type="text"
+            value={rule.name || ''}
+            onChange={event => onChange({ name: event.target.value })}
+            style={{ ...inputStyle(), padding: '4px 8px', fontSize: '.78rem' }}
+            placeholder="Kural Adı (örn. Hafta Sonu)"
+          />
+        </div>
+      )}
+
+      <div style={{ flexShrink: 0 }}>
         <DaySelector value={rule.days || []} onChange={days => onChange({ days })} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columnCount}, minmax(0,1fr))`, gap: 12 }}>
-        <Field label="Baslangic">
-          <input type="time" value={rule.start || '09:00'} onChange={event => onChange({ start: event.target.value })} style={inputStyle()} />
-        </Field>
-        <Field label="Bitis">
-          <input type="time" value={rule.end || '22:00'} onChange={event => onChange({ end: event.target.value })} style={inputStyle()} />
-        </Field>
-        {includeVisibility ? (
-          <Field label="Durum">
-            <SearchableSelect
-              value={rule.visible === false ? 'hidden' : 'visible'}
-              onChange={v => onChange({ visible: v === 'visible' })}
-              options={[{value:'visible',label:'Görünür'},{value:'hidden',label:'Gizli'}]}
-              allowClear={false}
-            />
-          </Field>
-        ) : null}
-        {includeOrder ? (
-          <Field label="Sira">
-            <input type="number" min={0} max={9999} value={rule.order ?? 100} onChange={event => onChange({ order: Number(event.target.value || 0) })} style={inputStyle()} />
-          </Field>
-        ) : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <input
+          type="time"
+          value={startTime}
+          onChange={event => {
+            if (includeName) onChange({ start_time: event.target.value })
+            else onChange({ start: event.target.value })
+          }}
+          style={{ ...inputStyle(), width: 72, padding: '4px 4px', fontSize: '.78rem', textAlign: 'center' }}
+        />
+        <span style={{ color: '#64748b', fontSize: '.8rem' }}>-</span>
+        <input
+          type="time"
+          value={endTime}
+          onChange={event => {
+            if (includeName) onChange({ end_time: event.target.value })
+            else onChange({ end: event.target.value })
+          }}
+          style={{ ...inputStyle(), width: 72, padding: '4px 4px', fontSize: '.78rem', textAlign: 'center' }}
+        />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
-        <Field label="Not" hint="Orn. kahvalti akisi veya hafta sonu yogunlugu.">
-          <input value={rule.note || ''} onChange={event => onChange({ note: event.target.value })} style={inputStyle()} placeholder="Aciklama" />
-        </Field>
-        <button type="button" className="btn-o" onClick={onRemove} style={{ color: '#b91c1c' }}>
-          Kurali Sil
-        </button>
+      {includeVisibility && (
+        <div style={{ width: 100, flexShrink: 0 }}>
+          <SearchableSelect
+            value={rule.visible === false ? 'hidden' : 'visible'}
+            onChange={v => onChange({ visible: v === 'visible' })}
+            options={[{value:'visible',label:'Görünür'},{value:'hidden',label:'Gizli'}]}
+            allowClear={false}
+          />
+        </div>
+      )}
+
+      {includeOrder && (
+        <div style={{ width: 70, flexShrink: 0 }}>
+          <input
+            type="number"
+            min={0}
+            max={9999}
+            value={rule.order ?? 100}
+            onChange={event => onChange({ order: Number(event.target.value || 0) })}
+            style={{ ...inputStyle(), padding: '4px 6px', fontSize: '.78rem', textAlign: 'center' }}
+          />
+        </div>
+      )}
+
+      <div style={{ flex: '2 1 150px', minWidth: 120 }}>
+        <input
+          value={rule.note || ''}
+          onChange={event => onChange({ note: event.target.value })}
+          style={{ ...inputStyle(), padding: '4px 8px', fontSize: '.78rem' }}
+          placeholder="Not (Açıklama)"
+        />
       </div>
+
+      <button
+        type="button"
+        className="btn-o"
+        onClick={onRemove}
+        style={{
+          color: '#b91c1c',
+          padding: '4px 10px',
+          fontSize: '.75rem',
+          border: '1px solid #fca5a5',
+          borderRadius: 8,
+          background: '#fef2f2',
+          cursor: 'pointer',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }}
+      >
+        <i className="fa-solid fa-trash-can" />
+        Sil
+      </button>
     </div>
   )
 }
 
-function KioskStationEditor({ station }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: '1px solid #dbe2ea',
-        background: '#fff',
-        padding: 14,
-        display: 'grid',
-        gap: 12,
-      }}
-    >
-      <div style={{ display: 'grid', gridTemplateColumns: '110px 1.2fr 1.2fr 120px', gap: 10, alignItems: 'end' }}>
-        <Field label="Kiosk no" hint="Otomatik atanır.">
-          <div style={{
-            ...inputStyle(),
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: '#f8fafc',
-            color: '#0f172a',
-            fontWeight: 800,
-          }}>
-            <span>Kiosk {station.kiosk_number || 1}</span>
-            <span style={{ fontSize: '.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Sabit</span>
-          </div>
-        </Field>
-        <Field label="Kiosk ID (Pair Key)" hint="Cihaz yönetiminden gelir.">
-          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
-            {station.code || ''}
-          </div>
-        </Field>
-        <Field label="Görünen ad" hint="Cihaz yönetiminden gelir.">
-          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
-            {station.name || ''}
-          </div>
-        </Field>
-        <Field label="Cihaz Tipi" hint="Kiosk Tipi">
-          <div style={{...inputStyle(), background: '#f8fafc', fontWeight: 600}}>
-            {station.device_type === 'kiosk_tablet' ? 'Kiosk Tablet' : 'Kiosk'}
-          </div>
-        </Field>
-      </div>
-
-      <div style={subtleNoteStyle('#f8fafc', '#dbe2ea', '#334155')}>
-        Bu kiosk icin cihaz tarafinda ayni <strong>Kiosk ID ({station.code})</strong> girildiginde sistem otomatik olarak <strong>Kiosk {station.kiosk_number || 1}</strong> olarak eslesir. Bu cihazların tanımlamaları artık <strong>POS ve Cihazlar</strong> menüsünden yönetilmektedir.
-      </div>
-    </div>
-  )
-}
+// KioskStationEditor bileşeni kaldırıldı. Cihazlar artık daha sade bir tablo yapısında listeleniyor.
 
 export default function KioskManagementDesktop() {
   const { branchId } = useWorkspace()
@@ -510,15 +671,19 @@ export default function KioskManagementDesktop() {
   const [categories, setCategories] = useState([])
   const [kioskChannel, setKioskChannel] = useState(null)
   const [kioskDevices, setKioskDevices] = useState([])
+  const [operatingRules, setOperatingRules] = useState([])
+  const [deviceAssignments, setDeviceAssignments] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [activeSection, setActiveSection] = useState(DESKTOP_SECTIONS[0].id)
+  const [activeCategoryTab, setActiveCategoryTab] = useState('standard')
+  const [saveConflicts, setSaveConflicts] = useState([])
 
   useEffect(() => {
     let ignore = false
     ;(async () => {
       try {
         setLoading(true)
-        const [settingsResult, categoryResult, productResult, channelResult, devicesResult] = await Promise.allSettled([
+        const [settingsResult, categoryResult, productResult, channelResult, devicesResult, rulesResult, assignmentsResult] = await Promise.allSettled([
           loadKioskSettings(),
           db.from('sale_categories').select('id,name,parent_id,image_url').is('deleted_at', null).order('name'),
           db
@@ -527,7 +692,9 @@ export default function KioskManagementDesktop() {
             .is('deleted_at', null)
             .order('name'),
           db.from('sales_channels').select('id,name').is('deleted_at', null).ilike('name', 'kiosk').maybeSingle(),
-          branchId ? db.from('pos_terminals').select('*').eq('branch_id', branchId).in('device_type', ['kiosk', 'kiosk_tablet']) : Promise.resolve({ data: [] })
+          branchId ? db.from('pos_terminals').select('*').eq('branch_id', branchId).in('device_type', ['kiosk', 'kiosk_tablet']) : Promise.resolve({ data: [] }),
+          branchId ? db.from('kiosk_operating_hours_rules').select('*').eq('branch_id', branchId) : Promise.resolve({ data: [] }),
+          branchId ? db.from('kiosk_terminal_operating_rules').select('terminal_id, rule_id') : Promise.resolve({ data: [] })
         ])
         if (ignore) return
 
@@ -539,6 +706,8 @@ export default function KioskManagementDesktop() {
         setProducts(productResult.status === 'fulfilled' ? (productResult.value?.data || []) : [])
         setKioskChannel(channelResult.status === 'fulfilled' ? (channelResult.value?.data || null) : null)
         setKioskDevices(devicesResult.status === 'fulfilled' ? (devicesResult.value?.data || []) : [])
+        setOperatingRules(rulesResult.status === 'fulfilled' ? (rulesResult.value?.data || []) : [])
+        setDeviceAssignments(assignmentsResult.status === 'fulfilled' ? (assignmentsResult.value?.data || []) : [])
 
         const errors = [
           settingsResult.status === 'rejected' ? settingsResult.reason?.message : '',
@@ -546,13 +715,15 @@ export default function KioskManagementDesktop() {
           productResult.status === 'rejected' ? productResult.reason?.message : '',
           channelResult.status === 'rejected' ? channelResult.reason?.message : '',
           devicesResult.status === 'rejected' ? devicesResult.reason?.message : '',
+          rulesResult.status === 'rejected' ? rulesResult.reason?.message : '',
+          assignmentsResult.status === 'rejected' ? assignmentsResult.reason?.message : '',
         ].filter(Boolean)
 
         if (errors.length > 0) {
-          toast(`Desktop editor kismi veriyle acildi: ${errors[0]}`, 'info')
+          toast(`Desktop editor kısmi veriyle açıldı: ${errors[0]}`, 'info')
         }
       } catch (error) {
-        if (!ignore) toast(error?.message || 'Kiosk ayarlari yuklenemedi', 'error')
+        if (!ignore) toast(error?.message || 'Kiosk ayarları yüklenemedi', 'error')
       } finally {
         if (!ignore) setLoading(false)
       }
@@ -648,28 +819,400 @@ export default function KioskManagementDesktop() {
     })
   }
 
-  function addOperatingRule() {
+  function createGlobalSchedule() {
+    const newId = uid('cat_sched')
+    const newSchedule = {
+      id: newId,
+      name: `Kural ${ (settings.category_schedules || []).length + 1 }`,
+      days: [],
+      start: '08:00',
+      end: '12:00'
+    }
     setSettings(current => ({
       ...current,
-      operating_hours: [
-        ...(current.operating_hours || []),
-        { id: uid('open_rule'), days: [], start: '09:00', end: '22:00', note: '' },
-      ],
+      category_schedules: [...(current.category_schedules || []), newSchedule]
+    }))
+    setActiveCategoryTab(newId)
+  }
+
+  function updateGlobalSchedule(scheduleId, patch) {
+    setSettings(current => ({
+      ...current,
+      category_schedules: (current.category_schedules || []).map(s => s.id === scheduleId ? { ...s, ...patch } : s)
     }))
   }
 
-  function updateOperatingRule(ruleId, patch) {
-    setSettings(current => ({
-      ...current,
-      operating_hours: (current.operating_hours || []).map(rule => rule.id === ruleId ? { ...rule, ...patch } : rule),
-    }))
+  function deleteGlobalSchedule(scheduleId) {
+    setSettings(current => {
+      const category_schedules = (current.category_schedules || []).filter(s => s.id !== scheduleId)
+      const category_configs = (current.category_configs || []).map(config => ({
+        ...config,
+        schedules: (config.schedules || []).filter(s => s.id !== scheduleId)
+      }))
+      return { ...current, category_schedules, category_configs }
+    })
+    setActiveCategoryTab('standard')
   }
 
-  function removeOperatingRule(ruleId) {
-    setSettings(current => ({
-      ...current,
-      operating_hours: (current.operating_hours || []).filter(rule => rule.id !== ruleId),
-    }))
+  function getSortedHierarchy(categories, categoryConfigs, activeTab) {
+    function getOrder(catId) {
+      const config = (categoryConfigs || []).find(c => c.categoryId === catId)
+      if (activeTab === 'standard') {
+        return config?.defaultOrder ?? 9999
+      } else {
+        const sched = (config?.schedules || []).find(s => s.id === activeTab)
+        return sched?.order ?? config?.defaultOrder ?? 9999
+      }
+    }
+
+    const roots = categories
+      .filter(c => !c.parent_id)
+      .sort((a, b) => getOrder(a.id) - getOrder(b.id))
+
+    const tree = []
+    for (const root of roots) {
+      const children = categories
+        .filter(c => c.parent_id === root.id)
+        .sort((a, b) => getOrder(a.id) - getOrder(b.id))
+      
+      tree.push({
+        ...root,
+        isRoot: true,
+        children: children.map(c => ({ ...c, isRoot: false }))
+      })
+    }
+    return tree
+  }
+
+  function moveCategory(categoryId, direction, activeTab) {
+    const tree = getSortedHierarchy(categories, settings.category_configs, activeTab)
+    let found = false
+
+    const rootIndex = tree.findIndex(r => r.id === categoryId)
+    if (rootIndex >= 0) {
+      const targetIndex = direction === 'up' ? rootIndex - 1 : rootIndex + 1
+      if (targetIndex >= 0 && targetIndex < tree.length) {
+        const temp = tree[rootIndex]
+        tree[rootIndex] = tree[targetIndex]
+        tree[targetIndex] = temp
+        found = true
+      }
+    } else {
+      for (const root of tree) {
+        const childIndex = root.children.findIndex(c => c.id === categoryId)
+        if (childIndex >= 0) {
+          const targetIndex = direction === 'up' ? childIndex - 1 : childIndex + 1
+          if (targetIndex >= 0 && targetIndex < root.children.length) {
+            const temp = root.children[childIndex]
+            root.children[childIndex] = root.children[targetIndex]
+            root.children[targetIndex] = temp
+            found = true
+            break
+          }
+        }
+      }
+    }
+
+    if (found) {
+      let flatIndex = 1
+      const nextConfigs = Array.isArray(settings.category_configs) ? [...settings.category_configs] : []
+      
+      for (const root of tree) {
+        let rIdx = nextConfigs.findIndex(item => item.categoryId === root.id)
+        let rBase = rIdx >= 0 ? nextConfigs[rIdx] : { categoryId: root.id, imageUrl: '', buttonLabel: '', defaultOrder: flatIndex, defaultVisible: true, schedules: [] }
+        if (activeTab === 'standard') {
+          rBase = { ...rBase, defaultOrder: flatIndex++ }
+        } else {
+          const schedules = Array.isArray(rBase.schedules) ? [...rBase.schedules] : []
+          const sIndex = schedules.findIndex(s => s.id === activeTab)
+          if (sIndex >= 0) {
+            schedules[sIndex] = { ...schedules[sIndex], order: flatIndex++ }
+          } else {
+            schedules.push({
+              id: activeTab,
+              visible: rBase.defaultVisible,
+              order: flatIndex++,
+              visibilityMode: rBase.visibilityMode || 'show',
+              redirectCategoryId: rBase.redirectCategoryId || ''
+            })
+          }
+          rBase = { ...rBase, schedules }
+        }
+        if (rIdx >= 0) nextConfigs[rIdx] = rBase
+        else nextConfigs.push(rBase)
+
+        for (const child of root.children) {
+          let cIdx = nextConfigs.findIndex(item => item.categoryId === child.id)
+          let cBase = cIdx >= 0 ? nextConfigs[cIdx] : { categoryId: child.id, imageUrl: '', buttonLabel: '', defaultOrder: flatIndex, defaultVisible: true, schedules: [] }
+          if (activeTab === 'standard') {
+            cBase = { ...cBase, defaultOrder: flatIndex++ }
+          } else {
+            const schedules = Array.isArray(cBase.schedules) ? [...cBase.schedules] : []
+            const sIndex = schedules.findIndex(s => s.id === activeTab)
+            if (sIndex >= 0) {
+              schedules[sIndex] = { ...schedules[sIndex], order: flatIndex++ }
+            } else {
+              schedules.push({
+                id: activeTab,
+                visible: cBase.defaultVisible,
+                order: flatIndex++,
+                visibilityMode: cBase.visibilityMode || 'show',
+                redirectCategoryId: cBase.redirectCategoryId || ''
+              })
+            }
+            cBase = { ...cBase, schedules }
+          }
+          if (cIdx >= 0) nextConfigs[cIdx] = cBase
+          else nextConfigs.push(cBase)
+        }
+      }
+      setSettings(current => ({ ...current, category_configs: nextConfigs }))
+    }
+  }
+
+  function updateCategoryOption(categoryId, patch, activeTab) {
+    setSettings(current => {
+      const list = Array.isArray(current.category_configs) ? [...current.category_configs] : []
+      const index = list.findIndex(item => item.categoryId === categoryId)
+      const base = index >= 0 ? list[index] : { categoryId, imageUrl: '', buttonLabel: '', defaultOrder: list.length + 1, defaultVisible: true, schedules: [] }
+      
+      let nextConfig
+      if (activeTab === 'standard') {
+        let visibilityPatch = {}
+        if (patch.visibilityMode) {
+          visibilityPatch.defaultVisible = patch.visibilityMode === 'show'
+        }
+        nextConfig = { ...base, ...patch, ...visibilityPatch }
+      } else {
+        const schedules = Array.isArray(base.schedules) ? [...base.schedules] : []
+        const sIndex = schedules.findIndex(s => s.id === activeTab)
+        let schedulePatch = { ...patch }
+        if (patch.visibilityMode) {
+          schedulePatch.visible = patch.visibilityMode === 'show'
+        }
+        if (sIndex >= 0) {
+          schedules[sIndex] = { ...schedules[sIndex], ...schedulePatch }
+        } else {
+          schedules.push({
+            id: activeTab,
+            visible: base.defaultVisible,
+            order: base.defaultOrder || list.length + 1,
+            visibilityMode: base.visibilityMode || 'show',
+            redirectCategoryId: base.redirectCategoryId || '',
+            ...schedulePatch
+          })
+        }
+        nextConfig = { ...base, schedules }
+      }
+      
+      if (index >= 0) list[index] = nextConfig
+      else list.push(nextConfig)
+      return { ...current, category_configs: list }
+    })
+  }
+
+  function checkScheduleConflicts(schedules, categoryConfigs, categories) {
+    const conflicts = []
+    const scheds = Array.isArray(schedules) ? schedules : []
+    
+    for (let i = 0; i < scheds.length; i++) {
+      for (let j = i + 1; j < scheds.length; j++) {
+        const schedA = scheds[i]
+        const schedB = scheds[j]
+        
+        const daysA = schedA.days && schedA.days.length ? schedA.days : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        const daysB = schedB.days && schedB.days.length ? schedB.days : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        const commonDays = daysA.filter(d => daysB.includes(d))
+        if (commonDays.length === 0) continue
+        
+        const startA = parseTimeMinutes(schedA.start)
+        const endA = parseTimeMinutes(schedA.end)
+        const startB = parseTimeMinutes(schedB.start)
+        const endB = parseTimeMinutes(schedB.end)
+        const timeOverlap = startA <= endB && startB <= endA
+        if (!timeOverlap) continue
+        
+        for (const cat of categories) {
+          const config = (categoryConfigs || []).find(c => c.categoryId === cat.id)
+          
+          const valA = (config?.schedules || []).find(s => s.id === schedA.id) || {
+            order: config?.defaultOrder ?? 9999,
+            visibilityMode: config?.visibilityMode || (config?.defaultVisible !== false ? 'show' : 'hide'),
+            redirectCategoryId: config?.redirectCategoryId || ''
+          }
+          
+          const valB = (config?.schedules || []).find(s => s.id === schedB.id) || {
+            order: config?.defaultOrder ?? 9999,
+            visibilityMode: config?.visibilityMode || (config?.defaultVisible !== false ? 'show' : 'hide'),
+            redirectCategoryId: config?.redirectCategoryId || ''
+          }
+          
+          const orderDiff = valA.order !== valB.order
+          const visDiff = valA.visibilityMode !== valB.visibilityMode || valA.redirectCategoryId !== valB.redirectCategoryId
+          
+          if (orderDiff || visDiff) {
+            const trDays = {
+              mon: 'Pazartesi', tue: 'Salı', wed: 'Çarşamba', thu: 'Perşembe',
+              fri: 'Cuma', sat: 'Cumartesi', sun: 'Pazar'
+            }
+            const dayNames = commonDays.map(d => trDays[d] || d).join(', ')
+            
+            let details = []
+            if (orderDiff) details.push(`Sıralama farkı (${schedA.name}: ${valA.order}. sıra vs ${schedB.name}: ${valB.order}. sıra)`)
+            if (visDiff) details.push(`Görünürlük farkı`)
+            
+            conflicts.push({
+              days: dayNames,
+              time: `${schedA.start}-${schedA.end} ve ${schedB.start}-${schedB.end}`,
+              categoryName: cat.name,
+              schedAName: schedA.name,
+              schedBName: schedB.name,
+              details: details.join(', ')
+            })
+          }
+        }
+      }
+    }
+    return conflicts
+  }
+
+  async function toggleDeviceActive(deviceId, currentActive) {
+    const nextActive = !currentActive
+    try {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, is_active: nextActive } : d))
+      const { error } = await db
+        .from('pos_terminals')
+        .update({ is_active: nextActive })
+        .eq('id', deviceId)
+      if (error) throw error
+      toast(`Kiosk ${nextActive ? 'aktif' : 'pasif'} hale getirildi.`, 'success')
+    } catch (error) {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, is_active: currentActive } : d))
+      toast(error?.message || 'Cihaz durumu güncellenemedi.', 'error')
+    }
+  }
+
+  async function toggleDeviceOperatingHours(deviceId, currentConfig, currentVal) {
+    const nextVal = !currentVal
+    const nextConfig = { ...currentConfig, operating_hours_enabled: nextVal }
+    try {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, config_data: nextConfig } : d))
+      const { error } = await db
+        .from('pos_terminals')
+        .update({ config_data: nextConfig })
+        .eq('id', deviceId)
+      if (error) throw error
+
+      if (!nextVal) {
+        // Deaktif edildiyse kuralları da temizle
+        const { error: delError } = await db
+          .from('kiosk_terminal_operating_rules')
+          .delete()
+          .eq('terminal_id', deviceId)
+        if (delError) console.error(delError)
+        setDeviceAssignments(prev => prev.filter(a => a.terminal_id !== deviceId))
+      }
+
+      toast(`Çalışma saatleri kontrolü ${nextVal ? 'aktif' : 'pasif'} hale getirildi.`, 'success')
+    } catch (error) {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, config_data: currentConfig } : d))
+      toast(error?.message || 'Çalışma saatleri ayarı güncellenemedi.', 'error')
+    }
+  }
+
+  async function toggleDeviceTableService(deviceId, currentConfig, currentVal) {
+    const nextVal = !currentVal
+    const nextConfig = { ...currentConfig, table_service_enabled: nextVal }
+    try {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, config_data: nextConfig } : d))
+      const { error } = await db
+        .from('pos_terminals')
+        .update({ config_data: nextConfig })
+        .eq('id', deviceId)
+      if (error) throw error
+      toast(`Masaya servis seçeneği ${nextVal ? 'aktif' : 'pasif'} hale getirildi.`, 'success')
+    } catch (error) {
+      setKioskDevices(prev => prev.map(d => d.id === deviceId ? { ...d, config_data: currentConfig } : d))
+      toast(error?.message || 'Masaya servis ayarı güncellenemedi.', 'error')
+    }
+  }
+
+  async function handleAddOperatingRule() {
+    if (!branchId) return
+    const newRule = {
+      branch_id: branchId,
+      name: 'Yeni Kural',
+      days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+      start_time: '09:00',
+      end_time: '22:00',
+      note: ''
+    }
+    try {
+      const { data, error } = await db
+        .from('kiosk_operating_hours_rules')
+        .insert([newRule])
+        .select()
+        .single()
+      if (error) throw error
+      setOperatingRules(prev => [...prev, data])
+      toast('Çalışma saati kuralı eklendi.', 'success')
+    } catch (error) {
+      toast(error?.message || 'Kural eklenemedi.', 'error')
+    }
+  }
+
+  async function handleUpdateOperatingRule(ruleId, patch) {
+    try {
+      setOperatingRules(prev => prev.map(rule => rule.id === ruleId ? { ...rule, ...patch } : rule))
+      const { error } = await db
+        .from('kiosk_operating_hours_rules')
+        .update(patch)
+        .eq('id', ruleId)
+      if (error) throw error
+    } catch (error) {
+      toast(error?.message || 'Kural güncellenemedi.', 'error')
+      // reload rules to revert
+      const { data } = await db.from('kiosk_operating_hours_rules').select('*').eq('branch_id', branchId)
+      if (data) setOperatingRules(data)
+    }
+  }
+
+  async function handleRemoveOperatingRule(ruleId) {
+    if (!window.confirm('Bu çalışma saati kuralını silmek istediğinize emin misiniz? Bu kurala bağlı tüm cihaz eşleşmeleri kaldırılacaktır.')) return
+    try {
+      const { error } = await db
+        .from('kiosk_operating_hours_rules')
+        .delete()
+        .eq('id', ruleId)
+      if (error) throw error
+      setOperatingRules(prev => prev.filter(rule => rule.id !== ruleId))
+      setDeviceAssignments(prev => prev.filter(assignment => assignment.rule_id !== ruleId))
+      toast('Çalışma saati kuralı silindi.', 'success')
+    } catch (error) {
+      toast(error?.message || 'Kural silinemedi.', 'error')
+    }
+  }
+
+  async function toggleRuleAssignment(terminalId, ruleId, currentAssigned) {
+    try {
+      if (currentAssigned) {
+        const { error } = await db
+          .from('kiosk_terminal_operating_rules')
+          .delete()
+          .eq('terminal_id', terminalId)
+          .eq('rule_id', ruleId)
+        if (error) throw error
+        setDeviceAssignments(prev => prev.filter(a => !(a.terminal_id === terminalId && a.rule_id === ruleId)))
+      } else {
+        const { error } = await db
+          .from('kiosk_terminal_operating_rules')
+          .insert([{ terminal_id: terminalId, rule_id: ruleId }])
+        if (error) throw error
+        setDeviceAssignments(prev => [...prev, { terminal_id: terminalId, rule_id: ruleId }])
+      }
+    } catch (error) {
+      toast(error?.message || 'Kural ataması güncellenemedi.', 'error')
+    }
   }
 
   function addKioskStation() {
@@ -717,9 +1260,7 @@ export default function KioskManagementDesktop() {
     }))
   }
 
-  function updateCoupon(id, patch) {
-    setSettings(current => ({ ...current, coupons: (current.coupons || []).map(item => item.id === id ? { ...item, ...patch } : item) }))
-  }
+
 
   function updateSuggestionLimits(patch) {
     setSettings(current => ({
@@ -873,16 +1414,25 @@ export default function KioskManagementDesktop() {
     if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  async function save() {
+  async function save(force = false) {
+    if (!force) {
+      const conflicts = checkScheduleConflicts(settings.category_schedules, settings.category_configs, categories)
+      if (conflicts.length > 0) {
+        setSaveConflicts(conflicts)
+        return
+      }
+    }
+
     try {
       setSaving(true)
       const saved = await saveKioskSettings(settings)
       const nextSettings = saved || settings || KIOSK_DEFAULT_SETTINGS
       setSettings(nextSettings)
       setSavedSnapshot(JSON.stringify(nextSettings))
-      toast('Yeni kiosk yonetimi ayarlari kaydedildi', 'success')
+      setSaveConflicts([])
+      toast('Yeni kiosk yönetimi ayarları kaydedildi', 'success')
     } catch (error) {
-      toast(error?.message || 'Kayit sirasinda hata olustu', 'error')
+      toast(error?.message || 'Kayıt sırasında hata oluştu', 'error')
     } finally {
       setSaving(false)
     }
@@ -922,9 +1472,12 @@ export default function KioskManagementDesktop() {
       code: device.activation_code,
       name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
       kiosk_number: index + 1,
-      active: true,
+      active: device.is_active !== false,
       order: index + 1,
-      device_type: device.device_type
+      device_type: device.device_type,
+      operating_hours_enabled: device.config_data?.operating_hours_enabled === true,
+      table_service_enabled: device.config_data?.table_service_enabled === true,
+      originalDevice: device
     }))
   ), [kioskDevices])
   const activeKioskStationCount = kioskStations.length
@@ -959,7 +1512,6 @@ export default function KioskManagementDesktop() {
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <SaveChip active={dirty} />
-            <button className="btn-o" onClick={() => navigate('/kiosk-management')}>Eski Editör</button>
             <button className="btn-p" onClick={save} disabled={saving}>
               <i className={`fa-solid ${saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`} style={{ marginRight: 6 }} />
               {saving ? 'Kaydediliyor' : 'Kaydet'}
@@ -980,8 +1532,11 @@ export default function KioskManagementDesktop() {
                 type="button"
                 onClick={() => goToSection(section.id)}
                 style={{
-                  border: activeSection === section.id ? '1px solid #c7d2fe' : '1px solid #e2e8f0',
-                  background: activeSection === section.id ? '#eef2ff' : '#fff',
+                  borderTop: activeSection === section.id ? `1px solid ${section.accent}80` : '1px solid #e2e8f0',
+                  borderRight: activeSection === section.id ? `1px solid ${section.accent}80` : '1px solid #e2e8f0',
+                  borderBottom: activeSection === section.id ? `1px solid ${section.accent}80` : '1px solid #e2e8f0',
+                  borderLeft: `4px solid ${section.accent}`,
+                  background: activeSection === section.id ? `${section.accent}12` : '#fff',
                   borderRadius: 14,
                   padding: '12px 12px',
                   display: 'flex',
@@ -989,6 +1544,7 @@ export default function KioskManagementDesktop() {
                   gap: 10,
                   cursor: 'pointer',
                   textAlign: 'left',
+                  transition: 'all 0.2s ease',
                 }}
               >
                 <div style={iconBadgeStyle(`${section.accent}18`, section.accent)}>
@@ -1006,20 +1562,144 @@ export default function KioskManagementDesktop() {
             icon="fa-tablet-screen-button"
             accent="#0f766e"
             title="Tanımlı Kiosk Cihazları"
-            subtitle="Aynı şubedeki fiziksel kioskların listesi. (POS ve Cihazlar menüsünden eklenir)"
           >
             <div style={subtleNoteStyle('#eff6ff', '#bfdbfe', '#1d4ed8')}>
-              Loyalty entegrasyonunda her kiosk icin benzersiz bir <strong>Kiosk ID</strong> tanimlayin. Fiziksel kiosk cihazinda ayni ID girildiginde cihaz ilgili kiosk numarasini bilir. Yeni cihazları <strong>POS ve Cihazlar</strong> menüsünden ekleyebilirsiniz.
+              Kiosk tanımlamaları ve eşleştirmeleri <strong>POS ve Cihazlar</strong> menüsünden yapılmaktadır. Burada şubeye ait aktif cihazlar listelenmektedir.
             </div>
 
             {kioskStations.length > 0 ? (
-              <div style={{ display: 'grid', gap: 12 }}>
-                {kioskStations.map(station => (
-                  <KioskStationEditor
-                    key={station.id}
-                    station={station}
-                  />
-                ))}
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: '#fff' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em' }}>Kiosk No</th>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em' }}>Kiosk ID (Pair Key)</th>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em' }}>Cihaz Tipi</th>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'center' }}>Cihaz Aktif</th>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'center' }}>Masaya Servis</th>
+                      <th style={{ padding: '10px 14px', fontSize: '.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'center' }}>Çalışma Saatlerini Kullan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kioskStations.map(station => {
+                      const isHoursEnabled = station.operating_hours_enabled === true
+                      const assignedRuleIds = deviceAssignments
+                        .filter(a => a.terminal_id === station.id)
+                        .map(a => a.rule_id)
+
+                      return (
+                        <Fragment key={station.id}>
+                          <tr style={{ borderBottom: isHoursEnabled ? 'none' : '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '12px 14px', fontSize: '.86rem', fontWeight: 800, color: '#0f172a' }}>
+                              Kiosk {station.kiosk_number}
+                            </td>
+                            <td style={{ padding: '12px 14px', fontSize: '.86rem', fontFamily: 'monospace', fontWeight: 600, color: '#2563eb' }}>
+                              {station.code}
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '4px 8px',
+                                borderRadius: 6,
+                                fontSize: '.76rem',
+                                fontWeight: 700,
+                                background: station.device_type === 'kiosk_tablet' ? 'rgba(139,92,246,0.1)' : 'rgba(15,118,110,0.1)',
+                                color: station.device_type === 'kiosk_tablet' ? '#7c3aed' : '#0f766e',
+                              }}>
+                                <i className={`fa-solid ${station.device_type === 'kiosk_tablet' ? 'fa-tablet' : 'fa-tablet-screen-button'}`} />
+                                {station.device_type === 'kiosk_tablet' ? 'Kiosk Tablet' : 'Kiosk'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <label className="tog" style={{ display: 'inline-block' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={station.active !== false}
+                                  onChange={() => toggleDeviceActive(station.id, station.active)}
+                                />
+                                <span className="tog-sl" />
+                              </label>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <label className="tog" style={{ display: 'inline-block' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={station.table_service_enabled === true}
+                                  onChange={() => toggleDeviceTableService(station.id, station.originalDevice?.config_data || {}, station.table_service_enabled)}
+                                />
+                                <span className="tog-sl" />
+                              </label>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <label className="tog" style={{ display: 'inline-block' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isHoursEnabled}
+                                  onChange={() => toggleDeviceOperatingHours(station.id, station.originalDevice?.config_data || {}, isHoursEnabled)}
+                                />
+                                <span className="tog-sl" />
+                              </label>
+                            </td>
+                          </tr>
+                          {isHoursEnabled && (
+                            <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                              <td colSpan={6} style={{ padding: '10px 14px 14px 14px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  <div style={{ fontSize: '.76rem', fontWeight: 700, color: '#475569' }}>
+                                    Bu Cihaz İçin Geçerli Çalışma Saatleri Kuralları:
+                                  </div>
+                                  {operatingRules.length > 0 ? (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                      {operatingRules.map(rule => {
+                                        const isAssigned = assignedRuleIds.includes(rule.id)
+                                        return (
+                                          <label
+                                            key={rule.id}
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 6,
+                                              padding: '5px 10px',
+                                              borderRadius: 8,
+                                              border: isAssigned ? '1px solid #c7d2fe' : '1px solid #e2e8f0',
+                                              background: isAssigned ? '#eef2ff' : '#fff',
+                                              color: isAssigned ? '#4338ca' : '#475569',
+                                              fontSize: '.76rem',
+                                              fontWeight: 600,
+                                              cursor: 'pointer',
+                                              userSelect: 'none'
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isAssigned}
+                                              onChange={() => toggleRuleAssignment(station.id, rule.id, isAssigned)}
+                                              style={{ cursor: 'pointer' }}
+                                            />
+                                            {rule.name || 'İsimsiz Kural'}
+                                            <span style={{ fontSize: '.68rem', color: '#64748b', fontWeight: 400 }}>
+                                              ({rule.start_time}-{rule.end_time})
+                                            </span>
+                                          </label>
+                                        )
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '.76rem', color: '#b91c1c', fontWeight: 500 }}>
+                                      Şubede tanımlı kural yok. Aşağıdaki "Temel Akış" bölümünden çalışma saati kuralı ekleyin.
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div style={subtleNoteStyle('#f8fafc', '#dbe2ea', '#475569')}>
@@ -1038,44 +1718,57 @@ export default function KioskManagementDesktop() {
             id="temel-akis"
             icon="fa-sliders"
             accent="#2563eb"
-            title="Temel Akış"
-            subtitle="Kioskun açık/kapalı davranışı, servis seçenekleri ve hizmet saatleri."
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
-              <ToggleRow label="Kiosk aktif" hint="Kapaliysa kiosk, kapali mesajinda kalir." checked={settings.enabled !== false} onChange={value => setField('enabled', value)} />
-              <ToggleRow label="Masaya servis secenegi" hint="Odeme akisi icinde gel-al ve masaya servis secimi acilir." checked={settings.table_service_enabled === true} onChange={value => setField('table_service_enabled', value)} />
-              <ToggleRow label="Calisma saatlerini kullan" hint="Aciksa kiosk sadece belirlenen gun ve saatlerde siparis alir." checked={settings.operating_hours_enabled === true} onChange={value => setField('operating_hours_enabled', value)} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-              <Field label="Kapali ekran basligi">
-                <input value={settings.closed_title || ''} onChange={event => setField('closed_title', event.target.value)} style={inputStyle()} placeholder="Kiosk su anda kapali" />
-              </Field>
-              <Field label="Kapali ekran aciklamasi">
-                <input value={settings.closed_subtitle || ''} onChange={event => setField('closed_subtitle', event.target.value)} style={inputStyle()} placeholder="Lutfen hizmet saatlerinde tekrar deneyin." />
-              </Field>
-            </div>
-
-            {(settings.operating_hours || []).length > 0 ? (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {(settings.operating_hours || []).map(rule => (
-                  <ScheduleRuleEditor
-                    key={rule.id}
-                    rule={rule}
-                    onChange={patch => updateOperatingRule(rule.id, patch)}
-                    onRemove={() => removeOperatingRule(rule.id)}
+            title="Cihaz Çalışma Saatleri"
+            subtitle="Kioskların gün ve saat bazlı çalışma planı."
+            headerRight={(
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: !settings.operating_hours_enabled ? '#1e293b' : '#94a3b8' }}>Sürekli Açık</span>
+                <label className="tog" style={{ display: 'inline-block', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.operating_hours_enabled === true}
+                    onChange={e => setField('operating_hours_enabled', e.target.checked)}
                   />
-                ))}
-              </div>
-            ) : (
-              <div style={subtleNoteStyle()}>
-                Henuz tanimli bir hizmet saati kuralin yok. Istersen asagidan kurallar ekleyebilir veya bu bolumu kapali tutup kiosku her zaman acik birakabilirsin.
+                  <span className="tog-sl" />
+                </label>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.operating_hours_enabled ? '#2563eb' : '#94a3b8' }}>Planlı Açık/Kapalı</span>
               </div>
             )}
+          >
+            {settings.operating_hours_enabled === true ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
+                  <Field label="Kapalı ekran başlığı">
+                    <input value={settings.closed_title || ''} onChange={event => setField('closed_title', event.target.value)} style={inputStyle()} placeholder="Kiosk şu anda kapalı" />
+                  </Field>
+                  <Field label="Kapalı ekran açıklaması">
+                    <input value={settings.closed_subtitle || ''} onChange={event => setField('closed_subtitle', event.target.value)} style={inputStyle()} placeholder="Lütfen hizmet saatlerinde tekrar deneyin." />
+                  </Field>
+                </div>
 
-            <div>
-              <button type="button" className="btn-o" onClick={addOperatingRule}>+ Calisma Saati Kurali Ekle</button>
-            </div>
+                {operatingRules.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {operatingRules.map(rule => (
+                      <ScheduleRuleEditor
+                        key={rule.id}
+                        rule={rule}
+                        includeName
+                        onChange={patch => handleUpdateOperatingRule(rule.id, patch)}
+                        onRemove={() => handleRemoveOperatingRule(rule.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={subtleNoteStyle()}>
+                    Henüz tanımlı bir hizmet saati kuralınız yok. İsterseniz aşağıdan kurallar ekleyebilir veya bu bölümü kapalı tutup kioskları her zaman açık bırakabilirsiniz.
+                  </div>
+                )}
+
+                <div>
+                  <button type="button" className="btn-o" onClick={handleAddOperatingRule}>+ Çalışma Saati Kuralı Ekle</button>
+                </div>
+              </>
+            ) : null}
           </SectionBlock>
 
           <SectionBlock
@@ -1093,380 +1786,81 @@ export default function KioskManagementDesktop() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 1.2fr', gap: 12 }}>
-              <Field label="Kategori buton yuksekligi">
-                <input type="number" min={88} max={180} value={settings.category_button_height || 112} onChange={event => setField('category_button_height', Number(event.target.value || 112))} style={inputStyle()} />
-              </Field>
-              <ToggleRow label="Kategori isimleri" hint="Kapatilirsa kategori resmi tum butonu kaplar." checked={settings.kiosk_show_category_labels !== false} onChange={value => setField('kiosk_show_category_labels', value)} />
-              <div />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-              <UploadField label="Kiosk arka plan gorseli" hint="Tum kiosk akisini saran ana zemin." value={settings.kiosk_bg_image || ''} onChange={value => setField('kiosk_bg_image', value)} aspect="9 / 16" fit="cover" />
-              <UploadField label="Kiosk logo" hint="Baslik ve karsilama ekraninda kullanilir." value={settings.kiosk_logo_url || ''} onChange={value => setField('kiosk_logo_url', value)} aspect="1 / 1" fit="contain" />
-            </div>
-          </SectionBlock>
-
-          <SectionBlock
-            id="karsilama-ekrani"
-            icon="fa-hand-pointer"
-            accent="#0891b2"
-            title="Karşılama Ekranı"
-            subtitle="Buradaki tanımlamalar kioskun karşılama ekranına yansıtılır."
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="Baslik">
-                <input value={settings.idle_title || ''} onChange={event => setField('idle_title', event.target.value)} style={inputStyle()} />
-              </Field>
-              <Field label="Baslat butonu">
-                <input value={settings.idle_cta_label || ''} onChange={event => setField('idle_cta_label', event.target.value)} style={inputStyle()} />
-              </Field>
-            </div>
-
-            <Field label="Alt Metin">
-              <textarea rows={3} value={settings.idle_subtitle || ''} onChange={event => setField('idle_subtitle', event.target.value)} style={textareaStyle(3)} />
-            </Field>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12 }}>
-              <Field label="Karşılama medya tipi">
-                <SearchableSelect
-                  value={settings.idle_media_type || 'none'}
-                  onChange={v => setField('idle_media_type', v)}
-                  options={[{value:'none',label:'Yok'},{value:'image',label:'Görsel'},{value:'video',label:'Video'}]}
-                  allowClear={false}
+              <Field label="Kategori buton yüksekliği (cm)">
+                <input
+                  type="number"
+                  step="0.1"
+                  min={2.3}
+                  max={4.8}
+                  value={settings.category_button_height ? Number((settings.category_button_height / 37.8).toFixed(1)) : 3.0}
+                  onChange={event => {
+                    const cm = Number(event.target.value || 3.0);
+                    setField('category_button_height', Math.round(cm * 37.8));
+                  }}
+                  style={inputStyle()}
                 />
               </Field>
-              <Field label="Başlangıç ekranına dönüş süresi" hint="Müşteri hareketsiz kalırsa bu süre sonunda tekrar karşılama ekranına dönülür.">
-                <input type="number" min={10} max={900} value={settings.idle_timeout_sec || 60} onChange={event => setField('idle_timeout_sec', Number(event.target.value || 60))} style={inputStyle()} />
-              </Field>
-            </div>
-
-            {settings.idle_media_type === 'none' ? (
-              <div style={subtleNoteStyle()}>
-                Karsilama medyasi secilmezse kiosk arka plani kullanilir. Bu bolumden dilediginde gorsel veya video baglayabilirsin.
-              </div>
-            ) : null}
-
-            {settings.idle_media_type === 'image' ? (
-              <UploadField label="Karşılama görseli" hint="Görsel seçildiğinde karşılama ekranına bağlanır." value={settings.idle_media_url || settings.idle_background_image || ''} onChange={setIdleImage} aspect="9 / 16" fit="cover" />
-            ) : null}
-
-            {settings.idle_media_type === 'video' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <UploadField label="Karşılama videosu" hint="Küçük veya optimize bir video yükleyebilirsin. Büyük dosyalarda URL daha sağlıklıdır." value={settings.idle_media_url || ''} onChange={value => setField('idle_media_url', value)} accept="video/*" previewKind="video" aspect="9 / 16" fit="cover" />
-                <Field label="Video URL" hint="İstersen yükleme yerine doğrudan bir video bağlantısı da kullanabilirsin.">
-                  <input value={settings.idle_media_url || ''} onChange={event => setField('idle_media_url', event.target.value)} style={inputStyle()} placeholder="https://..." />
-                </Field>
-              </div>
-            ) : null}
-          </SectionBlock>
-
-          <SectionBlock
-            id="ana-banner"
-            icon="fa-panorama"
-            accent="#ef4444"
-            title="Ana Banner"
-            subtitle="Kioskun ust vitrin banneri, gorseli ve tiklama davranisi."
-          >
-            <ToggleRow label="Ana banner aktif" hint="Aciksa menu akisinin en ustunde tek banner gorunur." checked={settings.kiosk_show_banners !== false} onChange={value => setField('kiosk_show_banners', value)} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 12 }}>
-              <div style={{ display: 'grid', gap: 12 }}>
-                <Field label="Banner basligi">
-                  <input value={settings.main_banner_title || ''} onChange={event => setField('main_banner_title', event.target.value)} style={inputStyle()} placeholder="Orn. Gunun one cikan lezzeti" />
-                </Field>
-                <Field label="Banner alt metni">
-                  <textarea rows={3} value={settings.main_banner_subtitle || ''} onChange={event => setField('main_banner_subtitle', event.target.value)} style={textareaStyle(3)} placeholder="Kisa kampanya veya bilgilendirme metni" />
-                </Field>
-                <Field label="Tıklama davranışı">
-                  <SearchableSelect
-                    value={settings.main_banner_action_type || 'none'}
-                    onChange={v => setField('main_banner_action_type', v)}
-                    options={[
-                      {value:'none',label:'Pasif olsun'},
-                      {value:'product',label:'Bir ürünü açsın'},
-                      {value:'category',label:'Bir kategoriye götürsün'},
-                      {value:'message',label:'Bir mesaj göstersin'},
-                    ]}
-                    allowClear={false}
-                  />
-                </Field>
-
-                {settings.main_banner_action_type === 'product' ? (
-                  <Field label="Açılacak ürün">
-                    <SearchableSelect
-                      value={settings.main_banner_product_id || ''}
-                      onChange={v => setField('main_banner_product_id', v)}
-                      options={products.map(p => ({value:p.id,label:p.name}))}
-                      placeholder="Ürün seçin"
-                    />
-                  </Field>
-                ) : null}
-
-                {settings.main_banner_action_type === 'category' ? (
-                  <Field label="Gidilecek kategori">
-                    <SearchableSelect
-                      value={settings.main_banner_category_id || ''}
-                      onChange={v => setField('main_banner_category_id', v)}
-                      options={categories.map(c => ({value:c.id,label:c.name}))}
-                      placeholder="Kategori seçin"
-                    />
-                  </Field>
-                ) : null}
-
-                {settings.main_banner_action_type === 'message' ? (
-                  <>
-                    <Field label="Mesaj basligi">
-                      <input value={settings.main_banner_message_title || ''} onChange={event => setField('main_banner_message_title', event.target.value)} style={inputStyle()} placeholder="Popup basligi" />
-                    </Field>
-                    <Field label="Mesaj icerigi">
-                      <textarea rows={3} value={settings.main_banner_message_body || ''} onChange={event => setField('main_banner_message_body', event.target.value)} style={textareaStyle(3)} placeholder="Banner tiklaninca gosterilecek aciklama" />
-                    </Field>
-                  </>
-                ) : null}
-              </div>
-              <UploadField label="Banner gorseli" hint="" value={settings.main_banner_image || ''} onChange={value => setField('main_banner_image', value)} fit="cover" />
-            </div>
-
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff' }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Tablet banner override</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>
-                  Tablet yuzeyi isterse kiosk bannerindan farkli bir baslik, gorsel ve tiklama davranisi kullanabilir. Alan bos kalirsa ortak kiosk tanimi kullanilir.
-                </div>
-              </div>
-              <ToggleRow label="Tablet banner aktif" hint="Tablet ekraninda ust vitrin banneri gorunsun." checked={settings.tablet_show_banners !== false} onChange={value => setField('tablet_show_banners', value)} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 12 }}>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <Field label="Tablet banner basligi">
-                    <input value={settings.tablet_main_banner_title || ''} onChange={event => setField('tablet_main_banner_title', event.target.value)} style={inputStyle()} placeholder="Bos birak: ortak banner basligi" />
-                  </Field>
-                  <Field label="Tablet banner alt metni">
-                    <textarea rows={3} value={settings.tablet_main_banner_subtitle || ''} onChange={event => setField('tablet_main_banner_subtitle', event.target.value)} style={textareaStyle(3)} placeholder="Bos birak: ortak banner alt metni" />
-                  </Field>
-                  <Field label="Tablet tıklama davranışı">
-                    <SearchableSelect
-                      value={settings.tablet_main_banner_action_type || ''}
-                      onChange={v => setField('tablet_main_banner_action_type', v)}
-                      options={[
-                        {value:'',label:'Ortak davranış / pasif'},
-                        {value:'product',label:'Bir ürünü açsın'},
-                        {value:'category',label:'Bir kategoriye götürsün'},
-                        {value:'message',label:'Bir mesaj göstersin'},
-                      ]}
-                      allowClear={false}
-                    />
-                  </Field>
-                  {settings.tablet_main_banner_action_type === 'product' ? (
-                    <Field label="Tablet banner ürünü">
-                      <SearchableSelect
-                        value={settings.tablet_main_banner_product_id || ''}
-                        onChange={v => setField('tablet_main_banner_product_id', v)}
-                        options={products.map(p => ({value:p.id,label:p.name}))}
-                        placeholder="Ürün seçin"
-                      />
-                    </Field>
-                  ) : null}
-                  {settings.tablet_main_banner_action_type === 'category' ? (
-                    <Field label="Tablet banner kategorisi">
-                      <SearchableSelect
-                        value={settings.tablet_main_banner_category_id || ''}
-                        onChange={v => setField('tablet_main_banner_category_id', v)}
-                        options={categories.map(c => ({value:c.id,label:c.name}))}
-                        placeholder="Kategori seçin"
-                      />
-                    </Field>
-                  ) : null}
-                  {settings.tablet_main_banner_action_type === 'message' ? (
-                    <>
-                      <Field label="Tablet mesaj basligi">
-                        <input value={settings.tablet_main_banner_message_title || ''} onChange={event => setField('tablet_main_banner_message_title', event.target.value)} style={inputStyle()} placeholder="Popup basligi" />
-                      </Field>
-                      <Field label="Tablet mesaj icerigi">
-                        <textarea rows={3} value={settings.tablet_main_banner_message_body || ''} onChange={event => setField('tablet_main_banner_message_body', event.target.value)} style={textareaStyle(3)} placeholder="Banner tiklaninca gosterilecek aciklama" />
-                      </Field>
-                    </>
-                  ) : null}
-                </div>
-                <UploadField label="Tablet banner gorseli" hint="Bos birak: ortak banner gorseli" value={settings.tablet_main_banner_image || ''} onChange={value => setField('tablet_main_banner_image', value)} fit="cover" />
-              </div>
-            </div>
-          </SectionBlock>
-
-          <SectionBlock
-            id="hizli-secim"
-            icon="fa-bolt"
-            accent="#16a34a"
-            title="Hızlı Seçim"
-            subtitle="Banner altında görünen iki hızlı ürün kutusu."
-          >
-            <ToggleRow label="Hızlı seçimler aktif" hint="Açıksa kioskta banner altında iki hızlı ürün kutusu görünür." checked={settings.kiosk_show_quick_picks !== false} onChange={value => setField('kiosk_show_quick_picks', value)} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-              {[0, 1].map(index => (
-                <Field key={index} label={`Hızlı seçim ${index + 1}`} hint="Boş bırakırsan sistem otomatik uygun ürün seçer.">
-                  <SearchableSelect
-                    value={settings.quick_pick_product_ids?.[index] || ''}
-                    onChange={v => {
-                      const next = Array.isArray(settings.quick_pick_product_ids) ? [...settings.quick_pick_product_ids] : []
-                      while (next.length < 2) next.push('')
-                      next[index] = v
-                      setField('quick_pick_product_ids', next.slice(0, 2))
-                    }}
-                    options={products.map(p => ({value:p.id,label:p.name}))}
-                    placeholder="Otomatik seçim kullan"
-                  />
-                </Field>
-              ))}
-            </div>
-
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff' }}>
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>Tablet quick-picks</div>
-                <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>
-                  Tablet isterse farkli hizli urunler kullanabilir. Bos birakilan alanlarda sistem ortak kiosk secimini veya otomatik oneriyi kullanir.
-                </div>
-              </div>
-              <ToggleRow label="Tablet hizli secimler aktif" hint="Tablet akisi kendi quick-pick kartlarini gosterebilir." checked={settings.tablet_show_quick_picks !== false} onChange={value => setField('tablet_show_quick_picks', value)} />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
-                {[0, 1, 2].map(index => (
-                  <Field key={`tablet-quick-${index}`} label={`Tablet hızlı seçim ${index + 1}`} hint="Boş bırak: ortak / otomatik seçim">
-                    <SearchableSelect
-                      value={settings.tablet_quick_pick_product_ids?.[index] || ''}
-                      onChange={v => {
-                        const next = Array.isArray(settings.tablet_quick_pick_product_ids) ? [...settings.tablet_quick_pick_product_ids] : []
-                        while (next.length < 3) next.push('')
-                        next[index] = v
-                        setField('tablet_quick_pick_product_ids', next.slice(0, 3))
+              <Field label="Kategori isimleri">
+                <div
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 14,
+                    padding: '4px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                    background: '#fff',
+                    minHeight: 42,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div style={{ fontSize: '.76rem', color: '#64748b', lineHeight: 1.35 }}>
+                    {settings.kiosk_show_category_labels === false
+                      ? "Resim tüm butonu kaplar."
+                      : "Resim altında etiket gösterilir."}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: '#f1f5f9', padding: 3, borderRadius: 10, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setField('kiosk_show_category_labels', true)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 8,
+                        fontSize: '.78rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: settings.kiosk_show_category_labels !== false ? '#fff' : 'transparent',
+                        color: settings.kiosk_show_category_labels !== false ? '#0f172a' : '#64748b',
+                        boxShadow: settings.kiosk_show_category_labels !== false ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                        transition: 'all 0.15s ease'
                       }}
-                      options={products.map(p => ({value:p.id,label:p.name}))}
-                      placeholder="Ortak / otomatik seçim"
-                    />
-                  </Field>
-                ))}
-              </div>
-            </div>
-          </SectionBlock>
-
-          <SectionBlock
-            id="kategori-yonetimi"
-            icon="fa-layer-group"
-            accent="#f97316"
-            title="Kategori Yönetimi"
-            subtitle="Sol kategori sütunundaki görselleri, etiketleri, sırayı ve saat bazlı görünürlüğü düzenle."
-          >
-            {sortedAllCategories.length === 0 ? (
-              <div style={subtleNoteStyle()}>
-                Kullanilabilecek kategori bulunamadi. Once satis kategorilerini kontrol etmeni oneririm.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: 8 }}>
-                {sortedAllCategories.map((category, index) => {
-                  const config = (settings.category_configs || []).find(item => item.categoryId === category.id) || {
-                    categoryId: category.id,
-                    imageUrl: '',
-                    buttonLabel: '',
-                    defaultOrder: index + 1,
-                    defaultVisible: true,
-                    schedules: [],
-                  }
-                  const IMG_H = 90
-                  const IMG_W = 90
-                  const isSubCat = category._depth > 0
-                  return (
-                    <div key={category.id} style={{
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 12,
-                      padding: '10px 12px',
-                      background: isSubCat ? '#f8fafc' : '#fff',
-                      marginLeft: isSubCat ? category._depth * 20 : 0,
-                    }}>
-                      {/* Kompakt satır: görsel + tüm bilgiler yan yana */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        {/* Küçük görsel */}
-                        <div style={{
-                          width: IMG_W,
-                          height: IMG_H,
-                          borderRadius: 10,
-                          overflow: 'hidden',
-                          background: '#f1f5f9',
-                          border: '1.5px dashed #cbd5e1',
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                          {category.image_url ? (
-                            <img src={category.image_url} alt={category.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: '#cbd5e1' }}>
-                              <i className="fa-solid fa-image" style={{ fontSize: '1.2rem' }} />
-                              <span style={{ fontSize: '.62rem' }}>Görsel yok</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Sağ taraf: kategori adı + alanlar + buton - tüm içerik görsel yüksekliğinde */}
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: IMG_H }}>
-                          {/* Üst satır: kategori adı + saat kuralı butonu */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                              {isSubCat && <i className="fa-solid fa-turn-up" style={{ fontSize: '.65rem', color: '#94a3b8', transform: 'rotate(90deg)' }} />}
-                              <span style={{ fontWeight: isSubCat ? 600 : 800, color: '#0f172a', fontSize: isSubCat ? '.82rem' : '.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</span>
-                              {isSubCat && <span style={{ fontSize: '.68rem', color: '#94a3b8', flexShrink: 0 }}>alt kategori</span>}
-                            </div>
-                            <button type="button" className="btn-o" style={{ fontSize: '.72rem', padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0 }} onClick={() => addCategorySchedule(category.id)}>+ Saat Kuralı</button>
-                          </div>
-
-                          {/* Orta: form alanları */}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) 110px 150px', gap: 8 }}>
-                            <Field label="Buton etiketi">
-                              <input value={config.buttonLabel || ''} onChange={event => updateCategoryConfig(category.id, { buttonLabel: event.target.value })} style={{ ...inputStyle(), fontSize: '.78rem', padding: '4px 8px' }} placeholder={category.name} />
-                            </Field>
-                            <Field label="Sıra">
-                              <input type="number" value={config.defaultOrder || index + 1} onChange={event => updateCategoryConfig(category.id, { defaultOrder: Number(event.target.value || index + 1) })} style={{ ...inputStyle(), fontSize: '.78rem', padding: '4px 8px' }} />
-                            </Field>
-                            <Field label="Görünürlük">
-                              <SearchableSelect
-                                value={config.defaultVisible === false ? 'hidden' : 'visible'}
-                                onChange={v => updateCategoryConfig(category.id, { defaultVisible: v === 'visible' })}
-                                options={[{value:'visible',label:'Görünür'},{value:'hidden',label:'Gizli'}]}
-                                allowClear={false}
-                              />
-                            </Field>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Saat kuralları (varsa görsel altına genişler) */}
-                      {(config.schedules || []).length > 0 && (
-                        <div style={{ display: 'grid', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
-                          {(config.schedules || []).map(rule => (
-                            <ScheduleRuleEditor
-                              key={rule.id}
-                              rule={rule}
-                              includeVisibility
-                              includeOrder
-                              onChange={patch => updateCategorySchedule(category.id, rule.id, patch)}
-                              onRemove={() => removeCategorySchedule(category.id, rule.id)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </SectionBlock>
-
-          <SectionBlock
-            id="urunler"
-            icon="fa-utensils"
-            accent="#0f766e"
-            title="Ürünler"
-            subtitle="Kiosk ürün kolon sayısı ve kanal bazlı açık/kapalı ürün yönetimi."
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0,1fr)', gap: 12 }}>
-              <Field label="Ürün kolon sayısı" hint="Kiosk ekranında aynı anda kaç kolon ürün görünsün? Varsayılan 4, seçenekler 2 ile 6 arası.">
+                    >
+                      Göster
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setField('kiosk_show_category_labels', false)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 8,
+                        fontSize: '.78rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: settings.kiosk_show_category_labels === false ? '#fff' : 'transparent',
+                        color: settings.kiosk_show_category_labels === false ? '#0f172a' : '#64748b',
+                        boxShadow: settings.kiosk_show_category_labels === false ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      Gizle
+                    </button>
+                  </div>
+                </div>
+              </Field>
+              <Field label="Ürün kolon sayısı" hint="Kiosk ekranında aynı anda kaç kolon ürün görünsün? (2-6 arası)">
                 <SearchableSelect
                   value={String(settings.product_grid_cols || 4)}
                   onChange={v => setField('product_grid_cols', Number(v || 4))}
@@ -1474,12 +1868,133 @@ export default function KioskManagementDesktop() {
                   allowClear={false}
                 />
               </Field>
-              <Field label="Ürün ara">
-                <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} style={inputStyle()} placeholder="Ürün ara..." />
-              </Field>
             </div>
 
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {/* Kiosk Arka Plan Görseli */}
+              <div
+                style={{
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: 16,
+                  background: '#f8fafc',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '.84rem' }}>Kiosk arka plan görseli</div>
+                  <div style={{ fontSize: '.72rem', color: '#64748b', marginTop: 2 }}>Tüm kiosk akışını saran ana zemin. (Önerilen: 1080x1920 px)</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <label htmlFor="kiosk-bg-upload" className="btn-p" style={{ cursor: 'pointer', minHeight: 36, padding: '0 12px', fontSize: '.78rem', display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, borderRadius: 10 }}>
+                    <i className="fa-solid fa-upload" /> Yükle
+                  </label>
+                  <input
+                    id="kiosk-bg-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={async event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setField('kiosk_bg_image', await uploadFileAndGetUrl(file, 1080, 1920));
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                      border: '1px solid #cbd5e1',
+                      display: 'grid',
+                      placeItems: 'center',
+                    }}
+                  >
+                    {settings.kiosk_bg_image ? (
+                      <img src={settings.kiosk_bg_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <i className="fa-solid fa-image" style={{ color: '#cbd5e1', fontSize: '.8rem' }} />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-o"
+                    disabled={!settings.kiosk_bg_image}
+                    onClick={() => setField('kiosk_bg_image', '')}
+                    style={{ minHeight: 36, padding: '0 12px', fontSize: '.78rem', borderRadius: 10, opacity: !settings.kiosk_bg_image ? 0.5 : 1, cursor: !settings.kiosk_bg_image ? 'not-allowed' : 'pointer' }}
+                  >
+                    Temizle
+                  </button>
+                </div>
+              </div>
+
+              {/* Kiosk Logo */}
+              <div
+                style={{
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: 16,
+                  background: '#f8fafc',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '.84rem' }}>Kiosk logo</div>
+                  <div style={{ fontSize: '.72rem', color: '#64748b', marginTop: 2 }}>Başlık ve karşılama ekranında kullanılır. (Önerilen: 512x512 px)</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <label htmlFor="kiosk-logo-upload" className="btn-p" style={{ cursor: 'pointer', minHeight: 36, padding: '0 12px', fontSize: '.78rem', display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, borderRadius: 10 }}>
+                    <i className="fa-solid fa-upload" /> Yükle
+                  </label>
+                  <input
+                    id="kiosk-logo-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={async event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setField('kiosk_logo_url', await uploadFileAndGetUrl(file, 512, 512));
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                      border: '1px solid #cbd5e1',
+                      display: 'grid',
+                      placeItems: 'center',
+                    }}
+                  >
+                    {settings.kiosk_logo_url ? (
+                      <img src={settings.kiosk_logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    ) : (
+                      <i className="fa-solid fa-image" style={{ color: '#cbd5e1', fontSize: '.8rem' }} />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-o"
+                    disabled={!settings.kiosk_logo_url}
+                    onClick={() => setField('kiosk_logo_url', '')}
+                    style={{ minHeight: 36, padding: '0 12px', fontSize: '.78rem', borderRadius: 10, opacity: !settings.kiosk_logo_url ? 0.5 : 1, cursor: !settings.kiosk_logo_url ? 'not-allowed' : 'pointer' }}
+                  >
+                    Temizle
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff', marginTop: 12 }}>
               <div>
                 <div style={{ fontWeight: 800, color: '#0f172a' }}>Tablet modu</div>
                 <div style={{ fontSize: '.78rem', color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>
@@ -1499,7 +2014,7 @@ export default function KioskManagementDesktop() {
                     allowClear={false}
                   />
                 </Field>
-                <Field label="Dikey grid kolon">
+                <Field label="Dikey kullanımda kolon sayısı">
                   <SearchableSelect
                     value={String(settings.tablet_product_grid_cols_portrait || 4)}
                     onChange={v => setField('tablet_product_grid_cols_portrait', Number(v || 4))}
@@ -1507,7 +2022,7 @@ export default function KioskManagementDesktop() {
                     allowClear={false}
                   />
                 </Field>
-                <Field label="Yatay grid kolon">
+                <Field label="Yatay kullanımda kolon sayısı">
                   <SearchableSelect
                     value={String(settings.tablet_product_grid_cols_landscape || 5)}
                     onChange={v => setField('tablet_product_grid_cols_landscape', Number(v || 5))}
@@ -1517,13 +2032,925 @@ export default function KioskManagementDesktop() {
                 </Field>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-                <Field label="Dikey kategori buton yuksekligi">
-                  <input type="number" min={96} max={180} value={settings.tablet_category_button_height_portrait || 124} onChange={event => setField('tablet_category_button_height_portrait', Number(event.target.value || 124))} style={inputStyle()} />
+                <Field label="Dikey kategori buton yüksekliği (cm)">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={2.5}
+                    max={4.8}
+                    value={settings.tablet_category_button_height_portrait ? Number((settings.tablet_category_button_height_portrait / 37.8).toFixed(1)) : 3.3}
+                    onChange={event => {
+                      const cm = Number(event.target.value || 3.3);
+                      setField('tablet_category_button_height_portrait', Math.round(cm * 37.8));
+                    }}
+                    style={inputStyle()}
+                  />
                 </Field>
-                <Field label="Yatay kategori buton yuksekligi">
-                  <input type="number" min={88} max={180} value={settings.tablet_category_button_height_landscape || 104} onChange={event => setField('tablet_category_button_height_landscape', Number(event.target.value || 104))} style={inputStyle()} />
+                <Field label="Yatay kategori buton yüksekliği (cm)">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={2.3}
+                    max={4.8}
+                    value={settings.tablet_category_button_height_landscape ? Number((settings.tablet_category_button_height_landscape / 37.8).toFixed(1)) : 2.8}
+                    onChange={event => {
+                      const cm = Number(event.target.value || 2.8);
+                      setField('tablet_category_button_height_landscape', Math.round(cm * 37.8));
+                    }}
+                    style={inputStyle()}
+                  />
                 </Field>
               </div>
+            </div>
+          </SectionBlock>
+
+          <SectionBlock
+            id="karsilama-ekrani"
+            icon="fa-hand-pointer"
+            accent="#0891b2"
+            title="Karşılama Ekranı"
+            subtitle="Buradaki tanımlamalar kioskun karşılama ekranına yansıtılır."
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.8fr', gap: 12 }}>
+              <Field label="Baslik">
+                <input value={settings.idle_title || ''} onChange={event => setField('idle_title', event.target.value)} style={inputStyle()} />
+              </Field>
+              <Field label="Baslat butonu">
+                <input value={settings.idle_cta_label || ''} onChange={event => setField('idle_cta_label', event.target.value)} style={inputStyle()} />
+              </Field>
+              <Field label="Alt Metin">
+                <input value={settings.idle_subtitle || ''} onChange={event => setField('idle_subtitle', event.target.value)} style={inputStyle()} />
+              </Field>
+            </div>
+
+            <div
+              style={{
+                border: '1px dashed #cbd5e1',
+                borderRadius: 16,
+                background: '#f8fafc',
+                padding: '14px 16px',
+                display: 'grid',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 20,
+                  flexWrap: 'wrap',
+                }}
+              >
+                {/* Medya Tipi */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Medya tipi</div>
+                  <select
+                    value={settings.idle_media_type || 'none'}
+                    onChange={event => setField('idle_media_type', event.target.value)}
+                    className="f-input"
+                    style={{ minHeight: 40, width: 130, padding: '0 10px', fontSize: '.84rem' }}
+                  >
+                    <option value="none">Yok</option>
+                    <option value="image">Görsel</option>
+                    <option value="video">Video</option>
+                  </select>
+                </div>
+
+                {/* Dosya Yükle */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>
+                    {settings.idle_media_type === 'image' ? 'Dosya yükle (Önerilen: 1080x1920 px)' : 'Dosya yükle'}
+                  </div>
+                  <label
+                    htmlFor="welcome-media-upload"
+                    className="btn-p"
+                    style={{
+                      cursor: settings.idle_media_type === 'none' ? 'not-allowed' : 'pointer',
+                      opacity: settings.idle_media_type === 'none' ? 0.5 : 1,
+                      minHeight: 40,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      fontSize: '.82rem',
+                      padding: '0 14px',
+                      margin: 0,
+                      borderRadius: 12,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <i className="fa-solid fa-upload" /> Yükle
+                  </label>
+                  <input
+                    id="welcome-media-upload"
+                    type="file"
+                    accept={settings.idle_media_type === 'video' ? 'video/*' : 'image/*'}
+                    disabled={settings.idle_media_type === 'none'}
+                    onChange={async event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const isVideo = settings.idle_media_type === 'video';
+                      const url = await uploadFileAndGetUrl(file, isVideo ? null : 1080, isVideo ? null : 1920);
+                      if (isVideo) {
+                        setField('idle_media_url', url);
+                      } else {
+                        setIdleImage(url);
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+
+                {/* Thumbnail */}
+                <div style={{ display: 'grid', gap: 6, justifyItems: 'center' }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Thumbnail</div>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                      border: '1px solid #cbd5e1',
+                      display: 'grid',
+                      placeItems: 'center'
+                    }}
+                  >
+                    {settings.idle_media_url || settings.idle_background_image ? (
+                      settings.idle_media_type === 'video' ? (
+                        <video src={settings.idle_media_url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <img src={settings.idle_media_url || settings.idle_background_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      )
+                    ) : (
+                      <i className="fa-solid fa-ban" style={{ color: '#cbd5e1', fontSize: '.9rem' }} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Temizle */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Temizle</div>
+                  <button
+                    type="button"
+                    className="btn-o"
+                    disabled={!settings.idle_media_url && !settings.idle_background_image}
+                    onClick={() => {
+                      setField('idle_media_url', '');
+                      setField('idle_background_image', '');
+                    }}
+                    style={{
+                      minHeight: 40,
+                      padding: '0 14px',
+                      borderRadius: 12,
+                      fontSize: '.82rem',
+                      opacity: (!settings.idle_media_url && !settings.idle_background_image) ? 0.5 : 1,
+                      cursor: (!settings.idle_media_url && !settings.idle_background_image) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Temizle
+                  </button>
+                </div>
+
+                {/* Yenileme Süresi */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Yenileme süresi (sn)</div>
+                  <input
+                    type="number"
+                    min={10}
+                    max={900}
+                    value={settings.idle_timeout_sec || 60}
+                    onChange={event => setField('idle_timeout_sec', Number(event.target.value || 60))}
+                    className="f-input"
+                    style={{ minHeight: 40, width: 140, padding: '0 10px', fontSize: '.84rem' }}
+                  />
+                </div>
+
+                {/* Video URL (Alternatif) */}
+                {settings.idle_media_type === 'video' && (
+                  <div style={{ display: 'grid', gap: 6, flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Video URL (Alternatif)</div>
+                    <input
+                      value={settings.idle_media_url || ''}
+                      onChange={event => setField('idle_media_url', event.target.value)}
+                      className="f-input"
+                      style={{ minHeight: 40, padding: '0 10px', fontSize: '.84rem' }}
+                      placeholder="https://..."
+                    />
+                  </div>
+                )}
+              </div>
+
+              {settings.idle_media_type === 'none' && (
+                <div style={{ fontSize: '.78rem', color: '#64748b', lineHeight: 1.45 }}>
+                  Karsılama medyası seçilmezse kiosk arka planı kullanılır. Bu bölümden dilediğinde görsel veya video bağlayabilirsin.
+                </div>
+              )}
+            </div>
+          </SectionBlock>
+
+          <SectionBlock
+            id="ana-banner"
+            icon="fa-panorama"
+            accent="#ef4444"
+            title="Ana Banner"
+            subtitle="Kioskun ust vitrin banneri, gorseli ve tiklama davranisi."
+            headerRight={(
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.kiosk_show_banners === false ? '#ef4444' : '#94a3b8' }}>Pasif</span>
+                <label className="tog" style={{ display: 'inline-block', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.kiosk_show_banners !== false}
+                    onChange={e => setField('kiosk_show_banners', e.target.checked)}
+                  />
+                  <span className="tog-sl" />
+                </label>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.kiosk_show_banners !== false ? '#10b981' : '#94a3b8' }}>Aktif</span>
+              </div>
+            )}
+          >
+            {settings.kiosk_show_banners !== false ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <Field label="Banner basligi">
+                      <input value={settings.main_banner_title || ''} onChange={event => setField('main_banner_title', event.target.value)} style={inputStyle()} placeholder="Orn. Gunun one cikan lezzeti" />
+                    </Field>
+                    <Field label="Banner alt metni">
+                      <textarea rows={3} value={settings.main_banner_subtitle || ''} onChange={event => setField('main_banner_subtitle', event.target.value)} style={textareaStyle(3)} placeholder="Kisa kampanya veya bilgilendirme metni" />
+                    </Field>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {/* Banner görseli - Tek Satır */}
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Banner görseli (Önerilen: 1200x300 px)</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <label
+                          htmlFor="main-banner-image-upload"
+                          className="btn-p"
+                          style={{
+                            cursor: 'pointer',
+                            minHeight: 40,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            fontSize: '.82rem',
+                            padding: '0 14px',
+                            margin: 0,
+                            borderRadius: 12,
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <i className="fa-solid fa-upload" /> Dosya Yükle
+                        </label>
+                        <input
+                          id="main-banner-image-upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={async event => {
+                            const file = event.target.files?.[0];
+                            if (!file) return;
+                            const url = await uploadFileAndGetUrl(file, 1200, 300);
+                            setField('main_banner_image', url);
+                          }}
+                          style={{ display: 'none' }}
+                        />
+
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            overflow: 'hidden',
+                            background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                            border: '1px solid #cbd5e1',
+                            display: 'grid',
+                            placeItems: 'center'
+                          }}
+                        >
+                          {settings.main_banner_image ? (
+                            <img src={settings.main_banner_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <i className="fa-solid fa-ban" style={{ color: '#cbd5e1', fontSize: '.9rem' }} />
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn-o"
+                          disabled={!settings.main_banner_image}
+                          onClick={() => setField('main_banner_image', '')}
+                          style={{
+                            minHeight: 40,
+                            padding: '0 14px',
+                            borderRadius: 12,
+                            fontSize: '.82rem',
+                            opacity: !settings.main_banner_image ? 0.5 : 1,
+                            cursor: !settings.main_banner_image ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          Temizle
+                        </button>
+                      </div>
+                    </div>
+
+                    <Field label="Tıklama davranışı">
+                      <SearchableSelect
+                        value={settings.main_banner_action_type || 'none'}
+                        onChange={v => setField('main_banner_action_type', v)}
+                        options={[
+                          {value:'none',label:'Pasif olsun'},
+                          {value:'product',label:'Bir ürünü açsın'},
+                          {value:'category',label:'Bir kategoriye götürsün'},
+                          {value:'message',label:'Bir mesaj göstersin'},
+                        ]}
+                        allowClear={false}
+                      />
+                    </Field>
+
+                    {settings.main_banner_action_type === 'product' ? (
+                      <Field label="Açılacak ürün">
+                        <SearchableSelect
+                          value={settings.main_banner_product_id || ''}
+                          onChange={v => setField('main_banner_product_id', v)}
+                          options={products.map(p => ({value:p.id,label:p.name}))}
+                          placeholder="Ürün seçin"
+                        />
+                      </Field>
+                    ) : null}
+
+                    {settings.main_banner_action_type === 'category' ? (
+                      <Field label="Gidilecek kategori">
+                        <SearchableSelect
+                          value={settings.main_banner_category_id || ''}
+                          onChange={v => setField('main_banner_category_id', v)}
+                          options={categories.map(c => ({value:c.id,label:c.name}))}
+                          placeholder="Kategori seçin"
+                        />
+                      </Field>
+                    ) : null}
+
+                    {settings.main_banner_action_type === 'message' ? (
+                      <>
+                        <Field label="Mesaj basligi">
+                          <input value={settings.main_banner_message_title || ''} onChange={event => setField('main_banner_message_title', event.target.value)} style={inputStyle()} placeholder="Popup basligi" />
+                        </Field>
+                        <Field label="Mesaj icerigi">
+                          <textarea rows={3} value={settings.main_banner_message_body || ''} onChange={event => setField('main_banner_message_body', event.target.value)} style={textareaStyle(3)} placeholder="Banner tiklaninca gosterilecek aciklama" />
+                        </Field>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 10, marginBottom: 4 }}>
+                    <div style={{ display: 'grid', gap: 2 }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Tablet banner</div>
+                      <div style={{ fontSize: '.74rem', color: '#64748b' }}>
+                        Tablet yuzeyi isterse kiosk bannerindan farkli bir baslik, gorsel ve tiklama davranisi kullanabilir.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.tablet_show_banners === false ? '#ef4444' : '#94a3b8' }}>Pasif</span>
+                      <label className="tog" style={{ display: 'inline-block', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={settings.tablet_show_banners !== false}
+                          onChange={e => setField('tablet_show_banners', e.target.checked)}
+                        />
+                        <span className="tog-sl" />
+                      </label>
+                      <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.tablet_show_banners !== false ? '#10b981' : '#94a3b8' }}>Aktif</span>
+                    </div>
+                  </div>
+
+                  {settings.tablet_show_banners !== false ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        <Field label="Tablet banner basligi">
+                          <input value={settings.tablet_main_banner_title || ''} onChange={event => setField('tablet_main_banner_title', event.target.value)} style={inputStyle()} placeholder="Bos birak: ortak banner basligi" />
+                        </Field>
+                        <Field label="Tablet banner alt metni">
+                          <textarea rows={3} value={settings.tablet_main_banner_subtitle || ''} onChange={event => setField('tablet_main_banner_subtitle', event.target.value)} style={textareaStyle(3)} placeholder="Bos birak: ortak banner alt metni" />
+                        </Field>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        {/* Tablet banner görseli - Tek Satır */}
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#475569' }}>Tablet banner görseli (Önerilen: 1200x300 px)</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                            <label
+                              htmlFor="tablet-banner-image-upload"
+                              className="btn-p"
+                              style={{
+                                cursor: 'pointer',
+                                minHeight: 40,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                fontSize: '.82rem',
+                                padding: '0 14px',
+                                margin: 0,
+                                borderRadius: 12,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <i className="fa-solid fa-upload" /> Dosya Yükle
+                            </label>
+                            <input
+                              id="tablet-banner-image-upload"
+                              type="file"
+                              accept="image/*"
+                              onChange={async event => {
+                                const file = event.target.files?.[0];
+                                if (!file) return;
+                                const url = await uploadFileAndGetUrl(file, 1200, 300);
+                                setField('tablet_main_banner_image', url);
+                              }}
+                              style={{ display: 'none' }}
+                            />
+
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 10,
+                                overflow: 'hidden',
+                                background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+                                border: '1px solid #cbd5e1',
+                                display: 'grid',
+                                placeItems: 'center'
+                              }}
+                            >
+                              {settings.tablet_main_banner_image ? (
+                                <img src={settings.tablet_main_banner_image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <i className="fa-solid fa-ban" style={{ color: '#cbd5e1', fontSize: '.9rem' }} />
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              className="btn-o"
+                              disabled={!settings.tablet_main_banner_image}
+                              onClick={() => setField('tablet_main_banner_image', '')}
+                              style={{
+                                minHeight: 40,
+                                padding: '0 14px',
+                                borderRadius: 12,
+                                fontSize: '.82rem',
+                                opacity: !settings.tablet_main_banner_image ? 0.5 : 1,
+                                cursor: !settings.tablet_main_banner_image ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Temizle
+                            </button>
+                          </div>
+                        </div>
+
+                        <Field label="Tablet tıklama davranışı">
+                          <SearchableSelect
+                            value={settings.tablet_main_banner_action_type || ''}
+                            onChange={v => setField('tablet_main_banner_action_type', v)}
+                            options={[
+                              {value:'',label:'Ortak davranış / pasif'},
+                              {value:'product',label:'Bir ürünü açsın'},
+                              {value:'category',label:'Bir kategoriye götürsün'},
+                              {value:'message',label:'Bir mesaj göstersin'},
+                            ]}
+                            allowClear={false}
+                          />
+                        </Field>
+                        
+                        {settings.tablet_main_banner_action_type === 'product' ? (
+                          <Field label="Tablet banner ürünü">
+                            <SearchableSelect
+                              value={settings.tablet_main_banner_product_id || ''}
+                              onChange={v => setField('tablet_main_banner_product_id', v)}
+                              options={products.map(p => ({value:p.id,label:p.name}))}
+                              placeholder="Ürün seçin"
+                            />
+                          </Field>
+                        ) : null}
+                        {settings.tablet_main_banner_action_type === 'category' ? (
+                          <Field label="Tablet banner kategorisi">
+                            <SearchableSelect
+                              value={settings.tablet_main_banner_category_id || ''}
+                              onChange={v => setField('tablet_main_banner_category_id', v)}
+                              options={categories.map(c => ({value:c.id,label:c.name}))}
+                              placeholder="Kategori seçin"
+                            />
+                          </Field>
+                        ) : null}
+                        {settings.tablet_main_banner_action_type === 'message' ? (
+                          <>
+                            <Field label="Tablet mesaj basligi">
+                              <input value={settings.tablet_main_banner_message_title || ''} onChange={event => setField('tablet_main_banner_message_title', event.target.value)} style={inputStyle()} placeholder="Popup basligi" />
+                            </Field>
+                            <Field label="Tablet mesaj icerigi">
+                              <textarea rows={3} value={settings.tablet_main_banner_message_body || ''} onChange={event => setField('tablet_main_banner_message_body', event.target.value)} style={textareaStyle(3)} placeholder="Banner tiklaninca gosterilecek aciklama" />
+                            </Field>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '.78rem', color: '#64748b', fontStyle: 'italic', padding: '6px 0' }}>
+                      Tablet banner pasif durumdadır. Tablet akışında üst banner gösterilmez.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={subtleNoteStyle()}>
+                Ana banner pasif durumdadır. Kiosk ana akışında üst banner gösterilmez. Etkinleştirmek için yukarıdaki anahtarı kullanabilirsiniz.
+              </div>
+            )}
+          </SectionBlock>
+
+          <SectionBlock
+            id="hizli-secim"
+            icon="fa-bolt"
+            accent="#16a34a"
+            title="Hızlı Seçim"
+            subtitle="Banner altında görünen iki hızlı ürün kutusu."
+            headerRight={(
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.kiosk_show_quick_picks === false ? '#ef4444' : '#94a3b8' }}>Pasif</span>
+                <label className="tog" style={{ display: 'inline-block', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.kiosk_show_quick_picks !== false}
+                    onChange={e => setField('kiosk_show_quick_picks', e.target.checked)}
+                  />
+                  <span className="tog-sl" />
+                </label>
+                <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.kiosk_show_quick_picks !== false ? '#10b981' : '#94a3b8' }}>Aktif</span>
+              </div>
+            )}
+          >
+            {settings.kiosk_show_quick_picks !== false ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
+                  {[0, 1].map(index => (
+                    <Field key={index} label={`Hızlı seçim ${index + 1}`} hint="Boş bırakırsan sistem otomatik uygun ürün seçer.">
+                      <SearchableSelect
+                        value={settings.quick_pick_product_ids?.[index] || ''}
+                        onChange={v => {
+                          const next = Array.isArray(settings.quick_pick_product_ids) ? [...settings.quick_pick_product_ids] : []
+                          while (next.length < 2) next.push('')
+                          next[index] = v
+                          setField('quick_pick_product_ids', next.slice(0, 2))
+                        }}
+                        options={products.map(p => ({value:p.id,label:p.name}))}
+                        placeholder="Otomatik seçim kullan"
+                      />
+                    </Field>
+                  ))}
+                </div>
+
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 14, display: 'grid', gap: 12, background: '#fff' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 10, marginBottom: 4 }}>
+                    <div style={{ display: 'grid', gap: 2 }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a' }}>Tablet hızlı seçim</div>
+                      <div style={{ fontSize: '.74rem', color: '#64748b' }}>
+                        Tablet isterse farklı hızlı ürünler kullanabilir. Boş bırakılan alanlarda sistem ortak kiosk seçimini veya otomatik öneriyi kullanır.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.tablet_show_quick_picks === false ? '#ef4444' : '#94a3b8' }}>Pasif</span>
+                      <label className="tog" style={{ display: 'inline-block', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={settings.tablet_show_quick_picks !== false}
+                          onChange={e => setField('tablet_show_quick_picks', e.target.checked)}
+                        />
+                        <span className="tog-sl" />
+                      </label>
+                      <span style={{ fontSize: '.78rem', fontWeight: 700, color: settings.tablet_show_quick_picks !== false ? '#10b981' : '#94a3b8' }}>Aktif</span>
+                    </div>
+                  </div>
+
+                  {settings.tablet_show_quick_picks !== false ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
+                      {[0, 1].map(index => (
+                        <Field key={`tablet-quick-${index}`} label={`Tablet hızlı seçim ${index + 1}`} hint="Boş bırak: ortak / otomatik seçim">
+                          <SearchableSelect
+                            value={settings.tablet_quick_pick_product_ids?.[index] || ''}
+                            onChange={v => {
+                              const next = Array.isArray(settings.tablet_quick_pick_product_ids) ? [...settings.tablet_quick_pick_product_ids] : []
+                              while (next.length < 2) next.push('')
+                              next[index] = v
+                              setField('tablet_quick_pick_product_ids', next.slice(0, 2))
+                            }}
+                            options={products.map(p => ({value:p.id,label:p.name}))}
+                            placeholder="Ortak / otomatik seçim"
+                          />
+                        </Field>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '.78rem', color: '#64748b', fontStyle: 'italic', padding: '6px 0' }}>
+                      Tablet hızlı seçimleri pasif durumdadır. Tablet akışında ortak kiosk seçimleri kullanılır.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={subtleNoteStyle()}>
+                Hızlı seçimler pasif durumdadır. Kiosk ana akışında hızlı ürün kutuları gösterilmez. Etkinleştirmek için yukarıdaki anahtarı kullanabilirsiniz.
+              </div>
+            )}
+          </SectionBlock>
+
+          <SectionBlock
+            id="kategori-yonetimi"
+            icon="fa-layer-group"
+            accent="#f97316"
+            title="Kategori Yönetimi"
+            subtitle="Kategori ağacı sıralamasını, buton etiketlerini ve zaman bazlı görünürlüğü düzenleyin."
+          >
+            {categories.length === 0 ? (
+              <div style={subtleNoteStyle()}>
+                Kullanılabilecek kategori bulunamadı. Önce satış kategorilerini kontrol etmenizi öneririm.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {/* Tabs Row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 10, flexWrap: 'wrap', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveCategoryTab('standard')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 10,
+                        fontSize: '.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        border: activeCategoryTab === 'standard' ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                        background: activeCategoryTab === 'standard' ? '#ea580c' : '#fff',
+                        color: activeCategoryTab === 'standard' ? '#fff' : '#475569',
+                      }}
+                    >
+                      Standart
+                    </button>
+                    {(settings.category_schedules || []).map(sched => (
+                      <button
+                        key={sched.id}
+                        type="button"
+                        onClick={() => setActiveCategoryTab(sched.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 10,
+                          fontSize: '.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          border: activeCategoryTab === sched.id ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                          background: activeCategoryTab === sched.id ? '#ea580c' : '#fff',
+                          color: activeCategoryTab === sched.id ? '#fff' : '#475569',
+                        }}
+                      >
+                        {sched.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-p"
+                    onClick={createGlobalSchedule}
+                    style={{ fontSize: '.82rem', padding: '6px 12px', background: '#f97316', borderColor: '#f97316' }}
+                  >
+                    <i className="fa-solid fa-plus" style={{ marginRight: 6 }} /> Yeni Saat Kuralı Yarat
+                  </button>
+                </div>
+
+                {/* Active Tab Schedule Config Editor */}
+                {activeCategoryTab !== 'standard' && (() => {
+                  const activeSched = (settings.category_schedules || []).find(s => s.id === activeCategoryTab)
+                  if (!activeSched) return null
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 100px 100px auto', gap: 10, alignItems: 'center', background: '#f8fafc', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                      <Field label="Kural Adı">
+                        <input value={activeSched.name} onChange={e => updateGlobalSchedule(activeSched.id, { name: e.target.value })} style={inputStyle()} />
+                      </Field>
+                      <Field label="Geçerli Günler">
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {DAY_OPTIONS.map(([code, label]) => {
+                            const active = activeSched.days.includes(code)
+                            return (
+                              <button
+                                key={code}
+                                type="button"
+                                onClick={() => {
+                                  const nextDays = activeSched.days.includes(code)
+                                    ? activeSched.days.filter(d => d !== code)
+                                    : [...activeSched.days, code]
+                                  updateGlobalSchedule(activeSched.id, { days: nextDays })
+                                }}
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 6,
+                                  fontSize: '.74rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: active ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                                  background: active ? '#ea580c' : '#fff',
+                                  color: active ? '#fff' : '#475569',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </Field>
+                      <Field label="Başlangıç">
+                        <input type="time" value={activeSched.start} onChange={e => updateGlobalSchedule(activeSched.id, { start: e.target.value })} style={inputStyle()} />
+                      </Field>
+                      <Field label="Bitiş">
+                        <input type="time" value={activeSched.end} onChange={e => updateGlobalSchedule(activeSched.id, { end: e.target.value })} style={inputStyle()} />
+                      </Field>
+                      <div style={{ alignSelf: 'end', height: 40, display: 'flex', alignItems: 'center' }}>
+                        <button type="button" className="btn-o" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={() => deleteGlobalSchedule(activeSched.id)}>
+                          <i className="fa-solid fa-trash" style={{ marginRight: 6 }} /> Kuralı Sil
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Tree Hierarchy List */}
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(() => {
+                    const tree = getSortedHierarchy(categories, settings.category_configs, activeCategoryTab)
+                    
+                    const renderRow = (category, index, isRoot, siblingList) => {
+                      const config = (settings.category_configs || []).find(c => c.categoryId === category.id) || {
+                        categoryId: category.id,
+                        buttonLabel: '',
+                        defaultOrder: index + 1,
+                        defaultVisible: true,
+                        visibilityMode: 'show',
+                        redirectCategoryId: '',
+                        schedules: []
+                      }
+
+                      let activeMode = 'show'
+                      let activeRedirectId = ''
+                      if (activeCategoryTab === 'standard') {
+                        activeMode = config.visibilityMode || (config.defaultVisible !== false ? 'show' : 'hide')
+                        activeRedirectId = config.redirectCategoryId || ''
+                      } else {
+                        const sched = (config.schedules || []).find(s => s.id === activeCategoryTab)
+                        if (sched) {
+                          activeMode = sched.visibilityMode || (sched.visible !== false ? 'show' : 'hide')
+                          activeRedirectId = sched.redirectCategoryId || ''
+                        } else {
+                          activeMode = config.visibilityMode || (config.defaultVisible !== false ? 'show' : 'hide')
+                          activeRedirectId = config.redirectCategoryId || ''
+                        }
+                      }
+
+                      return (
+                        <div key={category.id} style={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 12,
+                          padding: '10px 14px',
+                          background: isRoot ? '#fff' : '#f8fafc',
+                          marginLeft: isRoot ? 0 : 28,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12
+                        }}>
+                          {/* Left: Indicator lines, Folder icon, category name, button label */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                            {!isRoot && (
+                              <i className="fa-solid fa-turn-up" style={{ fontSize: '.65rem', color: '#94a3b8', transform: 'rotate(90deg)', marginRight: 4 }} />
+                            )}
+                            <i className={`fa-solid ${isRoot ? 'fa-folder' : 'fa-tag'}`} style={{ color: isRoot ? '#f97316' : '#64748b', fontSize: '.9rem', flexShrink: 0 }} />
+                            <span style={{ fontWeight: isRoot ? 800 : 600, color: '#0f172a', fontSize: '.84rem', minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {category.name}
+                            </span>
+                            
+                            <div style={{ width: 180, marginLeft: 8 }}>
+                              <input
+                                value={config.buttonLabel || ''}
+                                onChange={e => updateCategoryConfig(category.id, { buttonLabel: e.target.value })}
+                                style={{ ...inputStyle(), padding: '4px 8px', fontSize: '.78rem', height: 32 }}
+                                placeholder={category.name}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Center: Move Up / Down Buttons */}
+                          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              className="btn-o"
+                              style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                              disabled={index === 0}
+                              onClick={() => moveCategory(category.id, 'up', activeCategoryTab)}
+                            >
+                              <i className="fa-solid fa-arrow-up" style={{ fontSize: '.8rem' }} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-o"
+                              style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}
+                              disabled={index === siblingList.length - 1}
+                              onClick={() => moveCategory(category.id, 'down', activeCategoryTab)}
+                            >
+                              <i className="fa-solid fa-arrow-down" style={{ fontSize: '.8rem' }} />
+                            </button>
+                          </div>
+
+                          {/* Right: Visibility Segment Selector + Redirect Dropdown */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: 2, background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #cbd5e160' }}>
+                              {[
+                                { value: 'show', label: 'Göster' },
+                                { value: 'hide', label: 'Gizle' },
+                                { value: 'redirect', label: 'Yönlendir' }
+                              ].map(opt => {
+                                const selected = activeMode === opt.value
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => updateCategoryOption(category.id, { visibilityMode: opt.value }, activeCategoryTab)}
+                                    style={{
+                                      border: 'none',
+                                      background: selected ? '#fff' : 'transparent',
+                                      color: selected ? '#ea580c' : '#64748b',
+                                      fontSize: '.72rem',
+                                      fontWeight: 800,
+                                      borderRadius: 6,
+                                      padding: '4px 10px',
+                                      cursor: 'pointer',
+                                      boxShadow: selected ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+
+                            {activeMode === 'redirect' && (
+                              <div style={{ width: 180 }}>
+                                <SearchableSelect
+                                  value={activeRedirectId}
+                                  onChange={val => updateCategoryOption(category.id, { redirectCategoryId: val }, activeCategoryTab)}
+                                  options={categories
+                                    .filter(c => c.id !== category.id)
+                                    .map(c => ({ value: c.id, label: c.name }))
+                                  }
+                                  placeholder="Hedef kategori seçin..."
+                                  allowClear={false}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    return tree.map((root, rootIndex) => (
+                      <Fragment key={root.id}>
+                        {renderRow(root, rootIndex, true, tree)}
+                        {root.children.map((child, childIndex) => renderRow(child, childIndex, false, root.children))}
+                      </Fragment>
+                    ))
+                  })()}
+                </div>
+              </div>
+            )}
+          </SectionBlock>
+
+          <SectionBlock
+            id="urunler"
+            icon="fa-utensils"
+            accent="#0f766e"
+            title="Ürünler"
+            subtitle="Ürün arama ve kanal bazlı açık/kapalı ürün yönetimi."
+          >
+            <div>
+              <Field label="Ürün ara">
+                <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} style={inputStyle()} placeholder="Ürün ara..." />
+              </Field>
             </div>
 
             <div style={{ display: 'grid', gap: 8, maxHeight: 560, overflowY: 'auto', paddingRight: 4 }}>
@@ -1539,99 +2966,6 @@ export default function KioskManagementDesktop() {
                   <button type="button" className="btn-o" onClick={() => toggleProduct(product, !isKioskActive(product))}>
                     {isKioskActive(product) ? 'Kapat' : 'Ac'}
                   </button>
-                </div>
-              ))}
-            </div>
-          </SectionBlock>
-
-          <SectionBlock
-            id="sira-ekrani"
-            icon="fa-tv"
-            accent="#0ea5e9"
-            title="Sıra Ekranı"
-            subtitle="Sıra ekranının medya, yön ve renk ayarları."
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: '160px 220px 1fr', gap: 12 }}>
-              <Field label="Zemin rengi"><input type="color" value={settings.queue_bg_color || '#0f172a'} onChange={event => setField('queue_bg_color', event.target.value)} style={{ ...inputStyle(), padding: 6 }} /></Field>
-              <Field label="Yön">
-                <SearchableSelect
-                  value={settings.queue_orientation || 'landscape'}
-                  onChange={v => setField('queue_orientation', v)}
-                  options={[{value:'landscape',label:'Yatay'},{value:'portrait',label:'Dikey'}]}
-                  allowClear={false}
-                />
-              </Field>
-              <UploadField label="Sira ekran logo" hint="Sira ekraninda gorunen logo." value={settings.queue_logo_url || ''} onChange={value => setField('queue_logo_url', value)} aspect="1 / 1" fit="contain" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0,1fr)', gap: 12 }}>
-              <Field label="Sıra medya tipi">
-                <SearchableSelect
-                  value={settings.queue_media_type || 'none'}
-                  onChange={v => setField('queue_media_type', v)}
-                  options={[{value:'none',label:'Yok'},{value:'image',label:'Görsel'},{value:'video',label:'Video'}]}
-                  allowClear={false}
-                />
-              </Field>
-              {settings.queue_media_type === 'video' ? (
-                <Field label="Sıra video URL">
-                  <input value={settings.queue_media_url || ''} onChange={event => setField('queue_media_url', event.target.value)} style={inputStyle()} placeholder="https://..." />
-                </Field>
-              ) : (
-                <div />
-              )}
-            </div>
-
-            {settings.queue_media_type === 'image' ? (
-              <UploadField
-                label="Sira zemin gorseli"
-                hint="Sira ekraninin arka plan gorseli."
-                value={settings.queue_media_url || ''}
-                onChange={value => setField('queue_media_url', value)}
-                aspect={settings.queue_orientation === 'portrait' ? '9 / 16' : '16 / 9'}
-                fit="cover"
-              />
-            ) : null}
-
-            {settings.queue_media_type === 'none' ? (
-              <div style={subtleNoteStyle('#f8fafc', '#e2e8f0', '#475569')}>
-                Sira ekrani icin medya secilmezse yalnizca zemin rengi ve logo ile calisir.
-              </div>
-            ) : null}
-          </SectionBlock>
-
-          <SectionBlock
-            id="kds-pickup"
-            icon="fa-kitchen-set"
-            accent="#eab308"
-            title="KDS ve Pickup"
-            subtitle="Mutfak ve teslim akisinin birbirine bagli calisma ayarlari."
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-              <ToggleRow label="KDS + teslim birlesik" hint="Aciksa teslim islemleri KDS tarafinda yonetilir, pickup bilgi moduna gecer." checked={settings.kds_pickup_combined === true} onChange={value => setField('kds_pickup_combined', value)} />
-              <ToggleRow label="Hazir sipariste ses" hint="Sira veya teslim ekraninda hazir siparis icin ses bildirimi oynatir." checked={settings.queue_sound_enabled !== false} onChange={value => setField('queue_sound_enabled', value)} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-              {[
-                { label: 'Kiosk', url: getKioskUrl(), icon: 'fa-tablet-screen-button', bg: '#eef2ff', color: '#4f46e5' },
-                { label: 'Kiosk Tablet', url: getKioskTabletUrl(), icon: 'fa-tablet', bg: '#f5f3ff', color: '#7c3aed' },
-                { label: 'KDS', url: getKDSUrl(), icon: 'fa-kitchen-set', bg: '#fff7ed', color: '#ea580c' },
-                { label: 'Pickup', url: getPickupUrl(), icon: 'fa-hand-holding-box', bg: '#ecfdf5', color: '#15803d' },
-                { label: 'Sira', url: getQueueUrl(), icon: 'fa-tv', bg: '#eff6ff', color: '#2563eb' },
-              ].map(link => (
-                <div key={link.label} style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={iconBadgeStyle(link.bg, link.color)}>
-                      <i className={`fa-solid ${link.icon}`} />
-                    </div>
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{link.label}</div>
-                  </div>
-                  <div style={{ fontSize: '.78rem', color: '#64748b', wordBreak: 'break-all' }}>{link.url}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="btn-o" onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}>Ac</button>
-                    <button type="button" className="btn-o" onClick={() => navigator.clipboard?.writeText(link.url)}>Kopyala</button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -1861,8 +3195,7 @@ export default function KioskManagementDesktop() {
             subtitle="Eski ekrandan taşınan kalan ayarlar. Sırayı birlikte netleştirebiliriz."
           >
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
-              <ToggleRow label="Sadakat QR baglama" hint="Musteri siparisini telefondan kendi hesabina baglayabilir." checked={settings.loyalty_qr_enabled === true} onChange={value => setField('loyalty_qr_enabled', value)} />
-              <ToggleRow label="Kupon girisi" hint="Odeme oncesinde kupon kodu alani acilir." checked={settings.coupon_enabled === true} onChange={value => setField('coupon_enabled', value)} />
+              <ToggleRow label="Sadakat modülü entegrasyonu" hint="Aktif olduğunda kiosk sadakat modülü ile entegre çalışır; müşteriler QR kod okutabilir, telefon veya kupon girerek giriş yapabilir." checked={settings.loyalty_qr_enabled === true} onChange={value => setField('loyalty_qr_enabled', value)} />
               <ToggleRow label="Fis yazdirma" hint="Bagli fis yazicida receipt basma davranisini acar." checked={settings.printer?.receipt_enabled === true} onChange={value => updateNested('printer', { receipt_enabled: value })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
@@ -1883,29 +3216,6 @@ export default function KioskManagementDesktop() {
               <Field label="Masaya servis bilgilendirme mesaji">
                 <textarea rows={2} value={settings.success_message_table || ''} onChange={event => setField('success_message_table', event.target.value)} style={textareaStyle(2)} />
               </Field>
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {(settings.coupons || []).map(coupon => (
-                <div key={coupon.id} style={{ borderRadius: 14, border: '1px solid #e2e8f0', padding: 12, background: '#fff', display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.4fr 120px 120px auto', gap: 8 }}>
-                    <input value={coupon.code} onChange={event => updateCoupon(coupon.id, { code: event.target.value.toUpperCase() })} style={inputStyle()} placeholder="KOD" />
-                    <input value={coupon.label} onChange={event => updateCoupon(coupon.id, { label: event.target.value })} style={inputStyle()} placeholder="Aciklama" />
-                    <SearchableSelect
-                      value={coupon.type}
-                      onChange={v => updateCoupon(coupon.id, { type: v })}
-                      options={[{value:'percent',label:'%'},{value:'amount',label:'Tutar'}]}
-                      allowClear={false}
-                    />
-                    <input type="number" value={coupon.value} onChange={event => updateCoupon(coupon.id, { value: Number(event.target.value || 0) })} style={inputStyle()} placeholder="Deger" />
-                    <button type="button" className="btn-o" onClick={() => setField('coupons', (settings.coupons || []).filter(item => item.id !== coupon.id))} style={{ color: '#b91c1c' }}>Sil</button>
-                  </div>
-                </div>
-              ))}
-              <div>
-                <button type="button" className="btn-o" onClick={() => setField('coupons', [...(settings.coupons || []), { id: uid('coupon'), code: '', label: '', description: '', type: 'percent', value: 10, minTotal: 0, active: true }])}>
-                  + Kupon Ekle
-                </button>
-              </div>
             </div>
           </SectionBlock>
         </main>
@@ -1997,6 +3307,80 @@ export default function KioskManagementDesktop() {
             </div>
           </div>
         </aside>
+      {saveConflicts.length > 0 ? (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15,23,42,.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 9999,
+          padding: 20
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 18,
+            boxShadow: '0 20px 50px rgba(0,0,0,.15)',
+            width: '100%',
+            maxWidth: 640,
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: 18, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10, color: '#b45309' }}>
+              <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '1.4rem' }} />
+              <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>Zaman Çakışması Algılandı!</div>
+            </div>
+            
+            <div style={{ padding: 18, overflowY: 'auto', flex: 1 }}>
+              <p style={{ fontSize: '.84rem', color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+                Tanımladığınız saat kuralları arasında çakışmalar bulundu. Aynı zaman diliminde aktif olan kurallarda kategorilerin sıralama veya görünürlük ayarlarının çelişmesi, kiosk ekranında belirsizliğe yol açabilir. Lütfen çakışan kuralları düzeltin veya <strong>Yine de Kaydet</strong> seçeneği ile devam edin:
+              </p>
+              
+              <div style={{ display: 'grid', gap: 12 }}>
+                {saveConflicts.map((c, idx) => (
+                  <div key={idx} style={{ border: '1px solid #fed7aa', background: '#fff7ed', borderRadius: 12, padding: 12 }}>
+                    <div style={{ fontWeight: 800, fontSize: '.84rem', color: '#c2410c' }}>{c.categoryName}</div>
+                    <div style={{ fontSize: '.76rem', color: '#7c2d12', marginTop: 4 }}>
+                      <strong>Çakışan Kurallar:</strong> "{c.schedAName}" ve "{c.schedBName}"
+                    </div>
+                    <div style={{ fontSize: '.76rem', color: '#7c2d12', marginTop: 2 }}>
+                      <strong>Zaman Dilimi:</strong> {c.days} | {c.time}
+                    </div>
+                    <div style={{ fontSize: '.76rem', color: '#9a3412', marginTop: 6, fontWeight: 600 }}>
+                      <strong>Detay:</strong> {c.details}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div style={{ padding: 14, borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-o"
+                onClick={() => setSaveConflicts([])}
+                style={{ minHeight: 38, borderRadius: 10 }}
+              >
+                Vazgeç / Düzenle
+              </button>
+              <button
+                type="button"
+                className="btn-p"
+                onClick={() => save(true)}
+                style={{ minHeight: 38, borderRadius: 10, background: '#ea580c', borderColor: '#ea580c' }}
+              >
+                Yine de Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       </div>
     </div>
   )

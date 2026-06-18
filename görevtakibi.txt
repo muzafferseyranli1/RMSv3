@@ -1,4 +1,4 @@
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+﻿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KARAR NOTU — 2026-05-11
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -33,7 +33,7 @@ GÖREV HİYERARŞİSİ — KESİN KARAR
 
 ORTAK BAĞLAM / SENARYO
 
-Sen, mevcut SuitableRMS kod tabanına (C:\RMSggl\Dropbox\RMSv3) çok katmanlı,
+Sen, mevcut SuitableRMS kod tabanına (X:\RMSv3) çok katmanlı,
 hiyerarşik, web üzerinden kullanılabilen bir "Görev Takip Modülü" eklemekle
 görevli bir Full-stack Yazılım Mühendisisin.
 
@@ -761,7 +761,7 @@ KESİN YASAKLAR
 TESLİM KRİTERİ
 ─────────────────────────────────────────────────────────────────────────────
 
-Çıktı, mevcut SuitableRMS projesine (C:\RMSggl\Dropbox\RMSv3) doğrudan
+Çıktı, mevcut SuitableRMS projesine (X:\RMSv3) doğrudan
 entegre edilebilir olmalıdır.
 Kod, Railway Postgres + db.js + server/index.js düzenine uyumlu olmalıdır.
 UI, mevcut proje standartlarıyla aynı hisse sahip olmalıdır.
@@ -782,3 +782,4 @@ GELECEKTEKİ GENIŞLETMELER (bu fazda değil)
 - Görev SLA politikaları
 - Yönetici analitik ekranları
 - Offline / sync davranışı
+

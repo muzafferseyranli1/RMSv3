@@ -1,4 +1,4 @@
-GÖREV: src/components/pages/LoyaltyCampaignWizardPreview.jsx TAMAMEN YENİDEN YAZ
+﻿GÖREV: src/components/pages/LoyaltyCampaignWizardPreview.jsx TAMAMEN YENİDEN YAZ
 
 TEMEL STRATEJİ:
 Sihirbaz mevcut LoyaltyManagement.jsx içindeki tüm fonksiyon ve
@@ -7,7 +7,7 @@ LoyaltyManagement nasıl çalışıyorsa sihirbaz da aynı şekilde çalışır 
 sadece UI adım adım sunulur.
 
 ÖNCE OKU (tamamını):
-1. C:\RMSggl\Dropbox\RMSv3\kampanya-sihirbazi.html  ← görsel referans
+1. X:\RMSv3\kampanya-sihirbazi.html  ← görsel referans
 2. src/components/pages/LoyaltyManagement.jsx       ← tüm mantık buradan alınacak
 3. src/lib/loyalty.js                               ← export listesi
 4. src/components/ui/SearchableSelect.jsx           ← props arayüzü

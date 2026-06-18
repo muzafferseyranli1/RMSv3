@@ -572,67 +572,49 @@ body:has(.mr-academy-active) #sidebar-overlay {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+/* İç sayfa (pageDetails varken): açık içerik alanına geç */
+.mr-academy-active.has-page {
+  background: #f0f2f5;
+}
+
 .mr-academy-active .mr-main {
   background: transparent;
-  padding: 32px 40px;
+  padding: 0;
+  flex: 1;
 }
 
-/* ── HEADER (TOP NAV) ── */
+.mr-academy-active.has-page .mr-main {
+  background: #f0f2f5;
+  padding: 0;
+  min-height: calc(100vh - 64px);
+}
+
+/* ── HEADER (TOP NAV) — her zaman dark ── */
 .mr-academy-active .mr-header {
-  background: rgba(15, 23, 42, 0.85) !important;
-  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
+  background: #0f172a !important;
+  border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
-
-.mr-academy-active .mr-header-brand-text h2 {
-  color: #fff !important;
-}
-.mr-academy-active .mr-header-brand-text span {
-  color: rgba(255,255,255,0.45) !important;
-}
-
-.mr-academy-active .mr-nav-btn {
-  color: rgba(255,255,255,0.55) !important;
-}
+.mr-academy-active .mr-header-brand-text h2 { color: #fff !important; }
+.mr-academy-active .mr-header-brand-text span { color: rgba(255,255,255,0.4) !important; }
+.mr-academy-active .mr-nav-btn { color: rgba(255,255,255,0.5) !important; font-size: 0.82rem !important; }
 .mr-academy-active .mr-nav-btn:hover,
-.mr-academy-active .mr-nav-item:hover .mr-nav-btn {
-  color: #fff !important;
-  border-bottom-color: #6366f1 !important;
-}
-.mr-academy-active .mr-nav-btn.active {
-  color: #f59e0b !important;
-  border-bottom-color: #f59e0b !important;
-}
+.mr-academy-active .mr-nav-item:hover .mr-nav-btn { color: #fff !important; border-bottom-color: #6366f1 !important; }
+.mr-academy-active .mr-nav-btn.active { color: #f59e0b !important; border-bottom-color: #f59e0b !important; }
 
-/* Nav dropdown */
+/* Nav dropdown — dark */
 .mr-academy-active .mr-nav-dropdown {
-  background: rgba(15, 23, 42, 0.97) !important;
+  background: #0f172a !important;
   border: 1px solid rgba(255,255,255,0.1) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
-  backdrop-filter: blur(20px) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;
 }
-.mr-academy-active .mr-dropdown-card {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.06) !important;
-}
-.mr-academy-active .mr-dropdown-card:hover {
-  background: rgba(99,102,241,0.12) !important;
-  border-color: rgba(99,102,241,0.4) !important;
-}
-.mr-academy-active .mr-dropdown-card.active {
-  background: rgba(245,166,35,0.1) !important;
-  border-color: rgba(245,166,35,0.4) !important;
-}
-.mr-academy-active .mr-dropdown-card-title {
-  color: #fff !important;
-  font-family: 'Outfit', sans-serif;
-}
+.mr-academy-active .mr-dropdown-card { background: rgba(255,255,255,0.04) !important; border-color: rgba(255,255,255,0.06) !important; }
+.mr-academy-active .mr-dropdown-card:hover { background: rgba(99,102,241,0.14) !important; border-color: rgba(99,102,241,0.4) !important; }
+.mr-academy-active .mr-dropdown-card.active { background: rgba(245,166,35,0.12) !important; border-color: rgba(245,166,35,0.4) !important; }
+.mr-academy-active .mr-dropdown-card-title { color: #fff !important; }
 .mr-academy-active .mr-dropdown-card-desc { color: rgba(255,255,255,0.4) !important; }
-.mr-academy-active .mr-dropdown-card-icon {
-  background: rgba(255,255,255,0.06) !important;
-  color: rgba(255,255,255,0.4) !important;
-}
+.mr-academy-active .mr-dropdown-card-icon { background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.4) !important; }
 
 /* Header search */
 .mr-academy-active .mr-search-input {
@@ -647,386 +629,65 @@ body:has(.mr-academy-active) #sidebar-overlay {
   box-shadow: 0 0 0 3px rgba(99,102,241,0.2) !important;
 }
 .mr-academy-active .mr-search-icon { color: rgba(255,255,255,0.35) !important; }
-.mr-academy-active .mr-search-kbd {
-  background: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  color: rgba(255,255,255,0.3) !important;
-}
-.mr-academy-active .mr-search-dropdown {
-  background: rgba(15, 23, 42, 0.98) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.5) !important;
-}
+.mr-academy-active .mr-search-kbd { background: rgba(255,255,255,0.06) !important; border-color: rgba(255,255,255,0.1) !important; color: rgba(255,255,255,0.3) !important; }
+.mr-academy-active .mr-search-dropdown { background: #0f172a !important; border-color: rgba(255,255,255,0.1) !important; box-shadow: 0 16px 48px rgba(0,0,0,0.5) !important; }
 .mr-academy-active .mr-search-item:hover { background: rgba(255,255,255,0.06) !important; }
 .mr-academy-active .mr-search-item-title { color: #fff !important; }
-.mr-academy-active .mr-search-item-cat {
-  color: rgba(255,255,255,0.45) !important;
-  background: rgba(255,255,255,0.07) !important;
-}
+.mr-academy-active .mr-search-item-cat { color: rgba(255,255,255,0.45) !important; background: rgba(255,255,255,0.07) !important; }
 .mr-academy-active .mr-search-empty { color: rgba(255,255,255,0.35) !important; }
 
-/* ── BREADCRUMB ── */
-.mr-academy-active .mr-breadcrumb {
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  border-radius: 10px !important;
-  padding: 8px 14px !important;
-  backdrop-filter: blur(10px) !important;
-  display: inline-flex !important;
-}
-.mr-academy-active .mr-breadcrumb-item {
-  color: rgba(255,255,255,0.45) !important;
-  font-family: 'Inter', sans-serif !important;
-}
-.mr-academy-active .mr-breadcrumb-item:hover { color: #a5b4fc !important; }
-.mr-academy-active .mr-breadcrumb-sep { color: rgba(255,255,255,0.2) !important; }
-.mr-academy-active .mr-breadcrumb-current { color: #fff !important; }
-
-/* ── TOOLBAR ── */
-.mr-academy-active .mr-toolbar { margin-bottom: 16px !important; }
-.mr-academy-active .mr-toolbar-btn {
-  background: rgba(255,255,255,0.05) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  color: rgba(255,255,255,0.5) !important;
-  border-radius: 10px !important;
-}
-.mr-academy-active .mr-toolbar-btn:hover {
-  background: rgba(99,102,241,0.15) !important;
-  border-color: rgba(99,102,241,0.4) !important;
-  color: #a5b4fc !important;
-}
-
-/* ── TITLE AREA ── */
-.mr-academy-active .mr-title-area {
-  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-  padding-bottom: 24px !important;
-  margin-bottom: 24px !important;
-}
-.mr-academy-active .mr-title h1 {
-  font-family: 'Outfit', sans-serif !important;
-  color: #fff !important;
-  font-size: clamp(1.6rem, 3vw, 2.4rem) !important;
-  font-weight: 900 !important;
-  background: linear-gradient(135deg, #fff 40%, rgba(255,255,255,0.7));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.mr-academy-active .mr-meta-item { color: rgba(255,255,255,0.4) !important; }
-.mr-academy-active .mr-cat-badge {
-  border: 1px solid currentColor !important;
-  opacity: 0.9 !important;
-}
-
-/* ── HERO ROW (ürün görseli + açıklama) ── */
-.mr-academy-active .mr-hero-img {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5) !important;
-  border-radius: 20px !important;
-}
-.mr-academy-active .mr-product-story {
-  background: rgba(16,185,129,0.06) !important;
-  border-left-color: rgba(16,185,129,0.5) !important;
-  border-right-color: rgba(16,185,129,0.5) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 0 40px rgba(16,185,129,0.1) !important;
-}
-.mr-academy-active .mr-story-quote {
-  color: rgba(255,255,255,0.85) !important;
-}
-.mr-academy-active .mr-story-subtitle {
-  color: rgba(255,255,255,0.45) !important;
-}
-
-/* ── SPECS BANNER ── */
-.mr-academy-active .mr-specs-banner {
-  border-radius: 20px !important;
-  overflow: hidden !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4) !important;
-}
-.mr-academy-active .spec-art-card {
-  background: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  backdrop-filter: blur(10px) !important;
-}
-.mr-academy-active .spec-art-top { color: rgba(255,255,255,0.5) !important; }
-.mr-academy-active .spec-art-bottom { color: #fff !important; }
-
-/* ── SHELF LIFE STANDARTLARI ── */
-.mr-academy-active .mr-shelf-section {
-  background: rgba(245,158,11,0.08) !important;
-  border-color: rgba(245,158,11,0.25) !important;
-  border-radius: 16px !important;
-}
-.mr-academy-active .mr-shelf-title { color: #f59e0b !important; }
-.mr-academy-active .mr-shelf-row { border-color: rgba(245,158,11,0.15) !important; }
-.mr-academy-active .mr-shelf-label { color: rgba(255,255,255,0.5) !important; }
-.mr-academy-active .mr-shelf-value { color: #fff !important; }
-
-/* ── RECIPE TABLE (reçete) ── */
-.mr-academy-active .mr-recipe-section {
-  background: rgba(255,255,255,0.03) !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  border-radius: 20px !important;
-}
-.mr-academy-active .mr-recipe-title { color: #fff !important; font-family: 'Outfit', sans-serif !important; }
-.mr-academy-active .mr-recipe-table {
-  border-color: rgba(255,255,255,0.08) !important;
-}
-.mr-academy-active .mr-recipe-table th {
-  background: rgba(255,255,255,0.05) !important;
-  color: rgba(255,255,255,0.5) !important;
-  border-color: rgba(255,255,255,0.08) !important;
-  font-family: 'Inter', sans-serif !important;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.68rem !important;
-}
-.mr-academy-active .mr-recipe-table td {
-  color: rgba(255,255,255,0.85) !important;
-  border-color: rgba(255,255,255,0.06) !important;
-}
-.mr-academy-active .mr-recipe-table tr:hover td {
-  background: rgba(255,255,255,0.04) !important;
-}
-.mr-academy-active .mr-ingredient-link {
-  color: #34d399 !important;
-  border-bottom: 1px dashed rgba(52,211,153,0.4) !important;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.mr-academy-active .mr-ingredient-link:hover {
-  color: #10b981 !important;
-  border-bottom-color: #10b981 !important;
-}
-.mr-academy-active .mr-portion-section-title {
-  color: rgba(255,255,255,0.4) !important;
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.06) !important;
-}
-
-/* ── STEPS TIMELINE ── */
-.mr-academy-active .mr-steps-section { }
-.mr-academy-active .mr-steps-title { color: #fff !important; font-family: 'Outfit', sans-serif !important; }
-.mr-academy-active .mr-step-card {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.1) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
-}
-.mr-academy-active .mr-step-text-title {
-  color: #fff !important;
-  font-family: 'Outfit', sans-serif !important;
-  font-size: 1.1rem !important;
-}
-.mr-academy-active .mr-step-text-body {
-  color: rgba(255,255,255,0.7) !important;
-  line-height: 1.7 !important;
-}
-.mr-academy-active .mr-step-img {
-  border-radius: 14px !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
-}
-
-/* ── EKIPMAN TABLOSU ── */
-.mr-academy-active .mr-equip-section {
-  background: rgba(99,102,241,0.06) !important;
-  border: 1px solid rgba(99,102,241,0.2) !important;
-  border-radius: 20px !important;
-}
-.mr-academy-active .mr-equip-title { color: #a5b4fc !important; font-family: 'Outfit', sans-serif !important; }
-.mr-academy-active .mr-equip-table th {
-  background: rgba(255,255,255,0.04) !important;
-  color: rgba(255,255,255,0.45) !important;
-  border-color: rgba(255,255,255,0.06) !important;
-}
-.mr-academy-active .mr-equip-table td {
-  color: rgba(255,255,255,0.8) !important;
-  border-color: rgba(255,255,255,0.06) !important;
-}
-.mr-academy-active .mr-fault-btn {
-  background: rgba(239,68,68,0.15) !important;
-  border-color: rgba(239,68,68,0.3) !important;
-  color: #fca5a5 !important;
-}
-.mr-academy-active .mr-fault-btn:hover {
-  background: rgba(239,68,68,0.25) !important;
-  border-color: rgba(239,68,68,0.5) !important;
-}
-
-/* ── HAMMADDE SAYFASI ── */
-.mr-academy-active .mr-hammadde-spec {
-  background: rgba(255,255,255,0.03) !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  border-radius: 20px !important;
-}
-.mr-academy-active .mr-hammadde-section-title {
-  color: #34d399 !important;
-  font-family: 'Outfit', sans-serif !important;
-  border-bottom-color: rgba(52,211,153,0.2) !important;
-}
-.mr-academy-active .mr-spec-row { border-color: rgba(255,255,255,0.06) !important; }
-.mr-academy-active .mr-spec-label { color: rgba(255,255,255,0.45) !important; }
-.mr-academy-active .mr-spec-value { color: rgba(255,255,255,0.85) !important; }
-
-/* Hammadde custom params */
-.mr-academy-active .mr-custom-params {
-  background: rgba(139,92,246,0.06) !important;
-  border-color: rgba(139,92,246,0.2) !important;
-  border-radius: 16px !important;
-}
-.mr-academy-active .mr-custom-param-label { color: rgba(255,255,255,0.45) !important; }
-.mr-academy-active .mr-custom-param-value { color: #c4b5fd !important; }
-
-/* Red kriterleri */
-.mr-academy-active .mr-red-criteria {
-  background: rgba(239,68,68,0.06) !important;
-  border-color: rgba(239,68,68,0.2) !important;
-  border-radius: 16px !important;
-}
-.mr-academy-active .mr-red-criteria-title { color: #fca5a5 !important; }
-.mr-academy-active .mr-red-row { border-color: rgba(239,68,68,0.1) !important; }
-.mr-academy-active .mr-red-label { color: rgba(255,255,255,0.4) !important; }
-.mr-academy-active .mr-red-value { color: rgba(255,255,255,0.8) !important; }
-
-/* ── GÖRSEL KARŞILAŞTIRMA ── */
-.mr-academy-active .mr-visual-comp-card {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.08) !important;
-  border-radius: 16px !important;
-}
-.mr-academy-active .mr-vc-correct-label { color: #34d399 !important; }
-.mr-academy-active .mr-vc-wrong-label { color: #f87171 !important; }
-
-/* ── PREV / NEXT NAVIGATION ── */
-.mr-academy-active .mr-prev-next {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 48px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255,255,255,0.08) !important;
-}
-.mr-academy-active .mr-nav-prev,
-.mr-academy-active .mr-nav-next {
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 16px !important;
-  padding: 16px 20px !important;
-  color: rgba(255,255,255,0.6) !important;
-  transition: all 0.3s ease !important;
-  backdrop-filter: blur(10px) !important;
-}
-.mr-academy-active .mr-nav-prev:hover,
-.mr-academy-active .mr-nav-next:hover {
-  background: rgba(99,102,241,0.1) !important;
-  border-color: rgba(99,102,241,0.35) !important;
-  color: #a5b4fc !important;
-  transform: translateY(-2px) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-}
-.mr-academy-active .mr-nav-prev-label,
-.mr-academy-active .mr-nav-next-label {
-  font-size: 0.65rem !important;
-  color: rgba(255,255,255,0.35) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.08em !important;
-  margin-bottom: 4px !important;
-}
-.mr-academy-active .mr-nav-prev-title,
-.mr-academy-active .mr-nav-next-title {
-  font-family: 'Outfit', sans-serif !important;
-  font-weight: 700 !important;
-  color: #fff !important;
-  font-size: 0.9rem !important;
-}
-
-/* ── GENERIC TEXT / MARKDOWN CONTENT ── */
-.mr-academy-active .mr-content-body {
-  color: rgba(255,255,255,0.8) !important;
-  line-height: 1.8 !important;
-}
-.mr-academy-active .mr-content-body h2,
-.mr-academy-active .mr-content-body h3 {
-  color: #fff !important;
-  font-family: 'Outfit', sans-serif !important;
-}
-.mr-academy-active .mr-content-body hr {
-  border-color: rgba(255,255,255,0.1) !important;
-}
-.mr-academy-active .mr-content-body blockquote {
-  border-left-color: #6366f1 !important;
-  color: rgba(255,255,255,0.6) !important;
-}
-
-/* Scrollbar dark */
-.mr-academy-active ::-webkit-scrollbar { width: 4px; height: 4px; }
-.mr-academy-active ::-webkit-scrollbar-track { background: transparent; }
-.mr-academy-active ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 4px;
-}
-.mr-academy-active ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.3);
-}
-
-/* ── FAULT MODAL ── */
-.mr-academy-active .mr-fault-modal-backdrop {
-  background: rgba(0,0,0,0.7) !important;
-  backdrop-filter: blur(8px) !important;
-}
-.mr-academy-active .mr-fault-modal {
-  background: #0f172a !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 40px 80px rgba(0,0,0,0.6) !important;
-}
-.mr-academy-active .mr-fault-modal h3 { color: #fff !important; font-family: 'Outfit', sans-serif !important; }
-.mr-academy-active .mr-fault-modal label { color: rgba(255,255,255,0.55) !important; }
-
-/* ── LOADING / ERROR STATE ── */
-.mr-academy-active .mr-loading,
-.mr-academy-active .mr-error {
-  color: rgba(255,255,255,0.5) !important;
-}
-
-/* ── MOBILE SIDEBAR (mr-sidebar) dark ── */
-.mr-academy-active .mr-sidebar {
-  background: rgba(10, 15, 30, 0.98) !important;
-  border-right-color: rgba(255,255,255,0.08) !important;
-}
-.mr-academy-active .mr-mobile-overlay {
-  background: rgba(0,0,0,0.7) !important;
-  backdrop-filter: blur(4px) !important;
-}
-.mr-academy-active .mr-sidebar-header {
-  background: rgba(10, 15, 30, 0.98) !important;
-  border-bottom-color: rgba(255,255,255,0.08) !important;
-}
-.mr-academy-active .mr-cat-btn { color: rgba(255,255,255,0.7) !important; }
+/* Mobile sidebar — dark */
+.mr-academy-active .mr-sidebar { background: #0f172a !important; border-right-color: rgba(255,255,255,0.08) !important; }
+.mr-academy-active .mr-mobile-overlay { background: rgba(0,0,0,0.7) !important; backdrop-filter: blur(4px) !important; }
+.mr-academy-active .mr-sidebar-header { background: #0f172a !important; border-bottom-color: rgba(255,255,255,0.08) !important; }
+.mr-academy-active .mr-sidebar-header h2 { color: #fff !important; }
+.mr-academy-active .mr-sidebar-header span { color: rgba(255,255,255,0.4) !important; }
+.mr-academy-active .mr-cat-btn { color: rgba(255,255,255,0.65) !important; }
 .mr-academy-active .mr-cat-btn:hover { background: rgba(255,255,255,0.05) !important; }
 .mr-academy-active .mr-cat-btn.active { color: #f59e0b !important; }
 .mr-academy-active .mr-page-btn { color: rgba(255,255,255,0.45) !important; }
-.mr-academy-active .mr-page-btn:hover {
-  background: rgba(255,255,255,0.05) !important;
-  color: #fff !important;
-}
-.mr-academy-active .mr-page-btn.active {
-  background: rgba(245,166,35,0.12) !important;
-  color: #f59e0b !important;
-}
-.mr-academy-active .mr-page-list {
-  border-left-color: rgba(255,255,255,0.08) !important;
-}
-.mr-academy-active .mr-cat-count {
-  background: rgba(255,255,255,0.06) !important;
-  color: rgba(255,255,255,0.4) !important;
+.mr-academy-active .mr-page-btn:hover { background: rgba(255,255,255,0.05) !important; color: #fff !important; }
+.mr-academy-active .mr-page-btn.active { background: rgba(245,166,35,0.12) !important; color: #f59e0b !important; }
+.mr-academy-active .mr-page-list { border-left-color: rgba(255,255,255,0.08) !important; }
+.mr-academy-active .mr-cat-count { background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.4) !important; }
+
+/* ════════════════════════════════════════════════════════════
+   İÇ SAYFA LAYOUT — açık, okunabilir, premium e-learning
+   ════════════════════════════════════════════════════════════ */
+
+/* Sayfa wrapper */
+.mr-detail {
+  display: grid;
+  grid-template-columns: 1fr;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+  gap: 0;
 }
 
-/* Mobile FAB button */
-.mr-academy-active .mr-mobile-fab {
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+/* ── BREADCRUMB ── */
+.mr-breadcrumb {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-bottom: 20px !important;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
 }
+.mr-breadcrumb-item {
+  background: none !important;
+  border: none !important;
+  color: #64748b !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  font-family: 'Inter', sans-serif !important;
+  transition: color 0.15s !important;
+}
+.mr-breadcrumb-item:hover { color: #6366f1 !important; }
+.mr-breadcrumb-sep { color: #cbd5e1 !important; font-size: 0.6rem !important; }
+.mr-breadcrumb-current { color: #0f172a !important; font-size: 0.78rem !important; font-weight: 600 !important; }
+
+

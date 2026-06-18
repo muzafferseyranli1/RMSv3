@@ -1,8 +1,8 @@
-# Desktop Pairing & Routing Fix — Agent Talimat Kartları
+﻿# Desktop Pairing & Routing Fix — Agent Talimat Kartları
 
 > **Yönetici:** Antigravity (Bu Oturum)  
 > **Çalışan Agent:** Aşağıdaki görev kartlarını sırayla uygulayacak agent  
-> **Proje:** `c:\RMSv3`  
+> **Proje:** `X:\RMSv3`  
 > **Referans:** Bu dosya ve `implementation_plan.md`
 
 ---
@@ -21,7 +21,7 @@
 ## 📋 GÖREV 1 — Veritabanı Migration
 
 ### Oluşturulacak Dosya
-`c:\RMSv3\migrations\022_fix_terminal_screen_mode.sql` (YENİ)
+`X:\RMSv3\migrations\022_fix_terminal_screen_mode.sql` (YENİ)
 
 ### İçerik
 
@@ -81,7 +81,7 @@ pool.query(sql).then(() => { console.log('Migration OK'); pool.end(); }).catch(e
 ## 📋 GÖREV 2 — `schema-railway-master.sql` Güncelleme
 
 ### Önce Oku
-`c:\RMSv3\schema-railway-master.sql` — Satır 1034-1053 arası `pos_terminals` tablo tanımı
+`X:\RMSv3\schema-railway-master.sql` — Satır 1034-1053 arası `pos_terminals` tablo tanımı
 
 ### Değişiklik
 
@@ -117,7 +117,7 @@ Ayrıca tablo tanımına şu kolonları ekle (varsa dokunma, yoksa ekle):
 ## 📋 GÖREV 3 — `DeviceSettings.jsx` Düzeltme
 
 ### Önce Oku
-`c:\RMSv3\src\components\pages\DeviceSettings.jsx` — TAMAMEN oku (480 satır)
+`X:\RMSv3\src\components\pages\DeviceSettings.jsx` — TAMAMEN oku (480 satır)
 
 ### Değişiklik Listesi
 
@@ -334,7 +334,7 @@ Bu dosyada çok sayıda değişiklik var. Aşağıda sırayla:
 ## 📋 GÖREV 4 — `PairingScreen.jsx` Düzeltme
 
 ### Önce Oku
-`c:\RMSv3\src\components\pos\PairingScreen.jsx` — TAMAMEN oku (237 satır)
+`X:\RMSv3\src\components\pos\PairingScreen.jsx` — TAMAMEN oku (237 satır)
 
 ### Değişiklik Listesi
 
@@ -419,9 +419,9 @@ Bu dosyada çok sayıda değişiklik var. Aşağıda sırayla:
 ### Önce Oku
 Aşağıdaki 3 dosyayı oku ve içlerinde `pair_key` geçen satırları bul:
 
-1. `c:\RMSv3\src\components\pages\KioskBig.jsx`
-2. `c:\RMSv3\src\components\pages\KioskTablet.jsx`
-3. `c:\RMSv3\src\components\pages\KioskManagementDesktop.jsx`
+1. `X:\RMSv3\src\components\pages\KioskBig.jsx`
+2. `X:\RMSv3\src\components\pages\KioskTablet.jsx`
+3. `X:\RMSv3\src\components\pages\KioskManagementDesktop.jsx`
 
 ### Değişiklik
 
@@ -508,3 +508,4 @@ Tüm görevler tamamlandıktan sonra `OperationSync.md` dosyasına yeni bir entr
 - Decisions: pair_key tamamen kaldırıldı, activation_code tek anahtar oldu, screen_mode constraint genişletildi
 - Next Step: Kullanıcı desktop build yaparak test etmeli
 ```
+

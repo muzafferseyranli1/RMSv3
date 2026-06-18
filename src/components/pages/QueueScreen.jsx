@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { db } from '@/lib/db'
 import {
@@ -19,22 +20,39 @@ function maskName(name) {
   }).join(' ')
 }
 
-function playReadySound(ctx) {
-  try {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.type = 'sine'
-    const now = ctx.currentTime
-    osc.frequency.setValueAtTime(880, now)
-    osc.frequency.setValueAtTime(1320, now + 0.15)
-    osc.frequency.setValueAtTime(880, now + 0.30)
-    gain.gain.setValueAtTime(0.3, now)
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
-    osc.start(now)
-    osc.stop(now + 0.5)
-  } catch {}
+function playReadySound(ctx, soundUrl) {
+  if (soundUrl) {
+    try {
+      const audio = new Audio(soundUrl)
+      audio.play().catch(err => {
+        console.warn('Custom sound autoplay blocked or failed, falling back to beep:', err)
+        playBeep(ctx)
+      })
+    } catch (err) {
+      console.warn('Failed to play custom sound, falling back to beep:', err)
+      playBeep(ctx)
+    }
+  } else {
+    playBeep(ctx)
+  }
+
+  function playBeep(c) {
+    try {
+      const osc = c.createOscillator()
+      const gain = c.createGain()
+      osc.connect(gain)
+      gain.connect(c.destination)
+      osc.type = 'sine'
+      const now = c.currentTime
+      osc.frequency.setValueAtTime(880, now)
+      osc.frequency.setValueAtTime(1320, now + 0.15)
+      osc.frequency.setValueAtTime(880, now + 0.30)
+      gain.gain.setValueAtTime(0.3, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+      osc.start(now)
+      osc.stop(now + 0.5)
+    } catch {}
+  }
 }
 
 function isMissingColumnError(error, columnName) {
@@ -56,9 +74,45 @@ export default function QueueScreen() {
   const pendingRefreshRef = useRef(false)
   const refreshTimerRef = useRef(null)
 
+  const { code } = useParams()
+
   useEffect(() => {
-    loadKioskSettings().then(next => setSettings(next)).catch(() => {})
-  }, [])
+    async function fetchSettings() {
+      try {
+        const globalSettings = await loadKioskSettings()
+        let deviceSettings = {}
+        
+        if (code) {
+          const { data, error } = await db
+            .from('pos_terminals')
+            .select('config_data')
+            .eq('activation_code', code)
+            .single()
+          
+          if (!error && data && data.config_data) {
+            const config = data.config_data
+            deviceSettings = {
+              queue_bg_color: config.queue_bg_color !== undefined ? config.queue_bg_color : globalSettings.queue_bg_color,
+              queue_orientation: config.queue_orientation !== undefined ? config.queue_orientation : globalSettings.queue_orientation,
+              queue_logo_url: config.queue_logo_url !== undefined ? config.queue_logo_url : globalSettings.queue_logo_url,
+              queue_media_type: config.queue_media_type !== undefined ? config.queue_media_type : globalSettings.queue_media_type,
+              queue_media_url: config.queue_media_url !== undefined ? config.queue_media_url : globalSettings.queue_media_url,
+              queue_sound_enabled: config.queue_sound_enabled !== undefined ? config.queue_sound_enabled : globalSettings.queue_sound_enabled,
+              queue_sound_url: config.queue_sound_url !== undefined ? config.queue_sound_url : globalSettings.queue_sound_url,
+            }
+          }
+        }
+        
+        setSettings({
+          ...globalSettings,
+          ...deviceSettings
+        })
+      } catch (err) {
+        console.error('Failed to load queue settings:', err)
+      }
+    }
+    fetchSettings()
+  }, [code])
 
   const loadOrders = useCallback(async ({ silent = false } = {}) => {
     if (!branchId) return
@@ -129,7 +183,7 @@ export default function QueueScreen() {
       const hasNewReady = nextReady.some(order => !prevReadyIdsRef.current.has(order.id))
       if (hasNewReady && prevReadyIdsRef.current.size > 0 && settings.queue_sound_enabled) {
         if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-        playReadySound(audioCtxRef.current)
+        playReadySound(audioCtxRef.current, settings.queue_sound_url)
       }
       prevReadyIdsRef.current = nextReadyIds
 
@@ -146,7 +200,7 @@ export default function QueueScreen() {
         }, 60)
       }
     }
-  }, [branchId, branchName, settings.queue_sound_enabled])
+  }, [branchId, branchName, settings.queue_sound_enabled, settings.queue_sound_url])
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)

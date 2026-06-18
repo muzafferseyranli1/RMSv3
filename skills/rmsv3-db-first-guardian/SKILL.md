@@ -1,4 +1,4 @@
----
+﻿---
 name: rmsv3-db-first-guardian
 description: Use when auditing SuitableRMS modules, features, demos, scripts, migrations, or cleanup candidates for DB-first architecture and safe repo hygiene. This skill treats Railway Postgres as the only production authority, verifies that frontend reads and writes flow through the current RMSv3 stack, separates allowed local convenience caches from forbidden local truth, flags historical Supabase or AWS artifacts as non-canonical, and protects active memory and governance documents during cleanup.
 metadata:
@@ -18,8 +18,8 @@ This skill has two modes:
 
 ## Required Preflight
 
-1. Read `C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
-2. Read `C:\RMSv3\OperationSync.md` if it exists.
+1. Read `X:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
+2. Read `X:\RMSv3\OperationSync.md` if it exists.
 3. Treat the governance file as canonical when it conflicts with `README.md`
    or historical artifacts.
 4. Identify the audit target:
@@ -208,3 +208,4 @@ When cleanup is requested, separate:
 - safe-to-delete now
 - historical but review first
 - protected, never delete by default
+

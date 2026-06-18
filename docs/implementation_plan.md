@@ -1,22 +1,14 @@
-# Görev WMS-04E - Stok Kartı Paket Ölçüleri ve Barkod Yönetimi UI Uygulama Planı
+# Kiosk Cihaz Bazlı Çalışma Saatleri ve Kompakt Kural Yönetimi Planı
 
-Bu plan, stok malzemeleri düzenleme ekranında (`StockItems.jsx`) hem ana birim (adet) hem de ek ambalaj birimleri (kutu, koli, kasa vb.) için boyut, ağırlık ve çoklu barkod verilerinin girilmesini, otomatik hacim hesaplanmasını ve bunların veritabanı (DB-first) seviyesinde otomatik senkronize edilmesini içerir.
+Bu plan, kiosk cihazlarının çalışma saatleri denetimini global bir JSON ayarından çıkarıp veritabanı seviyesinde ilişkisel tablolarla cihaz bazında yapılandırmayı ve saat kuralı arayüzünü (dikey yığılma olmadan) kompakt bir satır düzenine dönüştürmeyi amaçlar.
 
 ## User Review Required
 
-Lütfen aşağıdaki veritabanı ve arayüz tasarım detaylarını inceleyip onaylayın.
+Lütfen aşağıdaki veritabanı tasarımı ve arayüz değişikliklerini inceleyip onaylayın.
 
 > [!IMPORTANT]
-> **Veritabanı Tetikleyicisi (Trigger) Geliştirmesi**
-> `migrations/050_wms_barcode_and_package_sync.sql` içinde yazılan tetikleyici, `stock_items` üzerindeki `packaging_units` JSONB kolonundaki boyut, ağırlık ve barkod listesini (nesne dizisi olarak) doğrudan çözümleyecek şekilde genişletilecektir. Böylece hem veri tabanı bütünlüğü korunacak hem de frontend entegrasyonu tamamen geriye dönük uyumlu olacaktır.
-
-> [!NOTE]
-> **Arayüz Tasarımı ve Katlanabilir Kartlar**
-> Her paketleme birimi (ve ana ürünün kendisi) için en, boy, yükseklik, brüt/net ağırlık, hacim ve çoklu barkod listesi gibi çok fazla veri alanı ekleneceğinden, ekranda daralmaya veya taşmaya yol açmamak için katlanabilir kartlar (expandable cards) kullanılacaktır.
-
-## Open Questions
-
-Herhangi bir açık soru bulunmamaktadır.
+> **İlişkisel Veritabanı Geçişi**
+> Saat kuralları artık `settings` tablosundaki global `kiosk_settings_v2` JSONB alanında değil, şube bağımlı `kiosk_operating_hours_rules` tablosunda tutulacaktır. Kiosk cihazları ile bu kurallar arasındaki eşleşmeler ise `kiosk_terminal_operating_rules` ara tablosu (junction table) üzerinden yönetilecektir.
 
 ## Proposed Changes
 
@@ -24,51 +16,56 @@ Herhangi bir açık soru bulunmamaktadır.
 
 ### Database Layer
 
-#### [MODIFY] [050_wms_barcode_and_package_sync.sql](file:///c:/RMSv3/migrations/050_wms_barcode_and_package_sync.sql)
-Tetikleyici (`sync_stock_item_package_units`) fonksiyonunu aşağıdaki özelliklerle güncelleyeceğiz:
-1. `length_cm`, `width_cm`, `height_cm`, `gross_weight_kg`, `net_weight_kg` değerlerini `stock_items.packaging_units` içinden okuyarak `stock_item_package_units` tablosuna yazma.
-2. Her birim için `barcodes` (nesne dizisi) veya legacy `barcode` alanını okuyup `product_external_barcodes` tablosuna `package_unit_id` referansıyla kaydetme.
-3. Boyut ve ağırlık doğrulamaları: `boyutlar > 0`, `ağırlıklar > 0` ve `net <= brüt` kuralını tetikleyici seviyesinde kontrol etme (hata durumunda işlemi iptal eder).
-4. Ürün güncellendiğinde silinen eski barkod ve ambalaj birimlerini deaktif etme (veya referans yoksa silme).
+#### [NEW] [055_kiosk_operating_hours_rules.sql](file:///X:/RMSv3/migrations/055_kiosk_operating_hours_rules.sql)
+1. **`kiosk_operating_hours_rules`**: Şubede geçerli saat kuralları listesi.
+   * `id` UUID PRIMARY KEY DEFAULT `gen_random_uuid()`
+   * `branch_id` UUID NOT NULL REFERENCES `public.company_nodes(id)` ON DELETE CASCADE
+   * `name` TEXT NOT NULL (Örn: "Hafta Sonu Kahvaltı")
+   * `days` TEXT[] NOT NULL (Örn: `ARRAY['sat', 'sun']`)
+   * `start_time` TEXT NOT NULL (Saat formatı: `'08:00'`)
+   * `end_time` TEXT NOT NULL (Saat formatı: `'12:00'`)
+   * `note` TEXT (İsteğe bağlı not)
+   * `created_at` TIMESTAMPTZ DEFAULT `now()`
+   * `updated_at` TIMESTAMPTZ DEFAULT `now()`
+2. **`kiosk_terminal_operating_rules`**: Kiosk-Kural eşleşme tablosu.
+   * `terminal_id` UUID NOT NULL REFERENCES `public.pos_terminals(id)` ON DELETE CASCADE
+   * `rule_id` UUID NOT NULL REFERENCES `public.kiosk_operating_hours_rules(id)` ON DELETE CASCADE
+   * PRIMARY KEY (`terminal_id`, `rule_id`)
+3. **`schema-railway-master.sql` güncellemesi**: Yeni tabloların ana şema dosyasına eklenmesi.
 
 ---
 
 ### React Frontend UI
 
-#### [MODIFY] [StockItems.jsx](file:///c:/RMSv3/src/components/pages/StockItems.jsx)
-1. **Veri Yükleme (`open`)**:
-   Ürün düzenleme açıldığında veritabanındaki güncel barkodları (`product_external_barcodes`) ve paket birimlerini (`stock_item_package_units`) çekerek frontend yerel state'i (`form.base_unit_details` ve `form.packaging_units`) ile birleştirme.
-2. **Tab 1: Ölçüm & Paketleme UI Değişikliği**:
-   * **Ana Birim Kartı**: Ürünün kendisi için en, boy, yükseklik, ağırlıklar ve çoklu barkod tanımlanabileceği sabit katlanabilir kart.
-   * **Paketleme Birimleri Kart Listesi**: Eklenen her ambalaj için katlanabilir kartlar. Kart başlığında birim adı, katsayı ve kısa özet gösterilecek; kart açıldığında tüm ölçüler ve barkod ekleme/çıkarma formu yer alacaktır.
-   * **Hacim Hesaplama**: En, boy, yükseklik değerleri girildiğinde hacim dinamik olarak `(en * boy * yükseklik) / 1000000` şeklinde kullanıcıya `m3` cinsinden gösterilecektir.
-3. **Kaydetme Mantığı (`save`)**:
-   * Ana birim ve diğer paket birimlerini birleştirerek `packaging_units` dizisini oluşturma.
-   * Arayüz seviyesinde fail-closed doğrulamalar: Negatif boyut/ağırlık, brüt ağırlıktan büyük net ağırlık veya mükerrer barkod girişleri kontrol edilerek formun gönderilmesi engellenecek ve kullanıcıya uyarı verilecektir.
-   * Sunucudan dönen barkod çakışma hatasını yakalayıp kullanıcı dostu hata mesajı gösterme.
+#### [MODIFY] [KioskManagementDesktop.jsx](file:///X:/RMSv3/src/components/pages/KioskManagementDesktop.jsx)
+1. **Kompakt Kural Düzenleyici (`ScheduleRuleEditor`)**:
+   * Dikey yığılan alanlar yerine, tüm kural ögeleri yatay tek bir satırda (`display: grid` veya `flex`) yer alacak:
+     `[Kural Adı] [Günler Seçici] [Başlangıç Saat] [Bitiş Saat] [Not] [Sil Butonu]`
+   * Saat giriş kutuları (`00:00` formatı için) genişlikleri sınırlandırılarak yan yana yerleştirilecek.
+2. **Kural Listesi ve Veritabanı Senkronizasyonu**:
+   * Cari şubeye (`branchId`) ait kurallar `kiosk_operating_hours_rules` tablosundan yüklenecek.
+   * Kural ekleme/silme ve isim/gün/saat değişiklikleri doğrudan veritabanındaki tabloya yazılacak.
+3. **Kiosk Satırlarında Kural Seçimi**:
+   * Cihaz tablosunda "Çalışma Saatlerini Kullan" toggle'ı açıldığında, o satırın hemen altında ilgili kiosk için atanmış kuralları listeleyen ve yeni kural atanmasını sağlayan kompakt bir arayüz (checkbox listesi veya çoklu seçim) açılacak.
+   * Seçilen kurallar `kiosk_terminal_operating_rules` tablosuna anında kaydedilecek/silinecek.
 
 ---
 
-### Smoke Test Script
+### Client Kiosks
 
-#### [MODIFY] [test_wms_barcode_package_units.cjs](file:///c:/RMSv3/scratch/test_wms_barcode_package_units.cjs)
-Trigger güncellemesi sonrasında, test scriptine boyut, ağırlık ve barkod nesne dizisi senkronizasyon kontrollerinin ve veritabanı doğrulama kurallarının eklenmesi.
+#### [MODIFY] [KioskBig.jsx](file:///X:/RMSv3/src/components/pages/KioskBig.jsx) & [KioskTablet.jsx](file:///X:/RMSv3/src/components/pages/KioskTablet.jsx)
+1. Cihaz çalışma zamanında veritabanındaki `kiosk_terminal_operating_rules` üzerinden kendi terminal ID'si ile eşleşen çalışma saati kurallarını çekecektir.
+2. Kiosk, bu kurallara göre açık/kapalı durumunu (`kioskOperatingState`) belirleyecektir.
 
 ## Verification Plan
 
 ### Automated Tests
-- Geliştirilen test betiğinin çalıştırılması:
-  ```bash
-  node scratch/test_wms_barcode_package_units.cjs
-  ```
-- Frontend build testi:
+* Frontend derleme kontrolü:
   ```bash
   npm run build
   ```
-- Git diff kontrolü:
-  ```bash
-  git diff --check
-  ```
 
 ### Manual Verification
-- Ürün düzenleme ekranından paket birimleri eklenip, boyut/ağırlık ve barkodlar girilerek kaydetme işlemi test edilecek; çakışma durumunda veya sıfır/negatif değerlerde hata alındığı doğrulanacaktır.
+* Kiosk yönetim panelinden yeni bir isimli saat kuralı oluşturma ve kuralı silme işlemleri test edilecek.
+* Bir kiosk için "Çalışma Saatlerini Kullan" açılıp şube kurallarından biri atanacak, deaktif edildiğinde atamanın veritabanından kaldırıldığı doğrulanacak.
+* Atanan kuralın gün/saat dilimlerine göre kiosk istemci ekranının kilitlenip/açıldığı test edilecek.

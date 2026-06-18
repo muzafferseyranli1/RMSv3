@@ -1,10 +1,10 @@
-# Suitable WMS Android Handoff
+﻿# Suitable WMS Android Handoff
 
 Bu klasor WMS icin ayrilmis gercek native Android uygulama klasorudur.
 
 ## Hedef Yol
 
-- Windows mutlak yol: `C:\RMSv3\wms-android`
+- Windows mutlak yol: `X:\RMSv3\wms-android`
 - Repo ici yol: `wms-android/`
 - Android application package onerisi: `com.suitable.wms`
 - Ana kaynak yolu: `wms-android/app/src/main/java/com/suitable/wms/`
@@ -46,7 +46,7 @@ Agent `wms-android` altinda bagimsiz bir Gradle Android application projesi kurm
 ## Dogrulama Komutlari
 
 ```powershell
-cd C:\RMSv3\wms-android
+cd X:\RMSv3\wms-android
 .\gradlew.bat assembleDebug
 .\gradlew.bat test
 ```
@@ -62,5 +62,6 @@ WMS Android uygulamasında depo süreçlerini yönetmek için aşağıdaki moder
 5. **Picking (Toplama) Ekranı (`WmsPickingScreen.kt`):** Çift aşamalı toplama akışını işletir. Önce kaynak lokasyon barkodu, ardından ürün veya LPN barkodu taranmalıdır. Miktar eksik ise (kısmi toplama) kanıt fotoğrafı çekilmesi zorunlu tutulur ve sunucuda exception kaydı oluşturulur.
 6. **Paketleme & Yükleme Ekranı (`WmsPackLoadScreen.kt`):** Sevkiyat satırı bazlı hacim ve brüt ağırlığı grafiksel barlar ile gösterir. Araç kapasitesi (maksimum hacim ve ağırlık) aşıldığında yükleme butonu kilitlenir ve sunucu fail-closed olarak işlemi reddeder.
 7. **Fotoğraf Kanıtı & Yükleme:** Kameralı/galerili kanıt yükleme mekanizması. Görev tamamlanma isteğiyle birlikte API üzerinden yüklenen görseller `warehouse_task_events` tablosunda saklanır.
+
 
 

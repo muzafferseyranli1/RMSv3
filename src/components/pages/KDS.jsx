@@ -14,6 +14,7 @@ import {
   isMissingCallCenterScheduleColumn,
   normalizeLegacyCallCenterOrders,
 } from '@/lib/callCenterOrders'
+import { getTerminalId } from '@/lib/terminalIdentity'
 
 const STATUS_META = {
   pending: { label: 'Bekliyor', color: '#f59e0b', bg: 'rgba(245,158,11,.15)' },
@@ -370,6 +371,41 @@ function OrderCard({ order, lines, onStatusChange, onLineComplete, combined, lin
   )
 }
 
+function playBeep(ctx) {
+  try {
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.type = 'sine'
+    const now = ctx.currentTime
+    osc.frequency.setValueAtTime(880, now)
+    osc.frequency.setValueAtTime(1320, now + 0.15)
+    osc.frequency.setValueAtTime(880, now + 0.30)
+    gain.gain.setValueAtTime(0.3, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+    osc.start(now)
+    osc.stop(now + 0.5)
+  } catch {}
+}
+
+function playNotificationSound(soundUrl, ctx) {
+  if (soundUrl) {
+    try {
+      const audio = new Audio(soundUrl)
+      audio.play().catch(err => {
+        console.warn('Custom sound autoplay blocked or failed, falling back to beep:', err)
+        if (ctx) playBeep(ctx)
+      })
+    } catch (err) {
+      console.warn('Failed to play custom sound, falling back to beep:', err)
+      if (ctx) playBeep(ctx)
+    }
+  } else {
+    if (ctx) playBeep(ctx)
+  }
+}
+
 export default function KDS() {
   const { branchId, branchName } = useWorkspace()
   const [orders, setOrders] = useState([])
@@ -395,6 +431,36 @@ export default function KDS() {
   const linesRef = useRef({})
   const supportsPickupCalledRef = useRef(true)
   const supportsLineCompletionRef = useRef(true)
+  const audioCtxRef = useRef(null)
+  const [soundSettings, setSoundSettings] = useState({ enabled: false, url: '' })
+
+  useEffect(() => {
+    let ignore = false
+    async function fetchSoundSettings() {
+      try {
+        const terminalId = getTerminalId()
+        if (terminalId) {
+          const { data, error } = await db
+            .from('pos_terminals')
+            .select('config_data')
+            .eq('id', terminalId)
+            .maybeSingle()
+          if (!error && data && data.config_data && !ignore) {
+            setSoundSettings({
+              enabled: data.config_data.kds_sound_enabled === true,
+              url: data.config_data.kds_sound_url || ''
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load KDS terminal sound settings:', err)
+      }
+    }
+    fetchSoundSettings()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     ordersRef.current = orders
@@ -596,6 +662,13 @@ export default function KDS() {
         lineMap[line.sale_id].push(line)
       })
 
+      const previousOrderIds = new Set((ordersRef.current || []).map(o => o.id))
+      const hasNewOrder = visibleSales.some(order => !previousOrderIds.has(order.id))
+      if (hasNewOrder && ordersRef.current.length > 0 && soundSettings.enabled) {
+        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+        playNotificationSound(soundSettings.url, audioCtxRef.current)
+      }
+
       setOrders(visibleSales)
       setLines(lineMap)
       hasLoadedOnceRef.current = true
@@ -611,7 +684,7 @@ export default function KDS() {
         }, 60)
       }
     }
-  }, [branchId, branchName, filter])
+  }, [branchId, branchName, filter, soundSettings])
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)

@@ -1,1 +1,0 @@
-import{j as r}from"./index-Calpf1UF.js";import{PersonnelPage as o}from"./Personnel-CldT6YIa.js";import"./Header-BBzR0pZ6.js";import"./Modal-CG79s8w9.js";import"./ConfirmDialog-DK3bZ1Rs.js";import"./AddButton-GdH6KBfS.js";function s(){return r.jsx(o,{mode:"branch"})}export{s as default};

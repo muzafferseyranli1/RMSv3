@@ -1,14 +1,17 @@
-# Task List - Railway Deploy Hatası ve Ekran Güncelleme Sorunları
+# Kiosk Cihaz Bazlı Çalışma Saatleri Entegrasyonu
 
-- `[x]` Sipariş akışları ekranındaki silme/geri alma sonrası anlık güncelleme sorununun çözülmesi
-  - `[x]` `src/components/pages/OrderFlows.jsx` içindeki `softDelete` ve `restore` fonksiyonlarının optimistic state güncellemesiyle yenilenmesi
-  - `[x]` Vite derleme doğrulaması (`npm run build`)
-  - `[x]` Dokümantasyon (`walkthrough.md`) ve `OperationSync.md` güncellemeleri
-- `[x]` Koşullu postinstall script'inin (`scripts/postinstall.cjs`) oluşturulması
-- `[x]` `package.json` dosyasındaki `"postinstall"` adımının güncellenmesi
-- `[x]` Lokal ortamda `npm install` ile entegrasyonun doğrulanması
-- `[x]` Git status kontrolünün yapılması ve deploy doğrulaması
-- `[x]` Sipariş Akışları sayfasında "Kaydet" butonuna tıklandığında drawer'ın kapanmaması ve listenin yenilenmemesi sorununun giderilmesi
-  - `[x]` `FlowForm.save` fonksiyonunda insert/update sorgularından `.single()` çağrısının kaldırılarak PGRST116/No rows found hatasının engellenmesi
-  - `[x]` `onFormSaved` fonksiyonundaki UI güncelleme adımlarının `try-catch` blokları ile güvenli hale getirilerek olası hatalarda drawer'ın takılı kalmasının engellenmesi
-  - `[x]` `npm run build` ile Vite derleme doğrulaması
+- `[x]` Veritabanı Değişiklikleri (Database Layer)
+  - `[x]` `migrations/055_kiosk_operating_hours_rules.sql` dosyasının oluşturulması
+  - `[x]` Tabloların Railway Postgres DB üzerinde çalıştırılarak uygulanması
+  - `[x]` `schema-railway-master.sql` dosyasına yeni tabloların eklenmesi
+- `[x]` Frontend UI Değişiklikleri (`KioskManagementDesktop.jsx`)
+  - `[x]` `ScheduleRuleEditor` kural düzenleyici tasarımının yatay/sıkı hale getirilmesi (İsim alanı eklenmesi)
+  - `[x]` Şube saat kurallarının `kiosk_operating_hours_rules` tablosundan yüklenmesi/yazılması işlemlerinin entegrasyonu
+  - `[x]` Kiosk cihaz listesinde "Çalışma Saatlerini Kullan" toggle'ı açıldığında kuralların listelenip seçilmesi ve `kiosk_terminal_operating_rules` tablosuna yazılması
+- `[x]` İstemci Kiosk Entegrasyonları (`KioskBig.jsx` & `KioskTablet.jsx`)
+  - `[x]` `KioskBig.jsx` üzerinde terminal-kural eşleşmelerinin çekilmesi ve kurala göre açık/kapalı kontrolü
+  - `[x]` `KioskTablet.jsx` üzerinde aynı kontrollerin entegre edilmesi
+- `[x]` Doğrulama (Verification)
+  - `[x]` Vite production build doğrulaması (`npm run build`)
+  - `[x]` Git status kontrolü
+  - `[x]` `OperationSync.md` dosyasına güncel durum logunun yazılması

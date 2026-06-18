@@ -1,8 +1,8 @@
-# Görev Takip Modülü — Geliştirme Planı
+﻿# Görev Takip Modülü — Geliştirme Planı
 
 Tarih: 2026-05-11  
 Kaynak: görevtakibi.txt (Railway Postgres mimarisine uyarlanmış)  
-Proje: C:\RMSv3
+Proje: X:\RMSv3
 
 ---
 
@@ -934,3 +934,4 @@ görevtakibi.txt                      GÜNCELLENDİ
 1. `npm.cmd run build` — hatasız build
 2. Manuel golden path testi
 3. `OperationSync.md`'e kayıt (görev tamamlanmış sayılmaz)
+

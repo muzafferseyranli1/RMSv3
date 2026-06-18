@@ -1,4 +1,4 @@
-# SuitableRMS Project Governance
+﻿# SuitableRMS Project Governance
 
 Yürürlük tarihi: `2026-05-09`  
 Status: `active — tüm agent'lar için bağlayıcı`
@@ -7,7 +7,7 @@ Status: `active — tüm agent'lar için bağlayıcı`
 
 ## 1. Proje Konumu
 
-- Lokal dizin: `C:\RMSv3`
+- Lokal dizin: `X:\RMSv3`
 - Lokal dev: `npm.cmd run dev`
 - Lokal build: `npm.cmd run build`
 
@@ -206,3 +206,4 @@ Tek veri kaynağı Railway Postgres'tir.
 Auth yoktur.  
 AWS ve Supabase tarihe karışmıştır.  
 Bu politika yazılı olarak değiştirilmedikçe tüm agent'lar, deploylar ve geliştirme çalışmaları için geçerlidir.
+

@@ -7,6 +7,7 @@ import {
   isOrderVisibleForScreen,
   loadKioskSettings,
 } from '@/lib/kioskSettings'
+import { getTerminalId } from '@/lib/terminalIdentity'
 
 const BACKGROUND_REFRESH_MS = 1200
 
@@ -59,25 +60,43 @@ function WaitBadge({ dateStr }) {
   )
 }
 
-function SoundPlayer({ play }) {
+function SoundPlayer({ play, enabled, soundUrl }) {
   const ctxRef = useRef(null)
 
   useEffect(() => {
-    if (!play) return
-    try {
-      if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-      const ctx = ctxRef.current
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.3, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.5)
-    } catch {}
-  }, [play])
+    if (!play || !enabled) return
+
+    function playBeep() {
+      try {
+        if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+        const ctx = ctxRef.current
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = 880
+        gain.gain.setValueAtTime(0.3, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.5)
+      } catch {}
+    }
+
+    if (soundUrl) {
+      try {
+        const audio = new Audio(soundUrl)
+        audio.play().catch(err => {
+          console.warn('Custom sound autoplay blocked or failed, falling back to beep:', err)
+          playBeep()
+        })
+      } catch (err) {
+        console.warn('Failed to play custom sound, falling back to beep:', err)
+        playBeep()
+      }
+    } else {
+      playBeep()
+    }
+  }, [play, enabled, soundUrl])
 
   return null
 }
@@ -270,6 +289,35 @@ export default function PickupScreen() {
   const preparingRef = useRef([])
   const readyRef = useRef([])
   const supportsPickupCalledRef = useRef(true)
+  const [soundSettings, setSoundSettings] = useState({ enabled: false, url: '' })
+
+  useEffect(() => {
+    let ignore = false
+    async function fetchSoundSettings() {
+      try {
+        const terminalId = getTerminalId()
+        if (terminalId) {
+          const { data, error } = await db
+            .from('pos_terminals')
+            .select('config_data')
+            .eq('id', terminalId)
+            .maybeSingle()
+          if (!error && data && data.config_data && !ignore) {
+            setSoundSettings({
+              enabled: data.config_data.pickup_sound_enabled === true,
+              url: data.config_data.pickup_sound_url || ''
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load Pickup terminal sound settings:', err)
+      }
+    }
+    fetchSoundSettings()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     preparingRef.current = preparing
@@ -387,10 +435,10 @@ export default function PickupScreen() {
       const nextPreparing = visibleOrders.filter(order => order.kds_status === 'pending' || order.kds_status === 'in_progress')
       const nextReady = visibleOrders.filter(order => order.kds_status === 'ready')
 
-      const calledReadyIds = new Set(nextReady.filter(order => !pickupCalledSupported || order.pickup_called === true).map(order => order.id))
-      const hasNewCalled = nextReady.some(order => (!pickupCalledSupported || order.pickup_called === true) && !prevReadyIdsRef.current.has(order.id))
-      if (hasNewCalled && prevReadyIdsRef.current.size > 0) setSoundTrigger(count => count + 1)
-      prevReadyIdsRef.current = calledReadyIds
+      const currentReadyIds = new Set(nextReady.map(order => order.id))
+      const hasNewReady = nextReady.some(order => !prevReadyIdsRef.current.has(order.id))
+      if (hasNewReady && prevReadyIdsRef.current.size > 0) setSoundTrigger(count => count + 1)
+      prevReadyIdsRef.current = currentReadyIds
 
       setPreparing(nextPreparing)
       setReady(nextReady)
@@ -406,7 +454,7 @@ export default function PickupScreen() {
         }, 60)
       }
     }
-  }, [branchId, branchName])
+  }, [branchId, branchName, soundSettings])
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current)
@@ -492,7 +540,7 @@ export default function PickupScreen() {
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#0f172a', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'inherit' }}>
-      <SoundPlayer play={soundTrigger} />
+      <SoundPlayer play={soundTrigger} enabled={soundSettings.enabled} soundUrl={soundSettings.url} />
 
       <div style={{ padding: '14px 24px', background: '#1e293b', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
         <i className="fa-solid fa-hand-holding-box" style={{ color: '#7c3aed', fontSize: 22 }} />

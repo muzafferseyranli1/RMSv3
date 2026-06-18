@@ -1,4 +1,4 @@
----
+﻿---
 name: rmsv3-demo-builder
 description: Use when creating, planning, auditing, or repairing SuitableRMS demo data for a module, flow, or showcase dataset. This skill treats Railway Postgres as the only authority, requires demo writes to land through the current RMSv3 stack, checks dependency readiness before any generation starts, expands related second-layer records, preserves Turkish-market realism, and refuses silent local-only fallback demos.
 metadata:
@@ -9,14 +9,14 @@ metadata:
 
 Use this skill when the user asks to create demo records, prepare a showcase
 dataset, repair a demo flow, or verify whether a demo is truly DB-first in
-`C:\RMSv3`.
+`X:\RMSv3`.
 
 This skill is for real RMSv3 demo work, not browser-only fake data.
 
 ## Required Preflight
 
-1. Read `C:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
-2. Read `C:\RMSv3\OperationSync.md` if it exists.
+1. Read `X:\RMSv3\SUITABLERMS_PROJECT_GOVERNANCE.md`.
+2. Read `X:\RMSv3\OperationSync.md` if it exists.
 3. Treat `SUITABLERMS_PROJECT_GOVERNANCE.md` as higher priority than
    `README.md` or any historical note.
 4. Identify the requested demo scope:
@@ -260,3 +260,4 @@ Always state:
 - what was written into `OperationSync.md`
 
 If blocked, say exactly what must exist before demo creation can continue.
+

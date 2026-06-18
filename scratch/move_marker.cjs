@@ -1,6 +1,6 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 
-const filePath = 'C:/RMSv3/OperationSync.md';
+const filePath = 'X:/RMSv3/OperationSync.md';
 const markerText = '[SUPPORT_SYNC_MARKER] - Baseline established after initial documentation setup.';
 
 try {
@@ -29,3 +29,4 @@ try {
 } catch (e) {
   console.error('Error:', e);
 }
+

@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Su@echo off
 title SuitableRMS - Ağ Paylaşımı Aktif ve Başlat
 color 0B
@@ -9,7 +9,7 @@ echo   SuitableRMS - Vite Cache Temizleme ve AG PAYLASIMI
 echo ================================================
 echo.
 
-cd /d "C:\RMSggl\Dropbox\RMSv3"
+cd /d "X:\RMSv3"
 
 echo [1/3] Vite cache siliniyor... [cite: 1, 2]
 if exist "node_modules\.vite" (
@@ -48,7 +48,7 @@ echo   SuitableRMS - Vite Cache Temizleme
 echo ================================================
 echo.
 
-cd /d "C:\RMSggl\Dropbox\RMSv3"
+cd /d "X:\RMSv3"
 
 echo [1/3] Vite cache siliniyor...
 if exist "node_modules\.vite" (
@@ -77,3 +77,4 @@ echo.
 npm.cmd run dev
 
 pause
+

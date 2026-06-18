@@ -1,4 +1,4 @@
-# Uygulama Planı - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
+﻿# Uygulama Planı - Operasyon El Kitabı (Faz 3: Kullanıcı Arayüzü)
 
 Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"** gereksinimlerini hayata geçirmeyi hedefler. Önceki fazda oluşturulan API'leri tüketen, modern, duyarlı ve premium React (Tailwind CSS) bileşenlerini tasarlayacaktır.
 
@@ -15,11 +15,11 @@ Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"*
 
 ### 1. Navigasyon ve Rota Güncellemeleri
 
-#### [MODIFY] [Sidebar.jsx](file:///c:/RMSv3/src/components/layout/Sidebar.jsx)
+#### [MODIFY] [Sidebar.jsx](file:///X:/RMSv3/src/components/layout/Sidebar.jsx)
 - **Merkez (HQ) Menüsü:** `İşlemler` (islemler) altına `El Kitabı Yönetimi` (`/manual-yonetimi`, ikon: `fa-book-open-reader`) menü elemanının eklenmesi.
 - **Şube Menüsü:** `İşlemler` (sube-islemler) altına `Operasyon El Kitabı` (`/manual`, ikon: `fa-book-open`) menü elemanının eklenmesi.
 
-#### [MODIFY] [App.jsx](file:///c:/RMSv3/src/App.jsx)
+#### [MODIFY] [App.jsx](file:///X:/RMSv3/src/App.jsx)
 - Lazy import listesine `ManualManagement` ve `ManualReader` bileşenlerinin eklenmesi.
 - Rota listesine ilgili sayfaların eklenmesi:
   - `/manual-yonetimi` -> `<ManualManagement />`
@@ -27,7 +27,7 @@ Bu plan, **"Görev Fazı 3: Kullanıcı Arayüzü (Merkez ve Şube Modülleri)"*
 
 ### 2. Arayüz Bileşenlerinin Oluşturulması
 
-#### [NEW] [ManualManagement.jsx](file:///c:/RMSv3/src/components/pages/ManualManagement.jsx)
+#### [NEW] [ManualManagement.jsx](file:///X:/RMSv3/src/components/pages/ManualManagement.jsx)
 Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebileceği yönetim ekranı:
 - **Kategori Yönetimi Sekmesi:** Kategorileri listeleme (CRUD), `display_order` ve açıklama alanlarının eklenip güncellenmesi.
 - **Sayfa Yönetimi ve Düzenleyici Sekmesi:**
@@ -38,7 +38,7 @@ Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebilece
     - Düzenleyen Personel PIN Kodu girişi.
     - **Ekipman İlişkilendir (Multi-select dropdown/onay kutuları):** Sistemde tanımlı küresel ekipman tanımlarını (`/api/manual/equipments`) çekerek sayfaya bağlanmasını sağlayan görsel seçim alanı.
 
-#### [NEW] [ManualReader.jsx](file:///c:/RMSv3/src/components/pages/ManualReader.jsx)
+#### [NEW] [ManualReader.jsx](file:///X:/RMSv3/src/components/pages/ManualReader.jsx)
 Şube personelinin prosedürleri okuyabileceği ve ilgili ekipmanlara arıza bildirebileceği okuyucu arayüzü:
 - **Sol Panel (Accordion/Tree Menü):** Kategorilerin ve altındaki sayfaların listelendiği menü.
 - **Sağ Panel (Okuma Alanı):**
@@ -60,3 +60,4 @@ Merkez yöneticilerinin el kitabı kategorilerini ve sayfalarını yönetebilece
 ### Manual Verification
 - Merkez modülü üzerinden yeni kategori ("Bar Operasyonu") ve yeni sayfa ("Kahve Değirmeni Kalibrasyonu") oluşturulup, örnek bir ekipman (Espresso Makinesi) ile ilişkilendirilecektir.
 - Şube modülüne geçiş yapılarak ilgili sayfa açılacak, sayfa altındaki Espresso Makinesi kartına tıklanıp arıza açıklaması girilerek arıza kaydı oluşturulacak ve veritabanına başarıyla yazıldığı doğrulanacaktır.
+

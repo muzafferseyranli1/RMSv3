@@ -1,4 +1,4 @@
-# SuitableRMS Masaüstü (Desktop) Uygulaması Kılavuzu
+﻿# SuitableRMS Masaüstü (Desktop) Uygulaması Kılavuzu
 
 Bu belge, SuitableRMS masaüstü (.exe) uygulamasının mimarisini, yayınlama süreçlerini, kesin kurallarını (kırmızı çizgilerini) ve sorun giderme yöntemlerini içerir. Gelecekteki geliştirmelerde ve yaşanabilecek sorunlarda bir rehber olması amacıyla hazırlanmıştır.
 
@@ -29,7 +29,7 @@ Masaüstü uygulamasında hataların veya veri kayıplarının önüne geçmek i
 3. **Rollerin Değiştirilmemesi:** 
    * Bir bilgisayar `Yan Kasa (Slave)` olarak kurulmuşsa arka planda zorla `Ana Kasa (Master)` yapılmaya çalışılmamalıdır. Eşleştirme ekranından cihaz silinip tekrar doğru rolle (Ana Kasa) eşleştirilmelidir.
 4. **Klasör Yolları (Paths):** 
-   * Electron uygulamasında yerel dosyalarla çalışırken (veritabanı vb.) doğrudan `C:\RMSv3` gibi yollar kullanılmaz. Kullanıcının bilgisayarında projenin nereye kurulacağı belli olmadığı için her zaman `app.getPath('userData')` (Yani `%APPDATA%\suitable-rms`) kullanılmalıdır.
+   * Electron uygulamasında yerel dosyalarla çalışırken (veritabanı vb.) doğrudan `X:\RMSv3` gibi yollar kullanılmaz. Kullanıcının bilgisayarında projenin nereye kurulacağı belli olmadığı için her zaman `app.getPath('userData')` (Yani `%APPDATA%\suitable-rms`) kullanılmalıdır.
 
 ---
 
@@ -69,3 +69,4 @@ Sahadan bir hata raporu geldiğinde ilk bakılacak yerler:
 
 ---
 *Bu belge, uygulamanın sorunsuz bir yaşam döngüsüne sahip olması için Antigravity tarafından oluşturulmuştur.*
+

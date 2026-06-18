@@ -22,6 +22,10 @@ import {
   resolveKioskDeviceStation,
   saveKioskDeviceStationCode,
   linkCustomerToKioskSession,
+  nowDayCode,
+  nowMinutes,
+  parseTimeMinutes,
+  getCategoryIdsForKioskCategory,
 } from '@/lib/kioskSettings'
 import {
   lookupCustomerByQrCode,
@@ -2713,6 +2717,8 @@ export default function KioskTablet() {
   const [deviceStations, setDeviceStations] = useState([])
   const [deviceKioskCode, setDeviceKioskCode] = useState('')
   const [kioskStationDraft, setKioskStationDraft] = useState('')
+  const [operatingRules, setOperatingRules] = useState([])
+  const [deviceAssignments, setDeviceAssignments] = useState([])
   const [kioskStationModalMode, setKioskStationModalMode] = useState('initial')
   const [kioskStationModalOpen, setKioskStationModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -2837,14 +2843,47 @@ export default function KioskTablet() {
   // Show modal when not yet paired OR when paired but code no longer exists in current device list
   const needsPairing = !deviceKioskCode || (deviceKioskCode && deviceStations.length > 0 && !kioskStationConfig.hasMatch)
   const showVisibleStationSetup = needsPairing
-  const kioskOperatingState = useMemo(
-    () => getKioskOperatingState(settings, clockNow),
-    [settings, clockNow],
-  )
-  const kioskInteractive = settings.enabled !== false && kioskOperatingState.isOpen !== false
+  const kioskOperatingState = useMemo(() => {
+    const isHoursEnabled = selectedKioskStation?.operating_hours_enabled === true
+    if (!isHoursEnabled) {
+      return { isOpen: true, activeRule: null }
+    }
+    const assignedRuleIds = deviceAssignments
+      .filter(a => a.terminal_id === selectedKioskStation.id)
+      .map(a => a.rule_id)
+    const myRules = operatingRules.filter(r => assignedRuleIds.includes(r.id))
+    if (!myRules.length) {
+      return { isOpen: true, activeRule: null }
+    }
+
+    const nowCode = nowDayCode(clockNow)
+    const nowMin = nowMinutes(clockNow)
+
+    const activeRule = myRules.find(rule => {
+      const days = rule.days || []
+      const matchesDay = days.length === 0 || days.includes(nowCode)
+      const startMin = parseTimeMinutes(rule.start_time || '09:00')
+      const endMin = parseTimeMinutes(rule.end_time || '22:00')
+
+      let matchesTime = false
+      if (startMin <= endMin) {
+        matchesTime = nowMin >= startMin && nowMin <= endMin
+      } else {
+        matchesTime = nowMin >= startMin || nowMin <= endMin
+      }
+      return matchesDay && matchesTime
+    }) || null
+
+    return {
+      isOpen: Boolean(activeRule),
+      activeRule,
+    }
+  }, [operatingRules, deviceAssignments, selectedKioskStation, clockNow])
+  const kioskInteractive = settings.enabled !== false && selectedKioskStation?.active !== false && kioskOperatingState.isOpen !== false
   const loyaltyQrAvailable = kioskInteractive
     && Boolean(branchId || branchName)
     && kioskStationConfig.hasMatch
+    && settings.loyalty_qr_enabled === true
   const idleTitle = kioskInteractive
     ? (displayText(settings.idle_title, 'Hoş geldiniz!'))
     : (displayText(settings.closed_title, 'Kiosk şu anda kapalı'))
@@ -2917,7 +2956,7 @@ export default function KioskTablet() {
       setDeviceKioskCode(nextDeviceCode)
       setKioskStationDraft(nextDeviceCode)
 
-      const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes, devicesRes] = await Promise.all([
+      const [settingsData, catRes, prodRes, chanRes, taxRes, comboRes, optionGroupsRes, devicesRes, rulesRes, assignmentsRes] = await Promise.all([
         settingsPromise,
         db.from('sale_categories').select('id,name,parent_id,image_url,bg,text_color').is('deleted_at', null),
         db.from('sale_items').select('id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes').is('deleted_at', null).eq('active', true),
@@ -2926,6 +2965,8 @@ export default function KioskTablet() {
         db.from('settings').select('value').eq('key', 'combo_menus_v1').maybeSingle(),
         db.from('option_groups').select('id,name,options').is('deleted_at', null),
         branchId ? db.from('pos_terminals').select('*').eq('branch_id', branchId).in('device_type', ['kiosk', 'kiosk_tablet']) : Promise.resolve({ data: [] }),
+        branchId ? db.from('kiosk_operating_hours_rules').select('*').eq('branch_id', branchId) : Promise.resolve({ data: [] }),
+        branchId ? db.from('kiosk_terminal_operating_rules').select('terminal_id, rule_id') : Promise.resolve({ data: [] }),
       ])
       if (catRes.error) throw catRes.error
       if (prodRes.error) throw prodRes.error
@@ -2935,6 +2976,9 @@ export default function KioskTablet() {
       const categorySnapshot = await ensureComboMenuCategory(catRes.data || [])
       const safeCategories = categorySnapshot.categories || sortSaleCategoriesWithComboFirst(catRes.data || [])
       
+      setOperatingRules(rulesRes?.data || [])
+      setDeviceAssignments(assignmentsRes?.data || [])
+
       if (settingsData && devicesRes?.data) {
         const stations = (devicesRes.data || []).sort((left, right) => (
           String(left.terminal_name || '').localeCompare(String(right.terminal_name || ''), 'tr')
@@ -2943,9 +2987,11 @@ export default function KioskTablet() {
           code: device.activation_code,
           name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
           kiosk_number: index + 1,
-          active: true,
+          active: device.is_active !== false,
           order: index + 1,
-          device_type: device.device_type
+          device_type: device.device_type,
+          operating_hours_enabled: device.config_data?.operating_hours_enabled === true,
+          table_service_enabled: device.config_data?.table_service_enabled === true
         }))
         setDeviceStations(stations)
         settingsData.kiosk_stations = stations
@@ -3023,9 +3069,10 @@ export default function KioskTablet() {
               code: device.activation_code,
               name: device.terminal_name || (device.device_type === 'kiosk_tablet' ? `Kiosk Tablet ${index + 1}` : `Kiosk ${index + 1}`),
               kiosk_number: index + 1,
-              active: true,
+              active: device.is_active !== false,
               order: index + 1,
-              device_type: device.device_type
+              device_type: device.device_type,
+              operating_hours_enabled: device.config_data?.operating_hours_enabled === true
             }))
             setDeviceStations(stations)
           }).catch(() => {})
@@ -3253,7 +3300,7 @@ export default function KioskTablet() {
     [categorySections, activeCategory],
   )
 
-  const tabletQuickPickLimit = tabletIsLandscape ? 3 : 2
+  const tabletQuickPickLimit = 2
   const mainBannerProduct = categorySections[0]?.products?.[0] || activeProducts[0] || allProducts[0] || null
   const tabletBannerProductId = settings.tablet_main_banner_product_id || settings.main_banner_product_id || ''
   const tabletBannerCategoryId = settings.tablet_main_banner_category_id || settings.main_banner_category_id || ''
@@ -3337,9 +3384,7 @@ export default function KioskTablet() {
   }
 
   function getProductsForCategory(catId) {
-    const childCatIds = new Set(
-      categories.filter(c => c.id === catId || c.parent_id === catId).map(c => c.id)
-    )
+    const childCatIds = getCategoryIdsForKioskCategory(catId, categories, settings, clockNow)
     return allProducts.filter(p => {
       const prices = Array.isArray(p.channel_prices) ? p.channel_prices : []
       const visible = channel?.id
@@ -3798,7 +3843,7 @@ export default function KioskTablet() {
   }
 
   function continueCheckoutFlow() {
-    if (settings.table_service_enabled) setScreen('service_type')
+    if (selectedKioskStation?.table_service_enabled) setScreen('service_type')
     else setScreen('payment')
   }
 
@@ -4476,7 +4521,7 @@ export default function KioskTablet() {
         await db.from('sales').update({
           kds_status: 'pending',
           pickup_called: false,
-          kiosk_service_type: (settings.table_service_enabled || qrParams.tableToken) ? serviceType : 'takeaway',
+          kiosk_service_type: (selectedKioskStation?.table_service_enabled || qrParams.tableToken) ? serviceType : 'takeaway',
           kiosk_table_number: serviceType === 'table_service' ? tableNumber : null,
           kiosk_display_no: displayNo,
           kiosk_station_code: selectedKioskStation?.code || kioskStationConfig.stationCode || null,
@@ -4871,7 +4916,7 @@ export default function KioskTablet() {
                       key={section.category.id}
                       category={section.category}
                       active={activeCategory?.id === section.category.id}
-                      accent={accentColor}
+                      accent={categoryActiveColor}
                       buttonRef={el => { catButtonRefs.current[section.category.id] = el }}
                       height={categoryButtonHeight}
                       showLabel={settings.kiosk_show_category_labels !== false}
@@ -5069,7 +5114,7 @@ export default function KioskTablet() {
                       >
                         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
                           <div style={{ fontSize: '.86rem', fontWeight: 900, color: tabletIsLandscape ? '#0f172a' : '#7c2d12' }}>{displayText(section.category.kioskButtonLabel || section.category.name)}</div>
-                          <div style={{ fontSize: '.66rem', letterSpacing: '.08em', textTransform: 'uppercase', color: activeCategory?.id === section.category.id ? accentColor : '#94a3b8', fontWeight: 800 }}>
+                          <div style={{ fontSize: '.66rem', letterSpacing: '.08em', textTransform: 'uppercase', color: activeCategory?.id === section.category.id ? categoryActiveColor : '#94a3b8', fontWeight: 800 }}>
                             {section.products.length} {displayText('ürün')}
                           </div>
                         </div>
@@ -5290,7 +5335,7 @@ export default function KioskTablet() {
         {screen === 'payment' && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', background: 'transparent' }}>
             <div style={{ padding: '14px 16px', background: rgba(panelColor, .88), display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid rgba(148,163,184,.12)' }}>
-              <button onClick={() => setScreen(settings.table_service_enabled ? 'service_type' : 'cart_review')} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>
+              <button onClick={() => setScreen(selectedKioskStation?.table_service_enabled ? 'service_type' : 'cart_review')} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>
                 <i className="fa-solid fa-arrow-left" />
               </button>
               <span style={{ color: textColor, fontWeight: 700, fontSize: 18 }}>{isZeroTotalOrder ? 'Sipariş Onayı' : 'Ödeme'}</span>

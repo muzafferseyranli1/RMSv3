@@ -1,1 +1,0 @@
-import{d as a}from"./index-DOuowHUG.js";async function o(t,r){const{data:e,error:n}=await a.from("settings").select("value").eq("key",t).maybeSingle();if(n)throw n;return(e==null?void 0:e.value)??r}async function s(t,r){const{error:e}=await a.from("settings").upsert({key:t,value:r});if(e)throw e}export{o as r,s as w};

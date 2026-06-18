@@ -1,8 +1,8 @@
-# SuitableRMS v3 — Design Handbook
+﻿# SuitableRMS v3 — Design Handbook
 
 Yürürlük tarihi: `2026-05-09`
 Status: `active — tüm UI agent'ları için bağlayıcı`
-Proje dizini: `C:\RMSv3`
+Proje dizini: `X:\RMSv3`
 
 ---
 
@@ -409,3 +409,4 @@ Bir agent şunları yapamaz:
 - Eşdeğer bir form veya ekran örneği `/design-demo`'da varsa, agent yeni görsel dil üretemez; o omurga doğrudan baz alınır.
 - `/design-demo` çalışma panosu veya proje durum ekranı değildir; yalnız kanonik UI referansı içindir.
 - Bu handbook ile `/design-demo` çelişirse, önce handbook ve demo birlikte güncellenir, sonra ekran yazılır.
+

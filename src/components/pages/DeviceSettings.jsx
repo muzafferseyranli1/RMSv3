@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useId } from 'react'
 import { Plus, Trash2, Smartphone, Monitor, Server, Tablet, Presentation } from 'lucide-react'
-import { db } from '@/lib/db'
+import { db, uploadApiFile, buildApiUrl } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { loadTableManagementCatalog } from '@/lib/posTableCatalogService'
+import { loadKioskSettings, saveKioskSettings } from '@/lib/kioskSettings'
 
 export default function DeviceSettings() {
   const { branchId } = useWorkspace()
@@ -20,6 +21,7 @@ export default function DeviceSettings() {
   })
   const [halls, setHalls] = useState([])
   const [coverSettings, setCoverSettings] = useState({ tracking_enabled: true, default_count: 1 })
+  const [globalKdsCombined, setGlobalKdsCombined] = useState(false)
   const toast = useToast()
 
   const loadDevices = async () => {
@@ -53,9 +55,32 @@ export default function DeviceSettings() {
     }
   }
 
+  const loadGlobalSettings = async () => {
+    try {
+      const settings = await loadKioskSettings()
+      setGlobalKdsCombined(settings.kds_pickup_combined === true)
+    } catch (e) {
+      console.error('Global settings could not be loaded', e)
+    }
+  }
+
+  const handleToggleKdsCombined = async (val) => {
+    try {
+      const settings = await loadKioskSettings()
+      settings.kds_pickup_combined = val
+      await saveKioskSettings(settings)
+      setGlobalKdsCombined(val)
+      toast(val ? 'Birleşik KDS ve Pickup modu aktif edildi.' : 'Ayrık KDS ve Pickup modu aktif edildi.', 'success')
+    } catch (e) {
+      toast('Ayar güncellenirken hata oluştu', 'error')
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     loadDevices()
     loadCoverSettings()
+    loadGlobalSettings()
   }, [branchId])
 
   useEffect(() => {
@@ -233,6 +258,13 @@ export default function DeviceSettings() {
     })
   }
 
+  const setConfigValue = (key, value) => {
+    setFormData({
+      ...formData,
+      config_data: { ...formData.config_data, [key]: value }
+    })
+  }
+
   return (
     <div>
       <Header 
@@ -245,6 +277,21 @@ export default function DeviceSettings() {
           </button>
         }
       />
+
+      <div className="card mt-6 p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
+        <div>
+          <div className="text-sm font-bold text-gray-950">KDS + Teslimat Birleşik Çalışsın</div>
+          <div className="text-xs text-gray-500 mt-0.5">Açıksa teslim işlemleri KDS tarafında yönetilir, pickup bilgi moduna geçer.</div>
+        </div>
+        <label className="tog">
+          <input 
+            type="checkbox" 
+            checked={globalKdsCombined} 
+            onChange={e => handleToggleKdsCombined(e.target.checked)} 
+          />
+          <span className="tog-sl" />
+        </label>
+      </div>
 
       <div className="card mt-6" style={{ padding: 18 }}>
         <table className="w-full text-sm text-left">
@@ -460,85 +507,265 @@ export default function DeviceSettings() {
           )}
 
           {formData.device_type === 'kds' && (
-            <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-              <label className="block text-sm font-medium mb-3">Dinlenecek Sipariş Kaynakları</label>
-              {sourceDevices.length === 0 ? (
-                <p className="text-sm text-gray-500">Sistemde henüz POS veya Garson cihazı bulunmuyor.</p>
-              ) : (
-                <div className="space-y-2">
-                  {sourceDevices.map(src => {
-                    const isChecked = (formData.config_data.allowed_sources || []).includes(src.activation_code)
-                    return (
-                      <label key={src.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
-                        <input 
-                          type="checkbox" 
-                          checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_sources', src.activation_code)} 
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-medium">{getDeviceTypeName(src.device_type)} - {src.activation_code}</span>
-                      </label>
-                    )
-                  })}
+            <>
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                <label className="block text-sm font-medium mb-3">Dinlenecek Sipariş Kaynakları</label>
+                {sourceDevices.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sistemde henüz POS veya Garson cihazı bulunmuyor.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sourceDevices.map(src => {
+                      const isChecked = (formData.config_data.allowed_sources || []).includes(src.activation_code)
+                      return (
+                        <label key={src.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => toggleConfigArrayItem('allowed_sources', src.activation_code)} 
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm font-medium">{getDeviceTypeName(src.device_type)} - {src.activation_code}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-3">Hiçbiri seçilmezse, cihaz yapılandırma hatası verir veya tüm siparişleri çeker.</p>
+              </div>
+
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2">Sesli Uyarı Ayarları</h4>
+                
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="kds_sound_enabled"
+                    checked={formData.config_data.kds_sound_enabled === true}
+                    onChange={e => setConfigValue('kds_sound_enabled', e.target.checked)} 
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="kds_sound_enabled" className="text-sm font-medium text-gray-900 cursor-pointer">
+                    Yeni sipariş gelince ses çal
+                  </label>
                 </div>
-              )}
-              <p className="text-xs text-gray-400 mt-3">Hiçbiri seçilmezse, cihaz yapılandırma hatası verir veya tüm siparişleri çeker.</p>
-            </div>
+
+                {formData.config_data.kds_sound_enabled && (
+                  <UploadField 
+                    label="Ses Dosyası Yükle"
+                    hint="Yeni sipariş geldiğinde çalacak ses dosyası (.mp3, .wav vb. önerilir)"
+                    value={formData.config_data.kds_sound_url || ''}
+                    onChange={val => setConfigValue('kds_sound_url', val)}
+                    accept="audio/*"
+                    previewKind="audio"
+                  />
+                )}
+              </div>
+            </>
           )}
 
           {formData.device_type === 'pickup' && (
-            <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-              <label className="block text-sm font-medium mb-3">Bağlı Olunan KDS (Mutfak) Cihazları</label>
-              {kdsDevices.length === 0 ? (
-                <p className="text-sm text-gray-500">Sistemde henüz KDS (Mutfak) cihazı bulunmuyor.</p>
-              ) : (
-                <div className="space-y-2">
-                  {kdsDevices.map(kds => {
-                    const isChecked = (formData.config_data.allowed_kds || []).includes(kds.activation_code)
-                    return (
-                      <label key={kds.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
-                        <input 
-                          type="checkbox" 
-                          checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_kds', kds.activation_code)} 
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-medium">KDS - {kds.activation_code}</span>
-                      </label>
-                    )
-                  })}
+            <>
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                <label className="block text-sm font-medium mb-3">Bağlı Olunan KDS (Mutfak) Cihazları</label>
+                {kdsDevices.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sistemde henüz KDS (Mutfak) cihazı bulunmuyor.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {kdsDevices.map(kds => {
+                      const isChecked = (formData.config_data.allowed_kds || []).includes(kds.activation_code)
+                      return (
+                        <label key={kds.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => toggleConfigArrayItem('allowed_kds', kds.activation_code)} 
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm font-medium">KDS - {kds.activation_code}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2">Sesli Uyarı Ayarları</h4>
+                
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="pickup_sound_enabled"
+                    checked={formData.config_data.pickup_sound_enabled === true}
+                    onChange={e => setConfigValue('pickup_sound_enabled', e.target.checked)} 
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="pickup_sound_enabled" className="text-sm font-medium text-gray-900 cursor-pointer">
+                    Sipariş hazır olunca ses çal
+                  </label>
                 </div>
-              )}
-            </div>
+
+                {formData.config_data.pickup_sound_enabled && (
+                  <UploadField 
+                    label="Ses Dosyası Yükle"
+                    hint="Sipariş hazır durumuna geldiğinde çalacak ses dosyası (.mp3, .wav vb. önerilir)"
+                    value={formData.config_data.pickup_sound_url || ''}
+                    onChange={val => setConfigValue('pickup_sound_url', val)}
+                    accept="audio/*"
+                    previewKind="audio"
+                  />
+                )}
+              </div>
+            </>
           )}
 
           {formData.device_type === 'queue_screen' && (
-            <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-              <label className="block text-sm font-medium mb-3">İlişkili Teslimat (Pickup) Cihazları</label>
-              {pickupDevices.length === 0 ? (
-                <p className="text-sm text-gray-500">Sistemde henüz Teslimat (Pickup) cihazı bulunmuyor.</p>
-              ) : (
-                <div className="space-y-2">
-                  {pickupDevices.map(pu => {
-                    const isChecked = (formData.config_data.allowed_pickups || []).includes(pu.activation_code)
-                    return (
-                      <label key={pu.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
-                        <input 
-                          type="checkbox" 
-                          checked={isChecked}
-                          onChange={() => toggleConfigArrayItem('allowed_pickups', pu.activation_code)} 
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-medium">Pickup - {pu.activation_code}</span>
-                      </label>
-                    )
-                  })}
+            <>
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                <label className="block text-sm font-medium mb-3">İlişkili Teslimat (Pickup) Cihazları</label>
+                {pickupDevices.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sistemde henüz Teslimat (Pickup) cihazı bulunmuyor.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pickupDevices.map(pu => {
+                      const isChecked = (formData.config_data.allowed_pickups || []).includes(pu.activation_code)
+                      return (
+                        <label key={pu.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => toggleConfigArrayItem('allowed_pickups', pu.activation_code)} 
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm font-medium">Pickup - {pu.activation_code}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="mt-3 bg-blue-50 text-blue-800 p-2 text-xs rounded border border-blue-200">
+                  Oluşturulduktan sonra listeye yansıyacak olan benzersiz URL adresini Sıra Ekranı televizyonundaki tarayıcıda açabilirsiniz.
                 </div>
-              )}
-              <div className="mt-3 bg-blue-50 text-blue-800 p-2 text-xs rounded border border-blue-200">
-                Oluşturulduktan sonra listeye yansıyacak olan benzersiz URL adresini Sıra Ekranı televizyonundaki tarayıcıda açabilirsiniz.
               </div>
-            </div>
+
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2">Sıra Ekranı Görsel Ayarları</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Zemin Rengi">
+                    <input 
+                      type="color" 
+                      value={formData.config_data.queue_bg_color || '#0f172a'} 
+                      onChange={e => setConfigValue('queue_bg_color', e.target.value)} 
+                      className="f-input h-10 p-1 cursor-pointer"
+                    />
+                  </Field>
+
+                  <Field label="Yön">
+                    <select 
+                      className="f-input"
+                      value={formData.config_data.queue_orientation || 'landscape'}
+                      onChange={e => setConfigValue('queue_orientation', e.target.value)}
+                    >
+                      <option value="landscape">Yatay</option>
+                      <option value="portrait">Dikey</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <UploadField 
+                  label="Sıra Ekran Logosu" 
+                  hint="Sıra ekranında görünen logo. (Önerilen: 512x512 px)" 
+                  value={formData.config_data.queue_logo_url || ''} 
+                  onChange={val => setConfigValue('queue_logo_url', val)} 
+                  aspect="1 / 1" 
+                  fit="contain" 
+                  targetWidth={512} 
+                  targetHeight={512} 
+                />
+
+                <Field label="Sıra Medya Tipi">
+                  <select 
+                    className="f-input"
+                    value={formData.config_data.queue_media_type || 'none'}
+                    onChange={e => {
+                      const nextVal = e.target.value
+                      setFormData({
+                        ...formData,
+                        config_data: {
+                          ...formData.config_data,
+                          queue_media_type: nextVal,
+                          queue_media_url: ''
+                        }
+                      })
+                    }}
+                  >
+                    <option value="none">Yok</option>
+                    <option value="image">Görsel</option>
+                    <option value="video">Video</option>
+                  </select>
+                </Field>
+
+                {formData.config_data.queue_media_type === 'video' && (
+                  <Field label="Sıra Video URL">
+                    <input 
+                      type="text"
+                      className="f-input"
+                      value={formData.config_data.queue_media_url || ''} 
+                      onChange={e => setConfigValue('queue_media_url', e.target.value)} 
+                      placeholder="https://..." 
+                    />
+                  </Field>
+                )}
+
+                {formData.config_data.queue_media_type === 'image' && (
+                  <UploadField
+                    label="Sıra Zemin Görseli"
+                    hint={`Sıra ekranının arka plan görseli. (Önerilen: ${formData.config_data.queue_orientation === 'portrait' ? '1080x1920' : '1920x1080'} px)`}
+                    value={formData.config_data.queue_media_url || ''}
+                    onChange={val => setConfigValue('queue_media_url', val)}
+                    aspect={formData.config_data.queue_orientation === 'portrait' ? '9 / 16' : '16 / 9'}
+                    fit="cover"
+                    targetWidth={formData.config_data.queue_orientation === 'portrait' ? 1080 : 1920}
+                    targetHeight={formData.config_data.queue_orientation === 'portrait' ? 1920 : 1080}
+                  />
+                )}
+
+                {formData.config_data.queue_media_type === 'none' && (
+                  <div className="text-xs text-gray-500 bg-gray-100 p-2.5 rounded border border-gray-200">
+                    Sıra ekranı için medya seçilmezse yalnızca zemin rengi ve logo ile çalışır.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-4">
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2">Sesli Uyarı Ayarları</h4>
+                
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="queue_sound_enabled"
+                    checked={formData.config_data.queue_sound_enabled !== false}
+                    onChange={e => setConfigValue('queue_sound_enabled', e.target.checked)} 
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="queue_sound_enabled" className="text-sm font-medium text-gray-900 cursor-pointer">
+                    Müşteri çağrılınca (hazır olunca) ses çal
+                  </label>
+                </div>
+
+                {formData.config_data.queue_sound_enabled !== false && (
+                  <UploadField 
+                    label="Ses Dosyası Yükle"
+                    hint="Müşteri çağrıldığında çalacak ses dosyası (.mp3, .wav vb. önerilir)"
+                    value={formData.config_data.queue_sound_url || ''}
+                    onChange={val => setConfigValue('queue_sound_url', val)}
+                    accept="audio/*"
+                    previewKind="audio"
+                  />
+                )}
+              </div>
+            </>
           )}
 
           <div className="pt-6 flex justify-end gap-2">
@@ -549,4 +776,299 @@ export default function DeviceSettings() {
       </Modal>
     </div>
   )
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium">{label}</label>
+      {hint && <p className="text-xs text-gray-500 leading-normal">{hint}</p>}
+      {children}
+    </div>
+  )
+}
+
+function UploadField({
+  label,
+  hint,
+  value,
+  onChange,
+  accept = 'image/*',
+  previewKind = 'image',
+  aspect = '16 / 9',
+  fit = 'cover',
+  targetWidth = null,
+  targetHeight = null,
+}) {
+  const inputId = useId()
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [lastFileName, setLastFileName] = useState('')
+
+  async function handleChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setLastFileName(file.name || '')
+    if (file.type?.startsWith('audio/') || accept.includes('audio')) {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploaded = await uploadApiFile(formData)
+      onChange(buildApiUrl(uploaded.file_url))
+    } else {
+      onChange(await uploadFileAndGetUrl(file, targetWidth, targetHeight))
+    }
+  }
+
+  const hasValue = Boolean(value)
+  const fileLabel = lastFileName || (hasValue ? {
+    video: 'Yüklü video',
+    audio: 'Yüklü ses',
+    image: 'Yüklü görsel'
+  }[previewKind] || 'Yüklü dosya' : 'Dosya seçilmedi')
+
+  const finalHint = hint || (targetWidth && targetHeight ? `Önerilen boyut: ${targetWidth}x${targetHeight} px` : '')
+
+  return (
+    <div className="space-y-2">
+      <Field label={label} hint={finalHint}>
+        <div />
+      </Field>
+      <div
+        className="relative border border-dashed border-gray-300 rounded-2xl bg-gray-50 p-3"
+      >
+        <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 items-center">
+          {previewKind === 'audio' ? (
+            <div className="w-[72px] h-[72px] rounded-xl overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 flex items-center justify-center text-blue-500">
+              <i className="fa-solid fa-volume-high" style={{ fontSize: '1.4rem' }} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onMouseEnter={() => hasValue && setPreviewOpen(true)}
+              onMouseLeave={() => setPreviewOpen(false)}
+              onFocus={() => hasValue && setPreviewOpen(true)}
+              onBlur={() => setPreviewOpen(false)}
+              className="w-[72px] h-[72px] rounded-xl overflow-hidden bg-gradient-to-br from-gray-200 to-gray-50 border border-gray-200 p-0"
+              style={{
+                cursor: hasValue ? 'zoom-in' : 'default',
+              }}
+            >
+              {hasValue ? (
+                previewKind === 'video' ? (
+                  <video src={value} muted playsInline className="w-full h-full object-cover block" />
+                ) : (
+                  <img src={value} alt={label} className="w-full h-full block" style={{ objectFit: fit }} />
+                )
+              ) : (
+                <div className="w-full h-full grid place-items-center text-gray-400">
+                  <i className={`fa-solid ${previewKind === 'video' ? 'fa-film' : 'fa-image'}`} style={{ fontSize: '1.1rem' }} />
+                </div>
+              )}
+            </button>
+          )}
+          <div className="min-w-0 space-y-1">
+            <div className="font-bold text-gray-900 text-sm truncate">
+              {fileLabel}
+            </div>
+            {previewKind === 'audio' && hasValue && (
+              <audio src={value} controls className="h-8 max-w-[200px] block text-xs" />
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap mt-3">
+          <label htmlFor={inputId} className="btn-p py-1.5 px-3 text-xs cursor-pointer inline-flex items-center gap-1.5">
+            <i className="fa-solid fa-upload" /> Dosya Yükle
+          </label>
+          <input id={inputId} type="file" accept={accept} onChange={handleChange} className="hidden" />
+          <button type="button" className="btn-o py-1.5 px-3 text-xs" onClick={() => onChange('')}>Temizle</button>
+        </div>
+        {previewOpen && hasValue && previewKind !== 'audio' ? (
+          <div
+            onMouseEnter={() => setPreviewOpen(true)}
+            onMouseLeave={() => setPreviewOpen(false)}
+            className="absolute left-24 top-2 z-10 w-56 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl"
+          >
+            <div className="w-full overflow-hidden rounded-xl bg-gray-100" style={{ aspectRatio: aspect }}>
+              {previewKind === 'video' ? (
+                <video src={value} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+              ) : (
+                <img src={value} alt="Onizleme" className="w-full h-full" style={{ objectFit: fit }} />
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+async function uploadFileAndGetUrl(file, targetWidth = null, targetHeight = null) {
+  if (file?.type?.startsWith('image/')) {
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const nextImage = new Image()
+        nextImage.onload = () => resolve(nextImage)
+        nextImage.onerror = reject
+        nextImage.src = objectUrl
+      })
+
+      let finalWidth = image.width || 1
+      let finalHeight = image.height || 1
+      let canvas = document.createElement('canvas')
+
+      if (targetWidth && targetHeight) {
+        finalWidth = targetWidth
+        finalHeight = targetHeight
+        canvas.width = finalWidth
+        canvas.height = finalHeight
+        const context = canvas.getContext('2d')
+
+        if (context) {
+          const imgWidth = image.width || 1
+          const imgHeight = image.height || 1
+          const targetRatio = targetWidth / targetHeight
+          const imgRatio = imgWidth / imgHeight
+
+          let sourceX = 0
+          let sourceY = 0
+          let sourceWidth = imgWidth
+          let sourceHeight = imgHeight
+
+          if (Math.abs(imgRatio - targetRatio) > 0.01) {
+            const analyzeCanvas = document.createElement('canvas')
+            const scale = Math.min(1, 400 / Math.max(imgWidth, imgHeight))
+            analyzeCanvas.width = Math.round(imgWidth * scale)
+            analyzeCanvas.height = Math.round(imgHeight * scale)
+            const actx = analyzeCanvas.getContext('2d')
+            if (actx) {
+              actx.drawImage(image, 0, 0, analyzeCanvas.width, analyzeCanvas.height)
+              const imgData = actx.getImageData(0, 0, analyzeCanvas.width, analyzeCanvas.height)
+              const pixels = imgData.data
+              const aw = analyzeCanvas.width
+              const ah = analyzeCanvas.height
+
+              const energy = new Float32Array(aw * ah)
+              for (let y = 1; y < ah - 1; y++) {
+                for (let x = 1; x < aw - 1; x++) {
+                  const idx = (y * aw + x) * 4
+                  const r = pixels[idx]
+                  const g = pixels[idx + 1]
+                  const b = pixels[idx + 2]
+
+                  const idxR = idx + 4
+                  const gradX = Math.abs(r - pixels[idxR]) + Math.abs(g - pixels[idxR + 1]) + Math.abs(b - pixels[idxR + 2])
+
+                  const idxB = idx + aw * 4
+                  const gradY = Math.abs(r - pixels[idxB]) + Math.abs(g - pixels[idxB + 1]) + Math.abs(b - pixels[idxB + 2])
+
+                  energy[y * aw + x] = gradX + gradY
+                }
+              }
+
+              if (imgRatio > targetRatio) {
+                const wCrop = imgHeight * targetRatio
+                const wCropScale = wCrop * scale
+                const maxScaleX = aw - wCropScale
+
+                let bestScaleX = 0
+                let maxEnergy = -1
+
+                for (let sx = 0; sx <= maxScaleX; sx += 2) {
+                  let windowEnergy = 0
+                  for (let y = 0; y < ah; y++) {
+                    const rowOffset = y * aw
+                    for (let x = Math.floor(sx); x < Math.min(aw, sx + wCropScale); x++) {
+                      windowEnergy += energy[rowOffset + x]
+                    }
+                  }
+
+                  const centerX = maxScaleX / 2
+                  const distFromCenter = Math.abs(sx - centerX) / (maxScaleX || 1)
+                  const bias = (1 - distFromCenter) * (maxEnergy * 0.05)
+                  const biasedEnergy = windowEnergy + bias
+
+                  if (biasedEnergy > maxEnergy) {
+                    maxEnergy = biasedEnergy
+                    bestScaleX = sx
+                  }
+                }
+
+                sourceX = bestScaleX / scale
+                sourceWidth = wCrop
+              } else {
+                const hCrop = imgWidth / targetRatio
+                const hCropScale = hCrop * scale
+                const maxScaleY = ah - hCropScale
+
+                let bestScaleY = 0
+                let maxEnergy = -1
+
+                for (let sy = 0; sy <= maxScaleY; sy += 2) {
+                  let windowEnergy = 0
+                  for (let y = Math.floor(sy); y < Math.min(ah, sy + hCropScale); y++) {
+                    const rowOffset = y * aw
+                    for (let x = 0; x < aw; x++) {
+                      windowEnergy += energy[rowOffset + x]
+                    }
+                  }
+
+                  const centerY = maxScaleY / 2
+                  const distFromCenter = Math.abs(sy - centerY) / (maxScaleY || 1)
+                  const bias = (1 - distFromCenter) * (maxEnergy * 0.05)
+                  const biasedEnergy = windowEnergy + bias
+
+                  if (biasedEnergy > maxEnergy) {
+                    maxEnergy = biasedEnergy
+                    bestScaleY = sy
+                  }
+                }
+
+                sourceY = bestScaleY / scale
+                sourceHeight = hCrop
+              }
+            }
+          }
+
+          context.drawImage(
+            image,
+            sourceX, sourceY, sourceWidth, sourceHeight,
+            0, 0, finalWidth, finalHeight
+          )
+        }
+      } else {
+        const maxDimension = 1600
+        const scale = Math.min(1, maxDimension / Math.max(image.width || 1, image.height || 1))
+        finalWidth = Math.max(1, Math.round((image.width || 1) * scale))
+        finalHeight = Math.max(1, Math.round((image.height || 1) * scale))
+        canvas.width = finalWidth
+        canvas.height = finalHeight
+        const context = canvas.getContext('2d')
+        if (context) {
+          context.drawImage(image, 0, 0, finalWidth, finalHeight)
+        }
+      }
+
+      const context = canvas.getContext('2d')
+      if (context) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.86))
+        if (blob) {
+          const formData = new FormData()
+          const originalName = file.name || 'image.webp'
+          const newName = originalName.replace(/\.[^/.]+$/, "") + ".webp"
+          formData.append('file', blob, newName)
+          const uploaded = await uploadApiFile(formData)
+          return buildApiUrl(uploaded.file_url)
+        }
+      }
+    } catch (e) {
+      console.error("Image processing failed:", e)
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+  const uploaded = await uploadApiFile(formData)
+  return buildApiUrl(uploaded.file_url)
 }

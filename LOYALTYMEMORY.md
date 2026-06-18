@@ -1,4 +1,4 @@
-# LOYALTYMEMORY
+﻿# LOYALTYMEMORY
 
 Yururluk tarihi: `2026-05-13`  
 Status: `active`  
@@ -1990,7 +1990,7 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Files Changed`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Current Capability`:
-  - `getCampaignApplicationModeHint` fonksiyonu [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlanarak hata giderildi.
+  - `getCampaignApplicationModeHint` fonksiyonu [LoyaltyCampaignWizard.jsx](file:///X:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) dosyasına tanımlanarak hata giderildi.
 - `Next Loyalty Step`:
   - Kampanyayı gör butonunun artık sorunsuzca detay sayfasını yüklediğini arayüzde doğrulayın.
 
@@ -2004,7 +2004,7 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Files Changed`:
   - `src/components/loyalty/LoyaltyCampaignWizard.jsx`
 - `Current Capability`:
-  - [LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde `renderViewMode` ve `renderEditMode` görünüm sıralaması güncellendi; Kampanya Kimliği kartı (isim, kod, açıklama, görsel, özet tanım) en sona alındı.
+  - [LoyaltyCampaignWizard.jsx](file:///X:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx) içerisinde `renderViewMode` ve `renderEditMode` görünüm sıralaması güncellendi; Kampanya Kimliği kartı (isim, kod, açıklama, görsel, özet tanım) en sona alındı.
 - `Next Loyalty Step`:
   - Gör ve düzenle sayfalarını açıp kartların sırasının (Hedef -> Kapsam -> Kurallar -> Operasyon -> Kimlik) doğru şekilde yüklendiğini arayüzde doğrulayın.
 
@@ -2348,14 +2348,14 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
 - `Focus`: `Kampanya Sihirbazı Görsel Yükleme Port ve URL Çözümleme Hatasının Düzeltilmesi`
 - `Trigger`: `Kampanya sihirbazı görsellerinin (önizlemeler, mecra slotları, arşiv küçük resimleri, adım pill başlıkları ve inceleme sayfası gridleri) localhost:5173 (frontend portu) yerine backend API URL'i üzerinden yüklenememesi hatası.`
 - `Files Read`:
-  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+  - `[LoyaltyCampaignWizard.jsx](file:///X:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
 - `Files Changed`:
-  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
-  - `[LOYALTYMEMORY.md](file:///C:/RMSv3/LOYALTYMEMORY.md)`
-  - `[OperationSync.md](file:///C:/RMSv3/OperationSync.md)`
-  - `[LOYALTY_MASTER_PLAN.md](file:///C:/RMSv3/LOYALTY_MASTER_PLAN.md)`
+  - `[LoyaltyCampaignWizard.jsx](file:///X:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)`
+  - `[LOYALTYMEMORY.md](file:///X:/RMSv3/LOYALTYMEMORY.md)`
+  - `[OperationSync.md](file:///X:/RMSv3/OperationSync.md)`
+  - `[LOYALTY_MASTER_PLAN.md](file:///X:/RMSv3/LOYALTY_MASTER_PLAN.md)`
 - `Current Capability`:
-  - `[LoyaltyCampaignWizard.jsx](file:///C:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)` içerisinde `buildApiUrl` (@/lib/db) import edildi.
+  - `[LoyaltyCampaignWizard.jsx](file:///X:/RMSv3/src/components/loyalty/LoyaltyCampaignWizard.jsx)` içerisinde `buildApiUrl` (@/lib/db) import edildi.
   - `resolveImageUrl(url)` yardımcı fonksiyonu tanımlandı. Bu fonksiyon bağıntılı (relative) URL yollarının başına backend API URL'ini eklerken, mutlak (absolute - http, https, data:) URL'leri olduğu gibi korur.
   - Sihirbaz içerisindeki tüm görsel (`img src`) ve CSS arka plan resim (`background-image`) referansları bu yardımcı fonksiyonla sarılarak backend portu üzerinden doğru şekilde yüklenmeleri sağlandı.
 - `Gap`:
@@ -2375,3 +2375,4 @@ Her yeni kayit `## Entry` ile append edilir ve su alanlari icerir:
   - Yok.
 - `Next Loyalty Step`:
   - Tarayıcıda sihirbazı açıp tüm görsellerin (adım başlıkları, slotlar ve önizlemeler dahil) backend API portundan (Railway veya localhost:3000/3001) düzgün yüklendiğini kontrol etmek.
+

@@ -1,8 +1,8 @@
-# SuitableRMS — Deploy Manager Talimatı
+﻿# SuitableRMS — Deploy Manager Talimatı
 
 Yürürlük tarihi: `2026-05-09`
 Status: `active — Deploy Manager agent için bağlayıcı`
-Proje dizini: `C:\RMSv3`
+Proje dizini: `X:\RMSv3`
 
 ---
 
@@ -325,3 +325,4 @@ Deploy sonrası bir şeyler bozulduysa:
 6. Schema güncellemesi (migration varsa)
    → schema-railway-master.sql güncelle
 ```
+

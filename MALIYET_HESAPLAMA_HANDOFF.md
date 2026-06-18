@@ -1,4 +1,4 @@
-# Maliyet Hesaplama Handoff
+﻿# Maliyet Hesaplama Handoff
 
 Tarih: 2026-06-11
 
@@ -19,20 +19,20 @@ Kullanıcı ayrıca mevcut RMS projesinde bu hesaplamanın nasıl yapıldığın
 Çalışma dizini:
 
 ```text
-C:\RMSv3
+X:\RMSv3
 ```
 
 Oluşturulan dosyalar:
 
 ```text
-C:\RMSv3\restoran_maliyet_yontemleri_buyuk_data.xlsx
-C:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
+X:\RMSv3\restoran_maliyet_yontemleri_buyuk_data.xlsx
+X:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
 ```
 
 İkinci dosya önerilen dosyadır:
 
 ```text
-C:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
+X:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
 ```
 
 Sebep: Kullanıcının Excel sürümünde `XLOOKUP` formülü `#AD?` hatası verdi. Bu yüzden reçete maliyeti sayfasındaki `XLOOKUP` formülleri eski Excel sürümleriyle uyumlu `LOOKUP` mantığına çevrildi.
@@ -181,7 +181,7 @@ Son alış fiyatı: stok kartı/reçete fiyatı tarafında dolaylı kullanılıy
 Dosya:
 
 ```text
-C:\RMSv3\schema-railway-master.sql
+X:\RMSv3\schema-railway-master.sql
 ```
 
 Tablo:
@@ -206,7 +206,7 @@ calc_version
 Referans:
 
 ```text
-C:\RMSv3\schema-railway-master.sql:394
+X:\RMSv3\schema-railway-master.sql:394
 ```
 
 Bu tablo stok hareket defteri gibi çalışıyor. Her hareketten sonra miktar ve maliyet bakiyesi satıra yazılıyor.
@@ -222,7 +222,7 @@ public.recalculate_inventory_item_costs(...)
 Referans:
 
 ```text
-C:\RMSv3\schema-railway-master.sql:2907
+X:\RMSv3\schema-railway-master.sql:2907
 ```
 
 Motorun yaptığı:
@@ -284,8 +284,8 @@ inventory_movements_queue_recalc_trigger()
 Referans:
 
 ```text
-C:\RMSv3\schema-railway-master.sql:2601
-C:\RMSv3\schema-railway-master.sql:3401
+X:\RMSv3\schema-railway-master.sql:2601
+X:\RMSv3\schema-railway-master.sql:3401
 ```
 
 Bir `inventory_movements` satırı insert/update/delete olursa yeniden hesaplama kuyruğu oluşturulur.
@@ -299,7 +299,7 @@ process_inventory_recalc_jobs(p_limit integer default 100)
 Referans:
 
 ```text
-C:\RMSv3\schema-railway-master.sql:2794
+X:\RMSv3\schema-railway-master.sql:2794
 ```
 
 Uygulama tarafında bazı ekranlar insert sonrası bunu çağırıyor.
@@ -309,7 +309,7 @@ Uygulama tarafında bazı ekranlar insert sonrası bunu çağırıyor.
 Dosya:
 
 ```text
-C:\RMSv3\src\components\pages\MalKabul.jsx
+X:\RMSv3\src\components\pages\MalKabul.jsx
 ```
 
 Mal kabul satırında `unit_price` alış fiyatıdır.
@@ -317,7 +317,7 @@ Mal kabul satırında `unit_price` alış fiyatıdır.
 İlgili bölüm:
 
 ```text
-C:\RMSv3\src\components\pages\MalKabul.jsx:882
+X:\RMSv3\src\components\pages\MalKabul.jsx:882
 ```
 
 Mantık:
@@ -368,7 +368,7 @@ Satış/reçete tarafı stok defterindeki `avg_unit_cost_after` alanını doğru
 POS:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx
+X:\RMSv3\src\components\pages\POS.jsx
 ```
 
 Fonksiyon:
@@ -380,7 +380,7 @@ calcRecipeUnitCost(item, channelId, portionId)
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx:416
+X:\RMSv3\src\components\pages\POS.jsx:416
 ```
 
 Formül:
@@ -403,7 +403,7 @@ line_cost_total
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx:4404
+X:\RMSv3\src\components\pages\POS.jsx:4404
 ```
 
 Satış başlığına yazılan toplam maliyet:
@@ -415,21 +415,21 @@ cost_total = SUM(line_cost_total)
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx:4449
+X:\RMSv3\src\components\pages\POS.jsx:4449
 ```
 
 Garson ekranında aynı mantık var:
 
 ```text
-C:\RMSv3\src\components\pages\Garson.jsx:392
-C:\RMSv3\src\components\pages\Garson.jsx:4330
+X:\RMSv3\src\components\pages\Garson.jsx:392
+X:\RMSv3\src\components\pages\Garson.jsx:4330
 ```
 
 Demo satış üretici de aynı hesaplama fonksiyonunu kullanıyor:
 
 ```text
-C:\RMSv3\src\lib\demoSalesGenerator.js:190
-C:\RMSv3\src\lib\demoSalesGenerator.js:949
+X:\RMSv3\src\lib\demoSalesGenerator.js:190
+X:\RMSv3\src\lib\demoSalesGenerator.js:949
 ```
 
 ## Reçete Satırındaki Cost Nereden Geliyor?
@@ -437,7 +437,7 @@ C:\RMSv3\src\lib\demoSalesGenerator.js:949
 Satış malı/reçete düzenleme ekranı:
 
 ```text
-C:\RMSv3\src\components\pages\SaleItems.jsx
+X:\RMSv3\src\components\pages\SaleItems.jsx
 ```
 
 Stok ürünü reçeteye seçildiğinde:
@@ -449,14 +449,14 @@ row.cost = stockItem.purchase_price
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\SaleItems.jsx:44
-C:\RMSv3\src\components\pages\SaleItems.jsx:1723
+X:\RMSv3\src\components\pages\SaleItems.jsx:44
+X:\RMSv3\src\components\pages\SaleItems.jsx:1723
 ```
 
 Stok kartındaki `purchase_price` alanı:
 
 ```text
-C:\RMSv3\src\components\pages\StockItems.jsx:696
+X:\RMSv3\src\components\pages\StockItems.jsx:696
 ```
 
 Burada default tedarikçi fiyatı veya formdaki purchase_price kullanılıyor:
@@ -483,8 +483,8 @@ Bu nedenle mal kabul sonrası stok defterindeki `avg_unit_cost_after` değişse 
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\MalKabul.jsx:1032
-C:\RMSv3\src\lib\branchPurchasing.js:688
+X:\RMSv3\src\components\pages\MalKabul.jsx:1032
+X:\RMSv3\src\lib\branchPurchasing.js:688
 ```
 
 Fonksiyon:
@@ -502,10 +502,10 @@ Bu ekranlarda genellikle önceki `avg_unit_cost_after` okunup çıkış maliyeti
 Örnekler:
 
 ```text
-C:\RMSv3\src\components\pages\InventoryOperationRecord.jsx:401
-C:\RMSv3\src\components\pages\InventoryTransfer.jsx:610
-C:\RMSv3\src\components\pages\WmsInternalTransfer.jsx:311
-C:\RMSv3\src\components\pages\Count.jsx:905
+X:\RMSv3\src\components\pages\InventoryOperationRecord.jsx:401
+X:\RMSv3\src\components\pages\InventoryTransfer.jsx:610
+X:\RMSv3\src\components\pages\WmsInternalTransfer.jsx:311
+X:\RMSv3\src\components\pages\Count.jsx:905
 ```
 
 Bu da WAC kullanıldığını destekliyor.
@@ -522,15 +522,15 @@ sale_lines.line_cost_total
 Referans:
 
 ```text
-C:\RMSv3\src\components\pages\Reports.jsx:374
-C:\RMSv3\src\components\pages\Reports.jsx:541
+X:\RMSv3\src\components\pages\Reports.jsx:374
+X:\RMSv3\src\components\pages\Reports.jsx:541
 ```
 
 Stok değer raporları `inventory_movements` üzerinden `balance_total_cost_after` ve `avg_unit_cost_after` kullanıyor:
 
 ```text
-C:\RMSv3\src\components\pages\Reports.jsx:715
-C:\RMSv3\src\components\pages\Reports.jsx:737
+X:\RMSv3\src\components\pages\Reports.jsx:715
+X:\RMSv3\src\components\pages\Reports.jsx:737
 ```
 
 Bu yüzden iki maliyet dünyası var:
@@ -569,8 +569,8 @@ Bulgu:
 POS dosyasında satış başlığı ve satış satırı yazılıyor:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx:4580
-C:\RMSv3\src\components\pages\POS.jsx:4600
+X:\RMSv3\src\components\pages\POS.jsx:4580
+X:\RMSv3\src\components\pages\POS.jsx:4600
 ```
 
 Ancak bu dosyada doğrudan `inventory_movements` içine satış tüketimi yazan kod görünmedi.
@@ -580,14 +580,14 @@ Schema tarafında `sale_lines` insert trigger'ı ile otomatik `inventory_movemen
 `inventory_movements` içinde `sale_consumption` hareket tipi destekleniyor:
 
 ```text
-C:\RMSv3\schema-railway-master.sql:466
+X:\RMSv3\schema-railway-master.sql:466
 ```
 
 Demo/onarma akışlarında satış tüketim hareketi oluşturuluyor:
 
 ```text
-C:\RMSv3\src\hooks\useDemoSalesJob.jsx:122
-C:\RMSv3\scripts\generate-missing-sales.mjs:354
+X:\RMSv3\src\hooks\useDemoSalesJob.jsx:122
+X:\RMSv3\scripts\generate-missing-sales.mjs:354
 ```
 
 Bu konu önemli:
@@ -695,62 +695,62 @@ rg -n "sale_lines.*trigger|trigger.*sale_lines|sale_consumption|inventory_moveme
 Ana schema:
 
 ```text
-C:\RMSv3\schema-railway-master.sql
+X:\RMSv3\schema-railway-master.sql
 ```
 
 Mal kabul:
 
 ```text
-C:\RMSv3\src\components\pages\MalKabul.jsx
+X:\RMSv3\src\components\pages\MalKabul.jsx
 ```
 
 POS:
 
 ```text
-C:\RMSv3\src\components\pages\POS.jsx
+X:\RMSv3\src\components\pages\POS.jsx
 ```
 
 Garson:
 
 ```text
-C:\RMSv3\src\components\pages\Garson.jsx
+X:\RMSv3\src\components\pages\Garson.jsx
 ```
 
 Satış malı/reçete:
 
 ```text
-C:\RMSv3\src\components\pages\SaleItems.jsx
+X:\RMSv3\src\components\pages\SaleItems.jsx
 ```
 
 Stok kartı:
 
 ```text
-C:\RMSv3\src\components\pages\StockItems.jsx
+X:\RMSv3\src\components\pages\StockItems.jsx
 ```
 
 Branch purchasing yardımcıları:
 
 ```text
-C:\RMSv3\src\lib\branchPurchasing.js
+X:\RMSv3\src\lib\branchPurchasing.js
 ```
 
 Raporlar:
 
 ```text
-C:\RMSv3\src\components\pages\Reports.jsx
+X:\RMSv3\src\components\pages\Reports.jsx
 ```
 
 Demo satış job:
 
 ```text
-C:\RMSv3\src\hooks\useDemoSalesJob.jsx
-C:\RMSv3\src\lib\demoSalesGenerator.js
+X:\RMSv3\src\hooks\useDemoSalesJob.jsx
+X:\RMSv3\src\lib\demoSalesGenerator.js
 ```
 
 Eksik satış onarma scripti:
 
 ```text
-C:\RMSv3\scripts\generate-missing-sales.mjs
+X:\RMSv3\scripts\generate-missing-sales.mjs
 ```
 
 ## Son Kullanıcıya Söylenen Kısa Cevap
@@ -772,7 +772,7 @@ Dolayısıyla stok defteri WAC, satış/reçete snapshotı kayıtlı reçete mal
 1. Bu dosyayı oku:
 
 ```text
-C:\RMSv3\MALIYET_HESAPLAMA_HANDOFF.md
+X:\RMSv3\MALIYET_HESAPLAMA_HANDOFF.md
 ```
 
 2. Kullanıcının ne istediğini netleştir:
@@ -793,6 +793,7 @@ Yoksa sadece POS/reçete maliyet snapshotı canlı WAC okuyacak şekilde mi düz
 5. Excel için gerekirse uyumlu dosyayı kullan:
 
 ```text
-C:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
+X:\RMSv3\restoran_maliyet_yontemleri_buyuk_data_excel_uyumlu.xlsx
 ```
+
 

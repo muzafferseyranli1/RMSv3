@@ -1,7 +1,7 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 
-const workspaceRoot = 'c:\\RMSggl\\Dropbox\\RMSv3';
+const workspaceRoot = 'X:\\\\RMSv3';
 
 const syncEntry = `\n\n## Entry 127 - 2026-05-24\n- \`Timestamp\`: \`2026-05-24T19:15:00+03:00\`\n- \`Agent\`: \`Antigravity\`\n- \`Task\`: \`CouponsScreen Mükerrer Tanımının Kaldırılması\`\n- \`Intent\`: \`Müşteri mobil uygulamasındaki kupon kartlarının bilet tasarımını (CouponCard) korurken, CouponsScreen bileşeninin mükerrer tanımından kaynaklanan karmaşık arayüzü kaldırıp sade, orijinal (kupon kodu ekleme + aktif kupon listesi) tasarıma geri dönmek.\`\n- \`Files\`:\n  - \`src/components/mobile/CustomerLoyaltyMobileApp.jsx\`\n- \`Execution details\`:\n  - \`src/components/mobile/CustomerLoyaltyMobileApp.jsx\` dosyasında 1214. satırda bulunan mükerrer \`CouponsScreen\` tanımı kaldırıldı. Bu sayede, React'in bu bileşenin eski karmaşık halini ezerek render etmesi engellendi ve 502. satırdaki sade, orijinal layout (sadece kupon kodu girişi ve aktif kuponların listesi) aktif hale geldi.\n  - Kupon kartlarının görsel referanstaki bilet tasarımını (beyaz koçan, dikey outline fayda yazısı, dikey kesikli çizgi, renkli bilet gövdesi, yanlarda bilet yırtmaçları) bozacak herhangi bir değişiklik yapılmadı; bilet tasarımları aynen korundu.\n  - Proje \`npm run build\` ile başarıyla derlenmiştir.\n- \`Handoff Contract\`: \`CouponsScreen'deki mükerrer tanım silindi, sade kupon listeleme layout'u ve özel bilet tasarımları başarıyla korundu. Proje hatasız derlenmektedir.\`\n`;
 
@@ -21,3 +21,4 @@ try {
   console.error('Error appending entries:', err);
   process.exit(1);
 }
+

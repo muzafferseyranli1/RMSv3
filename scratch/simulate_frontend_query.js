@@ -1,9 +1,9 @@
-import pg from 'pg';
+﻿import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 
 // Parse server/.env manually
-const envPath = 'C:\\RMSv3\\server\\.env';
+const envPath = 'X:\\\\RMSv3\\server\\.env';
 const envContent = fs.readFileSync(envPath, 'utf8');
 let databaseUrl = '';
 for (const line of envContent.split('\n')) {
@@ -206,3 +206,4 @@ async function run() {
   }
 }
 run();
+
