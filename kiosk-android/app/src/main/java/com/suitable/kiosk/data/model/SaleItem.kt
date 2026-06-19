@@ -35,21 +35,50 @@ data class SaleItem(
     @SerializedName("tax_id") val taxId: String? = null,
     val active: Boolean = true,
     @SerializedName("deleted_at") val deletedAt: String? = null,
+    val isComboMenu: Boolean = false,
+    val comboDefinitionId: String? = null,
 ) {
     /** Belirtilen kiosk kanalı için fiyatı döner; bulamazsa 0.0 */
     fun priceForChannel(channelId: String?): Double {
         if (channelPricesRaw == null || channelId == null) return 0.0
         return try {
-            val obj = channelPricesRaw.asJsonObject
-            obj.get(channelId)?.asJsonObject?.get("price")?.asDouble ?: 0.0
+            if (channelPricesRaw.isJsonArray) {
+                val arr = channelPricesRaw.asJsonArray
+                // Find matching active channel price
+                var matchedPrice = arr.firstOrNull { el ->
+                    val obj = el.asJsonObject
+                    obj.get("channel_id")?.asString == channelId && obj.get("active")?.asBoolean != false
+                }
+                // Fallback to any active channel price if specific one is not found
+                if (matchedPrice == null) {
+                    matchedPrice = arr.firstOrNull { el ->
+                        el.asJsonObject.get("active")?.asBoolean != false
+                    }
+                }
+                matchedPrice?.asJsonObject?.get("price")?.asDouble ?: 0.0
+            } else if (channelPricesRaw.isJsonObject) {
+                // Legacy / fallback map parsing
+                val obj = channelPricesRaw.asJsonObject
+                obj.get(channelId)?.asJsonObject?.get("price")?.asDouble ?: 0.0
+            } else {
+                0.0
+            }
         } catch (_: Exception) { 0.0 }
     }
 
     /** Belirtilen kiosk kanalı için görsel URL'sini döner */
-    fun imageUrlForChannel(channelId: String?): String? {
-        if (channelImageRaw == null || channelId == null) return null
+    fun imageUrlForChannel(channelId: String?, baseUrl: String = ""): String? {
+        if (channelImageRaw == null || channelImageRaw.isJsonNull) return null
         return try {
-            channelImageRaw.asJsonObject.get(channelId)?.asString
+            val rawStr = if (channelImageRaw.isJsonPrimitive) channelImageRaw.asString else channelImageRaw.toString()
+            if (rawStr.isNullOrBlank()) return null
+            if (rawStr.startsWith("http://") || rawStr.startsWith("https://") || rawStr.startsWith("data:")) {
+                rawStr
+            } else {
+                val cleanBase = baseUrl.trimEnd('/')
+                val cleanPath = rawStr.trimStart('/')
+                "$cleanBase/$cleanPath"
+            }
         } catch (_: Exception) { null }
     }
 

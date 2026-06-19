@@ -1,209 +1,61 @@
-# SuitableRMS Kiosk Native Android Uygulaması — İmplementasyon Planı
+# SuitableRMS Kiosk Native Android Uygulaması — Revize İmplementasyon Planı
 
 ## Genel Açıklama
 
-Mevcut web tabanlı `KioskBig.jsx` (dikey büyük TV) ve `KioskTablet.jsx` (yatay/dikey tablet) ekranlarının **tek bir native Android uygulaması** olarak yeniden yazılması planlanmaktadır.
+Mevcut web tabanlı `KioskBig.jsx` (dikey büyük TV) ve `KioskTablet.jsx` (yatay/dikey tablet) ekranlarının arayüz tasarımı, akışı ve tüm işlevleri (sadakat entegrasyonu, öneriler, combo menüler) korunarak **native Android uygulaması** olarak tamamlanması hedeflenmektedir. Web tarafındaki kullanıcı deneyiminden memnun olunduğu için native tarafında tamamen farklı bir tasarıma gidilmeyecek, web paritesi birebir korunacaktır.
 
-Uygulama `X:\RMSv3\kiosk-android\` klasöründe yer alacak; mevcut `personel-android/`, `musteri-android/`, `wms-android/` uygulamalarından tamamen bağımsız bir Gradle projesi olacaktır.
-
-Yeni APK paketi: `com.suitable.kiosk`
+Uygulama `X:\RMSv3\kiosk-android\` klasöründe yer almaktadır ve bağımsız bir Gradle projesidir.
 
 ---
 
-## Kullanıcı İncelemesi Gereken Konular
+## Yol Haritası ve Mevcut Durum
 
-> [!IMPORTANT]
-> **Tek uygulama / çift mod kararı:** Kiosk ve Kiosk Tablet, tek bir APK içinde farklı UI modları olarak çalışacaktır. Mod belirleme akışı:
-> 1. İlk açılışta "Pair Key" giriş ekranı (KioskManagement'tan üretilen istasyon kodu)
-> 2. API → `pos_terminals` tablosu → `terminal_type` alanı okunur
-> 3. `terminal_type = 'kiosk'` → **BigScreen modu** (portrait lock, 480×854)
-> 4. `terminal_type = 'kiosk_tablet'` → **Tablet modu** (landscape/portrait, 820×1180)
-> 5. Mod + station code cihazın `SharedPreferences`'ına kaydedilir (iş verisi değil, cihaz tercihi)
-> 6. 7 kez logo'ya tıklama → Yeniden eşleme ekranı (PIN korumalı)
-
-> [!IMPORTANT]
-> **API Adresi:** Tüm istekler `https://rms-api-production-219d.up.railway.app/api/query` üzerinden gider. Supabase / AWS kullanılmaz. Uygulama içinde hard-code edilecek; ilerleyen aşamada ayarlar ekranına taşınabilir.
-
-> [!WARNING]
-> **Resim yükleme:** Ürün görselleri `/api/files/...` yoluyla sunucudan gelir. Coil kütüphanesi ile yüklenecek. Resim yüklenemezse placeholder gösterilir; sessiz fallback kabul edilir (iş verisi değil, görsel).
+| Faz | Kapsam | Durum | Açıklama |
+|-----|--------|-------|----------|
+| **Faz 1** | Proje iskeleti + Eşleme ekranı | ✅ TAMAMLANDI | Cihaz eşleme ekranı, veritabanı kolon paritesi (`activation_code`, `device_type`, `terminal_name`) tamamlandı. |
+| **Faz 2** | Veri katmanı (Retrofit/Gson) | ✅ TAMAMLANDI | `channel_prices` verisinin dizi (JSON Array) olarak okunması ve fiyat hesaplama hatası düzeltildi. |
+| **Faz 3** | BigScreen UI (KioskBig paritesi) | ✅ TAMAMLANDI | Sol kategori paneli, 3 sütunlu ürün gridi (Coil görsel çözücü ile), yüzen sepet topu, sepet detayları ve kartlı ödeme akışı tamamlandı. |
+| **Faz 4** | Tablet UI (KioskTablet paritesi) | ⏳ BEKLİYOR | Yatay (split layout) ve dikey mod desteği, sepet paneli entegrasyonu. |
+| **Faz 5** | Ortak Bileşenler & Arayüz Paritesi | ⏳ BEKLİYOR | Combo menü oluşturucu (ComboBuilder), öneri motoru (checkout & ürün önerileri), closed overlay ve sadakat QR entegrasyonu. |
+| **Faz 6** | Güvenlik / PIN Sıfırlama | ⏳ BEKLİYOR | Logo 7 kez tıklama, admin PIN doğrulama ve SharedPreferences temizleme akışı. |
 
 ---
 
-## Klasör Yapısı
+## Planlanan Geliştirmeler (Kalan Aşamalar)
 
-```
-X:\RMSv3\
-├── kiosk-android/               ← YENİ — diğer android klasörlerine dokunulmaz
-│   ├── app/
-│   │   ├── src/main/
-│   │   │   ├── java/com/suitable/kiosk/
-│   │   │   │   ├── MainActivity.kt
-│   │   │   │   ├── KioskApplication.kt
-│   │   │   │   ├── data/
-│   │   │   │   │   ├── ApiService.kt          ← Retrofit interface
-│   │   │   │   │   ├── KioskRepository.kt     ← Tüm API çağrıları
-│   │   │   │   │   └── model/
-│   │   │   │   │       ├── SaleItem.kt
-│   │   │   │   │       ├── SaleCategory.kt
-│   │   │   │   │       ├── CartItem.kt
-│   │   │   │   │       ├── KioskSettings.kt
-│   │   │   │   │       ├── KioskStation.kt
-│   │   │   │   │       └── OrderPayload.kt
-│   │   │   │   ├── ui/
-│   │   │   │   │   ├── setup/
-│   │   │   │   │   │   └── PairingScreen.kt   ← İlk açılış / eşleme
-│   │   │   │   │   ├── bigscreen/
-│   │   │   │   │   │   ├── KioskBigScreen.kt  ← Dikey TV modu
-│   │   │   │   │   │   └── BigScreenViewModel.kt
-│   │   │   │   │   ├── tablet/
-│   │   │   │   │   │   ├── KioskTabletScreen.kt ← Tablet modu
-│   │   │   │   │   │   └── TabletViewModel.kt
-│   │   │   │   │   └── shared/
-│   │   │   │   │       ├── MenuGrid.kt        ← Ortak ürün grid
-│   │   │   │   │       ├── CartPanel.kt       ← Ortak sepet
-│   │   │   │   │       ├── ProductDetailModal.kt
-│   │   │   │   │       ├── PaymentScreen.kt   ← Ortak ödeme
-│   │   │   │   │       └── ClosedOverlay.kt   ← Çalışma saati kapalı ekranı
-│   │   │   │   └── prefs/
-│   │   │   │       └── KioskPrefs.kt          ← SharedPreferences wrapper
-│   │   │   └── res/
-│   │   │       ├── layout/ (boş — Compose kullanılıyor)
-│   │   │       └── values/
-│   │   │           ├── strings.xml
-│   │   │           └── themes.xml
-│   │   └── build.gradle.kts
-│   ├── build.gradle.kts
-│   ├── settings.gradle.kts
-│   └── gradle/
-│       └── libs.versions.toml
-```
+### Faz 4 — Tablet UI (KioskTablet paritesi)
+#### [MODIFY] [KioskTabletScreen.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/tablet/KioskTabletScreen.kt)
+- Mevcut yer tutucu ekran kaldırılarak web `KioskTablet.jsx` paritesinde arayüz geliştirilecektir.
+- **Yönelim Desteği (Orientation):** Cihaz yatayda iken sol tarafta dar kategori şeridi, ortada ürün gridi ve sağ tarafta sürekli açık sepet paneli (split layout) yer alacaktır. Cihaz dikeyde iken ise kategori listesi ve ürün gridi tam ekran olacak, sepet alt bar veya FAB ile açılacaktır.
 
 ---
 
-## Önerilen Değişiklikler
+### Faz 5 — Ortak Bileşenler & Web Paritesi
+#### [NEW] [ComboBuilder.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/ComboBuilder.kt)
+- Web'deki Combo menü seçici mantığının native Compose portu. Seçili combo menü (örn. Hamburger Menü) için alt adımların (içecek seçimi, sos seçimi vb.) adım adım kullanıcıya sorulmasını sağlayan modal ekran.
+- Seçimlerin zorunluluk/miktar kuralları webdeki `combo_menus_v1` ayarlarına göre kontrol edilecektir.
 
-### Faz 1 — Proje İskeleti ve Eşleme Ekranı
+#### [NEW] [SuggestionManager.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/SuggestionManager.kt)
+- Sepete ürün eklerken (ürün önerisi) ve ödemeye geçişte (checkout önerisi) settings'deki kurallara göre popup öneri pencerelerinin gösterilmesi sağlanacaktır.
 
-#### [YENİ] `kiosk-android/` — Gradle Projesi
-- `namespace = "com.suitable.kiosk"`
-- `applicationId = "com.suitable.kiosk"`
-- `minSdk = 26`, `targetSdk = 36`, `compileSdk = 36`
-- Bağımlılıklar: Jetpack Compose BOM, Material3, Retrofit + Gson, Coil, Coroutines, Navigation3, ZXing (QR okuma — sadakat için)
-
-#### [YENİ] `PairingScreen.kt`
-- Pair Key (istasyon kodu) giriş alanı
-- API'ye `pos_terminals` sorgusu → `terminal_type` okuma
-- Hata durumu: açık mesaj ("Bu cihaz sisteme kayıtlı değil")
-- Başarıda: mod + station_code `KioskPrefs`'e yaz → uygun moda yönlendir
-
-#### [YENİ] `KioskPrefs.kt`
-- `getKioskMode(): KioskMode?` — BIG_SCREEN / TABLET / null
-- `getStationCode(): String?`
-- `saveDeviceConfig(mode, stationCode)`
-- `clearDeviceConfig()` — yeniden eşleme
-
----
-
-### Faz 2 — Veri Katmanı
-
-#### [YENİ] `ApiService.kt` + `KioskRepository.kt`
-Web'deki `/api/query` endpoint'ini tüketen Retrofit tabanlı katman:
-
-| İşlem | Tablo | Açıklama |
-|-------|-------|----------|
-| Ayarlar yükle | `settings` key=`kiosk_settings_v2` | Kiosk genel ayarları |
-| İstasyon doğrula | `pos_terminals` | Pair key → terminal_type |
-| Kategoriler | `sale_categories` | Menü kategorileri |
-| Ürünler | `sale_items` | Fiyat, resim, seçenekler |
-| Çalışma kuralları | `kiosk_operating_hours_rules` | Açık/kapalı saatler |
-| Sipariş gönder | `sales` + `sale_lines` | Sepet → kayıt |
-| Ödeme | `sale_payments` | Nakit / kart |
-| Sadakat | `loyalty_customers` | QR ile müşteri eşleme |
-
----
-
-### Faz 3 — BigScreen UI (KioskBig karşılığı)
-
-#### [YENİ] `KioskBigScreen.kt`
-- Portrait lock (manifest: `screenOrientation="portrait"`)
-- Canvas: 480dp × 854dp sanal alan, `Box + scale` ile gerçek ekrana ölçekleme
-- Sol panel: Kategori sekmeler (dikey scroll)
-- Sağ panel: Ürün grid (3 sütun)
-- Alt: Sepet özeti + Sipariş Ver butonu
-- Floating sepet topu (web'deki CART_DOCK mantığı)
-- Kapalı iken: `ClosedOverlay` (saat / mesaj)
-
----
-
-### Faz 4 — Tablet UI (KioskTablet karşılığı)
-
-#### [YENİ] `KioskTabletScreen.kt`
-- Portrait + Landscape destekli (manifest: `screenOrientation="fullSensor"`)
-- Portrait: Sol kategori bar + Sağ ürün grid + Alt sepet
-- Landscape: Sol dar kategori şeridi + Orta ürün grid + Sağ sepet paneli (split layout)
-- Ürün detay modal: arka planı karartan overlay + seçenek grupları
-- Combo menü desteği (web'deki ComboBuilder mantığı)
-
----
-
-### Faz 5 — Ortak Bileşenler
-
-#### [YENİ] `shared/` Bileşenler
-| Composable | Görev |
-|------------|-------|
-| `MenuGrid` | Ürün kartları, resim (Coil), fiyat, badge |
-| `CartPanel` | Kalem listesi, miktar +/−, toplam, iptal |
-| `ProductDetailModal` | Seçenek grupları, not alanı, sepete ekle |
-| `PaymentScreen` | Nakit/Kart seçimi, tutar hesaplama, onay |
-| `ClosedOverlay` | Saat/gün mesajı, sayaç (ne zaman açılır) |
-| `LoyaltyQrScanner` | ZXing ile QR okuma, müşteri eşleme |
+#### [NEW] [ClosedOverlay.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/ClosedOverlay.kt)
+- `kiosk_operating_hours_rules` tablosundan okunan çalışma saatleri dışında kiosk sipariş alımını kapatan ve ekranda kapalı mesajı ile geri sayım gösteren katman.
 
 ---
 
 ### Faz 6 — Güvenlik / PIN Sıfırlama
-
-- Logo'ya 7 kez hızlı tıklama → Yönetici PIN ekranı
-- PIN doğrulanırsa: `KioskPrefs.clearDeviceConfig()` → PairingScreen'e dön
-- PIN `settings` tablosundan okunur (web'deki `admin_pin` mantığı)
-
----
-
-## Teknik Kararlar
-
-| Konu | Karar |
-|------|-------|
-| UI Framework | Jetpack Compose (Material3) |
-| Ağ | Retrofit 2 + Gson |
-| Görsel yükleme | Coil 2 |
-| Asenkron | Kotlin Coroutines + ViewModel |
-| Navigasyon | Navigation3 (personel-android ile aynı) |
-| Yerel depolama | SharedPreferences (sadece cihaz config — iş verisi değil) |
-| Ekran yönü | BigScreen: portrait lock / Tablet: fullSensor |
-| Ölçekleme | Canvas boyutu sabit, `scale()` ile fiziksel ekrana uyum |
-| QR okuma | ZXing (sadakat müşteri eşleme) |
+#### [MODIFY] [MainActivity.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/MainActivity.kt)
+- Sol üstteki KIOSK logosuna 7 kez hızlı tıklandığında açılacak şifreli sıfırlama ekranı.
+- Şifre (admin PIN) doğrulandığında `prefs.clearDeviceConfig()` çalıştırılarak cihazın tüm eşleme bilgileri temizlenecek ve uygulama PairingScreen'e yönlendirilecektir.
 
 ---
 
 ## Verifikasyon Planı
 
-### Derleme
-- `./gradlew assembleDebug` → sıfır hata
+### Otomatik Testler
+- Uygulamanın derleme testi: `./gradlew.bat assembleDebug` (hata sıfır olmalıdır).
 
-### Manuel Test
-- BigScreen modunu bir portrait Android cihazda / emülatörde aç
-- Tablet modunu landscape emülatörde aç
-- Pair Key ile eşleme → menü yükleme
-- Sepete ürün ekleme → sipariş gönderme
-- Çalışma saati dışında ClosedOverlay görünümü
-- 7 kez logo tıklama → PIN → yeniden eşleme
-
----
-
-## Kullanıcı Kararları ✅
-
-| Konu | Karar |
-|------|-------|
-| **Ödeme** | Sadece "Kart ile öde" — kayıt `sale_payments` tablosuna `payment_method = 'card'` olarak düşer |
-| **Kiosk Lockdown** | Evet — Immersive sticky mod, geri/home butonu devre dışı, ekran her zaman açık |
-| **Offline** | ClosedOverlay göster — ağ kesilince menü erişimi kapatılır |
-| **Faz yaklaşımı** | Faz faz ilerle — her fazın sonunda kullanıcı onayı alınır |
+### Manuel Testler
+- **Tablet Modu Testi**: Emülatör landscape moduna alınarak split-layout görünümü ve sepet işlemleri test edilecektir.
+- **Güvenlik Testi**: Logo 7 kez tıklanarak sıfırlama akışı denenecektir.
+- **Senkronizasyon Testi**: Web Kiosk arayüzünden girilen verilerle native Android üzerindeki verilerin/fiyatların birebir uyuştuğu doğrulanacaktır.

@@ -33,6 +33,12 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.suitable.kiosk.data.model.*
 import com.suitable.kiosk.ui.KioskDataViewModel
+import com.suitable.kiosk.ui.shared.ClosedOverlay
+import com.suitable.kiosk.ui.shared.ComboBuilderModal
+import com.suitable.kiosk.ui.shared.SuggestionModal
+import com.suitable.kiosk.ui.shared.KioskSuggestion
+import com.suitable.kiosk.ui.shared.SuggestionEvaluator
+import com.suitable.kiosk.ui.shared.IdleScreen
 
 // ─── Renk paleti ──────────────────────────────────────────────────────────────
 private val BgDark       = Color(0xFF0A0A14)
@@ -75,11 +81,17 @@ fun KioskBigScreen(
     val orderState     by viewModel.orderState.collectAsState()
     val isOpen         by viewModel.isOpen.collectAsState()
 
-    // Ekran durumu: menu | cart | payment
-    var screen by remember { mutableStateOf("menu") }
+    // Ekran durumu: idle | menu | cart | payment
+    var screen by remember { mutableStateOf("idle") }
 
     // Seçili ürün (detay modalı için)
     var selectedItem by remember { mutableStateOf<SaleItem?>(null) }
+    var selectedComboProduct by remember { mutableStateOf<SaleItem?>(null) }
+
+    // Öneriler
+    var activeSuggestion by remember { mutableStateOf<KioskSuggestion?>(null) }
+    val productSuggestionHits = remember { mutableStateMapOf<String, Int>() }
+    val checkoutSuggestionHits = remember { mutableStateMapOf<String, Int>() }
 
     // CartFab pulse tetikleyici
     var cartPulseKey by remember { mutableIntStateOf(0) }
@@ -96,6 +108,34 @@ fun KioskBigScreen(
             is MenuLoadState.Ready   -> {
                 val data = state.data
                 val channelId = data.kioskChannel?.id
+                val settings by viewModel.settingsJson.collectAsState()
+
+                val maybeShowProductSuggestion = remember(settings, data.items) {
+                    { prod: SaleItem ->
+                        val settingsObj = settings
+                        if (settingsObj != null) {
+                            val list = settingsObj.getAsJsonArray("product_suggestions")
+                            val limits = settingsObj.getAsJsonObject("suggestion_limits")
+                            val limit = limits?.get("productFlow")?.asInt ?: 2
+
+                            val matchRule = list?.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
+                                ?.firstOrNull { rule ->
+                                    val ruleId = rule.get("id")?.asString ?: ""
+                                    val hits = productSuggestionHits[ruleId] ?: 0
+                                    hits < limit && SuggestionEvaluator.matchProductSuggestion(rule, prod, data.items)
+                                }
+
+                            if (matchRule != null) {
+                                val sug = SuggestionEvaluator.buildSuggestion(matchRule, "product", data.items)
+                                if (sug != null) {
+                                    val ruleId = matchRule.get("id")?.asString ?: ""
+                                    productSuggestionHits[ruleId] = (productSuggestionHits[ruleId] ?: 0) + 1
+                                    activeSuggestion = sug
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Kategoriler — sadece üst seviye, silinmemiş
                 val topCategories = remember(data.categories) {
@@ -113,42 +153,56 @@ fun KioskBigScreen(
                     }
                 }
 
-                // Menü ekranı
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // ── Sol: Kategori paneli ──
-                    CategorySidePanel(
-                        categories   = topCategories,
-                        selectedId   = selectedCatId,
-                        onSelect     = { viewModel.selectCategory(it) },
-                        stationCode  = stationCode,
-                        onLongPress  = onSecretUnlock,
+                if (screen == "idle") {
+                    IdleScreen(
+                        branchName = data.branchName ?: "Kadıköy Şubesi",
+                        settings = settings,
+                        baseUrl = viewModel.baseUrl,
+                        onStart = { screen = "menu" }
                     )
+                } else {
+                    // Menü ekranı
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        // ── Sol: Kategori paneli ──
+                        CategorySidePanel(
+                            categories   = topCategories,
+                            selectedId   = selectedCatId,
+                            onSelect     = { viewModel.selectCategory(it) },
+                            stationCode  = stationCode,
+                            onLongPress  = onSecretUnlock,
+                        )
 
-                    // ── Sağ: Ürün grid ──
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        if (visibleItems.isEmpty()) {
-                            EmptyCategoryPlaceholder()
-                        } else {
-                            ProductGrid(
-                                items     = visibleItems,
-                                channelId = channelId,
-                                onItemClick = { item ->
-                                    selectedItem = item
-                                },
+                        // ── Sağ: Ürün grid ──
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (visibleItems.isEmpty()) {
+                                EmptyCategoryPlaceholder()
+                            } else {
+                                ProductGrid(
+                                    items     = visibleItems,
+                                    channelId = channelId,
+                                    baseUrl   = viewModel.baseUrl,
+                                    onItemClick = { item ->
+                                        if (item.isComboMenu) {
+                                            selectedComboProduct = item
+                                        } else {
+                                            selectedItem = item
+                                        }
+                                    },
+                                )
+                            }
+
+                            // ── Floating Cart FAB ──
+                            CartFab(
+                                itemCount  = viewModel.cartItemCount,
+                                total      = viewModel.cartTotal,
+                                pulseKey   = cartPulseKey,
+                                hasItems   = cart.isNotEmpty(),
+                                onClick    = { if (cart.isNotEmpty()) screen = "cart" },
+                                modifier   = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(24.dp),
                             )
                         }
-
-                        // ── Floating Cart FAB ──
-                        CartFab(
-                            itemCount  = viewModel.cartItemCount,
-                            total      = viewModel.cartTotal,
-                            pulseKey   = cartPulseKey,
-                            hasItems   = cart.isNotEmpty(),
-                            onClick    = { if (cart.isNotEmpty()) screen = "cart" },
-                            modifier   = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(24.dp),
-                        )
                     }
                 }
 
@@ -167,12 +221,84 @@ fun KioskBigScreen(
                         item         = item,
                         channelId    = channelId,
                         optionGroups = optionGroups,
+                        baseUrl      = viewModel.baseUrl,
                         onDismiss    = { selectedItem = null },
                         onAddToCart  = { cartItem ->
                             viewModel.addToCart(cartItem)
                             cartPulseKey++
                             selectedItem = null
+                            maybeShowProductSuggestion(item)
                         },
+                    )
+                }
+
+                // ── Combo Builder Modalı ──
+                selectedComboProduct?.let { comboProd ->
+                    val comboDefinitions by viewModel.comboMenusJson.collectAsState()
+                    val comboDef = remember(comboProd, comboDefinitions) {
+                        val defId = comboProd.comboDefinitionId
+                        comboDefinitions?.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
+                            ?.firstOrNull { it.get("id")?.asString == defId }
+                    }
+                    if (comboDef != null) {
+                        ComboBuilderModal(
+                            comboProduct = comboProd,
+                            comboDefinition = comboDef,
+                            saleItems = data.items,
+                            optionGroupDefs = data.optionGroups,
+                            channelId = channelId,
+                            baseUrl = viewModel.baseUrl,
+                            onDismiss = { selectedComboProduct = null },
+                            onConfirm = { cartItem ->
+                                viewModel.addToCart(cartItem)
+                                cartPulseKey++
+                                selectedComboProduct = null
+                                maybeShowProductSuggestion(comboProd)
+                            }
+                        )
+                    }
+                }
+
+                // ── Öneri Modalı ──
+                activeSuggestion?.let { sug ->
+                    SuggestionModal(
+                        suggestion = sug,
+                        onClose = {
+                            val stage = activeSuggestion?.stage
+                            activeSuggestion = null
+                            if (stage == "checkout") {
+                                screen = "payment"
+                            }
+                        },
+                        onAction = {
+                            activeSuggestion?.let { s ->
+                                if (s.suggestionType == "product" && s.targetId != null) {
+                                    val prod = data.items.firstOrNull { it.id == s.targetId }
+                                    if (prod != null) {
+                                        if (prod.isComboMenu) {
+                                            selectedComboProduct = prod
+                                        } else {
+                                            val needsOptionsModal = try {
+                                                val linkedIds = prod.optionGroupsRaw?.asJsonArray?.size() ?: 0
+                                                val portionsCount = prod.portions?.asJsonArray?.size() ?: 0
+                                                linkedIds > 0 || portionsCount > 1
+                                            } catch (_: Exception) { false }
+
+                                            if (needsOptionsModal) {
+                                                selectedItem = prod
+                                            } else {
+                                                viewModel.addToCart(CartItem(prod, 1, unitPrice = prod.priceForChannel(channelId)))
+                                                cartPulseKey++
+                                            }
+                                        }
+                                    }
+                                } else if (s.suggestionType == "category" && s.targetId != null) {
+                                    viewModel.selectCategory(s.targetId)
+                                    screen = "menu"
+                                }
+                            }
+                            activeSuggestion = null
+                        }
                     )
                 }
 
@@ -186,7 +312,29 @@ fun KioskBigScreen(
                         onDecrease = { viewModel.decreaseQty(it) },
                         onRemove  = { viewModel.removeFromCart(it) },
                         onClear   = { viewModel.clearCart() },
-                        onPay     = { screen = "payment" },
+                        onPay     = {
+                            val settingsObj = settings
+                            val checkoutSuggestions = settingsObj?.getAsJsonArray("checkout_suggestions")
+                            val limit = settingsObj?.getAsJsonObject("suggestion_limits")?.get("checkout")?.asInt ?: 1
+                            val matchRule = checkoutSuggestions?.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
+                                ?.firstOrNull { rule ->
+                                    val ruleId = rule.get("id")?.asString ?: ""
+                                    val hits = checkoutSuggestionHits[ruleId] ?: 0
+                                    hits < limit && SuggestionEvaluator.evaluateCheckoutSuggestion(rule, cart, data.items, viewModel.cartTotal)
+                                }
+                            if (matchRule != null) {
+                                val sug = SuggestionEvaluator.buildSuggestion(matchRule, "checkout", data.items)
+                                if (sug != null) {
+                                    val ruleId = matchRule.get("id")?.asString ?: ""
+                                    checkoutSuggestionHits[ruleId] = (checkoutSuggestionHits[ruleId] ?: 0) + 1
+                                    activeSuggestion = sug
+                                } else {
+                                    screen = "payment"
+                                }
+                            } else {
+                                screen = "payment"
+                            }
+                        },
                     )
                 }
 
@@ -202,7 +350,7 @@ fun KioskBigScreen(
                         },
                         onSuccess  = {
                             viewModel.resetOrderState()
-                            screen = "menu"
+                            screen = "idle"
                         },
                     )
                 }
@@ -273,6 +421,9 @@ private fun CategorySidePanel(
     stationCode: String,
     onLongPress: () -> Unit,
 ) {
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    var tapCount by remember { mutableIntStateOf(0) }
+
     Column(
         modifier = Modifier
             .width(200.dp)
@@ -284,7 +435,19 @@ private fun CategorySidePanel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                .clickable {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime < 4000) {
+                        tapCount++
+                    } else {
+                        tapCount = 1
+                    }
+                    lastTapTime = now
+                    if (tapCount >= 7) {
+                        tapCount = 0
+                        onLongPress()
+                    }
+                }
                 .padding(vertical = 20.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -357,6 +520,7 @@ private fun CategorySidePanel(
 private fun ProductGrid(
     items: List<SaleItem>,
     channelId: String?,
+    baseUrl: String,
     onItemClick: (SaleItem) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -370,6 +534,7 @@ private fun ProductGrid(
             ProductCard(
                 item      = item,
                 channelId = channelId,
+                baseUrl   = baseUrl,
                 onClick   = { onItemClick(item) },
             )
         }
@@ -380,10 +545,11 @@ private fun ProductGrid(
 private fun ProductCard(
     item: SaleItem,
     channelId: String?,
+    baseUrl: String,
     onClick: () -> Unit,
 ) {
     val price    = item.priceForChannel(channelId)
-    val imageUrl = item.imageUrlForChannel(channelId)
+    val imageUrl = item.imageUrlForChannel(channelId, baseUrl)
     val hasOptions = item.optionGroupsRaw?.let {
         try { it.asJsonArray.size() > 0 } catch (_: Exception) { false }
     } ?: false
@@ -616,6 +782,7 @@ private fun ProductDetailSheet(
     item: SaleItem,
     channelId: String?,
     optionGroups: List<OptionGroup>,
+    baseUrl: String,
     onDismiss: () -> Unit,
     onAddToCart: (CartItem) -> Unit,
 ) {
@@ -664,7 +831,7 @@ private fun ProductDetailSheet(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Görsel banner
-                    val imageUrl = item.imageUrlForChannel(channelId)
+                    val imageUrl = item.imageUrlForChannel(channelId, baseUrl)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1224,39 +1391,6 @@ private fun PaymentConfirmScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-// ─── Kapalı Overlay ───────────────────────────────────────────────────────────
-
-@Composable
-private fun ClosedOverlay() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.92f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(40.dp),
-        ) {
-            Text("🕐", fontSize = 64.sp)
-            Spacer(Modifier.height(20.dp))
-            Text(
-                "Şu an kapalıyız",
-                color = TextPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Black,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Çalışma saatlerimizde tekrar bekleriz.",
-                color = TextSecond,
-                fontSize = 15.sp,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }

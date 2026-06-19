@@ -35,8 +35,6 @@ data class OrderHeader(
     @SerializedName("kiosk_service_type") val kioskServiceType: String = "takeaway",
     @SerializedName("kiosk_table_number") val kioskTableNumber: String? = null,
     @SerializedName("kiosk_display_no") val kioskDisplayNo: Int? = null,
-    @SerializedName("kiosk_station_code") val kioskStationCode: String? = null,
-    @SerializedName("kiosk_station_name") val kioskStationName: String? = null,
 )
 
 /**

@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -24,6 +27,8 @@ class KioskDataViewModel(
     private val prefs: KioskPrefs,
     private val repository: KioskRepository,
 ) : ViewModel() {
+
+    val baseUrl: String get() = prefs.getApiUrl()
 
     // ─── Menü durumu ─────────────────────────────────────────────────────────
 
@@ -58,6 +63,11 @@ class KioskDataViewModel(
     private val _settingsJson = MutableStateFlow<com.google.gson.JsonObject?>(null)
     val settingsJson: StateFlow<com.google.gson.JsonObject?> = _settingsJson.asStateFlow()
 
+    // ─── Combo Menü ayarları JSON ─────────────────────────────────────────────
+
+    private val _comboMenusJson = MutableStateFlow<com.google.gson.JsonArray?>(null)
+    val comboMenusJson: StateFlow<com.google.gson.JsonArray?> = _comboMenusJson.asStateFlow()
+
     // ─── Init ─────────────────────────────────────────────────────────────────
 
     init {
@@ -72,27 +82,52 @@ class KioskDataViewModel(
 
         viewModelScope.launch {
             _menuState.value = MenuLoadState.Loading
-            val state = repository.loadMenuData(branchId, terminalId)
-            _menuState.value = state
+
+            val menuDeferred = async { repository.loadMenuData(branchId, terminalId) }
+            val settingsDeferred = async { repository.loadKioskSettingsJson() }
+            val comboDeferred = async { repository.loadComboMenusJson() }
+
+            val state = menuDeferred.await()
+            val settings = settingsDeferred.await()
+            val comboJson = comboDeferred.await()
+
+            _settingsJson.value = settings
+            _comboMenusJson.value = comboJson
 
             if (state is MenuLoadState.Ready) {
+                val data = state.data
+                val comboCategoryId = resolveComboMenuCategoryId(data.categories)
+                val comboProducts = buildKioskComboProducts(
+                    comboDefinitions = comboJson,
+                    products = data.items,
+                    channelId = data.kioskChannel?.id,
+                    comboCategoryId = comboCategoryId
+                )
+                println("KioskDataViewModel: comboCategoryId=$comboCategoryId, channelId=${data.kioskChannel?.id}")
+                println("KioskDataViewModel: comboProducts size=${comboProducts.size}")
+                comboProducts.forEach { item ->
+                    println("KioskDataViewModel: Combo item name=${item.name}, id=${item.id}, catL5=${item.catL5}, price=${item.priceForChannel(data.kioskChannel?.id)}, categoryIds=${item.categoryIds}")
+                }
+                val mergedItems = data.items + comboProducts
+                val updatedData = data.copy(items = mergedItems)
+
+                _menuState.value = MenuLoadState.Ready(updatedData)
+
                 // İlk kategoriyi seç
-                val topLevel = state.data.categories
+                val topLevel = updatedData.categories
                     .filter { it.parentId == null && it.deletedAt == null }
                 if (_selectedCategoryId.value == null && topLevel.isNotEmpty()) {
                     _selectedCategoryId.value = topLevel.first().id
                 }
                 // Çalışma saati hesapla
                 _isOpen.value = resolveIsOpen(
-                    rules = state.data.operatingRules,
-                    terminalRules = state.data.terminalRules,
+                    rules = updatedData.operatingRules,
+                    terminalRules = updatedData.terminalRules,
                     terminalId = terminalId,
                 )
+            } else {
+                _menuState.value = state
             }
-        }
-
-        viewModelScope.launch {
-            _settingsJson.value = repository.loadKioskSettingsJson()
         }
     }
 
@@ -170,41 +205,85 @@ class KioskDataViewModel(
                 paymentTotal               = subtotal,
                 updatedAt                  = now,
                 kioskDisplayNo             = displayNo,
-                kioskStationCode           = stationCode,
             )
 
-            val lines = cartItems.mapIndexed { idx, cartItem ->
-                val lineTotal = cartItem.lineTotal
-                OrderLine(
-                    saleId                    = "",   // submitOrder içinde doldurulacak
-                    lineNo                    = idx + 1,
-                    productId                 = cartItem.saleItem.id,
-                    productName               = cartItem.saleItem.name,
-                    productSku                = cartItem.saleItem.sku,
-                    qty                       = cartItem.quantity,
-                    unitGrossBeforeDiscount   = cartItem.unitPrice,
-                    lineGrossBeforeDiscount   = lineTotal,
-                    unitGrossAfterDiscount    = cartItem.unitPrice,
-                    lineGrossAfterDiscount    = lineTotal,
-                    taxId                     = cartItem.saleItem.taxId,
-                    lineNetAfterDiscount      = lineTotal,
-                    optionsJson               = cartItem.selectedOptions.map { opt ->
-                        mapOf(
-                            "group_id"       to opt.groupId,
-                            "group_name"     to opt.groupName,
-                            "option_id"      to opt.optionId,
-                            "option_name"    to opt.optionName,
-                            "price_modifier" to opt.priceModifier,
+            val lines = mutableListOf<OrderLine>()
+            var lineNo = 1
+            for (cartItem in cartItems) {
+                val qty = Math.max(1, cartItem.quantity)
+                for (unitIndex in 0 until qty) {
+                    val comboBundle = cartItem.comboBundle
+                    if (cartItem.saleItem.isComboMenu && comboBundle != null) {
+                        for (line in comboBundle.expandedLines) {
+                            lines.add(
+                                OrderLine(
+                                    saleId = "",
+                                    lineNo = lineNo++,
+                                    productId = line.productId,
+                                    productName = line.productName,
+                                    productSku = line.productSku,
+                                    qty = 1,
+                                    unitGrossBeforeDiscount = line.unitPrice,
+                                    lineGrossBeforeDiscount = line.unitPrice,
+                                    unitGrossAfterDiscount = line.unitPrice,
+                                    lineGrossAfterDiscount = line.unitPrice,
+                                    taxId = cartItem.saleItem.taxId,
+                                    lineNetAfterDiscount = line.unitPrice,
+                                    optionsJson = line.options.map { opt ->
+                                        mapOf(
+                                            "group_id" to opt.groupId,
+                                            "group_name" to opt.groupName,
+                                            "option_id" to opt.optionId,
+                                            "option_name" to opt.optionName,
+                                            "price_modifier" to opt.priceModifier,
+                                        )
+                                    },
+                                    portionId = null,
+                                    portionName = null,
+                                    branchId = branchId,
+                                    branchName = null,
+                                    saleDatetime = now,
+                                    salesChannelId = channel?.id,
+                                    prepTimeMinutes = line.prepTimeMinutes,
+                                )
+                            )
+                        }
+                    } else {
+                        val unitPrice = cartItem.unitPrice
+                        lines.add(
+                            OrderLine(
+                                saleId = "",
+                                lineNo = lineNo++,
+                                productId = cartItem.saleItem.id,
+                                productName = cartItem.saleItem.name,
+                                productSku = cartItem.saleItem.sku,
+                                qty = 1,
+                                unitGrossBeforeDiscount = unitPrice,
+                                lineGrossBeforeDiscount = unitPrice,
+                                unitGrossAfterDiscount = unitPrice,
+                                lineGrossAfterDiscount = unitPrice,
+                                taxId = cartItem.saleItem.taxId,
+                                lineNetAfterDiscount = unitPrice,
+                                optionsJson = cartItem.selectedOptions.map { opt ->
+                                    mapOf(
+                                        "group_id" to opt.groupId,
+                                        "group_name" to opt.groupName,
+                                        "option_id" to opt.optionId,
+                                        "option_name" to opt.optionName,
+                                        "price_modifier" to opt.priceModifier,
+                                    )
+                                },
+                                portionId = cartItem.portionId,
+                                portionName = cartItem.portionName,
+                                branchId = branchId,
+                                branchName = null,
+                                saleDatetime = now,
+                                salesChannelId = channel?.id,
+                                prepTimeMinutes = cartItem.saleItem.prepTimeMinutes,
+                            )
                         )
-                    },
-                    portionId     = cartItem.portionId,
-                    portionName   = cartItem.portionName,
-                    branchId      = branchId,
-                    branchName    = null,
-                    saleDatetime  = now,
-                    salesChannelId = channel?.id,
-                    prepTimeMinutes = cartItem.saleItem.prepTimeMinutes,
-                )
+                    }
+                }
             }
 
             val payment = OrderPayment(
@@ -273,6 +352,113 @@ class KioskDataViewModel(
     }
 
     // ─── Yardımcılar ─────────────────────────────────────────────────────────
+
+    private fun resolveComboMenuCategoryId(categories: List<SaleCategory>): String? {
+        return categories.firstOrNull {
+            if (it.deletedAt != null) false else {
+                val name = it.name.lowercase(Locale.getDefault())
+                    .replace("ı", "i")
+                    .replace("ğ", "g")
+                    .replace("ü", "u")
+                    .replace("ş", "s")
+                    .replace("ö", "o")
+                    .replace("ç", "c")
+                name == "menuler"
+            }
+        }?.id
+    }
+
+    private fun buildKioskComboProducts(
+        comboDefinitions: JsonArray?,
+        products: List<SaleItem>,
+        channelId: String?,
+        comboCategoryId: String?,
+    ): List<SaleItem> {
+        if (comboDefinitions == null) return emptyList()
+        val productMap = products.associateBy { it.id }
+        val comboItems = mutableListOf<SaleItem>()
+
+        for (el in comboDefinitions) {
+            if (!el.isJsonObject) continue
+            val combo = el.asJsonObject
+            if (combo.get("active")?.asBoolean == false || combo.get("deleted")?.asBoolean == true) continue
+
+            val id = combo.get("id")?.asString ?: continue
+            val form = combo.getAsJsonObject("form") ?: JsonObject()
+            val groups = combo.getAsJsonArray("groups") ?: JsonArray()
+            val channelConfig = combo.getAsJsonObject("channelConfig")
+            val config = if (channelId != null && channelConfig != null) {
+                channelConfig.getAsJsonObject(channelId) ?: JsonObject()
+            } else {
+                JsonObject()
+            }
+
+            var baseTotal = 0.0
+            for (gEl in groups) {
+                if (!gEl.isJsonObject) continue
+                val group = gEl.asJsonObject
+                val primaryItemId = group.get("primaryItemId")?.asString ?: ""
+                val item = productMap[primaryItemId]
+                if (item != null) {
+                    baseTotal += item.priceForChannel(channelId)
+                }
+            }
+
+            val pricingStrategy = form.get("pricingStrategy")?.asString ?: "set-price"
+            var price = baseTotal
+            when (pricingStrategy) {
+                "percent" -> {
+                    val percent = config.get("percent")?.asDouble
+                        ?: form.get("defaultPercent")?.asDouble
+                        ?: 0.0
+                    price = Math.max(baseTotal * (1.0 - percent / 100.0), 0.0)
+                }
+                "fixed" -> {
+                    val fixed = config.get("fixed")?.asDouble
+                        ?: form.get("defaultFixed")?.asDouble
+                        ?: 0.0
+                    price = Math.max(baseTotal - fixed, 0.0)
+                }
+                else -> {
+                    price = config.get("comboPrice")?.asDouble
+                        ?: form.get("defaultComboPrice")?.asDouble
+                        ?: 0.0
+                }
+            }
+
+            val channelPricesJson = JsonArray().apply {
+                if (channelId != null) {
+                    add(JsonObject().apply {
+                        addProperty("channel_id", channelId)
+                        addProperty("price", price)
+                        addProperty("active", config.get("active")?.asBoolean != false)
+                    })
+                }
+            }
+
+            val name = combo.get("name")?.asString ?: form.get("name")?.asString ?: "Combo Menu"
+            val sku = combo.get("sku")?.asString ?: form.get("sku")?.asString ?: ""
+            val imageUrl = form.get("channel_image")?.asString
+
+            val comboItem = SaleItem(
+                id = "combo-$id",
+                name = name,
+                sku = sku,
+                catL5 = comboCategoryId,
+                channelPricesRaw = channelPricesJson,
+                portions = null,
+                optionGroupsRaw = null,
+                channelImageRaw = if (imageUrl != null) com.google.gson.JsonPrimitive(imageUrl) else null,
+                channelDescriptionRaw = form.get("channel_description"),
+                prepTimeMinutes = 0,
+                active = true,
+                isComboMenu = true,
+                comboDefinitionId = id,
+            )
+            comboItems.add(comboItem)
+        }
+        return comboItems
+    }
 
     private fun nowIso(): String =
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)

@@ -30,8 +30,8 @@ class KioskRepository(private val api: ApiService) {
             val body = buildQuery(
                 table = "pos_terminals",
                 operation = "select",
-                filters = mapOf("station_code" to stationCode.uppercase().trim()),
-                select = "id,station_code,terminal_type,branch_id,label,is_active,config_data"
+                filters = mapOf("activation_code" to stationCode.uppercase().trim()),
+                select = "id,activation_code,device_type,branch_id,terminal_name,is_active,config_data"
             )
             val response = api.query(body)
             if (response.has("error") && !response.get("error").isJsonNull) {
@@ -47,17 +47,17 @@ class KioskRepository(private val api: ApiService) {
             if (rows.size() == 0) return PairingResult.NotFound
 
             val terminal = rows[0].asJsonObject
-            val terminalType = terminal.str("terminal_type")
-            val mode = KioskMode.fromTerminalType(terminalType)
-                ?: return PairingResult.UnknownType(terminalType)
+            val deviceType = terminal.str("device_type")
+            val mode = KioskMode.fromTerminalType(deviceType)
+                ?: return PairingResult.UnknownType(deviceType)
             if (terminal.bool("is_active") == false) return PairingResult.Inactive
 
             PairingResult.Success(
                 mode = mode,
-                stationCode = terminal.str("station_code") ?: stationCode,
+                stationCode = terminal.str("activation_code") ?: stationCode,
                 terminalId = terminal.str("id") ?: "",
                 branchId = terminal.str("branch_id"),
-                label = terminal.str("label"),
+                label = terminal.str("terminal_name"),
             )
         } catch (e: Exception) {
             PairingResult.Error(e.message ?: "Bilinmeyen hata")
@@ -78,6 +78,7 @@ class KioskRepository(private val api: ApiService) {
             val optionGroups = loadOptionGroups()
             val operatingRules = loadOperatingRules(branchId)
             val terminalRules = loadTerminalRules()
+            val branchName = loadBranchName(branchId)
 
             MenuLoadState.Ready(
                 MenuData(
@@ -87,6 +88,7 @@ class KioskRepository(private val api: ApiService) {
                     optionGroups = optionGroups,
                     operatingRules = operatingRules,
                     terminalRules = terminalRules,
+                    branchName = branchName,
                 )
             )
         } catch (e: java.net.UnknownHostException) {
@@ -98,11 +100,29 @@ class KioskRepository(private val api: ApiService) {
         }
     }
 
+    private suspend fun loadBranchName(branchId: String): String? {
+        return try {
+            val body = buildQuery(
+                table = "branches",
+                operation = "select",
+                select = "name",
+                filters = mapOf("id" to branchId),
+            )
+            val response = api.query(body)
+            if (response.has("data") && response.get("data").isJsonArray) {
+                val arr = response.getAsJsonArray("data")
+                if (arr.size() > 0) {
+                    arr[0].asJsonObject.get("name")?.asString
+                } else null
+            } else null
+        } catch (_: Exception) { null }
+    }
+
     private suspend fun loadCategories(): List<SaleCategory> {
         val body = buildQuery(
             table = "sale_categories",
             operation = "select",
-            select = "id,name,parent_id,image_url,bg,text_color",
+            select = "id,name,parent_id,image_url,bg,text_color,deleted_at",
             nullFilters = listOf("deleted_at"),
         )
         return parseList(api.query(body))
@@ -112,7 +132,7 @@ class KioskRepository(private val api: ApiService) {
         val body = buildQuery(
             table = "sale_items",
             operation = "select",
-            select = "id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes,tax_id,active",
+            select = "id,name,sku,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,channel_prices,portions,option_groups,channel_image,channel_description,prep_time_minutes,tax_id,active,deleted_at",
             filters = mapOf("active" to true),
             nullFilters = listOf("deleted_at"),
         )
@@ -134,7 +154,7 @@ class KioskRepository(private val api: ApiService) {
         val body = buildQuery(
             table = "option_groups",
             operation = "select",
-            select = "id,name,options,min_select,max_select",
+            select = "id,name,options,min_select,max_select,deleted_at",
             nullFilters = listOf("deleted_at"),
         )
         return parseList(api.query(body))
@@ -175,6 +195,85 @@ class KioskRepository(private val api: ApiService) {
             } else null
             if (rows == null || rows.size() == 0) return null
             rows[0].asJsonObject.getAsJsonObject("value")
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun loadComboMenusJson(): JsonArray? {
+        return try {
+            val body = buildQuery(
+                table = "settings",
+                operation = "select",
+                select = "value",
+                filters = mapOf("key" to "combo_menus_v1"),
+            )
+            val response = api.query(body)
+            val rows = if (response.has("data") && response.get("data").isJsonArray) {
+                response.getAsJsonArray("data")
+            } else null
+            if (rows == null || rows.size() == 0) return null
+            val value = rows[0].asJsonObject.get("value")
+            val element = if (value != null && value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+                try {
+                    com.google.gson.JsonParser.parseString(value.asString)
+                } catch (_: Exception) { value }
+            } else {
+                value
+            }
+
+            val rawArr = if (element != null && element.isJsonArray) {
+                element.asJsonArray
+            } else if (element != null && element.isJsonObject && element.asJsonObject.has("records")) {
+                element.asJsonObject.getAsJsonArray("records")
+            } else null
+
+            if (rawArr != null) {
+                val normalizedArr = JsonArray()
+                for (el in rawArr) {
+                    if (!el.isJsonObject) continue
+                    val obj = el.asJsonObject
+                    if (obj.has("groups") && obj.get("groups").isJsonArray) {
+                        normalizedArr.add(obj)
+                    } else if (obj.has("items") && obj.get("items").isJsonArray) {
+                        val newObj = JsonObject()
+                        newObj.addProperty("id", obj.get("id")?.asString ?: "")
+                        newObj.addProperty("name", obj.get("name")?.asString ?: "")
+                        newObj.addProperty("sku", obj.get("sku")?.asString ?: "")
+                        newObj.addProperty("active", obj.get("active")?.asBoolean != false)
+                        newObj.addProperty("deleted", obj.get("deleted")?.asBoolean == true)
+
+                        val form = JsonObject()
+                        form.addProperty("name", obj.get("name")?.asString ?: "")
+                        form.addProperty("sku", obj.get("sku")?.asString ?: "")
+                        form.addProperty("pricingStrategy", "set-price")
+                        val comboPrice = obj.get("combo_price")?.asDouble ?: 0.0
+                        form.addProperty("defaultComboPrice", comboPrice)
+                        newObj.add("form", form)
+
+                        newObj.add("channelConfig", JsonObject())
+
+                        val groups = JsonArray()
+                        val items = obj.getAsJsonArray("items")
+                        items.forEachIndexed { idx, itemEl ->
+                            if (itemEl.isJsonObject) {
+                                val itemObj = itemEl.asJsonObject
+                                val group = JsonObject()
+                                val groupId = "g-$idx"
+                                group.addProperty("id", groupId)
+                                group.addProperty("name", itemObj.get("name")?.asString ?: "Seçim")
+                                group.addProperty("primaryItemId", itemObj.get("sale_item_id")?.asString ?: "")
+                                group.add("alternatives", JsonArray())
+                                group.add("optionGroups", JsonArray())
+                                groups.add(group)
+                            }
+                        }
+                        newObj.add("groups", groups)
+                        normalizedArr.add(newObj)
+                    } else {
+                        normalizedArr.add(obj)
+                    }
+                }
+                normalizedArr
+            } else null
         } catch (_: Exception) { null }
     }
 
@@ -272,8 +371,6 @@ class KioskRepository(private val api: ApiService) {
                         addProperty("pickup_called", false)
                         addProperty("kiosk_service_type", header.kioskServiceType)
                         header.kioskDisplayNo?.let { addProperty("kiosk_display_no", it) }
-                        header.kioskStationCode?.let { addProperty("kiosk_station_code", it) }
-                        header.kioskStationName?.let { addProperty("kiosk_station_name", it) }
                     })
                 })
             } catch (_: Exception) {}
@@ -346,7 +443,7 @@ class KioskRepository(private val api: ApiService) {
             val f = JsonObject().apply {
                 addProperty("type", "is")
                 addProperty("col", col)
-                add("val", null)
+                add("val", com.google.gson.JsonNull.INSTANCE)
             }
             filterArray.add(f)
         }
@@ -396,7 +493,7 @@ class KioskRepository(private val api: ApiService) {
     companion object {
         fun create(baseUrl: String): KioskRepository {
             val logging = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BASIC
+                level = HttpLoggingInterceptor.Level.BODY
             }
             val client = OkHttpClient.Builder()
                 .addInterceptor(logging)

@@ -11,6 +11,7 @@ data class MenuData(
     val kioskChannel: SalesChannel? = null,
     val operatingRules: List<OperatingHoursRule> = emptyList(),
     val terminalRules: List<TerminalOperatingRule> = emptyList(),
+    val branchName: String? = null,
 )
 
 /**

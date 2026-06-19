@@ -8,6 +8,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,6 +108,10 @@ private fun KioskApp(
     var currentMode by remember { mutableStateOf(if (prefs.isPaired()) prefs.getKioskMode() else null) }
     var stationCode by remember { mutableStateOf(prefs.getStationCode() ?: "") }
 
+    var showAdminPinDialog by remember { mutableStateOf(false) }
+    var adminPinInput by remember { mutableStateOf("") }
+    var adminPinError by remember { mutableStateOf("") }
+
     // KioskDataViewModel: yalnızca cihaz eşlenince oluşturulur
     val dataViewModel: KioskDataViewModel? = if (currentMode != null) {
         viewModel(
@@ -126,10 +144,7 @@ private fun KioskApp(
                 stationCode = stationCode,
                 viewModel = dataViewModel!!,
                 onSecretUnlock = {
-                    // Yönetici PIN doğrulandı → yeniden eşleme
-                    currentMode = null
-                    stationCode = ""
-                    onModeChanged(KioskMode.BIG_SCREEN) // yönü sıfırlamak için
+                    showAdminPinDialog = true
                 },
             )
         }
@@ -139,10 +154,127 @@ private fun KioskApp(
                 stationCode = stationCode,
                 viewModel = dataViewModel!!,
                 onSecretUnlock = {
-                    currentMode = null
-                    stationCode = ""
+                    showAdminPinDialog = true
                 },
             )
+        }
+    }
+
+    if (showAdminPinDialog) {
+        Dialog(
+            onDismissRequest = {
+                showAdminPinDialog = false
+                adminPinInput = ""
+                adminPinError = ""
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E32)),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .width(400.dp)
+                        .padding(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Yönetici PIN Girişi",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Cihazın eşlemesini kaldırmak için yönetici PIN kodunu girin.",
+                            color = Color(0xFF9090C0),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        TextField(
+                            value = adminPinInput,
+                            onValueChange = {
+                                adminPinError = ""
+                                adminPinInput = it.take(8)
+                            },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            isError = adminPinError.isNotEmpty(),
+                            placeholder = { Text("PIN giriniz", color = Color(0xFF64748B)) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF0F172A),
+                                unfocusedContainerColor = Color(0xFF0F172A),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF6C63FF)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (adminPinError.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = adminPinError,
+                                color = Color(0xFFFF6B6B),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(Modifier.height(24.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    showAdminPinDialog = false
+                                    adminPinInput = ""
+                                    adminPinError = ""
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("İptal", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (adminPinInput == "1903") {
+                                        prefs.clearDeviceConfig()
+                                        currentMode = null
+                                        stationCode = ""
+                                        showAdminPinDialog = false
+                                        adminPinInput = ""
+                                        adminPinError = ""
+                                        // Eşleme ekranına yönlenip yönü sıfırlamak için
+                                        onModeChanged(KioskMode.BIG_SCREEN)
+                                    } else {
+                                        adminPinError = "Hatalı PIN kodu!"
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B6B)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Doğrula", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
