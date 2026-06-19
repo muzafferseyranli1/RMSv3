@@ -3,6 +3,7 @@ package com.suitable.personel.data
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -1747,7 +1748,7 @@ class TaskRepository {
                 val mimeType = contentResolver.getType(fileUri) ?: "application/octet-stream"
                 val name = getFileName(fileUri, context) ?: "file"
 
-                val requestFile = okhttp3.RequestBody.create(okhttp3.MediaType.parse(mimeType), tempFile)
+                val requestFile = okhttp3.RequestBody.create(mimeType.toMediaTypeOrNull(), tempFile)
                 val body = okhttp3.MultipartBody.Part.createFormData("file", name, requestFile)
 
                 val res = ApiClient.apiService.uploadFile(body)

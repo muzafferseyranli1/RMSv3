@@ -48,12 +48,16 @@ class KioskPrefs(context: Context) {
         terminalId: String,
         branchId: String?,
     ) {
-        prefs.edit()
+        val editor = prefs.edit()
             .putString(KEY_MODE, mode.name)
             .putString(KEY_STATION_CODE, stationCode)
             .putString(KEY_TERMINAL_ID, terminalId)
-            .putString(KEY_BRANCH_ID, branchId)
-            .apply()
+        if (branchId != null) {
+            editor.putString(KEY_BRANCH_ID, branchId)
+        } else {
+            editor.remove(KEY_BRANCH_ID)
+        }
+        editor.apply()
     }
 
     /**

@@ -8,6 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suitable.kiosk.data.KioskRepository
 import com.suitable.kiosk.data.model.KioskMode
 import com.suitable.kiosk.prefs.KioskPrefs
@@ -92,9 +95,17 @@ private fun KioskApp(
     var stationCode by remember { mutableStateOf(prefs.getStationCode() ?: "") }
 
     // KioskDataViewModel: yalnızca cihaz eşlenince oluşturulur
-    val dataViewModel: KioskDataViewModel? = remember(currentMode) {
-        if (currentMode != null) KioskDataViewModel(prefs, repository) else null
-    }
+    val dataViewModel: KioskDataViewModel? = if (currentMode != null) {
+        viewModel(
+            key = "kiosk_data_vm_${stationCode}",
+            factory = object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    @Suppress("UNCHECKED_CAST")
+                    return KioskDataViewModel(prefs, repository) as T
+                }
+            }
+        )
+    } else null
 
     when (val mode = currentMode) {
         null -> {

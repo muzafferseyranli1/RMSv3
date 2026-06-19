@@ -258,10 +258,17 @@ class KioskDataViewModel(
         val hhmm = String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
 
         return applicableRules.any { rule ->
-            rule.isOpen &&
-            dayCode in rule.dayCodes &&
-            hhmm >= rule.startTime &&
-            hhmm <= rule.endTime
+            // days listesi boşsa her gün geçerli (web uygulamasıyla aynı mantık)
+            val matchesDay = rule.days.isEmpty() || dayCode in rule.days
+            val start = rule.startTime
+            val end   = rule.endTime
+            // Gece yarısını aşan saatler için (örn: 22:00-04:00)
+            val matchesTime = if (start <= end) {
+                hhmm >= start && hhmm <= end
+            } else {
+                hhmm >= start || hhmm <= end
+            }
+            matchesDay && matchesTime
         }
     }
 

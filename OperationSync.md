@@ -11968,3 +11968,45 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - docs/ klasoru senkronize edildi
 
 [KIOSK_ANDROID_FAZ1_FAZ2_SYNC] - Kiosk native Android Faz 1+2 tamamlandi.
+
+---
+
+## LOG ENTRY - 2026-06-19 - Kiosk Android Faz 3: BigScreen Tam UI Tamamlandi
+
+- Agent: Antigravity
+- Oturum: kiosk-android Faz 3 BigScreen UI
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler
+
+**1. MainActivity.kt (DUZELTILDI - KRITIK CRASH FIX)**
+- remember{} icindeki dogrudan KioskDataViewModel() cagrisi kaldirildi.
+- viewModel(factory = ViewModelProvider.Factory) ile lifecycle'a bagli dogru olusturma saglandi.
+- Gerekli importlar eklendi: ViewModel, ViewModelProvider, viewmodel.compose.viewModel.
+
+**2. KioskBigScreen.kt (SIFIRDAN YAZILDI - Faz 3 Tam UI)**
+- CategorySidePanel: 200dp sol panel, aktif highlight, gizli yonetici long-press
+- ProductGrid: LazyVerticalGrid 3 sutun, Coil AsyncImage
+- ProductCard: Gorsel, isim, fiyat, secenekli urun rozeti
+- CartFab: Floating dairesel buton, infiniteTransition yuzme animasyonu, pulse, kirmizi rozet
+- ProductDetailSheet: Secenek gruplari, miktar, toplam fiyat
+- CartFullScreen: Tam ekran sepet, adet +/-, temizle, odemeye gec
+- PaymentConfirmScreen: Idle/Submitting/Success/Error durumlari
+- ClosedOverlay: Calisma saati disi tam ekran kapama
+- LoadingScreen, OfflineScreen, ErrorScreen: Yeniden dene butonlu
+
+### Teknik Notlar
+- Floating CartFab: web KioskBig.jsx altCartFloat/altCartPulse animasyonlarinin Compose karsiligi
+- Seceneksiz urun: dogrudan sepete eklenir
+- Secenekli urun: ProductDetailSheet acar; zorunlu secim olmadan ekle butonu pasif
+- Odeme sadece payment_method = card
+
+### Deprecation Duzeltmeleri
+- Divider -> HorizontalDivider
+- Icons.Default.ArrowBack -> Icons.AutoMirrored.Filled.ArrowBack
+
+### Sonraki Adim
+- Faz 4: KioskTabletScreen tam UI
+
+[KIOSK_ANDROID_FAZ3_BIGSCREEN_SYNC] - BigScreen tam UI tamamlandi, crash fix uygulandi.
