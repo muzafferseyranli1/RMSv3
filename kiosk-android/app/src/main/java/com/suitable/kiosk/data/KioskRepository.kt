@@ -34,7 +34,16 @@ class KioskRepository(private val api: ApiService) {
                 select = "id,station_code,terminal_type,branch_id,label,is_active,config_data"
             )
             val response = api.query(body)
-            val rows = response.getAsJsonArray("data") ?: JsonArray()
+            if (response.has("error") && !response.get("error").isJsonNull) {
+                val errorObj = response.getAsJsonObject("error")
+                val errorMsg = errorObj?.str("message") ?: "API Hatası"
+                return PairingResult.Error(errorMsg)
+            }
+            val rows = if (response.has("data") && response.get("data").isJsonArray) {
+                response.getAsJsonArray("data")
+            } else {
+                JsonArray()
+            }
             if (rows.size() == 0) return PairingResult.NotFound
 
             val terminal = rows[0].asJsonObject
@@ -161,8 +170,10 @@ class KioskRepository(private val api: ApiService) {
                 filters = mapOf("key" to "kiosk_settings_v2"),
             )
             val response = api.query(body)
-            val rows = response.getAsJsonArray("data") ?: return null
-            if (rows.size() == 0) return null
+            val rows = if (response.has("data") && response.get("data").isJsonArray) {
+                response.getAsJsonArray("data")
+            } else null
+            if (rows == null || rows.size() == 0) return null
             rows[0].asJsonObject.getAsJsonObject("value")
         } catch (_: Exception) { null }
     }
@@ -176,16 +187,40 @@ class KioskRepository(private val api: ApiService) {
                 addProperty("table", "sales")
                 addProperty("operation", "select")
                 addProperty("select", "kiosk_display_no")
-                addProperty("order", "kiosk_display_no.desc")
-                addProperty("limit", 1)
-                add("filters", JsonObject().apply {
-                    addProperty("branch_id", branchId)
-                    addProperty("source", "kiosk")
-                    addProperty("sale_datetime[gte]", today)
-                })
+                val filterArray = JsonArray().apply {
+                    add(JsonObject().apply {
+                        addProperty("type", "eq")
+                        addProperty("col", "branch_id")
+                        addProperty("val", branchId)
+                    })
+                    add(JsonObject().apply {
+                        addProperty("type", "eq")
+                        addProperty("col", "source")
+                        addProperty("val", "kiosk")
+                    })
+                    add(JsonObject().apply {
+                        addProperty("type", "gte")
+                        addProperty("col", "sale_datetime")
+                        addProperty("val", today)
+                    })
+                    add(JsonObject().apply {
+                        addProperty("type", "order")
+                        addProperty("col", "kiosk_display_no")
+                        addProperty("ascending", false)
+                    })
+                    add(JsonObject().apply {
+                        addProperty("type", "limit")
+                        addProperty("val", 1)
+                    })
+                }
+                add("filters", filterArray)
             }
             val response = api.query(body)
-            val rows = response.getAsJsonArray("data") ?: JsonArray()
+            val rows = if (response.has("data") && response.get("data").isJsonArray) {
+                response.getAsJsonArray("data")
+            } else {
+                JsonArray()
+            }
             val max = if (rows.size() > 0) {
                 rows[0].asJsonObject.get("kiosk_display_no")?.let {
                     if (it.isJsonNull) null else it.asInt
@@ -211,7 +246,11 @@ class KioskRepository(private val api: ApiService) {
                 add("data", headerJson)
                 addProperty("select", "id")
             })
-            val saleRows = saleResponse.getAsJsonArray("data") ?: JsonArray()
+            val saleRows = if (saleResponse.has("data") && saleResponse.get("data").isJsonArray) {
+                saleResponse.getAsJsonArray("data")
+            } else {
+                JsonArray()
+            }
             if (saleRows.size() == 0) return OrderSubmitState.Error("Sipariş kaydedilemedi")
             val saleId = saleRows[0].asJsonObject.str("id")
                 ?: return OrderSubmitState.Error("Sipariş ID alınamadı")
@@ -221,7 +260,13 @@ class KioskRepository(private val api: ApiService) {
                 api.query(JsonObject().apply {
                     addProperty("table", "sales")
                     addProperty("operation", "update")
-                    add("filters", JsonObject().apply { addProperty("id", saleId) })
+                    add("filters", JsonArray().apply {
+                        add(JsonObject().apply {
+                            addProperty("type", "eq")
+                            addProperty("col", "id")
+                            addProperty("val", saleId)
+                        })
+                    })
                     add("data", JsonObject().apply {
                         addProperty("kds_status", "pending")
                         addProperty("pickup_called", false)
@@ -277,27 +322,73 @@ class KioskRepository(private val api: ApiService) {
         addProperty("table", table)
         addProperty("operation", operation)
         if (select != null) addProperty("select", select)
-        if (order != null) addProperty("order", order)
-        if (limit != null) addProperty("limit", limit)
 
-        val filterObj = JsonObject()
+        val filterArray = JsonArray()
+
+        // 1. Equality filters (eq)
         filters.forEach { (k, v) ->
-            when (v) {
-                null       -> filterObj.add(k, null)
-                is String  -> filterObj.addProperty(k, v)
-                is Number  -> filterObj.addProperty(k, v)
-                is Boolean -> filterObj.addProperty(k, v)
-                else       -> filterObj.addProperty(k, v.toString())
+            val f = JsonObject().apply {
+                addProperty("type", "eq")
+                addProperty("col", k)
+                when (v) {
+                    null       -> add("val", null)
+                    is String  -> addProperty("val", v)
+                    is Number  -> addProperty("val", v)
+                    is Boolean -> addProperty("val", v)
+                    else       -> addProperty("val", v.toString())
+                }
             }
+            filterArray.add(f)
         }
-        nullFilters.forEach { col -> filterObj.add("${col}[is]", null) }
-        ilikeFilters.forEach { (col, value) -> filterObj.addProperty("${col}[ilike]", "%$value%") }
 
-        if (filterObj.size() > 0) add("filters", filterObj)
+        // 2. IS NULL filters (is)
+        nullFilters.forEach { col ->
+            val f = JsonObject().apply {
+                addProperty("type", "is")
+                addProperty("col", col)
+                add("val", null)
+            }
+            filterArray.add(f)
+        }
+
+        // 3. ILIKE filters (ilike)
+        ilikeFilters.forEach { (col, value) ->
+            val f = JsonObject().apply {
+                addProperty("type", "ilike")
+                addProperty("col", col)
+                addProperty("val", "%$value%")
+            }
+            filterArray.add(f)
+        }
+
+        // 4. Order filter
+        if (order != null) {
+            val parts = order.split('.')
+            val col = parts[0]
+            val ascending = if (parts.size > 1) parts[1].lowercase() != "desc" else true
+            val f = JsonObject().apply {
+                addProperty("type", "order")
+                addProperty("col", col)
+                addProperty("ascending", ascending)
+            }
+            filterArray.add(f)
+        }
+
+        // 5. Limit filter
+        if (limit != null) {
+            val f = JsonObject().apply {
+                addProperty("type", "limit")
+                addProperty("val", limit)
+            }
+            filterArray.add(f)
+        }
+
+        add("filters", filterArray)
     }
 
     private inline fun <reified T> parseList(response: JsonObject): List<T> {
-        val rows = response.getAsJsonArray("data") ?: return emptyList()
+        if (!response.has("data") || !response.get("data").isJsonArray) return emptyList()
+        val rows = response.getAsJsonArray("data")
         val type = object : TypeToken<List<T>>() {}.type
         return gson.fromJson(rows, type) ?: emptyList()
     }

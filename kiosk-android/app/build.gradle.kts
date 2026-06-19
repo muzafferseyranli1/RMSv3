@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.suitable.kiosk"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"

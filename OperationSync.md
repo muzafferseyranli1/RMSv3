@@ -12010,3 +12010,28 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Faz 4: KioskTabletScreen tam UI
 
 [KIOSK_ANDROID_FAZ3_BIGSCREEN_SYNC] - BigScreen tam UI tamamlandi, crash fix uygulandi.
+
+
+---
+
+## LOG ENTRY - 2026-06-19 - Kiosk ve Personel Android Derleme & Çalışma Hataları Çözüldü
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: Kiosk Android (minSdk 24) ve Personel Android başarıyla derlendi ve emülatörde test edildi.
+
+### Yapılan Değişiklikler
+
+**1. kiosk-android/app/build.gradle.kts (GÜNCELLENDİ)**
+- `minSdk` değeri `26`'dan `24`'e düşürüldü (diğer tüm Android projeleriyle uyumlu hale getirildi).
+- Bu sayede, R8/ProGuard'ın API 25 ve altındaki cihazlarda (NoxPlayer vb.) `SDK_INT` kontrollerini gereksiz görüp kırpması önlendi; Jetpack Compose'un API 25 cihazlarda `NoSuchMethodError: View.getAutofillId()` vererek çökmesi engellendi.
+
+**2. personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt (GÜNCELLENDİ)**
+- OkHttp 4 deprecation kuralları nedeniyle derleme hatası (`DeprecationLevel.ERROR`) veren `okhttp3.MediaType.parse(mimeType)` kullanımı kaldırıldı.
+- `okhttp3.MediaType.Companion.toMediaTypeOrNull` import edilerek `mimeType.toMediaTypeOrNull()` uzantı fonksiyonu kullanıldı ve `personel-android` modülünün derleme sorunu giderildi.
+
+### Doğrulama ve Test
+- `kiosk-android` modülü derlendi ve NoxPlayer (API 25) üzerinde yeniden kurulup başlatıldı; uygulamanın çökmeden sorunsuz çalıştığı doğrulandı.
+- `personel-android` modülü başarıyla derlendi (BUILD SUCCESSFUL).
+
+[KIOSK_ANDROID_API25_CRASH_AND_PERSONNEL_COMPILE_FIX] - Android derleme ve API 25 çökme düzeltmeleri tamamlandı.
