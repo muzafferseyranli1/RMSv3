@@ -1,71 +1,209 @@
-# Kiosk Cihaz Bazlı Çalışma Saatleri ve Kompakt Kural Yönetimi Planı
+# SuitableRMS Kiosk Native Android Uygulaması — İmplementasyon Planı
 
-Bu plan, kiosk cihazlarının çalışma saatleri denetimini global bir JSON ayarından çıkarıp veritabanı seviyesinde ilişkisel tablolarla cihaz bazında yapılandırmayı ve saat kuralı arayüzünü (dikey yığılma olmadan) kompakt bir satır düzenine dönüştürmeyi amaçlar.
+## Genel Açıklama
 
-## User Review Required
+Mevcut web tabanlı `KioskBig.jsx` (dikey büyük TV) ve `KioskTablet.jsx` (yatay/dikey tablet) ekranlarının **tek bir native Android uygulaması** olarak yeniden yazılması planlanmaktadır.
 
-Lütfen aşağıdaki veritabanı tasarımı ve arayüz değişikliklerini inceleyip onaylayın.
+Uygulama `X:\RMSv3\kiosk-android\` klasöründe yer alacak; mevcut `personel-android/`, `musteri-android/`, `wms-android/` uygulamalarından tamamen bağımsız bir Gradle projesi olacaktır.
+
+Yeni APK paketi: `com.suitable.kiosk`
+
+---
+
+## Kullanıcı İncelemesi Gereken Konular
 
 > [!IMPORTANT]
-> **İlişkisel Veritabanı Geçişi**
-> Saat kuralları artık `settings` tablosundaki global `kiosk_settings_v2` JSONB alanında değil, şube bağımlı `kiosk_operating_hours_rules` tablosunda tutulacaktır. Kiosk cihazları ile bu kurallar arasındaki eşleşmeler ise `kiosk_terminal_operating_rules` ara tablosu (junction table) üzerinden yönetilecektir.
+> **Tek uygulama / çift mod kararı:** Kiosk ve Kiosk Tablet, tek bir APK içinde farklı UI modları olarak çalışacaktır. Mod belirleme akışı:
+> 1. İlk açılışta "Pair Key" giriş ekranı (KioskManagement'tan üretilen istasyon kodu)
+> 2. API → `pos_terminals` tablosu → `terminal_type` alanı okunur
+> 3. `terminal_type = 'kiosk'` → **BigScreen modu** (portrait lock, 480×854)
+> 4. `terminal_type = 'kiosk_tablet'` → **Tablet modu** (landscape/portrait, 820×1180)
+> 5. Mod + station code cihazın `SharedPreferences`'ına kaydedilir (iş verisi değil, cihaz tercihi)
+> 6. 7 kez logo'ya tıklama → Yeniden eşleme ekranı (PIN korumalı)
 
-## Proposed Changes
+> [!IMPORTANT]
+> **API Adresi:** Tüm istekler `https://rms-api-production-219d.up.railway.app/api/query` üzerinden gider. Supabase / AWS kullanılmaz. Uygulama içinde hard-code edilecek; ilerleyen aşamada ayarlar ekranına taşınabilir.
 
----
-
-### Database Layer
-
-#### [NEW] [055_kiosk_operating_hours_rules.sql](file:///X:/RMSv3/migrations/055_kiosk_operating_hours_rules.sql)
-1. **`kiosk_operating_hours_rules`**: Şubede geçerli saat kuralları listesi.
-   * `id` UUID PRIMARY KEY DEFAULT `gen_random_uuid()`
-   * `branch_id` UUID NOT NULL REFERENCES `public.company_nodes(id)` ON DELETE CASCADE
-   * `name` TEXT NOT NULL (Örn: "Hafta Sonu Kahvaltı")
-   * `days` TEXT[] NOT NULL (Örn: `ARRAY['sat', 'sun']`)
-   * `start_time` TEXT NOT NULL (Saat formatı: `'08:00'`)
-   * `end_time` TEXT NOT NULL (Saat formatı: `'12:00'`)
-   * `note` TEXT (İsteğe bağlı not)
-   * `created_at` TIMESTAMPTZ DEFAULT `now()`
-   * `updated_at` TIMESTAMPTZ DEFAULT `now()`
-2. **`kiosk_terminal_operating_rules`**: Kiosk-Kural eşleşme tablosu.
-   * `terminal_id` UUID NOT NULL REFERENCES `public.pos_terminals(id)` ON DELETE CASCADE
-   * `rule_id` UUID NOT NULL REFERENCES `public.kiosk_operating_hours_rules(id)` ON DELETE CASCADE
-   * PRIMARY KEY (`terminal_id`, `rule_id`)
-3. **`schema-railway-master.sql` güncellemesi**: Yeni tabloların ana şema dosyasına eklenmesi.
+> [!WARNING]
+> **Resim yükleme:** Ürün görselleri `/api/files/...` yoluyla sunucudan gelir. Coil kütüphanesi ile yüklenecek. Resim yüklenemezse placeholder gösterilir; sessiz fallback kabul edilir (iş verisi değil, görsel).
 
 ---
 
-### React Frontend UI
+## Klasör Yapısı
 
-#### [MODIFY] [KioskManagementDesktop.jsx](file:///X:/RMSv3/src/components/pages/KioskManagementDesktop.jsx)
-1. **Kompakt Kural Düzenleyici (`ScheduleRuleEditor`)**:
-   * Dikey yığılan alanlar yerine, tüm kural ögeleri yatay tek bir satırda (`display: grid` veya `flex`) yer alacak:
-     `[Kural Adı] [Günler Seçici] [Başlangıç Saat] [Bitiş Saat] [Not] [Sil Butonu]`
-   * Saat giriş kutuları (`00:00` formatı için) genişlikleri sınırlandırılarak yan yana yerleştirilecek.
-2. **Kural Listesi ve Veritabanı Senkronizasyonu**:
-   * Cari şubeye (`branchId`) ait kurallar `kiosk_operating_hours_rules` tablosundan yüklenecek.
-   * Kural ekleme/silme ve isim/gün/saat değişiklikleri doğrudan veritabanındaki tabloya yazılacak.
-3. **Kiosk Satırlarında Kural Seçimi**:
-   * Cihaz tablosunda "Çalışma Saatlerini Kullan" toggle'ı açıldığında, o satırın hemen altında ilgili kiosk için atanmış kuralları listeleyen ve yeni kural atanmasını sağlayan kompakt bir arayüz (checkbox listesi veya çoklu seçim) açılacak.
-   * Seçilen kurallar `kiosk_terminal_operating_rules` tablosuna anında kaydedilecek/silinecek.
+```
+X:\RMSv3\
+├── kiosk-android/               ← YENİ — diğer android klasörlerine dokunulmaz
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── java/com/suitable/kiosk/
+│   │   │   │   ├── MainActivity.kt
+│   │   │   │   ├── KioskApplication.kt
+│   │   │   │   ├── data/
+│   │   │   │   │   ├── ApiService.kt          ← Retrofit interface
+│   │   │   │   │   ├── KioskRepository.kt     ← Tüm API çağrıları
+│   │   │   │   │   └── model/
+│   │   │   │   │       ├── SaleItem.kt
+│   │   │   │   │       ├── SaleCategory.kt
+│   │   │   │   │       ├── CartItem.kt
+│   │   │   │   │       ├── KioskSettings.kt
+│   │   │   │   │       ├── KioskStation.kt
+│   │   │   │   │       └── OrderPayload.kt
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── setup/
+│   │   │   │   │   │   └── PairingScreen.kt   ← İlk açılış / eşleme
+│   │   │   │   │   ├── bigscreen/
+│   │   │   │   │   │   ├── KioskBigScreen.kt  ← Dikey TV modu
+│   │   │   │   │   │   └── BigScreenViewModel.kt
+│   │   │   │   │   ├── tablet/
+│   │   │   │   │   │   ├── KioskTabletScreen.kt ← Tablet modu
+│   │   │   │   │   │   └── TabletViewModel.kt
+│   │   │   │   │   └── shared/
+│   │   │   │   │       ├── MenuGrid.kt        ← Ortak ürün grid
+│   │   │   │   │       ├── CartPanel.kt       ← Ortak sepet
+│   │   │   │   │       ├── ProductDetailModal.kt
+│   │   │   │   │       ├── PaymentScreen.kt   ← Ortak ödeme
+│   │   │   │   │       └── ClosedOverlay.kt   ← Çalışma saati kapalı ekranı
+│   │   │   │   └── prefs/
+│   │   │   │       └── KioskPrefs.kt          ← SharedPreferences wrapper
+│   │   │   └── res/
+│   │   │       ├── layout/ (boş — Compose kullanılıyor)
+│   │   │       └── values/
+│   │   │           ├── strings.xml
+│   │   │           └── themes.xml
+│   │   └── build.gradle.kts
+│   ├── build.gradle.kts
+│   ├── settings.gradle.kts
+│   └── gradle/
+│       └── libs.versions.toml
+```
 
 ---
 
-### Client Kiosks
+## Önerilen Değişiklikler
 
-#### [MODIFY] [KioskBig.jsx](file:///X:/RMSv3/src/components/pages/KioskBig.jsx) & [KioskTablet.jsx](file:///X:/RMSv3/src/components/pages/KioskTablet.jsx)
-1. Cihaz çalışma zamanında veritabanındaki `kiosk_terminal_operating_rules` üzerinden kendi terminal ID'si ile eşleşen çalışma saati kurallarını çekecektir.
-2. Kiosk, bu kurallara göre açık/kapalı durumunu (`kioskOperatingState`) belirleyecektir.
+### Faz 1 — Proje İskeleti ve Eşleme Ekranı
 
-## Verification Plan
+#### [YENİ] `kiosk-android/` — Gradle Projesi
+- `namespace = "com.suitable.kiosk"`
+- `applicationId = "com.suitable.kiosk"`
+- `minSdk = 26`, `targetSdk = 36`, `compileSdk = 36`
+- Bağımlılıklar: Jetpack Compose BOM, Material3, Retrofit + Gson, Coil, Coroutines, Navigation3, ZXing (QR okuma — sadakat için)
 
-### Automated Tests
-* Frontend derleme kontrolü:
-  ```bash
-  npm run build
-  ```
+#### [YENİ] `PairingScreen.kt`
+- Pair Key (istasyon kodu) giriş alanı
+- API'ye `pos_terminals` sorgusu → `terminal_type` okuma
+- Hata durumu: açık mesaj ("Bu cihaz sisteme kayıtlı değil")
+- Başarıda: mod + station_code `KioskPrefs`'e yaz → uygun moda yönlendir
 
-### Manual Verification
-* Kiosk yönetim panelinden yeni bir isimli saat kuralı oluşturma ve kuralı silme işlemleri test edilecek.
-* Bir kiosk için "Çalışma Saatlerini Kullan" açılıp şube kurallarından biri atanacak, deaktif edildiğinde atamanın veritabanından kaldırıldığı doğrulanacak.
-* Atanan kuralın gün/saat dilimlerine göre kiosk istemci ekranının kilitlenip/açıldığı test edilecek.
+#### [YENİ] `KioskPrefs.kt`
+- `getKioskMode(): KioskMode?` — BIG_SCREEN / TABLET / null
+- `getStationCode(): String?`
+- `saveDeviceConfig(mode, stationCode)`
+- `clearDeviceConfig()` — yeniden eşleme
+
+---
+
+### Faz 2 — Veri Katmanı
+
+#### [YENİ] `ApiService.kt` + `KioskRepository.kt`
+Web'deki `/api/query` endpoint'ini tüketen Retrofit tabanlı katman:
+
+| İşlem | Tablo | Açıklama |
+|-------|-------|----------|
+| Ayarlar yükle | `settings` key=`kiosk_settings_v2` | Kiosk genel ayarları |
+| İstasyon doğrula | `pos_terminals` | Pair key → terminal_type |
+| Kategoriler | `sale_categories` | Menü kategorileri |
+| Ürünler | `sale_items` | Fiyat, resim, seçenekler |
+| Çalışma kuralları | `kiosk_operating_hours_rules` | Açık/kapalı saatler |
+| Sipariş gönder | `sales` + `sale_lines` | Sepet → kayıt |
+| Ödeme | `sale_payments` | Nakit / kart |
+| Sadakat | `loyalty_customers` | QR ile müşteri eşleme |
+
+---
+
+### Faz 3 — BigScreen UI (KioskBig karşılığı)
+
+#### [YENİ] `KioskBigScreen.kt`
+- Portrait lock (manifest: `screenOrientation="portrait"`)
+- Canvas: 480dp × 854dp sanal alan, `Box + scale` ile gerçek ekrana ölçekleme
+- Sol panel: Kategori sekmeler (dikey scroll)
+- Sağ panel: Ürün grid (3 sütun)
+- Alt: Sepet özeti + Sipariş Ver butonu
+- Floating sepet topu (web'deki CART_DOCK mantığı)
+- Kapalı iken: `ClosedOverlay` (saat / mesaj)
+
+---
+
+### Faz 4 — Tablet UI (KioskTablet karşılığı)
+
+#### [YENİ] `KioskTabletScreen.kt`
+- Portrait + Landscape destekli (manifest: `screenOrientation="fullSensor"`)
+- Portrait: Sol kategori bar + Sağ ürün grid + Alt sepet
+- Landscape: Sol dar kategori şeridi + Orta ürün grid + Sağ sepet paneli (split layout)
+- Ürün detay modal: arka planı karartan overlay + seçenek grupları
+- Combo menü desteği (web'deki ComboBuilder mantığı)
+
+---
+
+### Faz 5 — Ortak Bileşenler
+
+#### [YENİ] `shared/` Bileşenler
+| Composable | Görev |
+|------------|-------|
+| `MenuGrid` | Ürün kartları, resim (Coil), fiyat, badge |
+| `CartPanel` | Kalem listesi, miktar +/−, toplam, iptal |
+| `ProductDetailModal` | Seçenek grupları, not alanı, sepete ekle |
+| `PaymentScreen` | Nakit/Kart seçimi, tutar hesaplama, onay |
+| `ClosedOverlay` | Saat/gün mesajı, sayaç (ne zaman açılır) |
+| `LoyaltyQrScanner` | ZXing ile QR okuma, müşteri eşleme |
+
+---
+
+### Faz 6 — Güvenlik / PIN Sıfırlama
+
+- Logo'ya 7 kez hızlı tıklama → Yönetici PIN ekranı
+- PIN doğrulanırsa: `KioskPrefs.clearDeviceConfig()` → PairingScreen'e dön
+- PIN `settings` tablosundan okunur (web'deki `admin_pin` mantığı)
+
+---
+
+## Teknik Kararlar
+
+| Konu | Karar |
+|------|-------|
+| UI Framework | Jetpack Compose (Material3) |
+| Ağ | Retrofit 2 + Gson |
+| Görsel yükleme | Coil 2 |
+| Asenkron | Kotlin Coroutines + ViewModel |
+| Navigasyon | Navigation3 (personel-android ile aynı) |
+| Yerel depolama | SharedPreferences (sadece cihaz config — iş verisi değil) |
+| Ekran yönü | BigScreen: portrait lock / Tablet: fullSensor |
+| Ölçekleme | Canvas boyutu sabit, `scale()` ile fiziksel ekrana uyum |
+| QR okuma | ZXing (sadakat müşteri eşleme) |
+
+---
+
+## Verifikasyon Planı
+
+### Derleme
+- `./gradlew assembleDebug` → sıfır hata
+
+### Manuel Test
+- BigScreen modunu bir portrait Android cihazda / emülatörde aç
+- Tablet modunu landscape emülatörde aç
+- Pair Key ile eşleme → menü yükleme
+- Sepete ürün ekleme → sipariş gönderme
+- Çalışma saati dışında ClosedOverlay görünümü
+- 7 kez logo tıklama → PIN → yeniden eşleme
+
+---
+
+## Kullanıcı Kararları ✅
+
+| Konu | Karar |
+|------|-------|
+| **Ödeme** | Sadece "Kart ile öde" — kayıt `sale_payments` tablosuna `payment_method = 'card'` olarak düşer |
+| **Kiosk Lockdown** | Evet — Immersive sticky mod, geri/home butonu devre dışı, ekran her zaman açık |
+| **Offline** | ClosedOverlay göster — ağ kesilince menü erişimi kapatılır |
+| **Faz yaklaşımı** | Faz faz ilerle — her fazın sonunda kullanıcı onayı alınır |

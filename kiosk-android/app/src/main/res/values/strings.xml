@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kiosk</string>
+    <string name="pairing_title">Cihaz Eşleme</string>
+    <string name="pairing_hint">İstasyon Kodu</string>
+    <string name="pairing_button">Eşle</string>
+    <string name="pairing_info">İstasyon kodunu Backoffice → Kiosk Yönetimi → Cihazlar bölümünden alabilirsiniz.</string>
+    <string name="error_not_found">Bu kod sistemde kayıtlı değil.</string>
+    <string name="error_network">Sunucuya ulaşılamadı.</string>
+</resources>
