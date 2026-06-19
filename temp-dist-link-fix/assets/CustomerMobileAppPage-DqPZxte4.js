@@ -1,0 +1,1 @@
+import{a0 as e,j as r}from"./index-Dyt2pboE.js";import{C as a}from"./CustomerLoyaltyMobileApp-DrHq7TFB.js";import"./loyalty-CnQTWk7P.js";import"./posCustomerLink-BNYfLhlf.js";import"./kioskSettings-DAiwcPBF.js";function l({linkChannel:o=""}){const{token:t=""}=e(),s=o&&t?{channel:o,token:t}:null;return r.jsx(a,{mode:"standalone",linkSession:s})}export{l as default};
