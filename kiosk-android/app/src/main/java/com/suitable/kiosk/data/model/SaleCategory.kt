@@ -14,4 +14,17 @@ data class SaleCategory(
     val bg: String? = null,                 // arka plan rengi (hex)
     @SerializedName("text_color") val textColor: String? = null,
     @SerializedName("deleted_at") val deletedAt: String? = null,
-)
+) {
+    /** Kategori görselinin tam URL'sini döner */
+    fun imageUrlResolved(baseUrl: String = ""): String? {
+        val rawStr = imageUrl ?: return null
+        if (rawStr.isBlank()) return null
+        return if (rawStr.startsWith("http://") || rawStr.startsWith("https://") || rawStr.startsWith("data:")) {
+            rawStr
+        } else {
+            val cleanBase = baseUrl.trimEnd('/')
+            val cleanPath = rawStr.trimStart('/')
+            "$cleanBase/$cleanPath"
+        }
+    }
+}

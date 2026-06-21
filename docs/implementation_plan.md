@@ -1,61 +1,47 @@
-# SuitableRMS Kiosk Native Android Uygulaması — Revize İmplementasyon Planı
+# Kiosk Android Uygulaması — Arayüz Geliştirme ve Parite İyileştirme Planı (Aşama 2)
 
-## Genel Açıklama
+Bu plan, native Kiosk Android uygulamasında sepet topunun (FAB) hareketlerini yumuşatmayı, seçenekler çekmecesini (options drawer) web arayüzü stiliyle ve dikey konumlandırmasıyla güncellemeyi, ürün listesini sürekli akan tek bir liste haline getirerek kategoriler arası geçişi otomatik senkronize etmeyi hedefler.
 
-Mevcut web tabanlı `KioskBig.jsx` (dikey büyük TV) ve `KioskTablet.jsx` (yatay/dikey tablet) ekranlarının arayüz tasarımı, akışı ve tüm işlevleri (sadakat entegrasyonu, öneriler, combo menüler) korunarak **native Android uygulaması** olarak tamamlanması hedeflenmektedir. Web tarafındaki kullanıcı deneyiminden memnun olunduğu için native tarafında tamamen farklı bir tasarıma gidilmeyecek, web paritesi birebir korunacaktır.
+## User Review Required
 
-Uygulama `X:\RMSv3\kiosk-android\` klasöründe yer almaktadır ve bağımsız bir Gradle projesidir.
+> [!IMPORTANT]
+> **Sepet Topu Drag-Lock:** Sepet topunun tüm ekran dokunuşlarını takip etmesi yerine, sadece kendi üzerine yapılan sürüklemeleri (vertical drag) takip etmesi ve bırakıldığı yerde kalması sağlanacaktır. Böylece katalogda gezinirken sepet topunun istemsizce zıplaması engellenecektir.
+> **Scroll-Synchronized Grid:** Ürün listesi kategorilere göre sayfa sayfa bölünmeyecek; tüm ürünler alt alta akacak, aralarında sadece kategori isimleri ve ince çizgiler olacaktır. Kullanıcı kaydırdıkça sol taraftaki aktif kategori otomatik olarak değişecektir.
 
----
+## Proposed Changes
 
-## Yol Haritası ve Mevcut Durum
-
-| Faz | Kapsam | Durum | Açıklama |
-|-----|--------|-------|----------|
-| **Faz 1** | Proje iskeleti + Eşleme ekranı | ✅ TAMAMLANDI | Cihaz eşleme ekranı, veritabanı kolon paritesi (`activation_code`, `device_type`, `terminal_name`) tamamlandı. |
-| **Faz 2** | Veri katmanı (Retrofit/Gson) | ✅ TAMAMLANDI | `channel_prices` verisinin dizi (JSON Array) olarak okunması ve fiyat hesaplama hatası düzeltildi. |
-| **Faz 3** | BigScreen UI (KioskBig paritesi) | ✅ TAMAMLANDI | Sol kategori paneli, 3 sütunlu ürün gridi (Coil görsel çözücü ile), yüzen sepet topu, sepet detayları ve kartlı ödeme akışı tamamlandı. |
-| **Faz 4** | Tablet UI (KioskTablet paritesi) | ⏳ BEKLİYOR | Yatay (split layout) ve dikey mod desteği, sepet paneli entegrasyonu. |
-| **Faz 5** | Ortak Bileşenler & Arayüz Paritesi | ⏳ BEKLİYOR | Combo menü oluşturucu (ComboBuilder), öneri motoru (checkout & ürün önerileri), closed overlay ve sadakat QR entegrasyonu. |
-| **Faz 6** | Güvenlik / PIN Sıfırlama | ⏳ BEKLİYOR | Logo 7 kez tıklama, admin PIN doğrulama ve SharedPreferences temizleme akışı. |
+### [Kiosk Android Uygulaması](file:///X:/RMSv3/kiosk-android/)
 
 ---
 
-## Planlanan Geliştirmeler (Kalan Aşamalar)
+#### [MODIFY] [KioskBigScreen.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/bigscreen/KioskBigScreen.kt)
+- **Kategori & Ürün Akışı Entegrasyonu:**
+  - Tüm kategorilerin ürünlerini ve aralarındaki başlıkları (`CategoryHeaderRow`) içeren düzleştirilmiş bir liste (`flatGridItems`) oluşturulması.
+  - `LazyGridState` ile ürün listesinin scroll hareketinin izlenmesi ve en üstteki aktif kategorinin tespit edilerek sol kategori barına yansıtılması (`currentVisibleCategoryIndex`).
+  - Sol kategori panelinde bir kategoriye tıklandığında, listenin o kategorinin başlık çizgisine animasyonlu olarak kaydırılması (`animateScrollToItem`).
+- **Yumuşak Drag Desteği:**
+  - Kök `Box` üzerindeki genel dokunma takip mekanizmasının kaldırılması.
+  - `CartFab` bileşenine `detectVerticalDragGestures` eklenerek doğrudan kendi üzerinden yumuşakça sürüklenmesi ve bırakılan Y konumunda kalması.
+- **Seçenek Çekmecesi (Web Paritesi & Dinamik Yükseklik):**
+  - `ProductDetailSheet`'in arka planının **beyaz (`Color.White`)**, yazı ve detaylarının **koyu gri/siyah (`Color(0xFF0F172A)`)** olarak güncellenmesi.
+  - Modalın yüksekliğinin içeriğe göre otomatik sarılması (`wrapContentHeight()`), maksimum 720.dp yüksekliğinde olması.
+  - Modal açılırken sepet topunun o anki dikey Y pozisyonunun (`cartDockY`) parametre olarak geçilmesi ve modalın o noktayı merkezleyerek konumlanması (`offset`).
+  - Seçenek seçim butonlarının web paritesine uygun olarak beyaz zeminli, seçildiğinde ise mor accent renkli çerçeve ve hafif şeffaf arka planla tasarlanması.
 
-### Faz 4 — Tablet UI (KioskTablet paritesi)
+---
+
 #### [MODIFY] [KioskTabletScreen.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/tablet/KioskTabletScreen.kt)
-- Mevcut yer tutucu ekran kaldırılarak web `KioskTablet.jsx` paritesinde arayüz geliştirilecektir.
-- **Yönelim Desteği (Orientation):** Cihaz yatayda iken sol tarafta dar kategori şeridi, ortada ürün gridi ve sağ tarafta sürekli açık sepet paneli (split layout) yer alacaktır. Cihaz dikeyde iken ise kategori listesi ve ürün gridi tam ekran olacak, sepet alt bar veya FAB ile açılacaktır.
+- `KioskBigScreen.kt` üzerinde uygulanan yeni scroll senkronizasyonu, sepet topu drag-along davranışı ve beyaz zeminli/dikey merkezli web paritesi seçenekler drawer'ı tasarımının birebir olarak tablet ekranına da taşınması.
 
----
+## Verification Plan
 
-### Faz 5 — Ortak Bileşenler & Web Paritesi
-#### [NEW] [ComboBuilder.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/ComboBuilder.kt)
-- Web'deki Combo menü seçici mantığının native Compose portu. Seçili combo menü (örn. Hamburger Menü) için alt adımların (içecek seçimi, sos seçimi vb.) adım adım kullanıcıya sorulmasını sağlayan modal ekran.
-- Seçimlerin zorunluluk/miktar kuralları webdeki `combo_menus_v1` ayarlarına göre kontrol edilecektir.
+### Automated Tests
+- Gradle projesinin başarıyla derlenmesi:
+  `.\gradlew.bat assembleDebug`
 
-#### [NEW] [SuggestionManager.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/SuggestionManager.kt)
-- Sepete ürün eklerken (ürün önerisi) ve ödemeye geçişte (checkout önerisi) settings'deki kurallara göre popup öneri pencerelerinin gösterilmesi sağlanacaktır.
-
-#### [NEW] [ClosedOverlay.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/shared/ClosedOverlay.kt)
-- `kiosk_operating_hours_rules` tablosundan okunan çalışma saatleri dışında kiosk sipariş alımını kapatan ve ekranda kapalı mesajı ile geri sayım gösteren katman.
-
----
-
-### Faz 6 — Güvenlik / PIN Sıfırlama
-#### [MODIFY] [MainActivity.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/MainActivity.kt)
-- Sol üstteki KIOSK logosuna 7 kez hızlı tıklandığında açılacak şifreli sıfırlama ekranı.
-- Şifre (admin PIN) doğrulandığında `prefs.clearDeviceConfig()` çalıştırılarak cihazın tüm eşleme bilgileri temizlenecek ve uygulama PairingScreen'e yönlendirilecektir.
-
----
-
-## Verifikasyon Planı
-
-### Otomatik Testler
-- Uygulamanın derleme testi: `./gradlew.bat assembleDebug` (hata sıfır olmalıdır).
-
-### Manuel Testler
-- **Tablet Modu Testi**: Emülatör landscape moduna alınarak split-layout görünümü ve sepet işlemleri test edilecektir.
-- **Güvenlik Testi**: Logo 7 kez tıklanarak sıfırlama akışı denenecektir.
-- **Senkronizasyon Testi**: Web Kiosk arayüzünden girilen verilerle native Android üzerindeki verilerin/fiyatların birebir uyuştuğu doğrulanacaktır.
+### Manual Verification
+- **NoxPlayer Üzerinde Testler:**
+  - Sol kategori barından bir kategori seçildiğinde ürün listesinin o kategori çizgisine yumuşakça kaydığının doğrulanması.
+  - Ürün listesi kaydırıldıkça sol kategori sidebar'ındaki seçili kategorinin otomatik güncellendiğinin doğrulanması.
+  - Sepet topunun (FAB) sadece kendi üzerinden aşağı/yukarı kaydırılabildiğinin ve dokunulduğu/bırakıldığı yerde kaldığının doğrulanması.
+  - Herhangi bir seçenekli ürün tıklandığında, sağdan açılan seçenekler çekmecesinin beyaz renk temasıyla, içeriğe göre dinamik yükseklikte ve sepet topunun Y eksenindeki konumuna göre tam ortalanmış olarak açıldığının doğrulanması.

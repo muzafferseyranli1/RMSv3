@@ -124,6 +124,7 @@ class KioskDataViewModel(
                     rules = updatedData.operatingRules,
                     terminalRules = updatedData.terminalRules,
                     terminalId = terminalId,
+                    settings = settings,
                 )
             } else {
                 _menuState.value = state
@@ -317,7 +318,12 @@ class KioskDataViewModel(
         rules: List<OperatingHoursRule>,
         terminalRules: List<TerminalOperatingRule>,
         terminalId: String,
+        settings: JsonObject?,
     ): Boolean {
+        // operating_hours_enabled kontrolü (true değilse saat kuralı devre dışıdır ve her zaman açıktır)
+        val hoursEnabled = settings?.get("operating_hours_enabled")?.asBoolean ?: false
+        if (!hoursEnabled) return true
+
         if (rules.isEmpty()) return true  // Kural tanımlanmamış → açık kabul et
 
         val assignedRuleIds = terminalRules

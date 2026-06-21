@@ -2,12 +2,13 @@ package com.suitable.kiosk.ui.bigscreen
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,10 +20,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,11 +44,25 @@ import coil.compose.AsyncImage
 import com.suitable.kiosk.data.model.*
 import com.suitable.kiosk.ui.KioskDataViewModel
 import com.suitable.kiosk.ui.shared.ClosedOverlay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.suitable.kiosk.ui.shared.ComboBuilderModal
 import com.suitable.kiosk.ui.shared.SuggestionModal
 import com.suitable.kiosk.ui.shared.KioskSuggestion
 import com.suitable.kiosk.ui.shared.SuggestionEvaluator
 import com.suitable.kiosk.ui.shared.IdleScreen
+import kotlin.math.roundToInt
+
+private data class FlyParticle(
+    val startX: Float,
+    val startY: Float,
+    val id: Long = System.nanoTime()
+)
+
+private sealed class ProductGridItem {
+    data class Header(val category: SaleCategory) : ProductGridItem()
+    data class Product(val item: SaleItem) : ProductGridItem()
+}
 
 // ─── Renk paleti ──────────────────────────────────────────────────────────────
 private val BgDark       = Color(0xFF0A0A14)
@@ -81,6 +105,18 @@ fun KioskBigScreen(
     val orderState     by viewModel.orderState.collectAsState()
     val isOpen         by viewModel.isOpen.collectAsState()
 
+    val settings by viewModel.settingsJson.collectAsState()
+    val rawBgImage = settings?.get("kiosk_bg_image")?.asString
+    val resolvedBgUrl = remember(rawBgImage, viewModel.baseUrl) {
+        if (!rawBgImage.isNullOrBlank()) {
+            if (rawBgImage.startsWith("http://") || rawBgImage.startsWith("https://") || rawBgImage.startsWith("data:")) {
+                rawBgImage
+            } else {
+                "${viewModel.baseUrl.trimEnd('/')}/${rawBgImage.trimStart('/')}"
+            }
+        } else null
+    }
+
     // Ekran durumu: idle | menu | cart | payment
     var screen by remember { mutableStateOf("idle") }
 
@@ -96,10 +132,54 @@ fun KioskBigScreen(
     // CartFab pulse tetikleyici
     var cartPulseKey by remember { mutableIntStateOf(0) }
 
+    // Baştan başla onay ekranı ve geri sayım
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetCountdown by remember { mutableIntStateOf(5) }
+
+    // Touch tracking ve fly particles
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var cartDockY by remember { mutableStateOf(400.dp) }
+    val cartDockYAnim by animateDpAsState(
+        targetValue = cartDockY,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "cdy"
+    )
+    var flyParticles by remember { mutableStateOf<List<FlyParticle>>(emptyList()) }
+    var cartBallPosInRoot by remember { mutableStateOf(Offset.Zero) }
+    var outerBoxPosInRoot by remember { mutableStateOf(Offset.Zero) }
+
+    var productClickOffset by remember { mutableStateOf(Offset.Zero) }
+    var comboClickOffset by remember { mutableStateOf(Offset.Zero) }
+
+    fun triggerFly(sourceRootPos: Offset) {
+        if (sourceRootPos == Offset.Zero) return
+        val p = FlyParticle(startX = sourceRootPos.x, startY = sourceRootPos.y)
+        flyParticles = flyParticles + p
+        scope.launch {
+            kotlinx.coroutines.delay(900)
+            flyParticles = flyParticles.filter { it.id != p.id }
+        }
+    }
+
+    LaunchedEffect(showResetDialog) {
+        if (showResetDialog) {
+            resetCountdown = 5
+            while (resetCountdown > 0) {
+                kotlinx.coroutines.delay(1000)
+                resetCountdown--
+            }
+            viewModel.clearCart()
+            screen = "idle"
+            showResetDialog = false
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark),
+            .background(BgDark)
+            .onGloballyPositioned { outerBoxPosInRoot = it.positionInRoot() },
     ) {
         when (val state = menuState) {
             is MenuLoadState.Loading -> LoadingScreen()
@@ -137,20 +217,85 @@ fun KioskBigScreen(
                     }
                 }
 
+                val bannerImg = settings?.get("main_banner_image")?.asString
+                val resolvedBannerUrl = remember(bannerImg, viewModel.baseUrl) {
+                    if (!bannerImg.isNullOrBlank()) {
+                        if (bannerImg.startsWith("http://") || bannerImg.startsWith("https://") || bannerImg.startsWith("data:")) {
+                            bannerImg
+                        } else {
+                            "${viewModel.baseUrl.trimEnd('/')}/${bannerImg.trimStart('/')}"
+                        }
+                    } else null
+                }
+                val bannerTitle = settings?.get("main_banner_title")?.asString ?: ""
+                val bannerSubtitle = settings?.get("main_banner_subtitle")?.asString ?: ""
+
                 // Kategoriler — sadece üst seviye, silinmemiş
                 val topCategories = remember(data.categories) {
                     data.categories.filter { it.parentId == null && it.deletedAt == null }
                 }
 
-                // Seçili kategorideki ürünler
-                val visibleItems = remember(data.items, selectedCatId, channelId) {
-                    val catId = selectedCatId ?: return@remember emptyList()
-                    data.items.filter { item ->
-                        item.deletedAt == null &&
-                        item.active &&
-                        catId in item.categoryIds &&
-                        item.priceForChannel(channelId) > 0
+                val flatGridItems = remember(topCategories, data.items, channelId) {
+                    val list = mutableListOf<ProductGridItem>()
+                    topCategories.forEach { cat ->
+                        val catItems = data.items.filter { item ->
+                            item.deletedAt == null &&
+                            item.active &&
+                            cat.id in item.categoryIds &&
+                            item.priceForChannel(channelId) > 0
+                        }
+                        if (catItems.isNotEmpty()) {
+                            list.add(ProductGridItem.Header(cat))
+                            catItems.forEach { list.add(ProductGridItem.Product(it)) }
+                        }
                     }
+                    list
+                }
+
+                val gridState = rememberLazyGridState()
+
+                val currentVisibleCategoryIndex by remember {
+                    derivedStateOf {
+                        val firstVisibleIndex = gridState.firstVisibleItemIndex
+                        val bannerOffset = if (!resolvedBannerUrl.isNullOrBlank() || !bannerTitle.isBlank()) 1 else 0
+                        val itemIndex = firstVisibleIndex - bannerOffset
+                        if (itemIndex in flatGridItems.indices) {
+                            var activeCatId: String? = null
+                            for (i in itemIndex downTo 0) {
+                                if (i in flatGridItems.indices && flatGridItems[i] is ProductGridItem.Header) {
+                                    activeCatId = (flatGridItems[i] as ProductGridItem.Header).category.id
+                                    break
+                                }
+                            }
+                            activeCatId
+                        } else {
+                            topCategories.firstOrNull()?.id
+                        }
+                    }
+                }
+
+                val activeCatId = currentVisibleCategoryIndex ?: selectedCatId
+
+                LaunchedEffect(selectedCatId) {
+                    if (selectedCatId != currentVisibleCategoryIndex) {
+                        val targetIndex = flatGridItems.indexOfFirst {
+                            it is ProductGridItem.Header && it.category.id == selectedCatId
+                        }
+                        if (targetIndex != -1) {
+                            val bannerOffset = if (!resolvedBannerUrl.isNullOrBlank() || !bannerTitle.isBlank()) 1 else 0
+                            gridState.scrollToItem(targetIndex + bannerOffset, 0)
+                        }
+                    }
+                }
+
+                // 15% Opacity Background Image (Ana katalog/menü ekranında arka plan resmi)
+                if (screen != "idle" && !resolvedBgUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = resolvedBgUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.15f }
+                    )
                 }
 
                 if (screen == "idle") {
@@ -163,35 +308,74 @@ fun KioskBigScreen(
                 } else {
                     // Menü ekranı
                     Row(modifier = Modifier.fillMaxSize()) {
-                        // ── Sol: Kategori paneli ──
+                        // ── Sol: Kategori paneli (Daraltılmış, görsel kartlı ve branch bilgisiz) ──
                         CategorySidePanel(
                             categories   = topCategories,
-                            selectedId   = selectedCatId,
-                            onSelect     = { viewModel.selectCategory(it) },
+                            selectedId   = activeCatId,
+                            onSelect     = { catId ->
+                                viewModel.selectCategory(catId)
+                                val targetIndex = flatGridItems.indexOfFirst {
+                                    it is ProductGridItem.Header && it.category.id == catId
+                                }
+                                if (targetIndex != -1) {
+                                    val bannerOffset = if (!resolvedBannerUrl.isNullOrBlank() || !bannerTitle.isBlank()) 1 else 0
+                                    scope.launch {
+                                        gridState.animateScrollToItem(targetIndex + bannerOffset, 0)
+                                    }
+                                }
+                            },
                             stationCode  = stationCode,
+                            cart         = cart,
+                            onResetClick = {
+                                if (cart.isNotEmpty()) {
+                                    showResetDialog = true
+                                } else {
+                                    viewModel.clearCart()
+                                    screen = "idle"
+                                }
+                            },
                             onLongPress  = onSecretUnlock,
+                            baseUrl      = viewModel.baseUrl,
                         )
 
                         // ── Sağ: Ürün grid ──
                         Box(modifier = Modifier.fillMaxSize()) {
-                            if (visibleItems.isEmpty()) {
+                            if (flatGridItems.isEmpty()) {
                                 EmptyCategoryPlaceholder()
                             } else {
                                 ProductGrid(
-                                    items     = visibleItems,
+                                    flatGridItems = flatGridItems,
+                                    gridState = gridState,
                                     channelId = channelId,
                                     baseUrl   = viewModel.baseUrl,
-                                    onItemClick = { item ->
+                                    resolvedBannerUrl = resolvedBannerUrl,
+                                    bannerTitle = bannerTitle,
+                                    bannerSubtitle = bannerSubtitle,
+                                    onItemClick = { item, clickOffset ->
                                         if (item.isComboMenu) {
                                             selectedComboProduct = item
+                                            comboClickOffset = clickOffset
                                         } else {
-                                            selectedItem = item
+                                            val needsOptionsModal = try {
+                                                val linkedIds = item.optionGroupsRaw?.asJsonArray?.size() ?: 0
+                                                val portionsCount = item.portions?.asJsonArray?.size() ?: 0
+                                                linkedIds > 0 || portionsCount > 1
+                                            } catch (_: Exception) { false }
+
+                                            if (needsOptionsModal) {
+                                                selectedItem = item
+                                                productClickOffset = clickOffset
+                                            } else {
+                                                viewModel.addToCart(CartItem(item, 1, unitPrice = item.priceForChannel(channelId)))
+                                                cartPulseKey++
+                                                triggerFly(clickOffset)
+                                            }
                                         }
                                     },
                                 )
                             }
 
-                            // ── Floating Cart FAB ──
+                            // ── Floating Cart FAB (Y-axis Drag Tracking) ──
                             CartFab(
                                 itemCount  = viewModel.cartItemCount,
                                 total      = viewModel.cartTotal,
@@ -199,20 +383,32 @@ fun KioskBigScreen(
                                 hasItems   = cart.isNotEmpty(),
                                 onClick    = { if (cart.isNotEmpty()) screen = "cart" },
                                 modifier   = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(24.dp),
+                                    .align(Alignment.TopEnd)
+                                    .offset(y = cartDockYAnim - 40.dp)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            val dragAmountDp = with(density) { dragAmount.toDp() }
+                                            cartDockY = (cartDockY + dragAmountDp).coerceIn(120.dp, 750.dp)
+                                        }
+                                    }
+                                    .padding(end = 24.dp)
+                                    .onGloballyPositioned { coords ->
+                                        val p = coords.positionInRoot()
+                                        cartBallPosInRoot = Offset(p.x + coords.size.width / 2f, p.y + coords.size.height / 2f)
+                                    },
                             )
                         }
                     }
                 }
 
-                // ── Ürün detay modalı ──
+                // ── Ürün detay modalı (Sağdan kayarak açılan drawer) ──
                 selectedItem?.let { item ->
                     val optionGroups = remember(item, data.optionGroups) {
                         val linkedIds = try {
                             item.optionGroupsRaw?.asJsonArray
                                 ?.mapNotNull { el ->
-                                    el.asJsonObject?.get("group_id")?.asString
+                                     el.asJsonObject?.get("group_id")?.asString
                                 } ?: emptyList()
                         } catch (_: Exception) { emptyList() }
                         data.optionGroups.filter { it.id in linkedIds && it.deletedAt == null }
@@ -222,12 +418,14 @@ fun KioskBigScreen(
                         channelId    = channelId,
                         optionGroups = optionGroups,
                         baseUrl      = viewModel.baseUrl,
+                        cartDockY    = cartDockYAnim,
                         onDismiss    = { selectedItem = null },
                         onAddToCart  = { cartItem ->
                             viewModel.addToCart(cartItem)
                             cartPulseKey++
                             selectedItem = null
                             maybeShowProductSuggestion(item)
+                            triggerFly(productClickOffset)
                         },
                     )
                 }
@@ -254,6 +452,7 @@ fun KioskBigScreen(
                                 cartPulseKey++
                                 selectedComboProduct = null
                                 maybeShowProductSuggestion(comboProd)
+                                triggerFly(comboClickOffset)
                             }
                         )
                     }
@@ -359,6 +558,86 @@ fun KioskBigScreen(
                 if (isOpen == false) {
                     ClosedOverlay()
                 }
+
+                // ── Baştan Başla / Yeni Sipariş Onay Dialogu ──
+                if (showResetDialog) {
+                    Dialog(
+                        onDismissRequest = { showResetDialog = false },
+                        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true)
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .width(340.dp)
+                                .wrapContentHeight(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
+                            border = BorderStroke(1.dp, DividerColor)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🗑️", fontSize = 48.sp)
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = "Yeni Sipariş",
+                                    color = TextPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "Tüm sepet boşaltılacaktır.",
+                                    color = TextSecond,
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(24.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showResetDialog = false },
+                                        modifier = Modifier.weight(1f),
+                                        border = BorderStroke(1.dp, DividerColor),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecond)
+                                    ) {
+                                        Text("Vazgeç", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            viewModel.clearCart()
+                                            screen = "idle"
+                                            showResetDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = CartRed)
+                                    ) {
+                                        Text(
+                                            text = "Devam Et ($resetCountdown)",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Uçan Dot Animasyonları ──
+                flyParticles.forEach { p ->
+                    key(p.id) {
+                        FlyDotAnimation(
+                            startX = p.startX - outerBoxPosInRoot.x,
+                            startY = p.startY - outerBoxPosInRoot.y,
+                            endX   = cartBallPosInRoot.x - outerBoxPosInRoot.x,
+                            endY   = cartBallPosInRoot.y - outerBoxPosInRoot.y
+                        )
+                    }
+                }
             }
         }
     }
@@ -419,22 +698,30 @@ private fun CategorySidePanel(
     selectedId: String?,
     onSelect: (String) -> Unit,
     stationCode: String,
+    cart: List<CartItem>,
+    onResetClick: () -> Unit,
     onLongPress: () -> Unit,
+    baseUrl: String,
 ) {
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var tapCount by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
-            .width(200.dp)
+            .width(90.dp)
             .fillMaxHeight()
             .background(BgSidebar)
             .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(0.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Logo / istasyon başlığı
+        // Baştan Başla / Yeni Sipariş Butonu
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 6.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Accent.copy(alpha = 0.15f))
+                .border(BorderStroke(1.dp, Accent.copy(alpha = 0.35f)), RoundedCornerShape(12.dp))
                 .clickable {
                     val now = System.currentTimeMillis()
                     if (now - lastTapTime < 4000) {
@@ -446,24 +733,28 @@ private fun CategorySidePanel(
                     if (tapCount >= 7) {
                         tapCount = 0
                         onLongPress()
+                    } else {
+                        onResetClick()
                     }
                 }
-                .padding(vertical = 20.dp, horizontal = 16.dp),
-            contentAlignment = Alignment.Center,
+                .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text       = "KIOSK",
-                    color      = Accent,
-                    fontSize   = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 4.sp,
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Yeni Sipariş",
+                    tint = AccentLight,
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text     = stationCode,
-                    color    = TextMuted,
-                    fontSize = 10.sp,
+                    text = "YENİ\nSİPARİŞ",
+                    color = AccentLight,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 10.sp
                 )
             }
         }
@@ -473,41 +764,157 @@ private fun CategorySidePanel(
         // Kategori listesi
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             items(categories, key = { it.id }) { cat ->
                 val isSelected = cat.id == selectedId
-                val bgColor = if (isSelected)
-                    Brush.horizontalGradient(listOf(Accent.copy(alpha = 0.18f), Color.Transparent))
-                else
-                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                val catImage = cat.imageUrlResolved(baseUrl)
 
-                Box(
+                Card(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(bgColor)
-                        .clickable { onSelect(cat.id) }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .size(74.dp)
+                        .clickable { onSelect(cat.id) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = BgCard),
+                    border = BorderStroke(
+                        width = if (isSelected) 2.5.dp else 1.dp,
+                        color = if (isSelected) AccentLight else DividerColor
+                    )
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Seçim göstergesi
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (!catImage.isNullOrBlank()) {
+                            AsyncImage(
+                                model = catImage,
+                                contentDescription = cat.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(Color(0xFF1E1E30), Color(0xFF0F0F1E))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = String(cat.name.take(1).toCharArray()).uppercase(),
+                                    color = TextSecond,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Gradient overlay for text readability
                         Box(
                             modifier = Modifier
-                                .width(3.dp)
-                                .height(20.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(if (isSelected) Accent else Color.Transparent),
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.6f)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                    )
+                                )
                         )
-                        Spacer(Modifier.width(10.dp))
+
+                        // Name overlay
                         Text(
-                            text       = cat.name,
-                            color      = if (isSelected) AccentLight else TextSecond,
-                            fontSize   = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines   = 2,
-                            overflow   = TextOverflow.Ellipsis,
+                            text = cat.name,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 11.sp,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 4.dp, vertical = 6.dp)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+// ─── Promo Banner ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun PromoBanner(
+    imageUrl: String?,
+    title: String,
+    subtitle: String
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, DividerColor)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (!imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Accent.copy(alpha = 0.3f), Color(0xFF0F0F1E))
+                            )
+                        )
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.2f))
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .align(Alignment.CenterStart)
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (!title.isBlank()) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                if (!subtitle.isBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = subtitle,
+                        color = AccentLight,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
@@ -517,26 +924,86 @@ private fun CategorySidePanel(
 // ─── Ürün Grid ────────────────────────────────────────────────────────────────
 
 @Composable
+private fun CategoryHeaderRow(
+    category: SaleCategory,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = category.name.uppercase(),
+                color = AccentLight,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(end = 12.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(DividerColor)
+            )
+        }
+    }
+}
+
+@Composable
 private fun ProductGrid(
-    items: List<SaleItem>,
+    flatGridItems: List<ProductGridItem>,
+    gridState: LazyGridState,
     channelId: String?,
     baseUrl: String,
-    onItemClick: (SaleItem) -> Unit,
+    resolvedBannerUrl: String?,
+    bannerTitle: String,
+    bannerSubtitle: String,
+    onItemClick: (SaleItem, Offset) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(items, key = { it.id }) { item ->
-            ProductCard(
-                item      = item,
-                channelId = channelId,
-                baseUrl   = baseUrl,
-                onClick   = { onItemClick(item) },
-            )
+        if (!resolvedBannerUrl.isNullOrBlank() || !bannerTitle.isBlank()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                PromoBanner(
+                    imageUrl = resolvedBannerUrl,
+                    title = bannerTitle,
+                    subtitle = bannerSubtitle
+                )
+            }
+        }
+
+        flatGridItems.forEach { gridItem ->
+            when (gridItem) {
+                is ProductGridItem.Header -> {
+                    item(
+                        key = "header_${gridItem.category.id}",
+                        span = { GridItemSpan(maxLineSpan) }
+                    ) {
+                        CategoryHeaderRow(category = gridItem.category)
+                    }
+                }
+                is ProductGridItem.Product -> {
+                    item(key = "product_${gridItem.item.id}") {
+                        ProductCard(
+                            item      = gridItem.item,
+                            channelId = channelId,
+                            baseUrl   = baseUrl,
+                            onClick   = { offset -> onItemClick(gridItem.item, offset) },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -546,7 +1013,7 @@ private fun ProductCard(
     item: SaleItem,
     channelId: String?,
     baseUrl: String,
-    onClick: () -> Unit,
+    onClick: (Offset) -> Unit,
 ) {
     val price    = item.priceForChannel(channelId)
     val imageUrl = item.imageUrlForChannel(channelId, baseUrl)
@@ -554,85 +1021,94 @@ private fun ProductCard(
         try { it.asJsonArray.size() > 0 } catch (_: Exception) { false }
     } ?: false
 
+    var cardCenterInRoot by remember { mutableStateOf(Offset.Zero) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.8f)
-            .clickable(onClick = onClick),
+            .aspectRatio(0.85f)
+            .onGloballyPositioned { coords ->
+                val pos = coords.positionInRoot()
+                cardCenterInRoot = Offset(pos.x + coords.size.width / 2f, pos.y + coords.size.height / 2f)
+            }
+            .clickable { onClick(cardCenterInRoot) },
         shape  = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Görsel
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(Color(0xFF0F0F1E)),
-            ) {
-                if (!imageUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model              = imageUrl,
-                        contentDescription = item.name,
-                        contentScale       = ContentScale.Crop,
-                        modifier           = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF1A1A2E), Color(0xFF0F0F1E))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("🍽️", fontSize = 32.sp)
-                    }
-                }
-                // Seçenekli ürün rozeti
-                if (hasOptions) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(22.dp)
-                            .clip(CircleShape)
-                            .background(Accent),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector        = Icons.Default.Tune,
-                            contentDescription = "Seçenekli",
-                            tint               = Color.White,
-                            modifier           = Modifier.size(12.dp),
-                        )
-                    }
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (!imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model              = imageUrl,
+                    contentDescription = item.name,
+                    contentScale       = ContentScale.Crop,
+                    modifier           = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF1A1A2E), Color(0xFF0F0F1E))
+                            )
+                        ),
+                      contentAlignment = Alignment.Center,
+                ) {
+                    Text("🍽️", fontSize = 32.sp)
                 }
             }
 
-            // İsim ve fiyat
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.6f)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                        )
+                    )
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
+                    .align(Alignment.BottomStart)
+                    .padding(12.dp),
             ) {
                 Text(
                     text     = item.name,
-                    color    = TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
+                    color    = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text     = "₺${String.format("%.2f", price)}",
-                    color    = Accent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
+                    color    = AccentLight,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Accent)
+                    .clickable { onClick(cardCenterInRoot) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector        = if (hasOptions) Icons.Default.Tune else Icons.Default.Add,
+                    contentDescription = if (hasOptions) "Seçenekler" else "Ekle",
+                    tint               = Color.White,
+                    modifier           = Modifier.size(16.dp),
                 )
             }
         }
@@ -661,7 +1137,6 @@ private fun CartFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Sürekli yüzme animasyonu (translateY ±4dp)
     val infiniteTransition = rememberInfiniteTransition(label = "cart_float")
     val floatY by infiniteTransition.animateFloat(
         initialValue   = 0f,
@@ -673,7 +1148,6 @@ private fun CartFab(
         label = "float_y",
     )
 
-    // Dalga animasyonu — her zaman oluşturulur, hasItems yoksa alpha=0 (Compose kuralı)
     val waveTransition = rememberInfiniteTransition(label = "wave")
     val wave1 by waveTransition.animateFloat(
         initialValue  = 0.78f,
@@ -694,7 +1168,6 @@ private fun CartFab(
         label = "wave1a",
     )
 
-    // Pulse animasyonu (sepete ekleme)
     var isPulsing by remember { mutableStateOf(false) }
     val pulseScale by animateFloatAsState(
         targetValue   = if (isPulsing) 1.22f else 1f,
@@ -707,7 +1180,6 @@ private fun CartFab(
     }
 
     Box(modifier = modifier) {
-        // Dalga halkası — her zaman render edilir, alpha ile görünürlük kontrol edilir
         Box(
             modifier = Modifier
                 .size(80.dp)
@@ -717,7 +1189,6 @@ private fun CartFab(
                 .align(Alignment.Center),
         )
 
-        // FAB butonu
         Box(
             modifier = Modifier
                 .size(80.dp)
@@ -733,7 +1204,6 @@ private fun CartFab(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            // İç parlaklık
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -752,7 +1222,6 @@ private fun CartFab(
             )
         }
 
-        // Rozet (ürün sayısı)
         if (hasItems) {
             Box(
                 modifier = Modifier
@@ -775,7 +1244,7 @@ private fun CartFab(
     }
 }
 
-// ─── Ürün Detay Modalı ────────────────────────────────────────────────────────
+// ─── Ürün Detay Modalı (Sağdan Kayarak Açılan Drawer Panel) ────────────────────
 
 @Composable
 private fun ProductDetailSheet(
@@ -783,18 +1252,17 @@ private fun ProductDetailSheet(
     channelId: String?,
     optionGroups: List<OptionGroup>,
     baseUrl: String,
+    cartDockY: Dp,
     onDismiss: () -> Unit,
     onAddToCart: (CartItem) -> Unit,
 ) {
     val basePrice = item.priceForChannel(channelId)
     var quantity  by remember { mutableIntStateOf(1) }
 
-    // Seçenek seçimleri: groupId -> optionId
     val selectedOptions = remember {
         mutableStateMapOf<String, String>()
     }
 
-    // Seçenekli ürün fiyat hesabı
     val optionExtra = remember(selectedOptions.toMap()) {
         selectedOptions.values.sumOf { optId ->
             optionGroups.flatMap { it.options }
@@ -804,39 +1272,72 @@ private fun ProductDetailSheet(
     val unitPrice = basePrice + optionExtra
     val totalPrice = unitPrice * quantity
 
-    // Zorunlu seçenekler tamamlandı mı?
     val requiredGroups = optionGroups.filter { it.minSelect > 0 }
     val allRequiredFilled = requiredGroups.all { group ->
         selectedOptions.containsKey(group.id)
     }
 
+    val slideAnim = remember { Animatable(1f) }
+    LaunchedEffect(Unit) {
+        slideAnim.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow))
+    }
+    val scope = rememberCoroutineScope()
+    fun closeWith(action: () -> Unit) {
+        scope.launch {
+            slideAnim.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
+            action()
+        }
+    }
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { closeWith { onDismiss() } },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f))
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter,
+                .background(Color.Black.copy(alpha = (0.55f * (1f - slideAnim.value)).coerceIn(0f, 0.55f)))
+                .clickable(remember { MutableInteractionSource() }, null) { closeWith { onDismiss() } },
         ) {
+            var drawerHeightPx by remember { mutableStateOf(0) }
+            val density = LocalDensity.current
+            val drawerHeightDp = with(density) { drawerHeightPx.toDp() }
+            val screenHeight = with(LocalConfiguration.current) { screenHeightDp.dp }
+
+            val verticalOffset = remember(cartDockY, drawerHeightDp, screenHeight) {
+                if (drawerHeightDp > 0.dp) {
+                    (cartDockY - (drawerHeightDp / 2)).coerceIn(16.dp, screenHeight - drawerHeightDp - 16.dp)
+                } else {
+                    cartDockY
+                }
+            }
+
             Card(
                 modifier = Modifier
-                    .fillMaxWidth(0.72f)
-                    .clickable(onClick = {}) // tıklamanın altına geçmesini engelle
-                    .navigationBarsPadding(),
-                shape  = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
+                    .align(Alignment.TopEnd)
+                    .width(400.dp)
+                    .offset(y = verticalOffset)
+                    .alpha(if (drawerHeightPx > 0) 1f else 0f)
+                    .graphicsLayer { translationX = size.width * slideAnim.value }
+                    .onGloballyPositioned { coords ->
+                        drawerHeightPx = coords.size.height
+                    }
+                    .clickable(remember { MutableInteractionSource() }, null) { },
+                shape  = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Görsel banner
+                Column(
+                    modifier = Modifier
+                        .wrapContentHeight()
+                        .heightIn(max = 720.dp)
+                ) {
                     val imageUrl = item.imageUrlForChannel(channelId, baseUrl)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp)
-                            .background(Color(0xFF0F0F1E)),
+                            .background(Color(0xFFF1F5F9)),
                     ) {
                         if (!imageUrl.isNullOrBlank()) {
                             AsyncImage(
@@ -853,28 +1354,27 @@ private fun ProductDetailSheet(
                                 Text("🍽️", fontSize = 48.sp)
                             }
                         }
-                        // Kapat butonu
                         IconButton(
-                            onClick = onDismiss,
+                            onClick = { closeWith { onDismiss() } },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(8.dp)
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.5f)),
+                                .background(Color.White),
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF0F172A), modifier = Modifier.size(16.dp))
                         }
                     }
 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
                             .padding(20.dp)
                             .verticalScroll(rememberScrollState()),
                     ) {
-                        // İsim + fiyat
-                        Text(item.name, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(item.name, color = Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = "₺${String.format("%.2f", unitPrice)}",
@@ -883,13 +1383,12 @@ private fun ProductDetailSheet(
                             fontWeight = FontWeight.SemiBold,
                         )
 
-                        // Seçenek grupları
                         optionGroups.forEach { group ->
                             Spacer(Modifier.height(16.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = group.name,
-                                    color = TextPrimary,
+                                    color = Color(0xFF0F172A),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -916,14 +1415,14 @@ private fun ProductDetailSheet(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
                                             .background(
-                                                if (isSelected) Accent.copy(alpha = 0.15f)
-                                                else Color.Transparent
+                                                if (isSelected) Accent.copy(alpha = 0.12f)
+                                                else Color(0xFFF8FAFC)
                                             )
                                             .border(
                                                 BorderStroke(
-                                                    1.dp,
-                                                    if (isSelected) Accent.copy(alpha = 0.5f)
-                                                    else DividerColor,
+                                                    if (isSelected) 2.dp else 1.dp,
+                                                    if (isSelected) Accent
+                                                    else Color(0xFFE2E8F0),
                                                 ),
                                                 RoundedCornerShape(10.dp),
                                             )
@@ -936,13 +1435,14 @@ private fun ProductDetailSheet(
                                     ) {
                                         Text(
                                             option.name,
-                                            color = if (isSelected) AccentLight else TextSecond,
+                                            color = if (isSelected) Accent else Color(0xFF334155),
                                             fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                         )
                                         if (option.priceModifier != 0.0) {
                                             Text(
                                                 "+₺${String.format("%.2f", option.priceModifier)}",
-                                                color = if (isSelected) Accent else TextMuted,
+                                                color = if (isSelected) Accent else Color(0xFF64748B),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Medium,
                                             )
@@ -951,16 +1451,27 @@ private fun ProductDetailSheet(
                                     Spacer(Modifier.height(6.dp))
                                 }
                         }
+                    }
 
-                        Spacer(Modifier.height(20.dp))
+                    // Divider at the top of bottom bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
 
-                        // Miktar + Sepete Ekle
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.White,
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            // Miktar kontrol
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -970,13 +1481,13 @@ private fun ProductDetailSheet(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .clip(CircleShape)
-                                        .background(DividerColor),
+                                        .background(Color(0xFFE2E8F0)),
                                 ) {
-                                    Icon(Icons.Default.Remove, contentDescription = "Azalt", tint = TextPrimary, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Remove, contentDescription = "Azalt", tint = Color(0xFF0F172A), modifier = Modifier.size(16.dp))
                                 }
                                 Text(
                                     text = quantity.toString(),
-                                    color = TextPrimary,
+                                    color = Color(0xFF0F172A),
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -991,7 +1502,6 @@ private fun ProductDetailSheet(
                                 }
                             }
 
-                            // Sepete Ekle butonu
                             Button(
                                 onClick = {
                                     val opts = selectedOptions.entries.mapNotNull { (groupId, optionId) ->
@@ -1022,6 +1532,7 @@ private fun ProductDetailSheet(
                                     text = "Sepete Ekle  ₺${String.format("%.2f", totalPrice)}",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
+                                    color = Color.White,
                                 )
                             }
                         }
@@ -1393,4 +1904,29 @@ private fun PaymentConfirmScreen(
             }
         }
     }
+}
+
+@Composable
+private fun FlyDotAnimation(startX: Float, startY: Float, endX: Float, endY: Float) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(900, easing = CubicBezierEasing(0.25f, 0.46f, 0.45f, 0.94f)))
+    }
+    val p = progress.value
+    val cx = (startX + endX) / 2f
+    val cy = minOf(startY, endY) - 100f
+    val x = (1-p)*(1-p)*startX + 2*(1-p)*p*cx + p*p*endX
+    val y = (1-p)*(1-p)*startY + 2*(1-p)*p*cy + p*p*endY
+    val dotSizeDp = (28f * (1f - p * 0.80f)).coerceAtLeast(5.6f)
+    val alpha = if (p < 0.72f) 1f else (1f - (p - 0.72f) / 0.28f).coerceAtLeast(0f)
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset((x - (dotSizeDp / 2f).dp.toPx()).roundToInt(), (y - (dotSizeDp / 2f).dp.toPx()).roundToInt()) }
+            .size(dotSizeDp.dp)
+            .graphicsLayer { this.alpha = alpha }
+            .clip(CircleShape)
+            .background(Color(0xFFEF4444))
+    )
 }

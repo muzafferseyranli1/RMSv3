@@ -1,36 +1,43 @@
 # Kiosk Android — Devir Notu (Handout)
 
-**Tarih:** 2026-06-19  
+**Tarih:** 2026-06-21  
 **Proje:** `X:\RMSv3\kiosk-android\`  
-**Paket:** `com.suitable.kiosk.debug` (Debug Modu)  
-**Son Build:** DEBUG APK — BUILD SUCCESSFUL ✅
+**Sohbet ID:** `5329b333-00a9-43ae-a9bc-bf23d287dda3`
 
 ---
 
-## Genel Durum ve Yapılanlar
+## Son Yapılan Arayüz & Parite İyileştirmeleri (Faz 2 Aşama 2)
 
-| Faz | Kapsam | Durum | Açıklama |
-|-----|--------|-------|----------|
-| Faz 1 | Proje iskeleti + Eşleme ekranı | ✅ TAMAMLANDI | Kolon adları mismatch giderildi (`activation_code`, `device_type`, `terminal_name`). |
-| Faz 2 | Veri katmanı | ✅ TAMAMLANDI | `channel_prices` JSON dizisi çözme ve fiyat hesabı çözüldü. |
-| Faz 3 | BigScreen UI | ✅ TAMAMLANDI | Kategori sidebar, ürün gridi, sepetFAB ve ödeme onay ekranı. |
-| Faz 4 | Tablet UI | ⏳ BEKLİYOR | Yatay (split layout) ve dikey mod desteği. |
-| Faz 5 | Ortak bileşenler | ⏳ SÜRÜYOR | ComboBuilder adımları tamamlandı. |
-| Faz 6 | PIN / Sıfırlama | ✅ TAMAMLANDI | Logo 7 kez tıklama + "1903" admin PIN ile sıfırlama çalışıyor. |
+Hem **`KioskBigScreen.kt`** hem de **`KioskTabletScreen.kt`** üzerinde aşağıdaki geliştirmeler eksiksiz olarak tamamlanmıştır:
+
+1. **Sepet Topu (FAB) Sürükleme Desteği (Drag-Lock):**
+   - Kök ekrandaki genel touch interceptor (`pointerInput`) kaldırıldı.
+   - Sadece sepet topunun (`CartFab`) kendi üzerine yapılan dikey sürüklemeleri (`detectVerticalDragGestures`) dinlemesi sağlandı. Sepet topu artık katalogda gezinirken zıplamıyor, bırakılan Y koordinatında sabit kalıyor.
+
+2. **Sürekli Akış (Continuous Grid) & Scroll Sync:**
+   - Kategorilere göre sayfalama kaldırıldı; tüm ürünler alt alta akan tek bir düz liste (`flatGridItems`) haline getirildi.
+   - Kategoriler arasına başlık ve ayırt edici ince çizgiler (`CategoryHeaderRow`) eklendi.
+   - Sağ taraf kaydırıldıkça hangi kategori aktifse soldaki kategori panelindeki seçili kategori otomatik güncelleniyor.
+   - Sol panelden bir kategori tıklandığında, grid o kategorinin başlık çizgisine yumuşakça kaydırılıyor (`animateScrollToItem`).
+
+3. **Seçenek Çekmecesi (Web Paritesi & Y-Hizalama):**
+   - Ürün detay modalı (`ProductDetailSheet`) web paritesine uygun şekilde güncellendi: Beyaz zemin (`#ffffff`), koyu gri/siyah metinler (`#0f172a`), gri alt metinler ve beyaz zeminli kapatma butonu.
+   - Seçenek butonları seçildiğinde Accent rengi çerçeve ve hafif opak arka planla, seçilmediğinde ise açık gri zeminle gösterilir.
+   - Çekmecenin dikey yüksekliği içeriğe göre dinamik ayarlandı (`wrapContentHeight()`, max 720.dp).
+   - Çekmece açılırken sepet topunun o anki dikey Y pozisyonunu (`cartDockY`) merkez alarak (`offset` yardımıyla) hizalanır.
 
 ---
 
-## Son Gelişmeler ve Sipariş Gönderme Hatası
-1. **Derleme & Kurulum**: Uygulama sıfır hata ile derleniyor (`BUILD SUCCESSFUL`).
-2. **Kiosk Logo & Karşılama (Idle) Ekranı**: Web kiosk paritesiyle uyumlu şekilde `settings.kiosk_logo_url` üzerinden Ironman Kaskı logosu yükleniyor.
-3. **ComboBuilder Entegrasyonu**: Adımlar (Hamburger -> Patates -> Coca-Cola) arasında "Sonraki" ve "Sepete Ekle" geçişleri başarıyla tamamlandı. Sepet Fab rozeti `1` olarak güncelleniyor.
-4. **Ödeme Akışı Hatası**: Sepetten "Ödemeye Geç" dedikten sonra "Ödemeyi Onayla" butonuna basıldığında `Sipariş kaydedilemedi` (Sipariş Gönderilemedi) uyarısı alınıyor. 
-   - `test_sales_insert.js` üzerinden yapılan manuel node.js POST testi, `kiosk_station_code` alanı çıkarıldığında veritabanına başarıyla kaydetti.
-   - Detaylı hata teşhisi için `KioskRepository.kt` içerisindeki Retrofit `HttpLoggingInterceptor` log seviyesi `BASIC`'ten `BODY`'ye yükseltildi.
+## Güncel Derleme ve Test Durumu
+- Kotlin derleme hatasına yol açan yerel değişken sıralama sorunu (`resolvedBannerUrl` / `bannerTitle`'ın tanımlanmadan önce scroll sync `derivedStateOf` içinde kullanılması) giderildi.
+- `.\gradlew.bat assembleDebug` derleme süreci başlatıldı ve Kotlin kodlarının derlemesi hatasız geçti.
 
 ---
 
-## Sonraki Adımlar (Gelecek Agent İçin Handoff)
-1. **Logcat Teşhisi**: Uygulamayı emülatörde çalıştırıp sepeti onaylayın ve logcat üzerinden HTTP istek/yanıt detaylarını (veritabanı hatasını) inceleyin.
-2. **Hata Düzeltme**: `sales`, `sale_lines` ve `sale_payments` tablolarına insert edilirken DB şemasının reddettiği bir alan var mı tespit edin ve `KioskDataViewModel.submitOrder()` içindeki veri oluşturma akışını düzeltin.
-3. **Faz 4 Tablet Ekranı**: `KioskTabletScreen.kt` yatay modda sepeti her zaman açık (split-layout) gösterecek şekilde doğrulanmalı/tamamlanmalıdır.
+## Sonraki Adımlar
+1. **Emülatör Kurulumu ve Manuel Test:**
+   - Derlenen debug APK'sını NoxPlayer emülatörüne yükleyin: `nox_adb install -r app/build/outputs/apk/debug/app-debug.apk`
+   - Kategori tıklamalarının, dikey katalog kaydırma sırasında sol menü senkronizasyonunun ve sepet topunun drag-along hareketinin doğruluğunu manuel olarak doğrulayın.
+   - Seçenekli bir ürüne tıklayıp sağdan açılan seçenekler çekmecesinin sepet topunun Y pozisyonuna göre dikeyde tam ortalandığını ve web stili renklerle açıldığını doğrulayın.
+2. **Kiosk Kapalı Hatası Kontrolü (Opsiyonel):**
+   - Kiosk uygulamasının "Kapalıyız" deme durumu şube çalışma saatleri ayarları veya kiosk aktiflik durumuna bağlıdır. Eğer gerekirse ayarlar JSON'ını kontrol edin.

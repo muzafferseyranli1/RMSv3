@@ -1,26 +1,26 @@
-# Checklist for Implementation Plan Execution
+# Checklist for Phase 2 UI and Parity Improvements
 
-## Compile and Diagnostics
-- [x] Fix compile errors in project
-  - [x] Inspect and fix compile errors in `MainActivity.kt`
-  - [x] Inspect and fix compile errors in `ComboBuilder.kt`
-  - [x] Inspect and fix compile errors in `IdleScreen.kt`
-  - [x] Inspect and fix compile errors in `KioskBigScreen.kt`
-- [x] Successfully run `.\gradlew.bat assembleDebug` with 0 errors
+## Kiosk Big Screen (`KioskBigScreen.kt`)
+- [x] Kök Box üzerindeki genel dokunma takip mekanizmasının (`pointerInput`) kaldırılması
+- [x] `CartFab` sepet topuna `detectVerticalDragGestures` entegre edilerek yumuşak sürüklenme ve bırakılan yerde kalma davranışının eklenmesi
+- [x] Ürünlerin sürekli akması için kategori başlıkları ve ürünleri birleştiren düz listeye (`flatGridItems`) geçilmesi
+- [x] Kategori başlıkları için `CategoryHeaderRow` eklenmesi ve `ProductGrid` ile `ProductCard`'ın bu düz listeyle çalışacak şekilde güncellenmesi
+- [x] `LazyGridState` yardımıyla scroll takibi yapılarak sol kategori panelinin aktif kategorisinin güncellenmesi (`currentVisibleCategoryIndex`)
+- [x] Sol kategori barından bir kategori tıklandığında ürün listesinin o kategorinin başlık çizgisine kaydırılması (`animateScrollToItem`)
+- [x] `ProductDetailSheet`'in (Seçenekler Çekmecesi) `cartDockY` parametresi alarak sepet topunu dikeyde merkezleyecek şekilde (`offset` ve `onGloballyPositioned` ile) konumlandırılması
+- [x] `ProductDetailSheet` arayüzünün web paritesine uygun olarak beyaz zemin, koyu gri/siyah metinler ve mor accent rengiyle yeniden tasarlanması, yüksekliğinin dinamik yapılması (`wrapContentHeight()`)
 
-## Faz 4 — Tablet UI (KioskTablet paritesi)
-- [ ] Verify or implement `KioskTabletScreen.kt` layout to match `KioskTablet.jsx` split layout (portrait/landscape support)
+## Kiosk Tablet Screen (`KioskTabletScreen.kt`)
+- [x] Kök Box üzerindeki genel dokunma takip mekanizmasının kaldırılması
+- [x] `CartFab` sepet topuna `detectVerticalDragGestures` entegre edilmesi
+- [x] Ürünlerin sürekli akması için kategori başlıkları ve ürünleri birleştiren düz listeye (`flatGridItems`) geçilmesi
+- [x] Kategori başlıkları için `CategoryHeaderRow` eklenmesi ve listelemelerin güncellenmesi
+- [x] Scroll takibiyle sol kategori panelinin aktif kategorisinin güncellenmesi
+- [x] Sol kategori barından bir kategori tıklandığında ürün listesinin o kategori çizgisine kaydırılması
+- [x] `ProductDetailSheet`'in (Seçenekler Çekmecesi) `cartDockY` parametresi alarak sepet topunu dikeyde merkezleyecek şekilde konumlandırılması
+- [x] `ProductDetailSheet` arayüzünün web paritesine uygun olarak beyaz zemin, koyu gri/siyah metinler ve mor accent rengiyle yeniden tasarlanması, yüksekliğinin dinamik yapılması
 
-## Faz 5 — Ortak Bileşenler & Web Paritesi
-- [ ] Verify `ComboBuilder.kt` step selection and constraints parsing `combo_menus_v1`
-- [ ] Verify `SuggestionManager.kt` popup recommendations
-- [ ] Verify `ClosedOverlay.kt` operating hour rules enforcement
-
-## Faz 6 — Güvenlik / PIN Sıfırlama
-- [ ] Verify 7-clicks on kiosk logo admin reset functionality
-- [ ] Verify `prefs.clearDeviceConfig()` clears state and redirects to pairing
-
-## Verification & Documentation
-- [ ] Deploy APK to Nox emulator
-- [ ] Verify all flows on emulator
-- [ ] Document final walkthrough in `walkthrough.md` and `OperationSync.md`
+## Derleme, Test ve Entegrasyon
+- [x] Gradle derleme testi yapılması (`.\gradlew.bat assembleDebug`)
+- [ ] Üretilen APK'nın NoxPlayer emülatörüne yüklenmesi
+- [ ] Yapılan tüm değişikliklerin `walkthrough.md` ve `OperationSync.md` dosyalarına işlenmesi

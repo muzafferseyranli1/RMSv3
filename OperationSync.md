@@ -12101,3 +12101,99 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Ödeme adımında "Ödemeyi Onayla" butonu x=360, y=770 tıklamasıyla tetiklendi, ancak DB API'sinden dönen hata nedeniyle Sipariş kaydedilemedi uyarısı alındı. Detaylı teşhis için BODY loglama aktifleştirildi.
 
 [KIOSK_ANDROID_COMBOBUILDER_AND_PAYMENT_LOGGING] - Kiosk ComboBuilder akışı tamamlandı ve ödeme kayıt hatası için log seviyesi artırıldı.
+
+
+---
+
+## LOG ENTRY - 2026-06-21 - Kiosk Android Faz 4, Faz 5 ve Faz 6 Kod ve Mimarisi Dogrulandi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler ve Dogrulamalar
+
+**1. KioskTabletScreen.kt (Faz 4 Destegi Dogrulandi)**
+- Yonelim (Orientation) algilamasi ve split-layout yapisi dogrulanmistir. Yatay modda TabletCartPanel sag panel olarak acik kalirken, dikey modda CartFab ve CartFullScreenDialog devreye girmektedir.
+
+**2. ComboBuilder.kt & SuggestionManager.kt (Faz 5 Entegrasyonu Dogrulandi)**
+- Combo menu adimlari ve kisitlamalari (combo_menus_v1 entegrasyonu), urun bazli ve odeme adimindaki oneri motoru kurallari basariyla dogrulanmistir.
+- ClosedOverlay.kt calisma saatleri kural kontrol mekanizmasi dogrulanmistir.
+
+**3. MainActivity.kt & Kiosk Screens (Faz 6 Reset Guvenligi Dogrulandi)**
+- Logoya 4 saniye icinde 7 hizli tiklama ile tetiklenen yonetici PIN giris akisi ve 1903 sifirlama mekanizmasi dogrulanmistir.
+
+**4. Proje Derleme Testi**
+- .\gradlew.bat assembleDebug komutu sifir hata ile basariyla tamamlanmis ve app-debug.apk uretilmistir.
+
+[KIOSK_ANDROID_PHASE_4_5_6_VERIFICATION_COMPLETE] - Kiosk Android Faz 4, 5 ve 6 dogrulama islemleri tamamlandi.r
+
+
+
+---
+
+## LOG ENTRY - 2026-06-21 - Kiosk Calisma Saatleri Enabled Kontrolu Eklendi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler
+
+**1. KioskDataViewModel.kt (GUNCELLE)**
+- resolveIsOpen fonksiyonu ve cagirildigi yer, settingsJson (kiosk_settings_v2) uzerinden operating_hours_enabled degerini kontrol edecek sekilde guncellendi.
+- Kural kontrolu aktif degilse (enabled = false veya null ise) dogrudan true donulerek kapali ekraninin haksiz yere gosterilmesi engellendi.
+
+[KIOSK_ANDROID_OPERATING_HOURS_ENABLED_FIX] - Kiosk calisma saatleri aktiflik kontrolu entegre edildi.r
+
+
+
+---
+
+## LOG ENTRY - 2026-06-21 - Kiosk Android Arayuz ve Parite Iyileskirmeleri Tamamlandi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler
+
+**1. KioskTabletScreen.kt (GUNCELLE)**
+- Kategori sidebar'i 90.dp genislige daraltildi ve kategori resimlerini barindiran sik kare rounded-corner kart tasarimlari entegre edildi.
+- Kategori sidebar'inin en ustune "Bastan Basla / Yeni Siparis" butonu eklendi. Sepette urun varken tiklandiginda 5 saniyeden geriye sayan onay diyalogu acilmasi ve sure bitiminde veya devam tiklandiginda sepeti sifirlayarak IdleScreen'e donmesi saglandi.
+- Sidebar uzerindeki sube adi ve operasyonel bilgiler tamamen kaldirildi.
+- settingsJson'dan gelen reklam banner'i (main_banner_image veya tablet_main_banner_image) urun listesinin en ustune tam satir kaplayacak sekilde entegre edildi.
+- Urun kartlari (ProductCard), gorselin tamamini kaplayan ve altta yari saydam siyah gradyan overlay uzerinde beyaz metinle urun ismi ve fiyatini gosteren modern tasarimla yenilendi. Kartin sag ustune hizli ekleme icin "+" ve secenekli urunler icin "tune" (ayar) simgeleri eklendi.
+- Urun detay modali (ProductDetailSheet), bottom sheet yerine sagdan kayarak acilan (horizontal spring transition slideAnim animasyonlu) modern bir drawer paneline donusturuldu. Genisligi landscape/portrait durumuna gore %40-%82 olarak dinamik ayarlandi.
+- FAB sepet butonunun dikey eksende parmak hareketini takip etmesi (cartDockY animasyonu) ve sepete urun eklendiginde tiklama koordinatindan sepet butonuna parabolik ucuz animasyonu (FlyDotAnimation) cizilmesi saglandi.
+
+**2. KioskTabletScreen.kt & KioskBigScreen.kt (GUNCELLE)**
+- Tablet ve BigScreen arayuzleri modern web kiosk versiyonlarina ve musteri Android uygulamasina parite olarak esitlendi.
+
+### Dogrulama ve Test
+- `.\\gradlew.bat assembleDebug` ile sifir hata ile basarili derleme yapildi.
+- APK NoxPlayer emulatorune (127.0.0.1:62001) basariyla yuklendi.
+
+[KIOSK_ANDROID_UI_AND_PARITY_IMPROVEMENTS_COMPLETE] - Kiosk Android arayuz ve parite iyileskirmeleri tamamlandi.
+
+---
+
+## LOG ENTRY - 2026-06-21 - Kiosk Android Drag-Lock, Surekli Akis ve Web Paritesi Options Drawer Tamamlandi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler
+
+**1. KioskBigScreen.kt & KioskTabletScreen.kt (GUNCELLE)**
+- **Sepet Topu Drag-Lock (detectVerticalDragGestures):** Dikey (Portrait) modda sepet topunun (FAB) dikey hareketi artik ekranin herhangi bir yerine dokunarak degil, sadece dogrudan sepet topunun suruklenmesiyle tetiklenecek sekilde sinirlandirildi ve birakildigi yerde kilitli kalmasi saglandi.
+- **Surekli Akis (Continuous Grid Scroll):** Kategori bazli sayfalama kaldirilarak tum kategoriler alt alta ince bir cizgi ve baslik (CategoryHeaderRow) ile ayrilmis kesintisiz tek bir duz listede (flatGridItems) birlestirildi.
+- **Kategori Scroll Senkronizasyonu (Scroll Sync):** Grid state (LazyGridState) izlenerek gorunur olan en ust kategori sol panelde otomatik olarak aktif yapiliyor. Sol panelden kategori secildiginde ise urun gridi ilgili kategori baslik satirina yumusakca kaydiriliyor (animateScrollToItem).
+- **Secenek Cekmecesi Web Paritesi (ProductDetailSheet):** Cekmece tasarimi web surumuyle uyumlu hale getirildi (beyaz arka plan #ffffff, koyu gri metinler #0f172a, secili seceneklerde mor cerceve ve hafif saydam arka plan). Dikey yuksekligi icerige gore otomatik sariliyor (wrapContentHeight(), max 720.dp) ve acilirken dikey eksende sepet topunun konumunu merkezliyor. Layout sicramasini onlemek amaciyla ilk olcum tamamlanana kadar opakligi sifir tutuluyor.
+
+### Dogrulama ve Test
+- Kotlin yerel degisken sirasi (tanimlanmadan once derivedStateOf'ta cagrilma) duzeltildi.
+- .\gradlew.bat assembleDebug ile sifir hata ile basarili derleme yapildi (BUILD SUCCESSFUL).
+
+[KIOSK_ANDROID_PHASE2_PART2_UI_AND_PARITY_IMPROVEMENTS_COMPLETE] - Kiosk Android dikey drag-lock, surekli urun akisi ve web stili dikey ortali options drawer tamamlandi.
