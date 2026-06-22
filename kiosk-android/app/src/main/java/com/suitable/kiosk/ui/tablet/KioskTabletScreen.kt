@@ -2,6 +2,7 @@ package com.suitable.kiosk.ui.tablet
 
 import android.content.res.Configuration
 import androidx.compose.animation.core.*
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -132,13 +134,28 @@ fun KioskTabletScreen(
     var productClickOffset by remember { mutableStateOf(Offset.Zero) }
     var comboClickOffset by remember { mutableStateOf(Offset.Zero) }
 
-    fun triggerFly(sourceRootPos: Offset) {
+    var cartCheckVisible by remember { mutableStateOf(false) }
+    var cartFeedbackToken by remember { mutableIntStateOf(0) }
+
+    fun triggerFly(sourceRootPos: Offset, onEnd: () -> Unit = {}) {
         if (sourceRootPos == Offset.Zero) return
         val p = FlyParticle(startX = sourceRootPos.x, startY = sourceRootPos.y)
         flyParticles = flyParticles + p
         scope.launch {
             kotlinx.coroutines.delay(900)
             flyParticles = flyParticles.filter { it.id != p.id }
+            onEnd()
+        }
+    }
+
+    fun triggerFlyFeedback(clickOffset: Offset) {
+        triggerFly(clickOffset) {
+            cartFeedbackToken++
+            cartCheckVisible = true
+            scope.launch {
+                kotlinx.coroutines.delay(800)
+                cartCheckVisible = false
+            }
         }
     }
 
@@ -163,7 +180,18 @@ fun KioskTabletScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BgDark)
-            .onGloballyPositioned { outerBoxPosInRoot = it.positionInRoot() },
+            .onGloballyPositioned { outerBoxPosInRoot = it.positionInRoot() }
+            .pointerInput(screen, selectedItem, selectedComboProduct, activeSuggestion, showResetDialog, isLandscape) {
+                if (isLandscape || screen != "menu" || selectedItem != null || selectedComboProduct != null || activeSuggestion != null || showResetDialog) return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val pos = ev.changes.firstOrNull()?.position ?: continue
+                        val ty = with(density) { pos.y.toDp() }
+                        cartDockY = ty.coerceIn(120.dp, 750.dp)
+                    }
+                }
+            },
     ) {
         when (val state = menuState) {
             is MenuLoadState.Loading -> LoadingScreen()
@@ -309,15 +337,27 @@ fun KioskTabletScreen(
                         CategorySidePanel(
                             categories   = topCategories,
                             selectedId   = activeCatId,
-                            onSelect     = { catId ->
+                            onSelect     = { catId, yOffset ->
                                 viewModel.selectCategory(catId)
                                 val targetIndex = flatGridItems.indexOfFirst {
                                     it is ProductGridItem.Header && it.category.id == catId
                                 }
                                 if (targetIndex != -1) {
                                     val bannerOffset = if (!resolvedBannerUrl.isNullOrBlank() || !bannerTitle.isBlank()) 1 else 0
+                                    val destIndex = targetIndex + bannerOffset + 1
                                     scope.launch {
-                                        gridState.animateScrollToItem(targetIndex + bannerOffset, 0)
+                                        val currentIndex = gridState.firstVisibleItemIndex
+                                        val diff = kotlin.math.abs(destIndex - currentIndex)
+                                        if (diff > 4) {
+                                            val proxyIndex = if (destIndex > currentIndex) {
+                                                (destIndex - 3).coerceAtLeast(0)
+                                            } else {
+                                                (destIndex + 3).coerceAtLeast(0)
+                                            }
+                                            gridState.scrollToItem(proxyIndex, 0)
+                                            kotlinx.coroutines.delay(80)
+                                        }
+                                        gridState.animateScrollToItem(destIndex, -yOffset.roundToInt())
                                     }
                                 }
                             },
@@ -333,6 +373,7 @@ fun KioskTabletScreen(
                             },
                             onLongPress  = onSecretUnlock,
                             baseUrl      = viewModel.baseUrl,
+                            outerBoxPosY = outerBoxPosInRoot.y,
                         )
 
                         // ── Orta: Ürün gridi ──
@@ -370,7 +411,7 @@ fun KioskTabletScreen(
                                                 productClickOffset = clickOffset
                                             } else {
                                                 viewModel.addToCart(CartItem(item, 1, unitPrice = item.priceForChannel(channelId)))
-                                                triggerFly(clickOffset)
+                                                triggerFlyFeedback(clickOffset)
                                             }
                                         }
                                     },
@@ -382,17 +423,11 @@ fun KioskTabletScreen(
                                 CartFab(
                                     itemCount  = viewModel.cartItemCount,
                                     hasItems   = cart.isNotEmpty(),
+                                    checkVisible = cartCheckVisible,
                                     onClick    = { if (cart.isNotEmpty()) isCartDrawerOpen = true },
                                     modifier   = Modifier
                                         .align(Alignment.TopEnd)
                                         .offset(y = cartDockYAnim - 40.dp)
-                                        .pointerInput(Unit) {
-                                            detectVerticalDragGestures { change, dragAmount ->
-                                                change.consume()
-                                                val dragAmountDp = with(density) { dragAmount.toDp() }
-                                                cartDockY = (cartDockY + dragAmountDp).coerceIn(120.dp, 750.dp)
-                                            }
-                                        }
                                         .padding(end = 20.dp)
                                         .onGloballyPositioned { coords ->
                                             val p = coords.positionInRoot()
@@ -440,7 +475,6 @@ fun KioskTabletScreen(
                                     .background(BgSidebar)
                                     .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(0.dp))
                                     .onGloballyPositioned { coords ->
-                                        // Yatay modda sepet topu olmadığı için, uçan dot hedefi sepet panelinin ortası
                                         val p = coords.positionInRoot()
                                         cartBallPosInRoot = Offset(p.x + coords.size.width / 2f, p.y + coords.size.height / 2f)
                                     },
@@ -455,7 +489,10 @@ fun KioskTabletScreen(
                         val linkedIds = try {
                             item.optionGroupsRaw?.asJsonArray
                                 ?.mapNotNull { el ->
-                                    el.asJsonObject?.get("group_id")?.asString
+                                     val obj = el.asJsonObject
+                                     obj.get("option_group_id")?.asString 
+                                         ?: obj.get("id")?.asString 
+                                         ?: obj.get("group_id")?.asString
                                 } ?: emptyList()
                         } catch (_: Exception) { emptyList() }
                         data.optionGroups.filter { it.id in linkedIds && it.deletedAt == null }
@@ -471,7 +508,7 @@ fun KioskTabletScreen(
                             viewModel.addToCart(cartItem)
                             selectedItem = null
                             maybeShowProductSuggestion(item)
-                            triggerFly(productClickOffset)
+                            triggerFlyFeedback(productClickOffset)
                         },
                     )
                 }
@@ -661,12 +698,13 @@ private fun ErrorScreen(message: String, onRetry: () -> Unit) {
 private fun CategorySidePanel(
     categories: List<SaleCategory>,
     selectedId: String?,
-    onSelect: (String) -> Unit,
+    onSelect: (String, Float) -> Unit,
     stationCode: String,
     cart: List<CartItem>,
     onResetClick: () -> Unit,
     onLongPress: () -> Unit,
     baseUrl: String,
+    outerBoxPosY: Float,
 ) {
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var tapCount by remember { mutableIntStateOf(0) }
@@ -737,10 +775,14 @@ private fun CategorySidePanel(
                 val isSelected = cat.id == selectedId
                 val catImage = cat.imageUrlResolved(baseUrl)
 
+                var cardYInRoot by remember { mutableStateOf(0f) }
                 Card(
                     modifier = Modifier
                         .size(74.dp)
-                        .clickable { onSelect(cat.id) },
+                        .onGloballyPositioned { coords ->
+                            cardYInRoot = coords.positionInRoot().y
+                        }
+                        .clickable { onSelect(cat.id, cardYInRoot - outerBoxPosY) },
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = BgCard),
                     border = BorderStroke(
@@ -1098,43 +1140,127 @@ private fun EmptyCategoryPlaceholder() {
 private fun CartFab(
     itemCount: Int,
     hasItems: Boolean,
+    checkVisible: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (!hasItems) return
+    val infiniteTransition = rememberInfiniteTransition(label = "cart_float")
+    val floatY by infiniteTransition.animateFloat(
+        initialValue   = 0f,
+        targetValue    = -4f,
+        animationSpec  = infiniteRepeatable(
+            animation  = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "float_y",
+    )
+
+    val waveTransition = rememberInfiniteTransition(label = "wave")
+    val wave1 by waveTransition.animateFloat(
+        initialValue  = 0.78f,
+        targetValue   = 1.5f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(2000, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wave1",
+    )
+    val wave1Alpha by waveTransition.animateFloat(
+        initialValue  = 0.35f,
+        targetValue   = 0f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(2000),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wave1a",
+    )
 
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(80.dp)
+                .graphicsLayer { scaleX = wave1; scaleY = wave1 }
                 .clip(CircleShape)
-                .background(Brush.verticalGradient(listOf(AccentLight, Accent)))
+                .border(
+                    BorderStroke(
+                        2.dp, 
+                        (if (hasItems) Color(0xFFFACC15) else Accent).copy(alpha = wave1Alpha)
+                    ), 
+                    CircleShape
+                )
+                .align(Alignment.Center),
+        )
+
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .graphicsLayer { translationY = floatY }
+                .shadow(18.dp, CircleShape)
+                .clip(CircleShape)
+                .background(
+                    if (hasItems)
+                        Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFFACC15), Color(0xFFCA8A04)))
+                    else
+                        Brush.verticalGradient(listOf(TextMuted, TextMuted))
+                )
+                .border(BorderStroke(3.dp, Color.White), CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector        = Icons.Default.ShoppingBasket,
-                contentDescription = "Sepet",
-                tint               = Color.White,
-                modifier           = Modifier.size(24.dp),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = 0.15f), Color.Transparent)
+                        )
+                    ),
             )
+            Crossfade(targetState = checkVisible, animationSpec = tween(200), label = "check_anim") { showCheck ->
+                if (showCheck) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(SuccessGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector        = Icons.Default.Check,
+                            contentDescription = "Eklendi",
+                            tint               = Color.White,
+                            modifier           = Modifier.size(36.dp),
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector        = Icons.Default.ShoppingBasket,
+                        contentDescription = "Sepet",
+                        tint               = if (hasItems) Color(0xFF0F172A) else Color.White,
+                        modifier           = Modifier.size(30.dp),
+                    )
+                }
+            }
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 2.dp, y = (-2).dp)
-                .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
-                .clip(CircleShape)
-                .background(CartRed)
-                .padding(horizontal = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text       = itemCount.toString(),
-                color      = Color.White,
-                fontSize   = 10.sp,
-                fontWeight = FontWeight.Black,
-            )
+
+        if (hasItems) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .defaultMinSize(minWidth = 24.dp, minHeight = 24.dp)
+                    .clip(CircleShape)
+                    .background(CartRed)
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text       = itemCount.toString(),
+                    color      = Color.White,
+                    fontSize   = 10.sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
         }
     }
 }

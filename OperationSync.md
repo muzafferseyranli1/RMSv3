@@ -12197,3 +12197,23 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - .\gradlew.bat assembleDebug ile sifir hata ile basarili derleme yapildi (BUILD SUCCESSFUL).
 
 [KIOSK_ANDROID_PHASE2_PART2_UI_AND_PARITY_IMPROVEMENTS_COMPLETE] - Kiosk Android dikey drag-lock, surekli urun akisi ve web stili dikey ortali options drawer tamamlandi.
+
+---
+
+## LOG ENTRY - 2026-06-21 - Kiosk Android Kategori Hizalama ve Sepet Takip Iyileskirmeleri
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+- Build: DEBUG APK - BUILD SUCCESSFUL
+
+### Yapilan Degisiklikler
+
+**1. KioskBigScreen.kt & KioskTabletScreen.kt (GUNCELLE)**
+- **Kategori Tiklama Hizalamasi (Category Click Alignment):** Sol panelden bir kategori tiklandiginda, sag taraftaki o kategoriye ait ilk urun resminin ust hizasi ile tiklanan kategori kartinin ust hizasinin ayni Y koordinatinda (yOffset) hizalanmasi saglandi. Bunun icin kartlarin Y koordinatlari parent container'a gore olculdu ve gridState.animateScrollToItem fonksiyonuna negatif -yOffset degeri scrollOffset olarak iletildi.
+- **Sepet Topu Ekran Takibi (Touch Tracking):** Sepet topunun (FAB) sadece kendi uzerindeki suruklemelerle degil, ekranda bos yerlere dokunulduğunda ve suruklendiginde de parmagin Y-koordinatini takip etmesi saglandi. Bunun icin root Box seviyesine PointerEventPass.Initial ile touch listener eklenerek cartDockY guncellendi. FAB uzerindeki yerel drag listener'lar kaldirilarak cakisma onlendi.
+
+### Dogrulama ve Test
+- .\gradlew.bat assembleDebug ile sifir hata ile basarili derleme yapildi (BUILD SUCCESSFUL).
+- Kablosuz Hata Ayıklama (Wireless Debugging) uzerinden Samsung Galaxy Tab A7 Lite tablete baglanilarak APK basariyla kuruldu ve baslatildi.
+
+[KIOSK_ANDROID_CATEGORY_ALIGNMENT_AND_TOUCH_TRACKING_COMPLETE] - Kiosk Android kategori tiklama hizalamasi ve ekran genelinde sepet topu takibi tamamlandi.
