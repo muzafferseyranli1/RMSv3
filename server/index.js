@@ -52,7 +52,27 @@ async function checkSchema() {
   try {
     await pool.query('ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
     await pool.query('ALTER TABLE public.semi_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
-    console.log('Database schema auto-checked and image_url columns verified.');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.qa_questions (
+        id UUID DEFAULT gen_random_uuid() NOT NULL,
+        author_name TEXT NOT NULL,
+        question_text TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+        CONSTRAINT qa_questions_pkey PRIMARY KEY (id)
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.qa_answers (
+        id UUID DEFAULT gen_random_uuid() NOT NULL,
+        question_id UUID NOT NULL,
+        author_name TEXT NOT NULL,
+        answer_text TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+        CONSTRAINT qa_answers_pkey PRIMARY KEY (id),
+        CONSTRAINT fk_qa_questions FOREIGN KEY (question_id) REFERENCES public.qa_questions (id) ON DELETE CASCADE
+      );
+    `);
+    console.log('Database schema auto-checked, image_url columns and QA tables verified.');
   } catch (err) {
     console.error('Error in database schema auto-check:', err.message);
   }

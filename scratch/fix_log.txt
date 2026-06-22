@@ -1,0 +1,14 @@
+
+
+---
+
+## LOG ENTRY - 2026-06-22 - Soru-Cevap Portali Veritabani Tablolari Railway Postgres'te Olusturuldu
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+
+### Yapilan Islemler
+- Railway Postgres veritabanında `qa_questions` ve `qa_answers` tablolarının sunucu deployu beklemeden hemen aktif olması için `pg` kütüphanesini kullanan `scratch/apply_migration.cjs` scripti yazıldı ve lokalde çalıştırıldı.
+- Tabloların Railway Postgres üzerinde başarıyla oluşturulduğu doğrulandı.
+
+[QUESTION_ANSWER_PORTAL_DATABASE_TABLES_CREATED] - Soru-Cevap Portalı veritabanı tabloları Railway üzerinde başarıyla oluşturuldu.

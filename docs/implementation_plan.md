@@ -1,47 +1,82 @@
-# Kiosk Android Uygulaması — Arayüz Geliştirme ve Parite İyileştirme Planı (Aşama 2)
+# Soru-Cevap Portalı (Q&A) Entegrasyon Planı
 
-Bu plan, native Kiosk Android uygulamasında sepet topunun (FAB) hareketlerini yumuşatmayı, seçenekler çekmecesini (options drawer) web arayüzü stiliyle ve dikey konumlandırmasıyla güncellemeyi, ürün listesini sürekli akan tek bir liste haline getirerek kategoriler arası geçişi otomatik senkronize etmeyi hedefler.
+Bu plan, projeden bağımsız çalışabilen, şifre korumalı ("2026"), soru ve cevap ekleme/listeleme işlevlerine sahip yeni bir genel portal sayfası eklemeyi hedefler.
 
-## User Review Required
+## Kullanıcı İncelemesi Gereken Konular
 
-> [!IMPORTANT]
-> **Sepet Topu Drag-Lock:** Sepet topunun tüm ekran dokunuşlarını takip etmesi yerine, sadece kendi üzerine yapılan sürüklemeleri (vertical drag) takip etmesi ve bırakıldığı yerde kalması sağlanacaktır. Böylece katalogda gezinirken sepet topunun istemsizce zıplaması engellenecektir.
-> **Scroll-Synchronized Grid:** Ürün listesi kategorilere göre sayfa sayfa bölünmeyecek; tüm ürünler alt alta akacak, aralarında sadece kategori isimleri ve ince çizgiler olacaktır. Kullanıcı kaydırdıkça sol taraftaki aktif kategori otomatik olarak değişecektir.
+> [!NOTE]
+> **Tasarım Tercihleri:**
+> - Sayfa, ana backoffice şablonundan (Sidebar ve AdminLayout) tamamen bağımsız olarak tam ekran çalışacaktır.
+> - Premium bir kullanıcı deneyimi için koyu tema (gizemli slate/indigo tonları), cam morfolojisi (glassmorphism) efektleri ve yumuşak geçişli animasyonlar kullanılacaktır.
+> - Şifre doğrulama durumu sekme ömrü boyunca (`sessionStorage` üzerinde) saklanacaktır, böylece kullanıcı sayfayı açık tuttuğu sürece tekrar şifre girmek zorunda kalmayacaktır.
 
-## Proposed Changes
-
-### [Kiosk Android Uygulaması](file:///X:/RMSv3/kiosk-android/)
-
----
-
-#### [MODIFY] [KioskBigScreen.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/bigscreen/KioskBigScreen.kt)
-- **Kategori & Ürün Akışı Entegrasyonu:**
-  - Tüm kategorilerin ürünlerini ve aralarındaki başlıkları (`CategoryHeaderRow`) içeren düzleştirilmiş bir liste (`flatGridItems`) oluşturulması.
-  - `LazyGridState` ile ürün listesinin scroll hareketinin izlenmesi ve en üstteki aktif kategorinin tespit edilerek sol kategori barına yansıtılması (`currentVisibleCategoryIndex`).
-  - Sol kategori panelinde bir kategoriye tıklandığında, listenin o kategorinin başlık çizgisine animasyonlu olarak kaydırılması (`animateScrollToItem`).
-- **Yumuşak Drag Desteği:**
-  - Kök `Box` üzerindeki genel dokunma takip mekanizmasının kaldırılması.
-  - `CartFab` bileşenine `detectVerticalDragGestures` eklenerek doğrudan kendi üzerinden yumuşakça sürüklenmesi ve bırakılan Y konumunda kalması.
-- **Seçenek Çekmecesi (Web Paritesi & Dinamik Yükseklik):**
-  - `ProductDetailSheet`'in arka planının **beyaz (`Color.White`)**, yazı ve detaylarının **koyu gri/siyah (`Color(0xFF0F172A)`)** olarak güncellenmesi.
-  - Modalın yüksekliğinin içeriğe göre otomatik sarılması (`wrapContentHeight()`), maksimum 720.dp yüksekliğinde olması.
-  - Modal açılırken sepet topunun o anki dikey Y pozisyonunun (`cartDockY`) parametre olarak geçilmesi ve modalın o noktayı merkezleyerek konumlanması (`offset`).
-  - Seçenek seçim butonlarının web paritesine uygun olarak beyaz zeminli, seçildiğinde ise mor accent renkli çerçeve ve hafif şeffaf arka planla tasarlanması.
+## Önerilen Değişiklikler
 
 ---
 
-#### [MODIFY] [KioskTabletScreen.kt](file:///X:/RMSv3/kiosk-android/app/src/main/java/com/suitable/kiosk/ui/tablet/KioskTabletScreen.kt)
-- `KioskBigScreen.kt` üzerinde uygulanan yeni scroll senkronizasyonu, sepet topu drag-along davranışı ve beyaz zeminli/dikey merkezli web paritesi seçenekler drawer'ı tasarımının birebir olarak tablet ekranına da taşınması.
+### [Veritabanı Katmanı]
 
-## Verification Plan
+#### [MODIFY] [schema-railway-master.sql](file:///x:/RMSv3/schema-railway-master.sql)
+- Dosyanın en sonuna yeni `qa_questions` ve `qa_answers` tablolarının DDL tanımları eklenecektir:
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.qa_questions (
+    id UUID DEFAULT gen_random_uuid() NOT NULL,
+    author_name TEXT NOT NULL,
+    question_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    CONSTRAINT qa_questions_pkey PRIMARY KEY (id)
+  );
 
-### Automated Tests
-- Gradle projesinin başarıyla derlenmesi:
-  `.\gradlew.bat assembleDebug`
+  CREATE TABLE IF NOT EXISTS public.qa_answers (
+    id UUID DEFAULT gen_random_uuid() NOT NULL,
+    question_id UUID NOT NULL,
+    author_name TEXT NOT NULL,
+    answer_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    CONSTRAINT qa_answers_pkey PRIMARY KEY (id),
+    CONSTRAINT fk_qa_questions FOREIGN KEY (question_id) REFERENCES public.qa_questions (id) ON DELETE CASCADE
+  );
+  ```
 
-### Manual Verification
-- **NoxPlayer Üzerinde Testler:**
-  - Sol kategori barından bir kategori seçildiğinde ürün listesinin o kategori çizgisine yumuşakça kaydığının doğrulanması.
-  - Ürün listesi kaydırıldıkça sol kategori sidebar'ındaki seçili kategorinin otomatik güncellendiğinin doğrulanması.
-  - Sepet topunun (FAB) sadece kendi üzerinden aşağı/yukarı kaydırılabildiğinin ve dokunulduğu/bırakıldığı yerde kaldığının doğrulanması.
-  - Herhangi bir seçenekli ürün tıklandığında, sağdan açılan seçenekler çekmecesinin beyaz renk temasıyla, içeriğe göre dinamik yükseklikte ve sepet topunun Y eksenindeki konumuna göre tam ortalanmış olarak açıldığının doğrulanması.
+---
+
+### [Backend Sunucu Katmanı]
+
+#### [MODIFY] [index.js](file:///x:/RMSv3/server/index.js)
+- `checkSchema` fonksiyonuna, sunucu başlarken veritabanında `qa_questions` ve `qa_answers` tablolarının otomatik olarak oluşturulmasını sağlayacak DDL sorguları eklenecektir.
+
+---
+
+### [Frontend Uygulama Katmanı]
+
+#### [NEW] [QuestionAnswerPortal.jsx](file:///x:/RMSv3/src/components/pages/QuestionAnswerPortal.jsx)
+- Yeni bağımsız sayfa bileşeni oluşturulacaktır. Bileşen şu özellikleri barındıracaktır:
+  - Giriş ekranında cam efektiyle tasarlanmış şifre formu ("2026" kontrolü).
+  - Giriş yapıldıktan sonra iki sütunlu modern bir düzen:
+    - **Sol Sütun:** Soru ekleme formu (İsim ve Soru içeriği zorunlu) ve mevcut soruların listesi.
+    - **Sağ Sütun:** Seçilen sorunun detayları, soruya ait cevaplar ve yeni cevap ekleme formu (İsim ve Cevap içeriği zorunlu).
+  - Soruları ve cevapları PostgreSQL veritabanından çekmek ve kaydetmek için `db.from('qa_questions')` ve `db.from('qa_answers')` API sorguları kullanılacaktır.
+
+#### [MODIFY] [publicDisplayRoutes.js](file:///x:/RMSv3/src/lib/publicDisplayRoutes.js)
+- `/soru-cevap` ve `/soru-cevap/` yolları `isPublicDisplayPath` fonksiyonuna dahil edilerek, bu sayfanın şube/depo bağlam seçici modalına takılmadan herkes tarafından doğrudan açılabilmesi sağlanacaktır.
+
+#### [MODIFY] [App.jsx](file:///x:/RMSv3/src/App.jsx)
+- `POS_ROUTES` dizisine `/soru-cevap` yolu eklenecektir. Bu sayede sayfa, ana backoffice Sidebar/Layout bileşenlerine sarılmadan, tamamen bağımsız (standalone) bir ekran olarak render edilecektir.
+- Standart Router tanımları arasına `/soru-cevap` yolu eklenecek ve `QuestionAnswerPortal` bileşeni lazy-load edilerek buraya bağlanacaktır.
+
+#### [MODIFY] [Sidebar.jsx](file:///x:/RMSv3/src/components/layout/Sidebar.jsx)
+- "Ayarlar" menü grubunun en altına, `/soru-cevap` sayfasına yönlendirme yapacak yeni bir menü elemanı eklenecektir ("Soru-Cevap Portalı").
+
+---
+
+## Doğrulama Planı
+
+### Otomatik Testler
+- Frontend projesinin hatasız derlenmesi:
+  `npm run build`
+
+### Manuel Doğrulama
+- Doğrudan `/soru-cevap` linkine gidildiğinde şifre ekranının geldiği ve "2026" haricinde bir şifre girildiğinde hata verdiği doğrulanacaktır.
+- Doğru şifre girildiğinde Q&A portalının açıldığı, isim girmeden soru veya cevap eklenemediği doğrulanacaktır.
+- Eklenen soruların sol listede göründüğü, tıklanıldığında sağda o soruya ait cevapların listelendiği ve yeni cevap yazılabildiği doğrulanacaktır.
+- Ayarlar menüsünün en altında bulunan "Soru-Cevap Portalı" linkine tıklandığında sayfanın açıldığı doğrulanacaktır.

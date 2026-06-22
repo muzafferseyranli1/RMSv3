@@ -1790,8 +1790,8 @@ export default function KioskManagementDesktop() {
                 <input
                   type="number"
                   step="0.1"
-                  min={2.3}
-                  max={4.8}
+                  min={1.5}
+                  max={8.0}
                   value={settings.category_button_height ? Number((settings.category_button_height / 37.8).toFixed(1)) : 3.0}
                   onChange={event => {
                     const cm = Number(event.target.value || 3.0);
@@ -2036,8 +2036,8 @@ export default function KioskManagementDesktop() {
                   <input
                     type="number"
                     step="0.1"
-                    min={2.5}
-                    max={4.8}
+                    min={1.5}
+                    max={8.0}
                     value={settings.tablet_category_button_height_portrait ? Number((settings.tablet_category_button_height_portrait / 37.8).toFixed(1)) : 3.3}
                     onChange={event => {
                       const cm = Number(event.target.value || 3.3);
@@ -2050,8 +2050,8 @@ export default function KioskManagementDesktop() {
                   <input
                     type="number"
                     step="0.1"
-                    min={2.3}
-                    max={4.8}
+                    min={1.5}
+                    max={8.0}
                     value={settings.tablet_category_button_height_landscape ? Number((settings.tablet_category_button_height_landscape / 37.8).toFixed(1)) : 2.8}
                     onChange={event => {
                       const cm = Number(event.target.value || 2.8);

@@ -1,26 +1,22 @@
-# Checklist for Phase 2 UI and Parity Improvements
+# Kiosk Düzeltmeleri Görev Takip Listesi (task.md)
+
+## Web Yönetim Paneli
+- [x] `src/lib/kioskSettings.js` dosyasında kategori yüksekliği `clampNumber` sınırlarının `50` ve `300` olarak genişletilmesi
+- [x] `src/components/pages/KioskManagementDesktop.jsx` dosyasında kategori yüksekliği input `min` ve `max` limitlerinin `1.5` ve `8.0` cm olarak esnetilmesi
 
 ## Kiosk Big Screen (`KioskBigScreen.kt`)
-- [x] Kök Box üzerindeki genel dokunma takip mekanizmasının (`pointerInput`) kaldırılması
-- [x] `CartFab` sepet topuna `detectVerticalDragGestures` entegre edilerek yumuşak sürüklenme ve bırakılan yerde kalma davranışının eklenmesi
-- [x] Ürünlerin sürekli akması için kategori başlıkları ve ürünleri birleştiren düz listeye (`flatGridItems`) geçilmesi
-- [x] Kategori başlıkları için `CategoryHeaderRow` eklenmesi ve `ProductGrid` ile `ProductCard`'ın bu düz listeyle çalışacak şekilde güncellenmesi
-- [x] `LazyGridState` yardımıyla scroll takibi yapılarak sol kategori panelinin aktif kategorisinin güncellenmesi (`currentVisibleCategoryIndex`)
-- [x] Sol kategori barından bir kategori tıklandığında ürün listesinin o kategorinin başlık çizgisine kaydırılması (`animateScrollToItem`)
-- [x] `ProductDetailSheet`'in (Seçenekler Çekmecesi) `cartDockY` parametresi alarak sepet topunu dikeyde merkezleyecek şekilde (`offset` ve `onGloballyPositioned` ile) konumlandırılması
-- [x] `ProductDetailSheet` arayüzünün web paritesine uygun olarak beyaz zemin, koyu gri/siyah metinler ve mor accent rengiyle yeniden tasarlanması, yüksekliğinin dinamik yapılması (`wrapContentHeight()`)
+- [x] `settingsJson`'dan `category_button_height` ayarının okunması ve yan menü kartlarına uygulanması
+- [x] `cartDockYAnim` animasyon eğrisinin 800ms'lik `tween` ve `CubicBezierEasing(0.42f, 0.0f, 0.58f, 1.0f)` ile yumuşatılması
+- [x] `ProductDetailSheet` için `linkedIds` çözümlenmesinde `group_def_id` anahtarının önceliklendirilmesi
+- [x] Kategori configs'ten `visibleCategories` listesinin çıkarılması, alt kategori ürün gruplama mantığının eklenmesi ve boş kategori başlığı desteği
 
 ## Kiosk Tablet Screen (`KioskTabletScreen.kt`)
-- [x] Kök Box üzerindeki genel dokunma takip mekanizmasının kaldırılması
-- [x] `CartFab` sepet topuna `detectVerticalDragGestures` entegre edilmesi
-- [x] Ürünlerin sürekli akması için kategori başlıkları ve ürünleri birleştiren düz listeye (`flatGridItems`) geçilmesi
-- [x] Kategori başlıkları için `CategoryHeaderRow` eklenmesi ve listelemelerin güncellenmesi
-- [x] Scroll takibiyle sol kategori panelinin aktif kategorisinin güncellenmesi
-- [x] Sol kategori barından bir kategori tıklandığında ürün listesinin o kategori çizgisine kaydırılması
-- [x] `ProductDetailSheet`'in (Seçenekler Çekmecesi) `cartDockY` parametresi alarak sepet topunu dikeyde merkezleyecek şekilde konumlandırılması
-- [x] `ProductDetailSheet` arayüzünün web paritesine uygun olarak beyaz zemin, koyu gri/siyah metinler ve mor accent rengiyle yeniden tasarlanması, yüksekliğinin dinamik yapılması
+- [x] Cihaz yönelimine göre dinamik kategori yüksekliği ayarının (`tablet_category_button_height_portrait` / `tablet_category_button_height_landscape`) okunması ve yan menüye uygulanması
+- [x] `cartDockYAnim` animasyon eğrisinin 800ms'lik `tween` ve `CubicBezierEasing` ile yumuşatılması
+- [x] `ProductDetailSheet` için `linkedIds` çözümlenmesinde `group_def_id` anahtarının önceliklendirilmesi
+- [x] Kategori configs'ten `visibleCategories` listesinin çıkarılması, alt kategori ürün gruplama mantığının eklenmesi ve boş kategori başlığı desteği
 
-## Derleme, Test ve Entegrasyon
-- [x] Gradle derleme testi yapılması (`.\gradlew.bat assembleDebug`)
-- [ ] Üretilen APK'nın NoxPlayer emülatörüne yüklenmesi
-- [ ] Yapılan tüm değişikliklerin `walkthrough.md` ve `OperationSync.md` dosyalarına işlenmesi
+## Derleme, Test ve Doğrulama
+- [x] Kiosk Android uygulamasının başarılı derlenmesi ve tablete yüklenmesi (`.\gradlew.bat installDebug`)
+- [ ] Değişikliklerin tablet üzerinde test edilmesi ve doğrulanması
+- [x] `walkthrough.md` ve `OperationSync.md` belgelerinin güncellenmesi

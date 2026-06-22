@@ -124,7 +124,7 @@ fun KioskTabletScreen(
     var cartDockY by remember { mutableStateOf(400.dp) }
     val cartDockYAnim by animateDpAsState(
         targetValue = cartDockY,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = tween(durationMillis = 800, easing = CubicBezierEasing(0.42f, 0.0f, 0.58f, 1.0f)),
         label = "cdy"
     )
     var flyParticles by remember { mutableStateOf<List<FlyParticle>>(emptyList()) }
@@ -256,23 +256,48 @@ fun KioskTabletScreen(
                 val bannerSubtitle = settings?.get("tablet_main_banner_subtitle")?.asString
                     ?: settings?.get("main_banner_subtitle")?.asString ?: ""
 
-                val topCategories = remember(data.categories) {
-                    data.categories.filter { it.parentId == null && it.deletedAt == null }
+                val categoryButtonHeight = remember(settings, isLandscape) {
+                    val key = if (isLandscape) "tablet_category_button_height_landscape" else "tablet_category_button_height_portrait"
+                    val defaultVal = if (isLandscape) 104 else 124
+                    settings?.get(key)?.asInt ?: defaultVal
                 }
 
-                val flatGridItems = remember(topCategories, data.items, channelId) {
+                // Görünür olan tüm kategoriler (ana veya alt kategori olabilir)
+                val visibleCategories = remember(data.categories, settings) {
+                    val configsArray = try { settings?.getAsJsonArray("category_configs") } catch (_: Exception) { null }
+                    val configMap = configsArray?.associateBy { it.asJsonObject.get("categoryId")?.asString ?: "" } ?: emptyMap()
+                    
+                    data.categories.filter { cat ->
+                        cat.deletedAt == null
+                    }.mapIndexed { index, cat ->
+                        val configObj = configMap[cat.id]?.asJsonObject
+                        val defaultVisible = configObj?.get("defaultVisible")?.asBoolean != false
+                        val visibilityMode = configObj?.get("visibilityMode")?.asString ?: "show"
+                        val defaultOrder = configObj?.get("defaultOrder")?.asInt ?: (index + 1)
+                        
+                        val isVisible = (visibilityMode == "show") || (visibilityMode != "hide" && visibilityMode != "redirect" && defaultVisible)
+                        
+                        Pair(cat, isVisible to defaultOrder)
+                    }.filter { it.second.first }
+                    .sortedWith(compareBy({ it.second.second }, { it.first.name.trim() }))
+                    .map { it.first }
+                }
+
+                val flatGridItems = remember(visibleCategories, data.items, channelId) {
                     val list = mutableListOf<ProductGridItem>()
-                    topCategories.forEach { cat ->
+                    visibleCategories.forEach { cat ->
                         val catItems = data.items.filter { item ->
                             item.deletedAt == null &&
                             item.active &&
                             cat.id in item.categoryIds &&
-                            item.priceForChannel(channelId) > 0
+                            item.priceForChannel(channelId) > 0 &&
+                            // Eğer bu bir ana kategoriyse ve ürün görünür alt kategorilerden birine de aitse, ana kategoride mükerrer gösterme
+                            if (cat.parentId == null) {
+                                !visibleCategories.any { sub -> sub.parentId == cat.id && sub.id in item.categoryIds }
+                            } else true
                         }
-                        if (catItems.isNotEmpty()) {
-                            list.add(ProductGridItem.Header(cat))
-                            catItems.forEach { list.add(ProductGridItem.Product(it)) }
-                        }
+                        list.add(ProductGridItem.Header(cat))
+                        catItems.forEach { list.add(ProductGridItem.Product(it)) }
                     }
                     list
                 }
@@ -294,7 +319,7 @@ fun KioskTabletScreen(
                             }
                             activeCatId
                         } else {
-                            topCategories.firstOrNull()?.id
+                            visibleCategories.firstOrNull()?.id
                         }
                     }
                 }
@@ -335,7 +360,7 @@ fun KioskTabletScreen(
                     Row(modifier = Modifier.fillMaxSize()) {
                         // ── Sol: Kategori paneli (Daraltılmış, görsel kartlı ve branch bilgisiz) ──
                         CategorySidePanel(
-                            categories   = topCategories,
+                            categories   = visibleCategories,
                             selectedId   = activeCatId,
                             onSelect     = { catId, yOffset ->
                                 viewModel.selectCategory(catId)
@@ -374,6 +399,7 @@ fun KioskTabletScreen(
                             onLongPress  = onSecretUnlock,
                             baseUrl      = viewModel.baseUrl,
                             outerBoxPosY = outerBoxPosInRoot.y,
+                            categoryButtonHeight = categoryButtonHeight,
                         )
 
                         // ── Orta: Ürün gridi ──
@@ -490,7 +516,8 @@ fun KioskTabletScreen(
                             item.optionGroupsRaw?.asJsonArray
                                 ?.mapNotNull { el ->
                                      val obj = el.asJsonObject
-                                     obj.get("option_group_id")?.asString 
+                                     obj.get("group_def_id")?.asString
+                                         ?: obj.get("option_group_id")?.asString 
                                          ?: obj.get("id")?.asString 
                                          ?: obj.get("group_id")?.asString
                                 } ?: emptyList()
@@ -705,6 +732,7 @@ private fun CategorySidePanel(
     onLongPress: () -> Unit,
     baseUrl: String,
     outerBoxPosY: Float,
+    categoryButtonHeight: Int,
 ) {
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var tapCount by remember { mutableIntStateOf(0) }
@@ -778,7 +806,7 @@ private fun CategorySidePanel(
                 var cardYInRoot by remember { mutableStateOf(0f) }
                 Card(
                     modifier = Modifier
-                        .size(74.dp)
+                        .size(width = 74.dp, height = categoryButtonHeight.dp)
                         .onGloballyPositioned { coords ->
                             cardYInRoot = coords.positionInRoot().y
                         }

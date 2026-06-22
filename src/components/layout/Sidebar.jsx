@@ -316,6 +316,7 @@ const NAV = [
       },
       { label: 'Geribildirim Kategorileri', path: '/geribildirim-kategorileri', icon: 'fa-tags', color: '#ef4444', bg: 'rgba(239,68,68,.18)' },
       { label: 'Demo SatÄ±ÅŸ Yap', path: '/demo-sales', icon: 'fa-wand-magic-sparkles', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
+      { label: 'Soru-Cevap Portalı', path: '/soru-cevap', icon: 'fa-circle-question', color: '#a855f7', bg: 'rgba(168,85,247,.18)' },
     ],
   },
 ]

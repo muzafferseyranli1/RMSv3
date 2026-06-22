@@ -1,0 +1,29 @@
+
+
+---
+
+## LOG ENTRY - 2026-06-22 - Kiosk Duzeltmeleri ve Kurulumu Tamamlandi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+
+### Yapilan Islemler
+
+**1. Kategori Buton Yuksekligi (Web & Android)**
+- `src/lib/kioskSettings.js` ve `src/components/pages/KioskManagementDesktop.jsx` dosyalarinda limitler `50`-`300` px (`1.5`-`8.0` cm) olacak sekilde esnetildi.
+- `KioskBigScreen.kt` ve `KioskTabletScreen.kt` dosyalarinda `category_button_height` ayarlari dinamik olarak okunarak kategori buton yuksekligi olarak atandi.
+
+**2. Sepet Topu Animasyonu**
+- `cartDockYAnim` animasyon gecisi `spring` yerine 800ms'lik `tween` ve `CubicBezierEasing(0.42f, 0.0f, 0.58f, 1.0f)` ile yumusatildi.
+
+**3. Secenek Cekmecesi Secenek Eslesmesi**
+- `ProductDetailSheet` bileseninde `linkedIds` cozumlenirken `group_def_id` onceliklendirilerek secenek gruplarinin gorunmeme hatasi giderildi.
+
+**4. Kategori Gorunurlugu ve Alt Kategoriler**
+- `visibleCategories` listesi kategori yapilandirma kurallarina gore suzuldu ve siralandi.
+- Ana kategori altindaki mukerrer urun listelemesi engellendi ve bos kategorilerin de listelenebilmesi saglandi.
+
+**5. Derleme ve Kurulum**
+- `.\gradlew.bat installDebug` basariyla calistirilarak Android hata ayiklama paketi Samsung Galaxy A7 tablete yuklendi.
+
+[KIOSK_FIXES_AND_INSTALL_SUCCESSFUL] - Kiosk duzeltmeleri tamamlandi ve tablete yuklendi.

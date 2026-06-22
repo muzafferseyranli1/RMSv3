@@ -16,6 +16,8 @@ export function isPublicDisplayPath(pathname = '') {
     path === '/queue' ||
     path.startsWith('/queue/') ||
     path.startsWith('/sira-ekrani/') ||
-    path.startsWith('/anket/')
+    path.startsWith('/anket/') ||
+    path === '/soru-cevap' ||
+    path.startsWith('/soru-cevap/')
   )
 }
