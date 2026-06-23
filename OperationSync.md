@@ -12332,3 +12332,56 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `npm run build` ile projenin hatasÄ±z derlendiÄŸi doÄŸrulandÄ±.
 
 [QUESTION_ANSWER_PORTAL_SCROLL_FIXED] - Soru-Cevap PortalÄ± mobil/masaÃ¼stÃ¼ kaydÄ±rma sorunlarÄ± giderildi.
+
+---
+
+## Entry - 2026-06-23 - Railway RAM Kullanimi Artisi Arastirmasi
+
+- `Timestamp`: `2026-06-23T18:58:47.8284424+03:00`
+- `Agent`: `Codex`
+- `Task`: `Railway RAM kullanim artisi nedenini arastirma`
+- `Intent`: `Railway'de artan RAM kullanimina hangi servis/veri yolu veya tablo hacminin neden olabilecegini canli DB/API olcumleri ve kaynak kod kanitlariyla ayirmak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `docs/kiosk_fixes_handoff.md`
+  - `docs/kiosk_fixes_walkthrough.md`
+  - `server/index.js`
+  - `schema-railway-master.sql`
+  - `src/components/pages/Reports.jsx`
+  - `src/components/pages/InventoryMovements.jsx`
+  - `src/components/pages/DemoSales.jsx`
+  - `src/hooks/useDemoSalesJob.jsx`
+  - `src/lib/kioskSettings.js`
+- `Files Changed`:
+  - `OperationSync.md`
+- `Commands Run`:
+  - `git status --short`
+  - `git log -5 --oneline --decorate`
+  - `rg` taramalari: `/api/query`, `queryCache`, `pendingRequests`, `inventory_movements`, `sale_lines`, `sales`, `settings`, demo sales izleri
+  - `npx.cmd -y @railway/cli status` ve `npx.cmd -y @railway/cli metrics --all --since 1d --json` denemeleri (timeout/network nedeniyle dogrudan Railway metrikleri alinamadi)
+  - `Invoke-RestMethod https://rms-api-production-219d.up.railway.app/health` (canli API health ok=true)
+  - `curl.exe` ile `/api/query` kucuk ve buyuk POST probe'lari
+  - `node temp\railway-ram-db-audit.mjs` gecici DB boyut script'i (sonra silindi)
+- `Findings`:
+  - Railway CLI servis bazli RAM metrikleri bu ortamda dogrudan alinamadi; komutlar network/timeout nedeniyle tamamlanmadi.
+  - Canli `/health` endpoint'i ayakta; kucuk `/api/query` POST'lari 200 dondu fakat 9-12 sn gibi yuksek gecikme gosterdi.
+  - `settings.key='kiosk_settings_v2'` artik buyuk degil: canli DB olcumunde 5.70 KB. Onceki kiosk settings siskinligi bugunku RAM artisi icin ana aday degil.
+  - En buyuk canli tablolar: `inventory_movements` 1014.41 MB / yaklasik 845 bin satir, `sale_lines` 325.46 MB / yaklasik 337 bin satir, `sales` 177.73 MB / yaklasik 137 bin satir.
+  - `inventory_movements` satirlarinin neredeyse tamami `source_doc_type='sale'`: 845,833 satir; tarih araligi 2026-04-01 ile 2026-06-03. `sales` tarafinda `source='pos'` 136,718 satir; tarih araligi 2026-04-01 ile 2026-06-08.
+  - JSON/JSONB toplamlarinda `inventory_movements.meta` tek basina 67.77 MB, `sale_lines.options_json` 11.59 MB. Bu alanlar satir sayisiyla birlikte API response ve DB buffer baskisini artiriyor.
+  - `server/index.js` icinde `/api/query` read-only sonuclari 30 saniyelik process ici `queryCache` ile tutuluyor; byte guard var (`API_QUERY_CACHE_MAX_ENTRY_BYTES` default 256 KB, total 3 MB), ancak DB tarafindaki 1 GB tablo hacmi ve agir sorgular Postgres/Railway RAM kullanimini artirmaya devam eder.
+  - Buyuk `/api/query` probe'lari connection reset ile sonuclandi; kucuk query'lerin calismasi, sorunun genel API down degil buyuk/agir sorgu ve network/timeout etkisi oldugunu gosteriyor.
+- `Decisions`:
+  - Bugunku en guclu kok neden adayi `inventory_movements` + satis demo/POS kaynakli buyuk veri hacmi ve bu tablolari okuyan rapor/WMS/POS sorgularidir.
+  - `settings.kiosk_settings_v2` bugun ana aday degildir; `personnel_records` 428.69 KB ile settings icinde en buyuk key olsa da toplam RAM artisina gore ikincil etkidir.
+  - Oncelik tablo temizligi/arsivleme karari verilmeden once `integration_ref='demo-sales-tool'` ve `source_doc_type='sale'` dagilimi ayrica dogrulanmali; kullanici onayi olmadan veri silinmemelidir.
+- `Open Risks`:
+  - Railway dashboard/CLI servis bazli RAM grafikleri bu oturumda dogrudan okunamadi; API servisi mi DB servisi mi daha cok RAM yiyor sorusunun son yuzdesel cevabi dashboard metrikleriyle teyit edilmeli.
+  - `inventory_movements` ve `sales/sale_lines` verilerinin ne kadari demo/test, ne kadari kalici is verisi ayrimi henuz silme karari verecek kadar tamamlanmadi.
+- `Next Step`: `Railway dashboard veya CLI auth/link duzeltilerek servis bazli RAM grafigi alinmali; ardindan DB'de demo-sales-tool kaynakli satis/hareket satir sayisi ve son sorgu loglari sayilmali. Eger veri demo ise kullanici onayiyla kontrollu arsiv/temizlik migration'i planlanabilir.`
+- `Handoff Contract`: `Sonraki agent Railway RAM konusuna devam ederse once bu entry'yi, sonra 2026-06-13 Railway RAM/Egress kaydini ve server/index.js queryCache bolumunu okusun. Ana aday inventory_movements 1 GB ve sale kaynakli 845k hareket satiridir; settings/kiosk_settings_v2 bugun sadece 5.70 KB oldugu icin eski bulguyu guncel kabul etmesin. Veri silme veya arsivleme onaysiz yapilmayacak.`

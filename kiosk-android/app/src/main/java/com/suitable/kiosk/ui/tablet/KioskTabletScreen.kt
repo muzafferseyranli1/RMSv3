@@ -261,6 +261,10 @@ fun KioskTabletScreen(
                     val defaultVal = if (isLandscape) 104 else 124
                     settings?.get(key)?.asInt ?: defaultVal
                 }
+                val categorySidePanelScale = remember(categoryButtonHeight, isLandscape) {
+                    val defaultVal = if (isLandscape) 104f else 124f
+                    categoryButtonHeight.toFloat() / defaultVal
+                }
 
                 // Görünür olan tüm kategoriler (ana veya alt kategori olabilir)
                 val visibleCategories = remember(data.categories, settings) {
@@ -400,6 +404,7 @@ fun KioskTabletScreen(
                             baseUrl      = viewModel.baseUrl,
                             outerBoxPosY = outerBoxPosInRoot.y,
                             categoryButtonHeight = categoryButtonHeight,
+                            scale = categorySidePanelScale,
                         )
 
                         // ── Orta: Ürün gridi ──
@@ -733,13 +738,14 @@ private fun CategorySidePanel(
     baseUrl: String,
     outerBoxPosY: Float,
     categoryButtonHeight: Int,
+    scale: Float,
 ) {
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var tapCount by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
-            .width(90.dp)
+            .width((90 * scale).dp)
             .fillMaxHeight()
             .background(BgSidebar)
             .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(0.dp)),
@@ -749,10 +755,10 @@ private fun CategorySidePanel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 6.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .padding(vertical = (12 * scale).dp, horizontal = (6 * scale).dp)
+                .clip(RoundedCornerShape((12 * scale).dp))
                 .background(Accent.copy(alpha = 0.15f))
-                .border(BorderStroke(1.dp, Accent.copy(alpha = 0.35f)), RoundedCornerShape(12.dp))
+                .border(BorderStroke((1 * scale).dp, Accent.copy(alpha = 0.35f)), RoundedCornerShape((12 * scale).dp))
                 .clickable {
                     val now = System.currentTimeMillis()
                     if (now - lastTapTime < 4000) {
@@ -768,7 +774,7 @@ private fun CategorySidePanel(
                         onResetClick()
                     }
                 }
-                .padding(vertical = 10.dp),
+                .padding(vertical = (10 * scale).dp),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -776,16 +782,16 @@ private fun CategorySidePanel(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Yeni Sipariş",
                     tint = AccentLight,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size((20 * scale).dp)
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height((4 * scale).dp))
                 Text(
                     text = "YENİ\nSİPARİŞ",
                     color = AccentLight,
-                    fontSize = 8.sp,
+                    fontSize = (8 * scale).sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
-                    lineHeight = 10.sp
+                    lineHeight = (10 * scale).sp
                 )
             }
         }
@@ -795,8 +801,8 @@ private fun CategorySidePanel(
         // Kategori listesi
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = (8 * scale).dp, horizontal = (6 * scale).dp),
+            verticalArrangement = Arrangement.spacedBy((8 * scale).dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             items(categories, key = { it.id }) { cat ->
@@ -806,15 +812,15 @@ private fun CategorySidePanel(
                 var cardYInRoot by remember { mutableStateOf(0f) }
                 Card(
                     modifier = Modifier
-                        .size(width = 74.dp, height = categoryButtonHeight.dp)
+                        .size(width = (74 * scale).dp, height = categoryButtonHeight.dp)
                         .onGloballyPositioned { coords ->
                             cardYInRoot = coords.positionInRoot().y
                         }
                         .clickable { onSelect(cat.id, cardYInRoot - outerBoxPosY) },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape((12 * scale).dp),
                     colors = CardDefaults.cardColors(containerColor = BgCard),
                     border = BorderStroke(
-                        width = if (isSelected) 2.5.dp else 1.dp,
+                        width = if (isSelected) (2.5 * scale).dp else (1 * scale).dp,
                         color = if (isSelected) AccentLight else DividerColor
                     )
                 ) {
@@ -840,7 +846,7 @@ private fun CategorySidePanel(
                                 Text(
                                     text = String(cat.name.take(1).toCharArray()).uppercase(),
                                     color = TextSecond,
-                                    fontSize = 18.sp,
+                                    fontSize = (18 * scale).sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -863,15 +869,15 @@ private fun CategorySidePanel(
                         Text(
                             text = cat.name,
                             color = Color.White,
-                            fontSize = 9.sp,
+                            fontSize = (9 * scale).sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
-                            lineHeight = 11.sp,
+                            lineHeight = (11 * scale).sp,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(horizontal = 4.dp, vertical = 6.dp)
+                                .padding(horizontal = (4 * scale).dp, vertical = (6 * scale).dp)
                         )
                     }
                 }
