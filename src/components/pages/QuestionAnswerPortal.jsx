@@ -321,10 +321,10 @@ export default function QuestionAnswerPortal() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 max-h-[calc(100vh-73px)] overflow-hidden">
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 lg:h-[calc(100vh-73px)] lg:overflow-hidden overflow-y-auto">
         
         {/* Left Column: Soru Sor & Soru Listesi */}
-        <section className="flex flex-col gap-6 overflow-hidden h-full">
+        <section className="flex flex-col gap-6 lg:overflow-hidden lg:h-full">
           {/* Question Form */}
           <div className="bg-slate-900/40 border border-slate-900 rounded-xl p-5 shadow-xl flex-shrink-0">
             <h2 className="text-md font-bold mb-4 flex items-center gap-2 text-purple-400">
@@ -425,7 +425,7 @@ export default function QuestionAnswerPortal() {
         </section>
 
         {/* Right Column: Soru Detayı & Cevap Ekle */}
-        <section className="overflow-hidden h-full flex flex-col">
+        <section className="lg:overflow-hidden lg:h-full flex flex-col">
           {!selectedQuestion ? (
             <div className="flex-1 bg-slate-900/10 border border-dashed border-slate-900 rounded-xl flex flex-col items-center justify-center p-8 text-center text-slate-600 h-full">
               <div className="w-16 h-16 rounded-full bg-slate-900/50 flex items-center justify-center mb-4">
@@ -437,7 +437,7 @@ export default function QuestionAnswerPortal() {
               </p>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col gap-6 overflow-hidden h-full">
+            <div className="flex-1 flex flex-col gap-6 lg:overflow-hidden lg:h-full">
               {/* Selected Question Detail */}
               <div className="bg-slate-900/30 border border-slate-900 rounded-xl p-5 shadow-xl flex-shrink-0">
                 <div className="flex items-center justify-between mb-3 text-xs text-slate-500">

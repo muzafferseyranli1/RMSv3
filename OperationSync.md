@@ -12317,3 +12317,18 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `.\gradlew.bat installDebug` basariyla calistirilarak Android hata ayiklama paketi Samsung Galaxy A7 tablete yuklendi.
 
 [KIOSK_FIXES_AND_INSTALL_SUCCESSFUL] - Kiosk duzeltmeleri tamamlandi ve tablete yuklendi.
+
+
+---
+
+## LOG ENTRY - 2026-06-23 - Soru-Cevap Portali Mobil Uyum ve Scroll Problemleri Giderildi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+
+### Yapilan Islemler
+- **Desktop Scroll DÃ¼zeltmesi:** MasaÃ¼stÃ¼ gÃ¶rÃ¼nÃ¼mlerde (`lg` ve Ã¼zeri) `main` ve `section` elemanlarÄ±na `lg:h-[calc(100vh-73px)]` ve `lg:overflow-hidden` verilerek sÃ¼tunlarÄ±n ekran boyutu kadar yer kaplamasÄ± ve sorular/cevaplar listesinin kendi iÃ§inde baÄŸÄ±msÄ±z kaydÄ±rÄ±labilmesi (`flex-1 overflow-y-auto`) saÄŸlandÄ±.
+- **Mobil Scroll DÃ¼zeltmesi:** Mobil ve tablet ekranlarda dikey sÄ±ralanan sÃ¼tunlarÄ±n tamamÄ±nÄ±n gÃ¶rÃ¼ntÃ¼lenebilmesi iÃ§in `overflow-y-auto` sÄ±nÄ±fÄ± eklendi ve sabit yÃ¼kseklik kÄ±sÄ±tlamalarÄ± kaldÄ±rÄ±ldÄ±. BÃ¶ylece sayfa kÄ±sÄ±tlanmadan doÄŸal ÅŸekilde aÅŸaÄŸÄ±ya kaydÄ±rÄ±labiliyor.
+- `npm run build` ile projenin hatasÄ±z derlendiÄŸi doÄŸrulandÄ±.
+
+[QUESTION_ANSWER_PORTAL_SCROLL_FIXED] - Soru-Cevap PortalÄ± mobil/masaÃ¼stÃ¼ kaydÄ±rma sorunlarÄ± giderildi.

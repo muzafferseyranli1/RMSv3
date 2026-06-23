@@ -1,0 +1,15 @@
+
+
+---
+
+## LOG ENTRY - 2026-06-23 - Soru-Cevap Portali Mobil Uyum ve Scroll Problemleri Giderildi
+
+- Agent: Antigravity
+- Status: TAMAMLANDI
+
+### Yapilan Islemler
+- **Desktop Scroll Düzeltmesi:** Masaüstü görünümlerde (`lg` ve üzeri) `main` ve `section` elemanlarına `lg:h-[calc(100vh-73px)]` ve `lg:overflow-hidden` verilerek sütunların ekran boyutu kadar yer kaplaması ve sorular/cevaplar listesinin kendi içinde bağımsız kaydırılabilmesi (`flex-1 overflow-y-auto`) sağlandı.
+- **Mobil Scroll Düzeltmesi:** Mobil ve tablet ekranlarda dikey sıralanan sütunların tamamının görüntülenebilmesi için `overflow-y-auto` sınıfı eklendi ve sabit yükseklik kısıtlamaları kaldırıldı. Böylece sayfa kısıtlanmadan doğal şekilde aşağıya kaydırılabiliyor.
+- `npm run build` ile projenin hatasız derlendiği doğrulandı.
+
+[QUESTION_ANSWER_PORTAL_SCROLL_FIXED] - Soru-Cevap Portalı mobil/masaüstü kaydırma sorunları giderildi.
