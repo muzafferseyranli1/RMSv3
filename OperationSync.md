@@ -12385,3 +12385,65 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - `inventory_movements` ve `sales/sale_lines` verilerinin ne kadari demo/test, ne kadari kalici is verisi ayrimi henuz silme karari verecek kadar tamamlanmadi.
 - `Next Step`: `Railway dashboard veya CLI auth/link duzeltilerek servis bazli RAM grafigi alinmali; ardindan DB'de demo-sales-tool kaynakli satis/hareket satir sayisi ve son sorgu loglari sayilmali. Eger veri demo ise kullanici onayiyla kontrollu arsiv/temizlik migration'i planlanabilir.`
 - `Handoff Contract`: `Sonraki agent Railway RAM konusuna devam ederse once bu entry'yi, sonra 2026-06-13 Railway RAM/Egress kaydini ve server/index.js queryCache bolumunu okusun. Ana aday inventory_movements 1 GB ve sale kaynakli 845k hareket satiridir; settings/kiosk_settings_v2 bugun sadece 5.70 KB oldugu icin eski bulguyu guncel kabul etmesin. Veri silme veya arsivleme onaysiz yapilmayacak.`
+
+## Entry - 2026-06-24 - Railway RAM Azaltma Cozum Plani
+
+- `Timestamp`: `2026-06-24T15:38:35.4706493+03:00`
+- `Agent`: `Codex`
+- `Task`: `Railway RAM kullanim artisi icin inceleme ve cozum plani hazirlama`
+- `Intent`: `Onceki RAM arastirmasini canli DB/API olcumleri ve kod okumasiyla dogrulayip uygulanabilir, onay sinirlari net bir dusurme plani cikarmak.`
+- `Files Read`:
+  - `.antigravityrules.md`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+  - `docs/implementation_plan.md`
+  - `docs/task.md`
+  - `docs/walkthrough.md`
+  - `server/index.js`
+  - `schema-railway-master.sql`
+  - `src/lib/db.js`
+  - `src/components/pages/InventoryMovements.jsx`
+  - `src/components/pages/Reports.jsx`
+  - `src/components/pages/PnLReport.jsx`
+  - `src/components/pages/DemoSales.jsx`
+  - `src/hooks/useDemoSalesJob.jsx`
+  - `src/components/pages/Forecast.jsx`
+  - `src/components/pages/ShiftPlanner.jsx`
+  - `src/components/pages/KDS.jsx`
+  - `src/components/pages/POS.jsx`
+  - `src/components/pages/Garson.jsx`
+  - `src/components/pages/KioskBig.jsx`
+  - `src/components/pages/KioskTablet.jsx`
+  - `src/components/pages/PickupScreen.jsx`
+- `Files Changed`:
+  - `docs/railway_ram_reduction_plan_2026-06-24.md`
+  - `OperationSync.md`
+- `Commands Run`:
+  - `Get-Content` okumalar: governance, OperationSync tail, docs hafiza dosyalari, ilgili server/frontend dosyalari
+  - `rg` taramalari: `queryCache`, `API_QUERY_CACHE`, `pendingRequests`, `/api/query`, `inventory_movements`, `sales`, `sale_lines`, `fetchAllRows`, `range`, `setInterval`
+  - Node/pg salt-okunur canli DB audit: DB boyutu, tablo boyutlari, demo satis sayilari, JSON payload boyutlari, aktif baglanti durumu, ilgili indeksler
+  - Node/fetch salt-okunur API probe: `/health`, kucuk `sales` sorgusu, kucuk `inventory_movements` sorgusu
+  - `curl.exe` HTTP probe denemesi (Windows schannel/quoting hatalari nedeniyle kullanilabilir sonuc vermedi)
+  - `npx.cmd -y @railway/cli status` denemesi guvenlik nedeniyle reddedildi; Railway CLI metrigi alinmadi
+  - `git status --short`
+- `Findings`:
+  - Canli DB toplam boyutu 1579 MB.
+  - `inventory_movements` 1014 MB / yaklasik 845k satir, `sale_lines` 325 MB / yaklasik 337k satir, `sales` 178 MB / yaklasik 137k satir.
+  - `sales.integration_ref='demo-sales-tool'` 136,707 satir; bu demo satislara bagli `sale_lines` 336,997 satir ve `inventory_movements` 845,833 satir.
+  - `inventory_movements.meta` toplam 94 MB, `sale_lines.options_json` toplam 14 MB.
+  - `settings` toplam 1368 KB; kiosk settings siskinligi bugunku ana aday degil.
+  - API kucuk sorgularda ayakta ve yaklasik 0.5 sn donuyor; sorun genel API down degil, buyuk tablo ve agir sorgu calisma seti.
+  - `server/index.js` query cache byte guard ile sinirli (entry 256 KB, total 3 MB); ana RAM baskisi cache'ten cok Postgres tablo hacmi ve ham satir raporlama desenleri.
+  - `Reports.jsx`, `PnLReport.jsx`, `Forecast.jsx`, `ShiftPlanner.jsx` ekranlarinda `fetchAllRows` + 1000'lik sayfalama ile ham satis/satis satiri/stok hareketi cekme deseni var.
+  - `daily_sales` ve `sales_forecasts` canli olcumde bos gorundu; bu da forecast/shift ekranlarini ham satis fallback yoluna itiyor.
+- `Decisions`:
+  - En hizli ve etkili cozum, kullanici onayi alindiktan sonra demo satis verisini kontrollu chunk silme ve ardindan `VACUUM (ANALYZE)` ile temizlemek.
+  - Onaysiz veri silme yapilmadi; plan dosyasinda onay kapisi acik yazildi.
+  - Prod ortamda demo satis yazimini tekrar engellemek icin frontend/server guard ilk adim olmali.
+  - Rapor ve forecast ekranlari ham satir cekmek yerine DB aggregate RPC veya aggregate tablolarla refaktor edilmeli.
+- `Open Risks`:
+  - Railway dashboard servis bazli RAM ayrimi bu oturumda alinmadi; API mi Postgres mi net yuzdeyle dashboard uzerinden teyit edilmeli.
+  - Demo veri silme geri donusu olmayan bir operasyon olarak ele alinmali; manifest ve final audit zorunlu.
+  - `VACUUM FULL` gerekirse tablo kilidi yaratir; yalnizca bakim penceresinde dusunulmeli.
+- `Next Step`: `Kullanici onay verirse once demo write guard uygulanmali, sonra final salt-okunur audit ve chunk bazli demo cleanup migration'i hazirlanmali. Ardindan Reports/PnL/Forecast/ShiftPlanner icin aggregate RPC refaktoru planlanmali.`
+- `Handoff Contract`: `Railway RAM isine devam edecek agent once docs/railway_ram_reduction_plan_2026-06-24.md dosyasini ve bu entry'yi okusun. En guclu kanit: 136,707 demo satisin 336,997 sale_lines ve 845,833 inventory_movements satiri uretmis olmasi. Veri silme onaysiz yapilmayacak; ilk uygulanacak kod korumasi prod demo write guard olmalidir.`
