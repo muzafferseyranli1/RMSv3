@@ -91,63 +91,6 @@ fun MainScreen(
                     }
                 )
             }
-            "table" -> {
-                TableScreen(
-                    config = config,
-                    staffSession = staffSession,
-                    onNavigate = { dest ->
-                        if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
-                            sharedPref.edit().remove("staffSession").apply()
-                            staffSession = null
-                        }
-                        currentRoute = dest
-                    }
-                )
-            }
-            "table_order" -> {
-                TableOrderScreen(
-                    config = config,
-                    staffSession = staffSession,
-                    onNavigate = { dest ->
-                        if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
-                            sharedPref.edit().remove("staffSession").apply()
-                            staffSession = null
-                        }
-                        currentRoute = dest
-                    }
-                )
-            }
-            "table_orders" -> {
-                TableOrdersScreen(
-                    config = config,
-                    staffSession = staffSession,
-                    onNavigate = { dest ->
-                        if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
-                            sharedPref.edit().remove("staffSession").apply()
-                            staffSession = null
-                        }
-                        currentRoute = dest
-                    }
-                )
-            }
             "tasks" -> {
                 TasksScreen(
                     config = config,

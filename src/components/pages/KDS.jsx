@@ -16,6 +16,15 @@ import {
 } from '@/lib/callCenterOrders'
 import { getTerminalId } from '@/lib/terminalIdentity'
 
+const COURSE_LABELS = {
+  starter: 'Başlangıç',
+  soup: 'Çorba',
+  warm_appetizer: 'Ara Sıcak',
+  main_dish: 'Ana Yemek',
+  dessert: 'Tatlı',
+  beverage: 'İçecek',
+}
+
 const STATUS_META = {
   pending: { label: 'Bekliyor', color: '#f59e0b', bg: 'rgba(245,158,11,.15)' },
   in_progress: { label: 'Hazirlaniyor', color: '#3b82f6', bg: 'rgba(59,130,246,.15)' },
@@ -150,6 +159,9 @@ function OrderCard({ order, lines, onStatusChange, onLineComplete, combined, lin
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {lines.map(line => {
           const optionNames = normalizeOptionNames(line.options_json)
+          const isHold = line.course_status === 'hold'
+          const courseLabel = COURSE_LABELS[line.course_type] || null
+
           return (
             <div
               key={line.id}
@@ -160,8 +172,9 @@ function OrderCard({ order, lines, onStatusChange, onLineComplete, combined, lin
                 alignItems: 'start',
                 padding: 10,
                 borderRadius: 12,
-                background: line.kds_completed ? 'rgba(15,23,42,.42)' : 'rgba(15,23,42,.88)',
-                border: `1px solid ${line.kds_completed ? 'rgba(34,197,94,.24)' : 'rgba(148,163,184,.14)'}`,
+                background: line.kds_completed ? 'rgba(15,23,42,.42)' : isHold ? 'rgba(100,116,139,.12)' : 'rgba(15,23,42,.88)',
+                border: `1px solid ${line.kds_completed ? 'rgba(34,197,94,.24)' : isHold ? 'rgba(148,163,184,.1)' : 'rgba(148,163,184,.14)'}`,
+                opacity: isHold ? 0.6 : 1,
               }}
             >
               <button
@@ -200,6 +213,25 @@ function OrderCard({ order, lines, onStatusChange, onLineComplete, combined, lin
                   {line.qty}x {line.product_name}
                 </div>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                  {courseLabel && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                      background: 'rgba(129,140,248,.12)', color: '#818cf8', textTransform: 'uppercase'
+                    }}>
+                      {courseLabel}
+                    </span>
+                  )}
+                  {isHold && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                      background: 'rgba(245,158,11,.12)', color: '#f59e0b', textTransform: 'uppercase'
+                    }}>
+                      <i className="fa-solid fa-pause" style={{ marginRight: 3 }} /> BEKLEMEDE
+                    </span>
+                  )}
+                </div>
+
                 {line.portion_name && (
                   <div style={{ color: '#38bdf8', fontSize: 11, marginTop: 4 }}>
                     Porsiyon: {line.portion_name}
@@ -214,6 +246,31 @@ function OrderCard({ order, lines, onStatusChange, onLineComplete, combined, lin
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, paddingTop: 2 }}>
+                {isHold && (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      try {
+                        await db
+                          .from('sale_lines')
+                          .update({ course_status: 'fire', fired_at: new Date().toISOString() })
+                          .eq('id', line.id)
+                        await loadOrders({ silent: true })
+                      } catch (err) {
+                        console.error('Failed to manually fire line:', err)
+                      }
+                    }}
+                    style={{
+                      background: '#fbbf24', border: 'none', color: '#0f172a',
+                      borderRadius: 8, padding: '4px 8px', fontSize: 11, fontWeight: 800,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                      boxShadow: '0 2px 6px rgba(251,191,36,0.3)', marginBottom: 4
+                    }}
+                  >
+                    <i className="fa-solid fa-fire-burner" /> Marş
+                  </button>
+                )}
                 {line.prep_time_minutes > 0 && (
                   <span style={{ fontSize: 11, color: '#64748b' }}>{line.prep_time_minutes}dk</span>
                 )}
@@ -504,7 +561,7 @@ export default function KDS() {
       let salesQuery = db
         .from('sales')
         .select('id,status,kds_status,kiosk_display_no,kiosk_service_type,kiosk_table_number,sale_datetime,gross_total_after_discount,source_channel_type,order_note,branch_name,sales_channel_id,pickup_called,fulfillment_type,promised_at,kds_release_at,delivery_address_snapshot')
-        .eq('status', 'completed')
+        .in('status', ['completed', 'active'])
         .in('kds_status', statuses)
         .is('deleted_at', null)
         .or(`kds_release_at.is.null,kds_release_at.lte.${nowIso}`)
@@ -518,7 +575,7 @@ export default function KDS() {
         let legacySalesQuery = db
           .from('sales')
           .select('id,status,kds_status,kiosk_display_no,kiosk_service_type,kiosk_table_number,sale_datetime,gross_total_after_discount,source_channel_type,order_note,branch_name,sales_channel_id')
-          .eq('status', 'completed')
+          .in('status', ['completed', 'active'])
           .in('kds_status', statuses)
           .is('deleted_at', null)
           .lte('sale_datetime', nowIso)
@@ -564,6 +621,31 @@ export default function KDS() {
 
       if (saleIds.length > 0) {
         const saleLineSelectAttempts = [
+          {
+            query: 'id,sale_id,line_no,product_id,product_name,qty,kds_completed,prep_time_minutes,portion_name,options_json,course_type,course_status,fired_at,created_at',
+            normalize: line => ({
+              ...line,
+              course_type: line.course_type || 'main_dish',
+              course_status: line.course_status || 'fire',
+              fired_at: line.fired_at || null,
+              created_at: line.created_at
+            }),
+            supportsLineCompletion: true,
+            warnings: [],
+          },
+          {
+            query: 'id,sale_id,line_no,product_id,product_name,qty,kds_completed,portion_name,options_json,course_type,course_status,fired_at,created_at',
+            normalize: line => ({
+              ...line,
+              prep_time_minutes: 0,
+              course_type: line.course_type || 'main_dish',
+              course_status: line.course_status || 'fire',
+              fired_at: line.fired_at || null,
+              created_at: line.created_at
+            }),
+            supportsLineCompletion: true,
+            warnings: ['sale_lines.prep_time_minutes kolonu bulunamadi. Hazirlama suresi gostergesi uyum modunda 0 dk kabul edilecek.'],
+          },
           {
             query: 'id,sale_id,line_no,product_id,product_name,qty,kds_completed,prep_time_minutes,portion_name,options_json',
             normalize: line => line,
@@ -654,6 +736,35 @@ export default function KDS() {
             ? (productPrepMap.get(line.product_id) ?? 0)
             : (line.prep_time_minutes ?? productPrepMap.get(line.product_id) ?? 0),
         }))
+
+        // Check and auto-fire hold items (15 minutes limit)
+        const nowMs = Date.now()
+        const fifteenMinsMs = 15 * 60 * 1000
+        let triggerRefetch = false
+
+        for (const line of lineRows) {
+          if (line.course_status === 'hold') {
+            const createdAtTime = line.created_at ? new Date(line.created_at).getTime() : nowMs
+            if (nowMs - createdAtTime >= fifteenMinsMs) {
+              try {
+                await db
+                  .from('sale_lines')
+                  .update({
+                    course_status: 'fire',
+                    fired_at: new Date().toISOString()
+                  })
+                  .eq('id', line.id)
+                triggerRefetch = true
+              } catch (e) {
+                console.error('Failed to auto-fire line:', line.id, e)
+              }
+            }
+          }
+        }
+
+        if (triggerRefetch) {
+          setTimeout(() => loadOrders({ silent: true }), 200)
+        }
       }
 
       const lineMap = {}

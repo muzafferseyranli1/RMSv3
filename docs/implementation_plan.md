@@ -1,82 +1,110 @@
-# Soru-Cevap Portalı (Q&A) Entegrasyon Planı
+# Servis Sırası (Courses) ve Hold & Fire Yönetimi Geliştirme Planı
 
-Bu plan, projeden bağımsız çalışabilen, şifre korumalı ("2026"), soru ve cevap ekleme/listeleme işlevlerine sahip yeni bir genel portal sayfası eklemeyi hedefler.
+Bu plan, RMS/POS sistemimize servis sırası yönetimi (Başlangıçlar, Ara Sıcaklar, Ana Yemekler, Tatlılar, İçecekler vb.) ve "Hold & Fire" (Beklet / Marş Et) akışını kazandırmayı amaçlar. DB-First mimarisini koruyarak, KDS ekranının açık masalardaki sipariş durumlarını anlık yansıtmasını sağlar.
+
+---
 
 ## Kullanıcı İncelemesi Gereken Konular
 
-> [!NOTE]
-> **Tasarım Tercihleri:**
-> - Sayfa, ana backoffice şablonundan (Sidebar ve AdminLayout) tamamen bağımsız olarak tam ekran çalışacaktır.
-> - Premium bir kullanıcı deneyimi için koyu tema (gizemli slate/indigo tonları), cam morfolojisi (glassmorphism) efektleri ve yumuşak geçişli animasyonlar kullanılacaktır.
-> - Şifre doğrulama durumu sekme ömrü boyunca (`sessionStorage` üzerinde) saklanacaktır, böylece kullanıcı sayfayı açık tuttuğu sürece tekrar şifre girmek zorunda kalmayacaktır.
+> [!IMPORTANT]
+> **Aktif Masaların KDS Üzerindeki Görünürlüğü (Kritik Mimari Karar):**
+> Mevcut yapıda KDS ekranı sadece ödemesi tamamlanmış (`status = 'completed'`) siparişleri göstermektedir. Servis sırası ve Hold & Fire yönetiminin mutfakta anlamlı olabilmesi için açık masalardaki siparişlerin ödeme alınmadan önce de KDS'e düşmesi gerekir.
+> - Bu sorunu çözmek için `sales.status` kolonunun check constraint sınırlarını genişleterek `'active'` durumunu ekleyeceğiz.
+> - Garson "Siparişi Onayla" dediğinde açık masa siparişi `sales` tablosuna `status = 'active'` ve `kds_status = 'pending'` ile kaydedilecek/güncellenecektir.
+> - Ödeme alındığında ise bu kayıt `status = 'completed'` olarak güncellenecektir.
+> - Ciro/Finans raporları (`Reports.jsx`) halihazırda sadece `status = 'completed'` olan kayıtları filtrelediği için açık masalar raporlara yanlışlıkla dahil edilmeyecektir.
 
-## Önerilen Değişiklikler
+> [!NOTE]
+> **Hazırlanma Süreleri (PrepTime):**
+> Veritabanı şemamızda (`sale_items` ve `sale_lines`) `prep_time_minutes` alanları halihazırda mevcuttur. Bu plan kapsamında bu alanlar hem ürün yönetim paneline (`SaleItems.jsx`) eklenecek hem de KDS üzerinde gecikme sayaçlarında kullanılacaktır.
 
 ---
+
+## Açık Sorular
+
+* **Counter/Zamanlayıcı (Auto-Fire):** Belirli bir servis (örn. Başlangıç) mutfakta hazırlandıktan kaç dakika sonra sonraki "HOLD" durumundaki servis (örn. Ana Yemek) otomatik olarak "FIRE" (Marş) durumuna geçmeli? Yoksa bu işlem tamamen garson kontrolünde manuel mi kalmalı? *(Varsayılan olarak 15 dakika auto-fire süresi tanımlanıp ayarlanabilir yapılacaktır.)*
+
+---
+
+## Önerilen Değişiklikler
 
 ### [Veritabanı Katmanı]
 
 #### [MODIFY] [schema-railway-master.sql](file:///x:/RMSv3/schema-railway-master.sql)
-- Dosyanın en sonuna yeni `qa_questions` ve `qa_answers` tablolarının DDL tanımları eklenecektir:
+- `sales` tablosundaki `sales_status_check` kısıtlamasını (constraint) güncelleyerek `'active'` durumunu desteklemesini sağlayacağız:
   ```sql
-  CREATE TABLE IF NOT EXISTS public.qa_questions (
-    id UUID DEFAULT gen_random_uuid() NOT NULL,
-    author_name TEXT NOT NULL,
-    question_text TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    CONSTRAINT qa_questions_pkey PRIMARY KEY (id)
-  );
-
-  CREATE TABLE IF NOT EXISTS public.qa_answers (
-    id UUID DEFAULT gen_random_uuid() NOT NULL,
-    question_id UUID NOT NULL,
-    author_name TEXT NOT NULL,
-    answer_text TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-    CONSTRAINT qa_answers_pkey PRIMARY KEY (id),
-    CONSTRAINT fk_qa_questions FOREIGN KEY (question_id) REFERENCES public.qa_questions (id) ON DELETE CASCADE
-  );
+  ALTER TABLE public.sales DROP CONSTRAINT IF EXISTS sales_status_check;
+  ALTER TABLE public.sales ADD CONSTRAINT sales_status_check CHECK (status = ANY (ARRAY['completed'::text, 'cancelled'::text, 'refunded'::text, 'partially_refunded'::text, 'active'::text]));
+  ```
+- `sale_items` tablosuna varsayılan servis sırasını belirten yeni kolon eklenmesi:
+  ```sql
+  ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS default_course TEXT DEFAULT 'main_dish';
+  ```
+- `sale_lines` tablosuna servis sırası, Hold/Fire durumu ve ateşleme zamanını belirten yeni kolonların eklenmesi:
+  ```sql
+  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS course_type TEXT DEFAULT 'main_dish';
+  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS course_status TEXT DEFAULT 'fire';
+  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ DEFAULT now();
   ```
 
 ---
 
-### [Backend Sunucu Katmanı]
+### [Ürün Yönetimi Katmanı]
 
-#### [MODIFY] [index.js](file:///x:/RMSv3/server/index.js)
-- `checkSchema` fonksiyonuna, sunucu başlarken veritabanında `qa_questions` ve `qa_answers` tablolarının otomatik olarak oluşturulmasını sağlayacak DDL sorguları eklenecektir.
+#### [MODIFY] [SaleItems.jsx](file:///x:/RMSv3/src/components/pages/SaleItems.jsx)
+- **Tab 4 (Ayarlar)** içerisine her ürün için aşağıdaki alanları düzenleme arayüzü eklenecektir:
+  - **Varsayılan Servis Sırası (default_course):** Açılır menü (Başlangıç, Çorba, Ara Sıcak, Ana Yemek, Tatlı, İçecek).
+  - **Hazırlanma Süresi (prep_time_minutes):** Sayısal girdi alanı (Dakika bazında).
 
 ---
 
-### [Frontend Uygulama Katmanı]
+### [Garson / POS Sipariş Katmanı]
 
-#### [NEW] [QuestionAnswerPortal.jsx](file:///x:/RMSv3/src/components/pages/QuestionAnswerPortal.jsx)
-- Yeni bağımsız sayfa bileşeni oluşturulacaktır. Bileşen şu özellikleri barındıracaktır:
-  - Giriş ekranında cam efektiyle tasarlanmış şifre formu ("2026" kontrolü).
-  - Giriş yapıldıktan sonra iki sütunlu modern bir düzen:
-    - **Sol Sütun:** Soru ekleme formu (İsim ve Soru içeriği zorunlu) ve mevcut soruların listesi.
-    - **Sağ Sütun:** Seçilen sorunun detayları, soruya ait cevaplar ve yeni cevap ekleme formu (İsim ve Cevap içeriği zorunlu).
-  - Soruları ve cevapları PostgreSQL veritabanından çekmek ve kaydetmek için `db.from('qa_questions')` ve `db.from('qa_answers')` API sorguları kullanılacaktır.
+#### [MODIFY] [Garson.jsx](file:///x:/RMSv3/src/components/pages/Garson.jsx) & [POS.jsx](file:///x:/RMSv3/src/components/pages/POS.jsx)
+- Sepete eklenen her ürüne varsayılan olarak `default_course` değeri atanacak ve `course_status = 'fire'` olacaktır.
+- Garson sipariş sepetinde ürünler servis sırası (Course) başlıklarına göre otomatik gruplanacaktır.
+- Her ürün satırına servis sırasını değiştirmek için hızlı dropdown ve `HOLD / FIRE` durumları arasında geçiş yapmak için ikonik butonlar eklenecektir.
+- Grup başlıklarına toplu eylem butonları eklenecektir: `"Tümünü Marş Et (Fire)"`, `"Tümünü Beklet (Hold)"`.
+- **"Siparişi Onayla" (Confirm Order) Akışı:**
+  - İlgili masanın mevcut bir `'active'` satışı olup olmadığı sorgulanacaktır.
+  - Varsa, o satışa ait eski `sale_lines` silinecek ve sepetin güncel hali yeni `sale_lines` (durumlarıyla birlikte) olarak kaydedilecektir.
+  - Yoksa, yeni bir `sales` kaydı oluşturulup `status = 'active'` ve `kds_status = 'pending'` ile kaydedilecektir.
+  - Sipariş onaylandıktan sonra KDS anlık tetiklenecektir.
 
-#### [MODIFY] [publicDisplayRoutes.js](file:///x:/RMSv3/src/lib/publicDisplayRoutes.js)
-- `/soru-cevap` ve `/soru-cevap/` yolları `isPublicDisplayPath` fonksiyonuna dahil edilerek, bu sayfanın şube/depo bağlam seçici modalına takılmadan herkes tarafından doğrudan açılabilmesi sağlanacaktır.
+---
 
-#### [MODIFY] [App.jsx](file:///x:/RMSv3/src/App.jsx)
-- `POS_ROUTES` dizisine `/soru-cevap` yolu eklenecektir. Bu sayede sayfa, ana backoffice Sidebar/Layout bileşenlerine sarılmadan, tamamen bağımsız (standalone) bir ekran olarak render edilecektir.
-- Standart Router tanımları arasına `/soru-cevap` yolu eklenecek ve `QuestionAnswerPortal` bileşeni lazy-load edilerek buraya bağlanacaktır.
+### [Mutfak Ekranı (KDS) Katmanı]
 
-#### [MODIFY] [Sidebar.jsx](file:///x:/RMSv3/src/components/layout/Sidebar.jsx)
-- "Ayarlar" menü grubunun en altına, `/soru-cevap` sayfasına yönlendirme yapacak yeni bir menü elemanı eklenecektir ("Soru-Cevap Portalı").
+#### [MODIFY] [KDS.jsx](file:///x:/RMSv3/src/components/pages/KDS.jsx)
+- **Veri Sorgulama:** KDS sipariş çekme sorgusu hem `'completed'` hem de `'active'` durumundaki siparişleri kapsayacak şekilde güncellenecektir:
+  ```javascript
+  .in('status', ['completed', 'active'])
+  ```
+- **Hold & Fire Görsel Ayrımı:**
+  - `course_status === 'hold'` olan ürünler KDS kartlarında yarı saydam, soluk ve pasif görünerek mutfağın hazırlamaya başlamaması gerektiği belirtilecektir.
+  - `course_status === 'fire'` olanlar ise normal görünümde ve aktif hazırlık süresi sayacı ile gösterilecektir.
+- **Auto-Fire Mekanizması:**
+  - KDS'te bir önceki servis sırasındaki tüm ürünler tamamlandığında (veya belirli bir süre geçtiğinde), sonraki "HOLD" durumundaki ürünler otomatik olarak veritabanında "FIRE" durumuna çekilecektir.
+
+---
+
+### [Offline-First ve Senkronizasyon Güvenliği]
+
+#### [MODIFY] [posTablePersistence.js](file:///x:/RMSv3/src/lib/posTablePersistence.js)
+- İnternet bağlantısının kopması durumunda, açık masa siparişlerine ait tüm detaylar (servis sıraları ve Hold/Fire durumları) `localStorage` üzerinde saklanacaktır.
+- Cihaz tekrar çevrimiçi olduğunda, arka planda bir senkronizasyon kuyruğu çalıştırılarak yerel değişiklikler PostgreSQL DB'deki `sales` ve `sale_lines` tabloları ile eşitlenecektir.
 
 ---
 
 ## Doğrulama Planı
 
 ### Otomatik Testler
-- Frontend projesinin hatasız derlenmesi:
+- Arayüz bileşenlerinin hatasız derlenmesi:
   `npm run build`
 
 ### Manuel Doğrulama
-- Doğrudan `/soru-cevap` linkine gidildiğinde şifre ekranının geldiği ve "2026" haricinde bir şifre girildiğinde hata verdiği doğrulanacaktır.
-- Doğru şifre girildiğinde Q&A portalının açıldığı, isim girmeden soru veya cevap eklenemediği doğrulanacaktır.
-- Eklenen soruların sol listede göründüğü, tıklanıldığında sağda o soruya ait cevapların listelendiği ve yeni cevap yazılabildiği doğrulanacaktır.
-- Ayarlar menüsünün en altında bulunan "Soru-Cevap Portalı" linkine tıklandığında sayfanın açıldığı doğrulanacaktır.
+1. **Ürün Tanımlama:** `SaleItems.jsx` üzerinden bir ürüne "Ana Yemek" sırası ve "15 dk" hazırlanma süresi atanıp kaydedildiği doğrulanacaktır.
+2. **Garson Sepet Görünümü:** Sepete eklenen ürünlerin "Başlangıçlar", "Ana Yemekler" şeklinde gruplandığı, bir ürünün sırasının elle değiştirilebildiği ve "HOLD" durumuna alınabildiği gözlemlenecektir.
+3. **Mutfak Entegrasyonu (Hold/Fire):** Garson siparişi onayladığında masanın ödeme alınmadan KDS'e düştüğü, "HOLD" olan ürünlerin soluk, "FIRE" olanların aktif göründüğü doğrulanacaktır.
+4. **Marş Tetikleme:** Garson terminalinden "Marş Et" butonuna tıklandığında KDS'teki ürünün anında renkli/aktif hale geldiği doğrulanacaktır.
+5. **Offline Test:** Ağ kablosu/bağlantı kesildiğinde terminalde sipariş alınabildiği, bağlantı geri geldiğinde KDS ekranının güncellendiği doğrulanacaktır.

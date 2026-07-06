@@ -431,6 +431,7 @@ const EMPTY = {
   setting_active: true, sale_status: true, is_favorite: false,
   split_payment: false, print_note: false, hide_kitchen: false,
   prep_time_minutes: 0,
+  default_course: 'main_dish',
   estimated_productivity: '',
   // Tab 3 - Görsel
   pos_image:'', pos_color:'#1e293b', pos_text_color:'#ffffff',
@@ -702,6 +703,7 @@ export default function SaleItems() {
       sale_status: fullItem.sale_status!==false, is_favorite: fullItem.is_favorite||false,
       split_payment: fullItem.split_payment||false, print_note: fullItem.print_note||false,
       prep_time_minutes: Math.max(0, parseInt(fullItem.prep_time_minutes, 10) || 0),
+      default_course: fullItem.default_course || 'main_dish',
       hide_kitchen: fullItem.hide_kitchen||false, estimated_productivity: fullItem.substitute_id||'',
       pos_image: fullItem.pos_image||'', pos_color: fullItem.pos_color||'#1e293b', pos_text_color: fullItem.pos_text_color||'#ffffff',
       channel_image: fullItem.channel_image||'', channel_description: fullItem.channel_description||'',
@@ -793,6 +795,7 @@ export default function SaleItems() {
       setting_active: form.setting_active, sale_status: form.sale_status,
       is_favorite: form.is_favorite, split_payment: form.split_payment,
       prep_time_minutes: Math.max(0, parseInt(form.prep_time_minutes, 10) || 0),
+      default_course: form.default_course || 'main_dish',
       print_note: form.print_note, hide_kitchen: form.hide_kitchen,
       substitute_id: String(form.estimated_productivity || '').trim() || null,
       pos_image: form.pos_image||null, pos_color: form.pos_color||'#1e293b', pos_text_color: form.pos_text_color||'#ffffff',
@@ -1628,6 +1631,36 @@ export default function SaleItems() {
                     </label>
                   </div>
                 ))}
+
+                {/* Servis Sırası (Course) ve Hazırlanma Süresi */}
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4}}>
+                  <div>
+                    <label className="f-label">Varsayılan Servis Sırası (Course)</label>
+                    <select
+                      className="f-input"
+                      value={form.default_course || 'main_dish'}
+                      onChange={e=>set('default_course', e.target.value)}
+                    >
+                      <option value="starter">Başlangıç (Starter)</option>
+                      <option value="soup">Çorba (Soup)</option>
+                      <option value="warm_appetizer">Ara Sıcak (Warm Appetizer)</option>
+                      <option value="main_dish">Ana Yemek (Main Dish)</option>
+                      <option value="dessert">Tatlı (Dessert)</option>
+                      <option value="beverage">İçecek (Beverage)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="f-label">Hazırlanma Süresi (Dakika)</label>
+                    <input
+                      className="f-input"
+                      type="number"
+                      min="0"
+                      value={form.prep_time_minutes || 0}
+                      onChange={e=>set('prep_time_minutes', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                      placeholder="Örn: 15"
+                    />
+                  </div>
+                </div>
 
                 {/* Tahmini Verimlilik */}
                 <div style={{marginTop:4}}>

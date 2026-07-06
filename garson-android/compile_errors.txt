@@ -1,0 +1,21 @@
+﻿Starting a Gradle Daemon, 1 incompatible and 4 stopped Daemons could not be reused, use --status for details
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+
+> Task :app:compileDebugKotlin
+w: file:///X:/RMSv3/musteri-android/app/src/main/java/com/suitable/musteri/data/TableRepository.kt:544:96 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///X:/RMSv3/musteri-android/app/src/main/java/com/suitable/musteri/data/TableRepository.kt:545:102 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///X:/RMSv3/musteri-android/app/src/main/java/com/suitable/musteri/data/TableRepository.kt:595:29 No cast needed.
+w: file:///X:/RMSv3/musteri-android/app/src/main/java/com/suitable/musteri/ui/main/TableOrderScreen.kt:323:52 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///X:/RMSv3/musteri-android/app/src/main/java/com/suitable/musteri/ui/main/TableOrderScreen.kt:1216:44 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+
+BUILD SUCCESSFUL in 35s
+6 actionable tasks: 1 executed, 5 up-to-date
+Configuration cache entry reused.
+

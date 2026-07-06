@@ -87,20 +87,6 @@ fun AppScaffold(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("🪑  Garson Masaları") },
-                        onClick = {
-                            showSidebarMenu = false
-                            onNavigate("table")
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("📋  Sipariş Listesi") },
-                        onClick = {
-                            showSidebarMenu = false
-                            onNavigate("table_orders")
-                        }
-                    )
-                    DropdownMenuItem(
                         text = { Text("📋  Görevler (Tasks)") },
                         onClick = {
                             showSidebarMenu = false
@@ -995,97 +981,7 @@ fun HomeScreen(
                     )
                 }
 
-                // Quick Navigation Cards
-                Text(
-                    text = "Hızlı İşlemler",
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(top = 10.dp)
-                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Card 1: Garson Terminali
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(130.dp)
-                            .clickable { onNavigate("table") },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        border = BorderStroke(1.dp, Color(0xFF334155))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF3B82F6).copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.TableRestaurant, contentDescription = null, tint = Color(0xFF3B82F6))
-                            }
-                            Column {
-                                Text(
-                                    text = "Garson",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Masalar & Sipariş",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                    }
-
-                    // Card 2: Siparişler
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(130.dp)
-                            .clickable { onNavigate("table_orders") },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        border = BorderStroke(1.dp, Color(0xFF334155))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color(0xFFF59E0B))
-                            }
-                            Column {
-                                Text(
-                                    text = "Siparişler",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Hesaplar & Ödeme",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                    }
-                }
 
                 // Card 3: Görevler (Geniş Kart)
                 Card(

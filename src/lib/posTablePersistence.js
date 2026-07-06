@@ -1,4 +1,4 @@
-﻿﻿import { db } from './db'
+﻿import { db } from './db'
 import {
   LAYOUT_EDITOR_STORAGE_KEY,
   extractLayoutTableDirectory,
@@ -198,6 +198,7 @@ export async function persistTableLayoutToDb(layoutValue) {
   return layoutValue
 }
 
+
 export async function hydrateOpenTableTicketsFromDb(layoutTables = []) {
   const remoteValue = await readSettingsValue(OPEN_TABLE_TICKETS_SETTING_KEY, {})
   const localValue = readLocalJson(OPEN_TABLE_TICKETS_STORAGE_KEY, {})
@@ -212,6 +213,11 @@ export async function hydrateOpenTableTicketsFromDb(layoutTables = []) {
 
   if (shouldPersist) {
     await writeSettingsValue(OPEN_TABLE_TICKETS_SETTING_KEY, mergedState)
+    try {
+      await syncOpenTicketsToSalesAndLines(mergedState)
+    } catch (err) {
+      console.error('Failed to sync open tickets on hydration:', err)
+    }
   }
 
   if (hasTicketStateContent(localValue)) {
@@ -228,6 +234,11 @@ export async function hydrateOpenTableTicketsFromDb(layoutTables = []) {
 export async function persistOpenTableTicketsToDb(ticketState = {}, layoutTables = []) {
   const normalizedState = normalizeOpenTableTicketsState(ticketState, layoutTables)
   await writeSettingsValue(OPEN_TABLE_TICKETS_SETTING_KEY, normalizedState)
+  try {
+    await syncOpenTicketsToSalesAndLines(normalizedState)
+  } catch (err) {
+    console.error('Failed to sync open tickets on persist:', err)
+  }
   clearLocalKey(OPEN_TABLE_TICKETS_STORAGE_KEY)
   dispatchWindowEvent(OPEN_TABLE_TICKETS_UPDATED_EVENT)
   return normalizedState
@@ -274,6 +285,7 @@ export async function appendItemsToOpenTableTicket({
 
   branchTickets[safeTableKey] = {
     ...currentTicket,
+    id: currentTicket.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
     cart: [...(Array.isArray(currentTicket.cart) ? currentTicket.cart : []), ...mappedItems],
     orderNote: noteParts.filter((value, index) => noteParts.indexOf(value) === index).join(' | '),
     updatedAt: new Date().toISOString(),
@@ -285,6 +297,11 @@ export async function appendItemsToOpenTableTicket({
   }
 
   await writeSettingsValue(OPEN_TABLE_TICKETS_SETTING_KEY, nextState)
+  try {
+    await syncOpenTicketsToSalesAndLines(nextState)
+  } catch (err) {
+    console.error('Failed to sync open tickets on append:', err)
+  }
   dispatchWindowEvent(OPEN_TABLE_TICKETS_UPDATED_EVENT)
   return nextState
 }
@@ -304,3 +321,153 @@ export function extractTableDirectoryFromLayoutValue(layoutValue) {
 export function isPersistenceEventFromCurrentTab(event) {
   return event?.detail?.origin === PERSISTENCE_EVENT_ORIGIN
 }
+
+async function syncOpenTicketsToSalesAndLines(ticketState = {}) {
+  const branchIds = Object.keys(ticketState)
+  if (branchIds.length === 0) return
+
+  for (const branchId of branchIds) {
+    const branchTickets = ticketState[branchId] || {}
+    
+    // Fetch branch name from company_nodes
+    let branchName = 'Şube'
+    try {
+      const { data: nodeData } = await db
+        .from('company_nodes')
+        .select('name')
+        .eq('id', branchId)
+        .maybeSingle()
+      if (nodeData?.name) branchName = nodeData.name
+    } catch (e) {
+      console.error('Failed to fetch branch name:', e)
+    }
+
+    // Fetch all currently 'active' sales for this branch
+    const { data: activeSales, error: fetchErr } = await db
+      .from('sales')
+      .select('id,local_id,table_no')
+      .eq('branch_id', branchId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+
+    if (fetchErr) {
+      console.error('Error fetching active sales:', fetchErr)
+      continue
+    }
+
+    const activeSalesMap = new Map(
+      (activeSales || []).map(s => [s.table_no, s])
+    )
+
+    // Sync each open table ticket
+    for (const [tableKey, ticket] of Object.entries(branchTickets)) {
+      const tableNo = ticket.masaNo || tableKey
+      const cart = ticket.cart || []
+      const existingSale = activeSalesMap.get(tableNo)
+
+      if (cart.length === 0) {
+        // If cart is empty but an active sale exists, cancel it
+        if (existingSale) {
+          await db
+            .from('sales')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', existingSale.id)
+        }
+        continue
+      }
+
+      // Calculate totals
+      const grossTotal = cart.reduce((sum, item) => sum + (parseFloat(item.unitPrice) || 0) * (parseInt(item.qty) || 1), 0)
+      const coverCount = (parseInt(ticket.guestCounts?.women) || 0) +
+                         (parseInt(ticket.guestCounts?.men) || 0) +
+                         (parseInt(ticket.guestCounts?.children) || 0)
+
+      // Build sales header
+      const saleHeader = {
+        branch_id: branchId,
+        branch_name: branchName,
+        table_no: tableNo,
+        status: 'active',
+        gross_total_before_discount: grossTotal,
+        gross_total_after_discount: grossTotal,
+        net_total_after_discount: grossTotal,
+        cost_total: 0,
+        payment_total: 0,
+        change_amount: 0,
+        order_note: ticket.orderNote || '',
+        personnel_id: ticket.ownerId || null,
+        personnel_name: ticket.ownerName || null,
+        cover_count: coverCount,
+        female_guest_count: parseInt(ticket.guestCounts?.women) || 0,
+        male_guest_count: parseInt(ticket.guestCounts?.men) || 0,
+        child_guest_count: parseInt(ticket.guestCounts?.children) || 0,
+        kds_status: 'pending',
+        updated_at: new Date().toISOString()
+      }
+
+      let saleId = null
+      const ticketLocalId = ticket.id || ticket.local_id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`
+
+      if (existingSale) {
+        saleId = existingSale.id
+        await db
+          .from('sales')
+          .update({ ...saleHeader, local_id: ticketLocalId })
+          .eq('id', saleId)
+      } else {
+        const { data: newSale, error: insertErr } = await db
+          .from('sales')
+          .insert({
+            ...saleHeader,
+            local_id: ticketLocalId,
+            sale_datetime: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .single()
+
+        if (insertErr) {
+          console.error('Error inserting active sale:', insertErr)
+          continue
+        }
+        saleId = newSale?.id
+      }
+
+      if (saleId) {
+        // Delete existing lines
+        await db.from('sale_lines').delete().eq('sale_id', saleId)
+
+        // Insert new lines
+        const linesPayload = cart.map((item, idx) => {
+          const courseType = item.course_type || item.prod?.default_course || 'main_dish'
+          const courseStatus = item.course_status || 'fire'
+
+          return {
+            sale_id: saleId,
+            line_no: idx + 1,
+            product_id: item.prod?.id || null,
+            product_name: item.prod?.name || item.name || '',
+            product_sku: item.prod?.sku || null,
+            qty: item.qty || 1,
+            unit_gross_before_discount: item.unitPrice || 0,
+            line_gross_before_discount: (item.unitPrice || 0) * (item.qty || 1),
+            unit_gross_after_discount: item.unitPrice || 0,
+            line_gross_after_discount: (item.unitPrice || 0) * (item.qty || 1),
+            line_net_after_discount: (item.unitPrice || 0) * (item.qty || 1),
+            sale_datetime: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            course_type: courseType,
+            course_status: courseStatus,
+            fired_at: courseStatus === 'fire' ? new Date().toISOString() : null,
+            kds_completed: false
+          }
+        })
+
+        if (linesPayload.length > 0) {
+          await db.from('sale_lines').insert(linesPayload)
+        }
+      }
+    }
+  }
+}
+

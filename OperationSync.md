@@ -12447,3 +12447,35 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - `VACUUM FULL` gerekirse tablo kilidi yaratir; yalnizca bakim penceresinde dusunulmeli.
 - `Next Step`: `Kullanici onay verirse once demo write guard uygulanmali, sonra final salt-okunur audit ve chunk bazli demo cleanup migration'i hazirlanmali. Ardindan Reports/PnL/Forecast/ShiftPlanner icin aggregate RPC refaktoru planlanmali.`
 - `Handoff Contract`: `Railway RAM isine devam edecek agent once docs/railway_ram_reduction_plan_2026-06-24.md dosyasini ve bu entry'yi okusun. En guclu kanit: 136,707 demo satisin 336,997 sale_lines ve 845,833 inventory_movements satiri uretmis olmasi. Veri silme onaysiz yapilmayacak; ilk uygulanacak kod korumasi prod demo write guard olmalidir.`
+
+## Entry - 2026-07-05 - Standalone Garson (Waiter) Android Uygulamasi Ayrilmasi ve Temizlik
+
+- `Timestamp`: `2026-07-05T13:35:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Garson modÃ¼lÃ¼nÃ¼n Personel uygulamasÄ±ndan baÄŸÄ±msÄ±z bir native uygulamaya (garson-android) dÃ¶nÃ¼ÅŸtÃ¼rÃ¼lmesi
+- `Intent`: Garson modÃ¼lÃ¼nÃ¼ ayÄ±rarak iÅŸlevselliÄŸi sadece sipariÅŸ/masa odaklÄ± hale getirmek, PIN giriÅŸinden sonra doÄŸrudan masalarÄ± listelemek, Ã§Ä±kÄ±ÅŸ butonu eklemek ve orijinal personel uygulamasÄ±ndan garson modÃ¼lÃ¼nÃ¼ temizlemek.
+- `Files Changed`:
+  - `personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt` (Garson terminal/sipariÅŸ kartlarÄ± ve sidebar menÃ¼ elemanlarÄ± kaldÄ±rÄ±ldÄ±)
+  - `personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt` (Garson/masa rotalarÄ± temizlendi)
+  - `garson-android/app/src/main/java/com/suitable/garson/ui/main/MainScreen.kt` (GiriÅŸ sonrasÄ± doÄŸrudan table rotasÄ± aÃ§Ä±lacak ÅŸekilde gÃ¼ncellendi, tasks/shifts kaldÄ±rÄ±ldÄ±)
+  - `garson-android/app/src/main/java/com/suitable/garson/ui/main/TableScreen.kt` (TopAppBar'a exit/logout butonu eklendi)
+- `Files Created`:
+  - `scratch/split_garson_app.mjs` (Otomasyon kopyalama ve refaktÃ¶r scripti)
+- `Files Deleted`:
+  - `personel-android/app/src/main/java/com/suitable/personel/ui/main/TableScreen.kt`
+  - `personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrderScreen.kt`
+  - `personel-android/app/src/main/java/com/suitable/personel/ui/main/TableOrdersScreen.kt`
+- `Commands Run`:
+  - `node scratch/split_garson_app.mjs`
+  - `.\gradlew.bat assembleDebug` (Hem garson-android & personel-android iÃ§in sequentially Ã§alÄ±ÅŸtÄ±rÄ±ldÄ±)
+  - `adb connect 192.168.137.130:34597`
+  - `adb install -r garson-android/app/build/outputs/apk/debug/app-debug.apk`
+- `Findings`:
+  - Gradle Daemon Ã§akÄ±ÅŸmalarÄ±nÄ± Ã¶nlemek iÃ§in iki derleme sequentially (sÄ±ralÄ±) yÃ¼rÃ¼tÃ¼lmelidir.
+  - Tablet uyku moduna geÃ§tiÄŸinde port deÄŸiÅŸmekte (34623 -> 34597) ve ADB baÄŸlantÄ±sÄ± dÃ¼ÅŸmektedir; bu durumlarda cihaza Ã¶zel port ile `adb -s` parametresi kullanÄ±lmalÄ±dÄ±r.
+- `Decisions`:
+  - `garson-android` paket adÄ± `com.suitable.garson` ve uygulama adÄ± "Garson App" olarak ayarlandÄ±.
+  - `personel-android` artÄ±k tamamen PDKS ve GÃ¶revler odaklÄ± Ã§alÄ±ÅŸmaktadÄ±r.
+- `Open Risks`: Yok.
+- `Next Step`: Standalone Garson App'in restorandaki terminal eÅŸleÅŸtirmeleriyle sipariÅŸ alma sÃ¼reÃ§lerinin saha testleri yapÄ±lmalÄ±.
+- `Handoff Contract`: Garson Android uygulamasÄ± native ayrÄ±ÅŸtÄ±rmasÄ± ve Personel Android temizliÄŸi tamamlanmÄ±ÅŸtÄ±r. Her iki proje de sÄ±fÄ±r hatayla derlenmektedir.

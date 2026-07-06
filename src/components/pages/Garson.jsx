@@ -202,6 +202,7 @@ function distributeCover(n) {
 
 function sanitizeOpenTicket(ticket, defaultGuestCounts = DEFAULT_GUEST_COUNTS) {
   return {
+    id: typeof ticket?.id === 'string' && ticket.id ? ticket.id : (ticket?.local_id || Date.now().toString(36) + Math.random().toString(36).slice(2,6)),
     cart: Array.isArray(ticket?.cart) ? ticket.cart : [],
     orderNote: typeof ticket?.orderNote === 'string' ? ticket.orderNote : '',
     guestCounts: ticket?.guestCounts ? normalizeGuestCounts(ticket.guestCounts) : defaultGuestCounts,
@@ -2934,6 +2935,16 @@ function OdemeModalFlow({
   )
 }
 
+const COURSE_LABELS = {
+  starter: 'Başlangıçlar',
+  soup: 'Çorbalar',
+  warm_appetizer: 'Ara Sıcaklar',
+  main_dish: 'Ana Yemekler',
+  dessert: 'Tatlılar',
+  beverage: 'İçecekler',
+}
+const COURSE_ORDER = ['starter', 'soup', 'warm_appetizer', 'main_dish', 'dessert', 'beverage']
+
 function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLogin = null, isGarsonMode = false }) {
   const navigate = useNavigate()
   const {
@@ -3139,6 +3150,20 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null, defaultGuestCounts),
     [branchTableTickets, currentTableKey, defaultGuestCounts]
   )
+  const activeChannelName = channels.find(channel => channel.id === activeChannel)?.name || 'Hızlı Satış'
+  const salesChannelName = masaSalesChannel?.name || activeChannelName || 'Hızlı Satış'
+  const isMasaChannel = isGarsonMode || (normalizeChannelName(salesChannelName) === 'masa')
+
+  const groupedCart = useMemo(() => {
+    const groups = {}
+    const activeCartItems = isMasaChannel ? (currentTableTicket?.cart || []) : quickSaleCart
+    activeCartItems.forEach(item => {
+      const course = item.course_type || item.prod?.default_course || 'main_dish'
+      if (!groups[course]) groups[course] = []
+      groups[course].push(item)
+    })
+    return groups
+  }, [isMasaChannel, currentTableTicket?.cart, quickSaleCart])
   const occupiedTableKeys = useMemo(
     () => Object.entries(branchTableTickets)
       .filter(([, ticket]) => hasOpenTicketContent(ticket))
@@ -3799,7 +3824,9 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
       return [...prev, {
         cartKey, prod, portion, options: options||[], unitPrice, qty: 1,
         note: '',
-        id: uid()
+        id: uid(),
+        course_type: prod.default_course || 'main_dish',
+        course_status: 'fire'
       }]
     })
     showToast(`${prod.name} eklendi`)
@@ -3821,6 +3848,8 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
         qty: 1,
         note: '',
         id: uid(),
+        course_type: prod.default_course || 'main_dish',
+        course_status: 'fire'
       }]
     })
     showToast(`${prod.name} combo olarak eklendi`)
@@ -3840,11 +3869,168 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     })
   }
 
+  function renderCartItem(item) {
+    const comboChildren = item.comboBundle?.displayLines || []
+    const subParts = item.comboBundle
+      ? []
+      : [
+          item.portion?.name,
+          ...(item.options||[]).map(o=>o.name)
+        ].filter(Boolean)
+    const cartColors = pickButtonColors(item.prod)
+    const cartImage = item.prod?.pos_image || item.prod?.image_url || null
 
-  const activeChannelName = channels.find(channel => channel.id === activeChannel)?.name || 'H\u0131zl\u0131 Sat\u0131\u015f'
+    return (
+      <div key={item.id} style={{
+        background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',
+        borderRadius:12,padding:'10px 12px', marginBottom:4
+      }}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+          <div style={{display:'flex',gap:10,flex:1,paddingRight:8}}>
+            <div style={{
+              width:42,height:42,borderRadius:10,background:cartColors.bg,
+              display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,overflow:'hidden'
+            }}>
+              {cartImage
+                ? <img src={resolveImageUrl(cartImage)} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                : <i className="fa-solid fa-utensils" style={{fontSize:'1rem',color:cartColors.text}}/>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,color:'#fff',fontSize:'.88rem',lineHeight:1.3}}>
+                {item.prod?.name || item.name}
+              </div>
+              {!!comboChildren.length && (
+                <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                  {comboChildren.map(line => (
+                    <div key={line.id} style={{ fontSize: '.68rem', color: '#cbd5e1', lineHeight: 1.45, paddingLeft: 10 }}>
+                      <div>{line.title}</div>
+                      {line.subtitle && <div style={{ color: '#94a3b8' }}>{line.subtitle}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {subParts.length > 0 && (
+                <div style={{fontSize:'.68rem',color:'#a5b4fc',marginTop:3,lineHeight:1.4}}>
+                  {subParts.join(' - ')}
+                </div>
+              )}
+              {item.note && (
+                <div style={{fontSize:'.68rem',color:'#34d399',marginTop:4,lineHeight:1.4}}>
+                  <i className="fa-regular fa-note-sticky" style={{marginRight:4}} />
+                  {item.note}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{textAlign:'right',flexShrink:0}}>
+            <div style={{fontWeight:900,color:'#fbbf24',fontSize:'.95rem'}}>
+              {fmt(item.unitPrice * item.qty) + ' \u20BA'}
+            </div>
+            <div style={{fontSize:'.65rem',color:'#64748b'}}>
+              {fmt(item.unitPrice) + ' \u20BA / br'}
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+          borderTop:'1px solid rgba(255,255,255,.05)',paddingTop:8,gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <button className="touch-btn" onClick={() => canEditCurrentTable && setModal({ type:'item-note', itemId:item.id })}
+              style={{background:'none',border:'none',color:item.note ? '#34d399' : '#94a3b8',cursor:'pointer',
+                fontSize:'.78rem',padding:'8px 10px',minHeight:44,minWidth:44}}>
+              <i className="fa-regular fa-note-sticky" />
+            </button>
+            {!item.comboBundle && (item.portion || (item.options || []).length > 0) && (
+              <button className="touch-btn" onClick={() => canEditCurrentTable && setModal({ type:'edit-item', itemId:item.id })}
+                style={{background:'none',border:'none',color:'#60a5fa',cursor:'pointer',
+                  fontSize:'.78rem',padding:'8px 10px',minHeight:44,minWidth:44}}>
+                <i className="fa-solid fa-pen-to-square" />
+              </button>
+            )}
+            {/* Servis Sırası Seçimi ve Hold/Fire Butonu */}
+            {isMasaChannel && (
+              <>
+                <select
+                  value={item.course_type || item.prod?.default_course || 'main_dish'}
+                  onChange={(e) => {
+                    if (!canEditCurrentTable) return
+                    updateCartItem(item.id, { course_type: e.target.value })
+                  }}
+                  style={{
+                    background: 'rgba(255,255,255,.05)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    color: '#cbd5e1',
+                    borderRadius: 8,
+                    padding: '4px 6px',
+                    fontSize: '.72rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    maxWidth: 100,
+                  }}
+                >
+                  <option value="starter">Başlangıç</option>
+                  <option value="soup">Çorba</option>
+                  <option value="warm_appetizer">Ara Sıcak</option>
+                  <option value="main_dish">Ana Yemek</option>
+                  <option value="dessert">Tatlı</option>
+                  <option value="beverage">İçecek</option>
+                </select>
+                <button
+                  className="touch-btn"
+                  type="button"
+                  onClick={() => {
+                    if (!canEditCurrentTable) return
+                    const nextStatus = (item.course_status || 'fire') === 'fire' ? 'hold' : 'fire'
+                    updateCartItem(item.id, { course_status: nextStatus })
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: (item.course_status || 'fire') === 'fire' ? '#ef4444' : '#f59e0b',
+                    cursor: 'pointer',
+                    fontSize: '.85rem',
+                    padding: '8px 10px',
+                    minHeight: 44,
+                    minWidth: 44,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4
+                  }}
+                  title={(item.course_status || 'fire') === 'fire' ? 'Marş Edildi (Fire)' : 'Beklemede (Hold)'}
+                >
+                  <i className={(item.course_status || 'fire') === 'fire' ? 'fa-solid fa-fire-burner' : 'fa-solid fa-pause'} />
+                  <span style={{ fontSize: '.68rem', fontWeight: 800 }}>
+                    {(item.course_status || 'fire') === 'fire' ? 'F' : 'H'}
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'44px 44px 44px',
+            background:'#fff',borderRadius:8,overflow:'hidden',
+            border:'1px solid rgba(148,163,184,.28)',boxShadow:'0 4px 12px rgba(15,23,42,.16)'}}>
+            <button className="touch-btn" onClick={() => updateQty(item.id, -1)}
+              style={{background:'transparent',border:'none',borderRight:'1px solid rgba(148,163,184,.35)',
+                color:item.qty <= 1 ? '#ef4444' : '#111827',cursor:'pointer',
+                width:44,height:40,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.9rem',fontWeight:900}}>
+              {item.qty <= 1 ? <i className="fa-regular fa-trash-can" /> : '\u2212'}
+            </button>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+              minWidth:44,height:40,fontWeight:900,color:'#111827',fontSize:'.98rem',
+              borderRight:'1px solid rgba(148,163,184,.35)'}}>
+              {item.qty}
+            </div>
+            <button className="touch-btn" onClick={() => updateQty(item.id, 1)}
+              style={{background:'transparent',border:'none',color:'#22c55e',cursor:'pointer',
+                width:44,height:40,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',fontWeight:900}}>+</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+
   const pricingChannelId = masaSalesChannel?.id || activeChannel
-  const salesChannelName = masaSalesChannel?.name || activeChannelName || 'H\u0131zl\u0131 Sat\u0131\u015f'
-  const isMasaChannel = isGarsonMode || (normalizeChannelName(salesChannelName) === 'masa')
   const cart = isMasaChannel ? currentTableTicket.cart : quickSaleCart
   const orderNote = isMasaChannel ? currentTableTicket.orderNote : quickSaleOrderNote
   const activeGuestCounts = isMasaChannel ? currentTableTicket.guestCounts : defaultGuestCounts
@@ -4448,7 +4634,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     const guestCounts = normalizeGuestCounts(activeGuestCounts)
     const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0)
     const paymentType = payments.length === 1 ? payments[0].method : 'karma'
-    const localId = dbUuid()
+    const localId = currentTableTicket?.id || dbUuid()
     const saleLoyaltySnapshot = createSaleLoyaltySnapshot(loyaltyCampaign)
     const saleLoyaltyFields = buildSaleLoyaltyFields(saleLoyaltySnapshot, discountAmount)
 
@@ -4934,106 +5120,60 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
               <div style={{fontSize:'2.5rem'}}><i className="fa-regular fa-clipboard" /></div>
               <div style={{fontWeight:700,fontSize:'.9rem'}}>{'Adisyon Bo\u015f'}</div>
             </div>
-          ) : cart.map(item => {
-            const comboChildren = item.comboBundle?.displayLines || []
-            const subParts = item.comboBundle
-              ? []
-              : [
-                  item.portion?.name,
-                  ...(item.options||[]).map(o=>o.name)
-                ].filter(Boolean)
-            const cartColors = pickButtonColors(item.prod)
-            const cartImage = item.prod?.pos_image || item.prod?.image_url || null
+          ) : isMasaChannel ? (
+            COURSE_ORDER.map(courseKey => {
+              const items = groupedCart[courseKey] || []
+              if (items.length === 0) return null
+              const allFired = items.every(i => (i.course_status || 'fire') === 'fire')
 
-            return (
-              <div key={item.id} style={{
-                background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',
-                borderRadius:12,padding:'10px 12px'
-              }}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                  <div style={{display:'flex',gap:10,flex:1,paddingRight:8}}>
-                    <div style={{
-                      width:42,height:42,borderRadius:10,background:cartColors.bg,
-                      display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,overflow:'hidden'
-                    }}>
-                      {cartImage
-                        ? <img src={resolveImageUrl(cartImage)} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                        : <i className="fa-solid fa-utensils" style={{fontSize:'1rem',color:cartColors.text}}/>}
+              return (
+                <div key={courseKey} style={{ marginBottom: 16 }}>
+                  {/* Group Header */}
+                  <div style={{
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    padding:'6px 12px', background:'rgba(255,255,255,.05)', borderRadius:8,
+                    marginBottom:8
+                  }}>
+                    <div style={{ fontWeight:800, fontSize:'.8rem', color:'#818cf8', textTransform:'uppercase' }}>
+                      {COURSE_LABELS[courseKey] || 'Diğer'} ({items.length})
                     </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,color:'#fff',fontSize:'.88rem',lineHeight:1.3}}>
-                        {item.prod?.name || item.name}
-                      </div>
-                      {!!comboChildren.length && (
-                        <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-                          {comboChildren.map(line => (
-                            <div key={line.id} style={{ fontSize: '.68rem', color: '#cbd5e1', lineHeight: 1.45, paddingLeft: 10 }}>
-                              <div>{line.title}</div>
-                              {line.subtitle && <div style={{ color: '#94a3b8' }}>{line.subtitle}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {subParts.length > 0 && (
-                        <div style={{fontSize:'.68rem',color:'#a5b4fc',marginTop:3,lineHeight:1.4}}>
-                          {subParts.join(' - ')}
-                        </div>
-                      )}
-                      {item.note && (
-                        <div style={{fontSize:'.68rem',color:'#34d399',marginTop:4,lineHeight:1.4}}>
-                          <i className="fa-regular fa-note-sticky" style={{marginRight:4}} />
-                          {item.note}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontWeight:900,color:'#fbbf24',fontSize:'.95rem'}}>
-                      {fmt(item.unitPrice * item.qty) + ' \u20BA'}
-                    </div>
-                    <div style={{fontSize:'.65rem',color:'#64748b'}}>
-                      {fmt(item.unitPrice) + ' \u20BA / br'}
-                    </div>
-                  </div>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-                  borderTop:'1px solid rgba(255,255,255,.05)',paddingTop:8,gap:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:2}}>
-                    <button className="touch-btn" onClick={() => canEditCurrentTable && setModal({ type:'item-note', itemId:item.id })}
-                      style={{background:'none',border:'none',color:item.note ? '#34d399' : '#94a3b8',cursor:'pointer',
-                        fontSize:'.78rem',padding:'8px 10px',minHeight:44,minWidth:44}}>
-                      <i className="fa-regular fa-note-sticky" />
-                    </button>
-                    {!item.comboBundle && (item.portion || (item.options || []).length > 0) && (
-                      <button className="touch-btn" onClick={() => canEditCurrentTable && setModal({ type:'edit-item', itemId:item.id })}
-                        style={{background:'none',border:'none',color:'#60a5fa',cursor:'pointer',
-                          fontSize:'.78rem',padding:'8px 10px',minHeight:44,minWidth:44}}>
-                        <i className="fa-solid fa-pen-to-square" />
+                    {canEditCurrentTable && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextStatus = allFired ? 'hold' : 'fire'
+                          setActiveCart(prev => prev.map(i => {
+                            const itemCourse = i.course_type || i.prod?.default_course || 'main_dish'
+                            if (itemCourse === courseKey) {
+                              return { ...i, course_status: nextStatus }
+                            }
+                            return i
+                          }))
+                        }}
+                        style={{
+                          background: allFired ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
+                          border: `1px solid ${allFired ? 'rgba(239,68,68,.3)' : 'rgba(34,197,94,.3)'}`,
+                          color: allFired ? '#f87171' : '#4ade80',
+                          borderRadius:6, padding:'2px 8px', fontSize:'.72rem', fontWeight:800, cursor:'pointer'
+                        }}
+                      >
+                        {allFired ? 'Tümünü Beklet' : 'Tümünü Marş Et'}
                       </button>
                     )}
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'44px 44px 44px',
-                    background:'#fff',borderRadius:8,overflow:'hidden',
-                    border:'1px solid rgba(148,163,184,.28)',boxShadow:'0 4px 12px rgba(15,23,42,.16)'}}>
-                    <button className="touch-btn" onClick={() => updateQty(item.id, -1)}
-                      style={{background:'transparent',border:'none',borderRight:'1px solid rgba(148,163,184,.35)',
-                        color:item.qty <= 1 ? '#ef4444' : '#111827',cursor:'pointer',
-                        width:44,height:40,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'.9rem',fontWeight:900}}>
-                      {item.qty <= 1 ? <i className="fa-regular fa-trash-can" /> : '\u2212'}
-                    </button>
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',
-                      minWidth:44,height:40,fontWeight:900,color:'#111827',fontSize:'.98rem',
-                      borderRight:'1px solid rgba(148,163,184,.35)'}}>
-                      {item.qty}
-                    </div>
-                    <button className="touch-btn" onClick={() => updateQty(item.id, 1)}
-                      style={{background:'transparent',border:'none',color:'#22c55e',cursor:'pointer',
-                        width:44,height:40,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',fontWeight:900}}>+</button>
+
+                  {/* Group Items */}
+                  <div style={{ display:'grid', gap:8 }}>
+                    {items.map(item => renderCartItem(item))}
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          ) : (
+            <div style={{ display:'grid', gap:8 }}>
+              {cart.map(item => renderCartItem(item))}
+            </div>
+          )}
         </div>
 
         <div style={{padding:'16px 18px',background:'#05082b',borderTop:'1px solid rgba(255,255,255,.05)'}}>
