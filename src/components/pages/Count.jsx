@@ -418,6 +418,17 @@ export default function Count({ scopeVariant }) {
     selectedFlow ? buildCountFlowProductItems(selectedFlow, stockItems, stockTemplates) : []
   ), [selectedFlow, stockItems, stockTemplates])
 
+  const currentEntryId = selectedFlow ? entryKey(selectedFlow.id, branchId, selectedDate) : ''
+  const currentEntry = entries.find(entry => entry.id === currentEntryId) || {
+    id: currentEntryId,
+    lines: [],
+    semiLines: [],
+    status: 'draft',
+    note: '',
+    inventoryPostedAt: null,
+    movementCount: 0,
+  }
+
   useEffect(() => {
     if (!isWmsMode || !selectedFlow || !balances || balances.size === 0 || currentEntry.lines.length > 0 || currentEntry.inventoryPostedAt) return
 
@@ -465,16 +476,6 @@ export default function Count({ scopeVariant }) {
     ))
   }, [baseProducts, movingFilterIds, search, selectedFlow])
 
-  const currentEntryId = selectedFlow ? entryKey(selectedFlow.id, branchId, selectedDate) : ''
-  const currentEntry = entries.find(entry => entry.id === currentEntryId) || {
-    id: currentEntryId,
-    lines: [],
-    semiLines: [],
-    status: 'draft',
-    note: '',
-    inventoryPostedAt: null,
-    movementCount: 0,
-  }
 
   const semiDerivedMap = useMemo(
     () => buildSemiDerivedMap(currentEntry.semiLines || [], semiItems),

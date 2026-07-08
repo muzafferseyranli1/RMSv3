@@ -3173,6 +3173,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
     () => sanitizeOpenTicket(currentTableKey ? branchTableTickets[currentTableKey] : null, defaultGuestCounts),
     [branchTableTickets, currentTableKey, defaultGuestCounts]
   )
+  const activeCart = isMasaMode ? currentTableTicket.cart : cart
   const groupedCart = useMemo(() => {
     const groups = {}
     const activeCartItems = isMasaMode ? (currentTableTicket?.cart || []) : activeCart
@@ -3250,7 +3251,6 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
       .filter(group => group.tables.length > 0)
   }, [layoutTableDirectory, strictTableLayoutOptions, branchTableTickets])
   const hasSelectedActiveTable = isMasaMode && Boolean(currentTableKey) && hasOpenTicketContent(currentTableTicket)
-  const activeCart = isMasaMode ? currentTableTicket.cart : cart
   const activeOrderNote = isMasaMode ? currentTableTicket.orderNote : orderNote
   const activeGuestCounts = isMasaMode ? currentTableTicket.guestCounts : guestCounts
 
@@ -5239,7 +5239,7 @@ function POSInner({ forcedActiveStaff = null, onStaffLogout = null, triggerPinLo
                     <div style={{ fontWeight:800, fontSize:'.8rem', color:'#818cf8', textTransform:'uppercase' }}>
                       {COURSE_LABELS[courseKey] || 'Diğer'} ({items.length})
                     </div>
-                    {canRemoveThisItem && (
+                    {hasSelectedActiveTable && (
                       <button
                         type="button"
                         onClick={() => {

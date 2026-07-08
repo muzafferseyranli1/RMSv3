@@ -54,20 +54,21 @@ export default function PinLoginScreen({
       }
 
   return (
-    <div style={outerStyle}>
-      <div style={cardStyle}>
+    <div className="pin-login-screen-overlay" style={outerStyle}>
+      <div className="pin-login-screen-card" style={cardStyle}>
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
             <div>
-              <div style={{ color: '#fbbf24', fontSize: '.75rem', fontWeight: 900, letterSpacing: '.14em', textTransform: 'uppercase' }}>
+              <div className="pin-login-title-label" style={{ color: '#fbbf24', fontSize: '.75rem', fontWeight: 900, letterSpacing: '.14em', textTransform: 'uppercase' }}>
                 Personel PIN
               </div>
-              <div style={{ color: '#fff', fontSize: embedded ? '1.15rem' : '1.5rem', fontWeight: 900, marginTop: 8 }}>
+              <div className="pin-login-title" style={{ color: '#fff', fontSize: embedded ? '1.15rem' : '1.5rem', fontWeight: 900, marginTop: 8 }}>
                 {title}
               </div>
             </div>
             {typeof onClose === 'function' && (
               <button
+                className="pin-login-close-btn"
                 type="button"
                 onClick={onClose}
                 style={{
@@ -86,17 +87,17 @@ export default function PinLoginScreen({
               </button>
             )}
           </div>
-          <div style={{ color: '#94a3b8', lineHeight: 1.55, marginTop: 8, fontSize: embedded ? '.78rem' : '1rem' }}>
+          <div className="pin-login-subtitle" style={{ color: '#94a3b8', lineHeight: 1.55, marginTop: 8, fontSize: embedded ? '.78rem' : '1rem' }}>
             {subtitle}
           </div>
           {branchName && (
-            <div style={{ color: '#7dd3fc', fontWeight: 800, marginTop: 10, fontSize: embedded ? '.8rem' : '1rem' }}>
+            <div className="pin-login-branch" style={{ color: '#7dd3fc', fontWeight: 800, marginTop: 10, fontSize: embedded ? '.8rem' : '1rem' }}>
               {branchName}
             </div>
           )}
         </div>
 
-        <div style={{
+        <div className="pin-login-stars-display" style={{
           minHeight: embedded ? 56 : 72,
           borderRadius: 18,
           border: `1px solid ${error ? 'rgba(248,113,113,.42)' : 'rgba(251,191,36,.2)'}`,
@@ -113,7 +114,7 @@ export default function PinLoginScreen({
         </div>
 
         {error && (
-          <div style={{ color: '#fca5a5', fontSize: '.8rem', fontWeight: 700 }}>
+          <div className="pin-login-error" style={{ color: '#fca5a5', fontSize: '.8rem', fontWeight: 700 }}>
             {error}
           </div>
         )}
@@ -131,6 +132,7 @@ export default function PinLoginScreen({
                 }
                 onPinChange(`${pin || ''}${key}`)
               }}
+              className={`pin-login-keypad-btn ${key === 'sil' ? 'btn-sil' : ''}`}
               style={{
                 minHeight: embedded ? 48 : 58,
                 borderRadius: 16,
@@ -148,6 +150,7 @@ export default function PinLoginScreen({
         </div>
 
         <button
+          className="pin-login-submit-btn"
           type="button"
           disabled={loading || (pin || '').length < 4}
           onClick={onSubmit}

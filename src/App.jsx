@@ -98,6 +98,7 @@ const DesignDemo = lazy(() => import('@/components/pages/DesignDemo'))
 const TicketCategories = lazy(() => import('@/components/pages/TicketCategories'))
 const FeedbackManagement = lazy(() => import('@/components/pages/FeedbackManagement'))
 const QuestionAnswerPortal = lazy(() => import('@/components/pages/QuestionAnswerPortal'))
+const MultiDeviceTerminal = lazy(() => import('@/components/pages/MultiDeviceTerminal'))
 
 const FormTemplates = lazy(() => import('@/components/pages/FormTemplates'))
 const FormSubmissions = lazy(() => import('@/components/pages/FormSubmissions'))
@@ -117,7 +118,7 @@ const WmsVehicles = lazy(() => import('@/components/pages/WmsVehicles'))
 const WmsDashboard = lazy(() => import('@/components/pages/WmsDashboard'))
 const WmsReports = lazy(() => import('@/components/pages/WmsReports'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket', '/soru-cevap']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket', '/soru-cevap', '/cihaz-ekrani']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -381,6 +382,7 @@ function AppShell() {
             <Route path="/garson-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><Garson /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/kds-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><KDS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><PickupScreen /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
+            <Route path="/cihaz-ekrani" element={<MultiDeviceTerminal />} />
             <Route path="/q/:token" element={<QrRedirector />} />
             <Route path="/anket/:token" element={<PublicSurvey />} />
             <Route path="/soru-cevap" element={<QuestionAnswerPortal />} />
