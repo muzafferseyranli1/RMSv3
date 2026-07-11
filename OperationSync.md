@@ -11934,13 +11934,13 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 
 ---
 
-## LOG ENTRY — 2026-06-19 — Kiosk Android Faz 1+2 Tamamlandi
+## LOG ENTRY ï¿½ 2026-06-19 ï¿½ Kiosk Android Faz 1+2 Tamamlandi
 
 - Agent: Antigravity
 - Oturum: kiosk-android native uygulama gelistirme
 
 ### Faz 1 - Tamamlandi
-- kiosk-android/ bagýmsýz Gradle projesi olusturuldu (com.suitable.kiosk)
+- kiosk-android/ bagï¿½msï¿½z Gradle projesi olusturuldu (com.suitable.kiosk)
 - AGP 9.0 uyumlu build, minSdk=26, targetSdk=36
 - Kiosk lockdown: immersive sticky + FLAG_KEEP_SCREEN_ON
 - Eslesme ekrani: dark premium UI, PairingScreen + PairingViewModel
@@ -12038,23 +12038,23 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 
 ---
 
-## LOG ENTRY - 2026-06-19 - Kiosk Cihaz Eþleme Veritabaný Kolon Mismatçý Giderildi
+## LOG ENTRY - 2026-06-19 - Kiosk Cihaz Eï¿½leme Veritabanï¿½ Kolon Mismatï¿½ï¿½ Giderildi
 
 - Agent: Antigravity
 - Status: TAMAMLANDI
-- Build: DEBUG APK - Eþleme Baþarýlý
+- Build: DEBUG APK - Eï¿½leme Baï¿½arï¿½lï¿½
 
-### Yapýlan Deðiþiklikler
+### Yapï¿½lan Deï¿½iï¿½iklikler
 
-**1. KioskRepository.kt (GÜNCELLENDÝ)**
-- `pairDevice` metodunda veritabaný þemasýndaki gerçek kolon adlarý (`activation_code`, `device_type` ve `terminal_name`) kullanýldý; eski `station_code`, `terminal_type` ve `label` kolon sorgularý düzeltildi.
-- Eþleme baþarýlý olduðunda (PairingResult.Success) ve sunucudan dönen veri okunurken yeni kolon isimleriyle doðru eþlemeler ve dönüþümler saðlandý.
+**1. KioskRepository.kt (Gï¿½NCELLENDï¿½)**
+- `pairDevice` metodunda veritabanï¿½ ï¿½emasï¿½ndaki gerï¿½ek kolon adlarï¿½ (`activation_code`, `device_type` ve `terminal_name`) kullanï¿½ldï¿½; eski `station_code`, `terminal_type` ve `label` kolon sorgularï¿½ dï¿½zeltildi.
+- Eï¿½leme baï¿½arï¿½lï¿½ olduï¿½unda (PairingResult.Success) ve sunucudan dï¿½nen veri okunurken yeni kolon isimleriyle doï¿½ru eï¿½lemeler ve dï¿½nï¿½ï¿½ï¿½mler saï¿½landï¿½.
 
-### Doðrulama ve Test
-- Uygulama `.\gradlew.bat assembleDebug` ile baþarýyla derlendi.
-- NoxPlayer emülatörü (API 25) üzerinde `SUT-3K8T7S` istasyon kodu girilerek "Eþle" butonu test edildi; cihazýn eþleme iþlemini baþarýyla tamamladýðý ve ana menü ekranýna geçiþ yaptýðý ekran görüntüsüyle (screencap.png) doðrulandý.
+### Doï¿½rulama ve Test
+- Uygulama `.\gradlew.bat assembleDebug` ile baï¿½arï¿½yla derlendi.
+- NoxPlayer emï¿½latï¿½rï¿½ (API 25) ï¿½zerinde `SUT-3K8T7S` istasyon kodu girilerek "Eï¿½le" butonu test edildi; cihazï¿½n eï¿½leme iï¿½lemini baï¿½arï¿½yla tamamladï¿½ï¿½ï¿½ ve ana menï¿½ ekranï¿½na geï¿½iï¿½ yaptï¿½ï¿½ï¿½ ekran gï¿½rï¿½ntï¿½sï¿½yle (screencap.png) doï¿½rulandï¿½.
 
-[KIOSK_ANDROID_PAIRING_DB_COLUMNS_FIX] - Kiosk Android eþleme veritabaný kolon mismatch'i düzeltildi ve eþleme baþarýyla tamamlandý.
+[KIOSK_ANDROID_PAIRING_DB_COLUMNS_FIX] - Kiosk Android eï¿½leme veritabanï¿½ kolon mismatch'i dï¿½zeltildi ve eï¿½leme baï¿½arï¿½yla tamamlandï¿½.
 
 ---
 
@@ -12227,10 +12227,10 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Status: TAMAMLANDI
 
 ### Yapilan Islemler
-- Samsung Galaxy A7 tablet (192.168.1.17:36597) kablosuz hata ayýklama eþleþme kodu (488125) kullanýlarak baþarýyla eþleþtirildi (pair).
-- `adb devices` listesi kontrol edilerek cihazýn otomatik olarak TLS üzerinden baðlandýðý ve `device` durumunda hazýr olduðu doðrulandý.
+- Samsung Galaxy A7 tablet (192.168.1.17:36597) kablosuz hata ayï¿½klama eï¿½leï¿½me kodu (488125) kullanï¿½larak baï¿½arï¿½yla eï¿½leï¿½tirildi (pair).
+- `adb devices` listesi kontrol edilerek cihazï¿½n otomatik olarak TLS ï¿½zerinden baï¿½landï¿½ï¿½ï¿½ ve `device` durumunda hazï¿½r olduï¿½u doï¿½rulandï¿½.
 
-[ANDROID_DEVICE_WIRELESS_PAIRING_SUCCESSFUL] - Samsung Galaxy A7 tablet kablosuz hata ayýklama eþleþmesi tamamlandý.
+[ANDROID_DEVICE_WIRELESS_PAIRING_SUCCESSFUL] - Samsung Galaxy A7 tablet kablosuz hata ayï¿½klama eï¿½leï¿½mesi tamamlandï¿½.
 
 
 ---
@@ -12242,11 +12242,11 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Build: DEBUG APK - BUILD SUCCESSFUL
 
 ### Yapilan Islemler
-- Eski `com.suitable.kiosk.debug` paketi imza uyuþmazlýðý nedeniyle `adb uninstall com.suitable.kiosk.debug` komutuyla tabletten kaldýrýldý.
-- `kiosk-android` dizininde `.\gradlew.bat installDebug` çalýþtýrýlarak kiosk uygulamasýnýn son güncel sürümü baþarýyla derlendi ve baðlý olan Samsung Galaxy A7 (SM-T220) tablete yüklendi.
-- Uygulama, `adb shell monkey -p com.suitable.kiosk.debug -c android.intent.category.LAUNCHER 1` komutuyla tablet üzerinde otomatik olarak baþlatýldý.
+- Eski `com.suitable.kiosk.debug` paketi imza uyuï¿½mazlï¿½ï¿½ï¿½ nedeniyle `adb uninstall com.suitable.kiosk.debug` komutuyla tabletten kaldï¿½rï¿½ldï¿½.
+- `kiosk-android` dizininde `.\gradlew.bat installDebug` ï¿½alï¿½ï¿½tï¿½rï¿½larak kiosk uygulamasï¿½nï¿½n son gï¿½ncel sï¿½rï¿½mï¿½ baï¿½arï¿½yla derlendi ve baï¿½lï¿½ olan Samsung Galaxy A7 (SM-T220) tablete yï¿½klendi.
+- Uygulama, `adb shell monkey -p com.suitable.kiosk.debug -c android.intent.category.LAUNCHER 1` komutuyla tablet ï¿½zerinde otomatik olarak baï¿½latï¿½ldï¿½.
 
-[KIOSK_ANDROID_BUILD_AND_INSTALL_SUCCESSFUL] - Kiosk Android uygulamasý tablete baþarýyla kuruldu ve baþlatýldý.
+[KIOSK_ANDROID_BUILD_AND_INSTALL_SUCCESSFUL] - Kiosk Android uygulamasï¿½ tablete baï¿½arï¿½yla kuruldu ve baï¿½latï¿½ldï¿½.
 
 
 ---
@@ -12479,3 +12479,59 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Next Step`: Standalone Garson App'in restorandaki terminal eÃ…Å¸leÃ…Å¸tirmeleriyle sipariÃ…Å¸ alma sÃƒÂ¼reÃƒÂ§lerinin saha testleri yapÃ„Â±lmalÃ„Â±.
 - `Handoff Contract`: Garson Android uygulamasÃ„Â± native ayrÃ„Â±Ã…Å¸tÃ„Â±rmasÃ„Â± ve Personel Android temizliÃ„Å¸i tamamlanmÃ„Â±Ã…Å¸tÃ„Â±r. Her iki proje de sÃ„Â±fÃ„Â±r hatayla derlenmektedir.
+
+## Entry - 2026-06-26 - Railway Demo Veri Azaltma Dry-run
+
+### Kullanici istegi
+- Railway RAM artisinda sorun yaratiyorsa gecmisten demo verilerin azaltilabilecegi belirtildi.
+
+### Yapilan islem
+- Canli Railway Postgres uzerinde sadece okuma yapan dry-run sayimlari calistirildi; veri silme/guncelleme yapilmadi.
+- Demo kaynak izleri `sales.integration_ref = 'demo-sales-tool'` uzerinden olculdu.
+
+### Bulgular
+- Demo aktif `sales`: 136707 satir, tarih araligi 2026-04-01 - 2026-06-03, yaklasik tuple boyutu 53 MB.
+- Demo `sale_lines`: 336997 satir, yaklasik tuple boyutu 127 MB.
+- Demo `sale_payments`: 174919 satir, yaklasik tuple boyutu 17 MB.
+- Demo ile iliskili `inventory_movements`: 845833 satir, yaklasik tuple boyutu 430 MB.
+- Hafif toplam oran sorgusunda `sales_total=136727`, `demo_sales=136707`, demo sales orani %99.99.
+- `inventory_movements` icinde aktif sale hareketleri 845833 ve toplam tahmini 845853; pratikte buyuk kisim demo satis hareketlerinden geliyor.
+- Daha agir oran sorgusu Postgres tarafinda `could not resize shared memory segment ... No space left on device` hatasi verdi; bu RAM/SHM baskisi bulgusunu guclendiriyor.
+
+### Karar / onerilen sonraki adim
+- Veri silme otomatik yapilmadi. Guvenli yol: once demo veriyi tarih esigiyle azaltan, cascade bagimli tablolarini dogru sirada temizleyen ve `VACUUM (ANALYZE)` calistiran kontrollu bir script hazirlanmali.
+- Onerilen ilk politika: son 7-14 gun demo kalsin, 2026-05-30 oncesi `integration_ref='demo-sales-tool'` satislari ve bagli hareket/line/payment kayitlari temizlensin.
+- Uygulama oncesi kullanicidan acik silme onayi alinmali.
+
+## Entry - 2026-06-27 - Railway Demo Veri Temizligi Tamamlandi
+
+### Kullanici istegi
+- Bilgisayar kapanmasi sonrasi 2026-05-30 oncesi `demo-sales-tool` canli Railway DB temizliginin tamamlandigindan emin olunmasi istendi.
+
+### Yapilan islem
+- Gecici cleanup scripti kontrol edildi; ilk kapanma oncesi silme tamamlanmadigi dogrulandi.
+- Canli Railway Postgres uzerinde `sales.integration_ref='demo-sales-tool' AND sale_datetime < '2026-05-30T00:00:00+03:00'` filtresiyle batch temizlik calistirildi.
+- `inventory_movements` delete triggeri, silinen movement icin yeni recalc job acip FK hatasi verdigi icin yalnizca movement batch transactionlari icinde `trg_inventory_movements_queue_recalc` gecici kapatilip tekrar acildi.
+- `VACUUM (ANALYZE)` su tablolarda calistirildi: `inventory_movements`, `sale_lines`, `sale_payments`, `sales`.
+- Son dogrulamada canli API `/health` `ok=true` dondu.
+
+### Silinen veri ozeti
+- `inventory_movements`: 837792 satir silindi.
+- `inventory_movement_recalc_jobs`: 687 iliskili satir silindi.
+- `sale_payments`: 173638 satir silindi.
+- `sale_lines`: 334680 satir silindi.
+- `sales`: 135692 satir silindi.
+
+### Son dogrulama
+- 2026-05-30 oncesi hedef `demo-sales-tool` satislari: 0.
+- Hedef satislara bagli `sale_lines`: 0.
+- Hedef satislara bagli `sale_payments`: 0.
+- Hedef satislara bagli `inventory_movements` (`source_doc_id` ve `sale_line_id`): 0.
+- Korunan demo satislar: 1015 satir, tarih araligi 2026-05-30 06:02:13+00 ile 2026-06-03 17:54:05+00.
+- Toplam canli satirlar: `sales` 1035, `sale_lines` 2332, `sale_payments` 1289, `inventory_movements` 8103.
+- `trg_inventory_movements_queue_recalc` durumu: enabled (`tgenabled='O'`).
+
+### Not / sonraki adim
+- Normal `VACUUM (ANALYZE)` disk dosyasini fiziksel olarak kucultmez; tablo/index dosya boyutlari bloat nedeniyle hala yuksek gorunur (`inventory_movements` total_size yaklasik 1015 MB, `sale_lines` 194 MB, `sales` 178 MB, `sale_payments` 34 MB).
+- Eger Railway RAM/IO veya storage grafiginde yukseklik devam ederse bakim penceresinde kilitli/agir islem olan `VACUUM FULL ANALYZE` veya tablo rewrite stratejisi ayrica planlanmalidir; bu islem mevcut onay kapsaminda otomatik yapilmadi.
+

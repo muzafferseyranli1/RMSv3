@@ -341,7 +341,10 @@ function AppShell() {
 
   useEffect(() => {
     try {
-      window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+      const lastReloadPath = window.sessionStorage.getItem(CHUNK_RELOAD_KEY)
+      if (lastReloadPath && lastReloadPath !== location.pathname) {
+        window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+      }
     } catch {
       // no-op
     }
