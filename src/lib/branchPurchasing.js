@@ -529,7 +529,7 @@ export function getInternalWarehouseSupplierIdsForItem(item, allSuppliers = []) 
     const key = String(supplierId || '').toLowerCase()
     if (!key || orderedIds.includes(supplierId)) return
     const supplier = supplierMap.get(key)
-    if (supplier?.supplier_kind === 'internal_warehouse') orderedIds.push(supplier.id)
+    if (supplier?.supplier_kind === 'internal_warehouse' || supplier?.supplier_kind === 'internal_kitchen') orderedIds.push(supplier.id)
   }
 
   const links = parseSupplierLinks(item)

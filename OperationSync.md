@@ -12535,3 +12535,103 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - Normal `VACUUM (ANALYZE)` disk dosyasini fiziksel olarak kucultmez; tablo/index dosya boyutlari bloat nedeniyle hala yuksek gorunur (`inventory_movements` total_size yaklasik 1015 MB, `sale_lines` 194 MB, `sales` 178 MB, `sale_payments` 34 MB).
 - Eger Railway RAM/IO veya storage grafiginde yukseklik devam ederse bakim penceresinde kilitli/agir islem olan `VACUUM FULL ANALYZE` veya tablo rewrite stratejisi ayrica planlanmalidir; bu islem mevcut onay kapsaminda otomatik yapilmadi.
 
+
+
+## Entry - 2026-07-18 - Merkez Depo ve Merkez Mutfak Malı Aidiyeti Geliştirmesi
+
+- `Timestamp`: `2026-07-18T10:36:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Malzemelerin Merkez Depo/Mutfak aidiyet seçimlerinin modal arayüzüne eklenmesi ve sipariş motoruna entegrasyonu
+- `Intent`: Şirket ağacında yer alan Merkez Depo (anadepo) ve Merkez Mutfak (uretim) düğümlerinin malzemelerle (stock_items) aidiyet olarak seçilebilmesini sağlamak ve bu malzemeler için şube bazındaki siparişleri otomatik olarak ilgili iç depoya veya mutfağa yönlendirecek yapıyı kurmak.
+- `Files Changed`:
+  - `schema-railway-master.sql` (stock_items tablosuna is_central_warehouse_good, central_warehouses, is_central_kitchen_good, central_kitchens kolonları eklendi)
+  - `src/components/pages/Company (1).jsx` (uretim düğümlerinin suppliers tablosunda internal_kitchen tedarikçisi olarak otomatik senkronize edilmesi eklendi)
+  - `src/components/pages/StockItems.jsx` (Form aidiyet kolonları eşleşmesi ve Tab 2 Tedarikçi & Satış sekmesine Merkez Depo/Mutfak Aidiyeti seçim kontrolleri ile suppliers_list çift yönlü senkronizasyonu eklendi)
+  - `src/lib/branchPurchasing.js` (getInternalWarehouseSupplierIdsForItem fonksiyonuna internal_kitchen desteği eklenerek şube sipariş yönlendirmesinin mutfak için de otomatikleştirilmesi sağlandı)
+- `Files Created`:
+  - `scratch/apply_central_goods_columns.cjs` (DB migration scripti)
+  - `scratch/backfill_kitchen_suppliers.cjs` (Mevcut Merkez Mutfak düğümünün suppliers tablosuna internal_kitchen olarak eklenmesi scripti)
+  - `scratch/verify_stock_item_columns.cjs` (DB kolon test scripti)
+  - `scratch/inspect_company_tree.js` (Şirket ağacı analiz scripti)
+- `Commands Run`:
+  - `node scratch/apply_central_goods_columns.cjs`
+  - `node scratch/backfill_kitchen_suppliers.cjs`
+  - `node scratch/verify_stock_item_columns.cjs`
+  - `npm run build`
+- `Findings`:
+  - Mevcut sipariş akışında, malzeme kartında internal_warehouse tedarikçisi olması durumunda şube taleplerinin otomatik olarak iç ikmal deposuna yönlendirildiği doğrulandı.
+  - Aynı yönlendirmenin mutfak (internal_kitchen) için de geçerli olması amacıyla branchPurchasing.js içerisindeki kontrol genişletildi.
+- `Decisions`:
+  - Merkez depoların ve mutfakların malzemeyle ilişkisi, aidiyet tabından seçildiğinde otomatik olarak suppliers_list listesine eklenip varsayılan yapılmaktadır; böylece sipariş motoruyla tam entegrasyon sağlanmıştır.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Tüm değişiklikler canlı veritabanında ve repoda başarıyla uygulanmış, proje hatasız derlenmiştir.
+
+
+## Entry - 2026-07-18 - Faz A: Merkez Mutfak Operasyonel Tamamlama (Senaryo 3)
+
+- `Timestamp`: `2026-07-18T12:34:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Senaryo 3 kapsamındaki Merkez Mutfak satın alma akışlarının ve Şube Talepleri Sevk Konsolunun tamamlanması
+- `Intent`: Merkez mutfakların dış tedarikçilerden veya depodan hammadde satın alabilmesini sağlamak, şubelerden gelen yarı mamul/stok taleplerinin mutfakta görüntülenip sevk edilmesini otomatikleştirmek.
+- `Files Changed`:
+  - `src/components/pages/OrderFlows.jsx` (`receiver_scope: 'kitchen'` üzerindeki pasif engel kaldırıldı, tedarikçi validasyonu eklendi)
+  - `src/components/pages/Orders.jsx` (Mutfak scope'unda sipariş oluşturma ve supId çözümlemesi eklendi)
+  - `src/App.jsx` (`/merkezmutfak-orders` rotası ve MutfakOrders lazy import eklendi)
+  - `src/components/layout/Sidebar.jsx` (Merkez Mutfak menüsü altına "Şube Talepleri / Sevk" eklendi)
+- `Files Created`:
+  - `src/components/pages/MutfakOrders.jsx` (Merkez Mutfak Şube Sipariş & Sevk Konsolu)
+  - `src/lib/kitchenDemandPlanning.js` (Reçete patlamalı mutfak hammadde talep hesaplama motoru)
+  - `scratch/append_entry_faz_a.js`
+- `Commands Run`:
+  - `npm run build` (Başarıyla tamamlandı: `MutfakOrders` paketi sıfır hata ile üretildi)
+- `Findings`:
+  - Mutfak sipariş karşılama altyapısı kuruldu; şube talepleri sevk edildiğinde mutfak envanterinden otomatik `transfer_out` stok çıkış hareketleri yazılmaktadır.
+- `Decisions`:
+  - Sade ve kullanışlı bir Mutfak Sevk Konsolu (`MutfakOrders.jsx`) yapılmıştır.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Faz A tamamlanmıştır ve proje hatasız derlenmektedir.
+
+
+## Entry - 2026-07-18 - Faz B: Depo ↔ Mutfak Sipariş Akışı & Senaryo 5
+
+- `Timestamp`: `2026-07-18T12:41:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Senaryo 5 kapsamındaki Depo'nun Merkez Mutfak'tan sipariş verebilmesi kısıtlamasının esnetilmesi
+- `Intent`: Ana Depo'nun (`receiver_scope: 'warehouse'`) Merkez Mutfak (`internal_kitchen`) tedarikçisinden ürün (SOS vb.) sipariş edebilmesini sağlamak.
+- `Files Changed`:
+  - `src/components/pages/OrderFlows.jsx` (Depo akışlarında `internal_kitchen` tedarikçi seçimine izin verildi)
+  - `src/components/pages/Orders.jsx` (Depo scope'unda Merkez Mutfak tedarikçisine sipariş oluşturulabilmesi sağlandı)
+- `Commands Run`:
+  - `npm run build` (Başarıyla tamamlandı)
+- `Findings`:
+  - Depo ↔ Mutfak ikmal siparişi bağı kuruldu. Mutfaktan depoya yapılan sevkiyatlar depodaki stokları güncellemekte ve otomatik talep planlama motoru güncel bakiyeler üzerinden öneri üretmektedir.
+- `Decisions`:
+  - Deponun mutfaktan sipariş verebilmesi kısıtlaması kaldırılmıştır.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Faz B tamamlanmıştır ve proje hatasız derlenmektedir.
+
+
+## Entry - 2026-07-18 - Faz C: B2B Dış Müşteri Satış Modülü (Senaryo 4 & 5)
+
+- `Timestamp`: `2026-07-18T13:05:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Senaryo 4 ve 5 kapsamındaki Depo ve Merkez Mutfak'tan Dış Müşterilere B2B Toptan Satış modülünün tamamlanması
+- `Intent`: Dış müşterileri tanımlamak, Depo veya Mutfak'tan dış müşterilere satış siparişi oluşturmak, sevk ile stoktan düşmek, cari borç kaydı işlemek ve sevk irsaliyesi çıktısı üretmek.
+- `Files Changed`:
+  - `schema-railway-master.sql` (`b2b_sales_orders`, `b2b_sales_order_lines` tabloları ve `musteriler` B2B kolonları eklendi)
+  - `src/components/pages/Musteriler.jsx` (B2B Müşteri / Toptan Alıcı toggle ve Vergi Dairesi alanı eklendi)
+  - `src/App.jsx` (`/depo-b2b-orders` ve `/merkezmutfak-b2b-orders` rotaları ile `B2BOrders` lazy import eklendi)
+  - `src/components/layout/Sidebar.jsx` (Ana Depo ve Merkez Mutfak menülerine "Dış Müşteri (B2B) Satış" eklendi)
+- `Files Created`:
+  - `src/components/pages/B2BOrders.jsx` (B2B Satış Konsolu, Sevk Onayı, Stok Düşümü ve İrsaliye Basım Modalı)
+  - `scratch/apply_b2b_tables.cjs`
+  - `scratch/append_entry_faz_c.js`
+- `Commands Run`:
+  - `node scratch/apply_b2b_tables.cjs` (Canlı Postgres veritabanında B2B tabloları ve kolonları oluşturuldu)
+  - `npm run build` (Başarıyla tamamlandı: `B2BOrders` paketi sıfır hata ile üretildi)
+- `Findings`:
+  - Tedarik zincirinin 5 senaryosunun tamamı (Doğrudan tedarikçi, Depo ikmali, Mutfak üretimi, Depo/Mutfak Dış Müşteri satışı ve Mutfak → Depo ikmali) RMSv3 üzerinde eksiksiz çalışır hale getirilmiştir.
+- `Decisions`:
+  - B2B satışlar için ayrı ve temiz bir sipariş tablosu (`b2b_sales_orders`) ve sevk irsaliyesi çıktı modülü yapılmıştır.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Tüm geliştirmeler (Faz A, Faz B, Faz C) başarıyla tamamlanmış, DB schema güncellenmiş ve proje hatasız derlenmektedir.

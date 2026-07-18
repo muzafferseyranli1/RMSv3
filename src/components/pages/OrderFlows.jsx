@@ -540,8 +540,13 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
     } else if (supplierKind === 'internal_kitchen') {
       flowChannel = 'kitchen_replenishment'
     }
-    if (form.receiver_scope === 'warehouse' && supplierKind !== 'external') {
-      toast('Ana Depo Satinalma akisi yalnizca dis tedarikci ile kurulabilir','error')
+    if (form.receiver_scope === 'warehouse' && supplierKind === 'internal_warehouse') {
+      toast('Ana Depo Satınalma akışı ana deponun kendisi ile kurulamaz','error')
+      setStep(0)
+      return
+    }
+    if (form.receiver_scope === 'kitchen' && supplierKind === 'internal_kitchen') {
+      toast('Merkez Mutfak Satınalma akışı merkez mutfağın kendisi ile kurulamaz','error')
       setStep(0)
       return
     }
@@ -623,7 +628,7 @@ function FlowForm({ flow, suppliers, branches, branchTemplates, stockItems, stoc
           <div style={{display:'flex',gap:8,marginTop:4}}>
             {[{v:'branch',l:'Şube Siparişi',i:'fa-store',d:'Şubeler için tahmin/sipariş'},
               {v:'warehouse',l:'Ana Depo Satınalma',i:'fa-warehouse',d:'Ana depo dış satınalma planı'},
-              {v:'kitchen',l:'Merkez Mutfak (Pasif)',i:'fa-kitchen-set',d:'Hazırlık aşamasında', disabled:true}].map(t=>(
+              {v:'kitchen',l:'Merkez Mutfak Satınalma',i:'fa-kitchen-set',d:'Merkez mutfak hammadde satınalma planı'}].map(t=>(
               <div key={t.v} onClick={()=>{if(!t.disabled) set('receiver_scope',t.v)}}
                 style={{flex:1,border:`2px solid ${form.receiver_scope===t.v?'#6366f1':t.disabled?'#f1f5f9':'#cbd5e1'}`,borderRadius:10,
                   padding:'10px 12px',cursor:t.disabled?'not-allowed':'pointer',background:form.receiver_scope===t.v?'#f5f3ff':t.disabled?'#fafafa':'#fff',

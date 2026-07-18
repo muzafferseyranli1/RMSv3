@@ -47,6 +47,8 @@ const BranchPersonnel = lazy(() => import('@/components/pages/BranchPersonnel'))
 const DemoSales = lazy(() => import('@/components/pages/DemoSales'))
 const OptionGroups = lazy(() => import('@/components/pages/OptionGroups'))
 const Production = lazy(() => import('@/components/pages/Production'))
+const MutfakOrders = lazy(() => import('@/components/pages/MutfakOrders'))
+const B2BOrders = lazy(() => import('@/components/pages/B2BOrders'))
 const Forecast = lazy(() => import('@/components/pages/Forecast'))
 const Reports = lazy(() => import('@/components/pages/Reports'))
 const ReportDesigner = lazy(() => import('@/components/pages/ReportDesigner'))
@@ -541,11 +543,14 @@ function AppShell() {
               <Route path="/wms-vehicles" element={<WarehouseBranchRoute title="Araç Tanımları"><WmsVehicles /></WarehouseBranchRoute>} />
               <Route path="/depo-mal-kabul" element={<WarehouseBranchRoute title="Mal Kabul"><MalKabul /></WarehouseBranchRoute>} />
               <Route path="/depo-iclokasyon-tasima" element={<WarehouseBranchRoute title="Depo İçi Lokasyon Taşıma"><WmsInternalTransfer /></WarehouseBranchRoute>} />
+              <Route path="/depo-b2b-orders" element={<WarehouseBranchRoute title="Dış Müşteri B2B Satış" expectedScope={WORKSPACE_SCOPE.anadepo}><B2BOrders scopeVariant="anadepo" /></WarehouseBranchRoute>} />
               <Route path="/wms-dashboard" element={<WarehouseBranchRoute title="WMS Dashboard"><WmsDashboard /></WarehouseBranchRoute>} />
               <Route path="/wms-reports" element={<WarehouseBranchRoute title="WMS Raporları"><WmsReports /></WarehouseBranchRoute>} />
 
               {/* Merkez Mutfak İşlemleri */}
               <Route path="/merkezmutfak-uretim" element={<WarehouseBranchRoute title="Uretim" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Production /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-orders" element={<WarehouseBranchRoute title="Şube Talepleri / Sevk" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><MutfakOrders /></WarehouseBranchRoute>} />
+              <Route path="/merkezmutfak-b2b-orders" element={<WarehouseBranchRoute title="Dış Müşteri B2B Satış" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><B2BOrders scopeVariant="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-satinalma" element={<WarehouseBranchRoute title="Mutfak Satınalma Siparişleri" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Orders /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-documents" element={<WarehouseBranchRoute title="Belge Girisi" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Documents mode="merkezmutfak" /></WarehouseBranchRoute>} />
               <Route path="/merkezmutfak-tasks" element={<WarehouseBranchRoute title="Gorevler" expectedScope={WORKSPACE_SCOPE.merkezmutfak}><Tasks scope="merkezmutfak" /></WarehouseBranchRoute>} />

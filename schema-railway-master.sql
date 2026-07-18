@@ -954,7 +954,57 @@ CREATE TABLE IF NOT EXISTS public.musteriler (
   referral_code TEXT,
   referred_by_customer_id UUID,
   metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+  is_b2b BOOLEAN DEFAULT false NOT NULL,
+  tax_office TEXT,
+  b2b_price_list JSONB DEFAULT '{}'::jsonb NOT NULL,
   CONSTRAINT musteriler_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.b2b_sales_orders (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  order_no TEXT NOT NULL,
+  seller_branch_id UUID NOT NULL,
+  seller_branch_name TEXT,
+  seller_scope TEXT NOT NULL,
+  customer_id UUID NOT NULL,
+  customer_name TEXT NOT NULL,
+  customer_tax_no TEXT,
+  customer_tax_office TEXT,
+  order_date TIMESTAMPTZ DEFAULT now() NOT NULL,
+  delivery_date DATE,
+  status TEXT DEFAULT 'pending' NOT NULL,
+  doc_kind TEXT DEFAULT 'İrsaliye',
+  doc_no TEXT,
+  plate_number TEXT,
+  notes TEXT,
+  subtotal NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  vat_total NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  total_amount NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT b2b_sales_orders_pkey PRIMARY KEY (id),
+  CONSTRAINT b2b_sales_orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.musteriler(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.b2b_sales_order_lines (
+  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  order_id UUID NOT NULL,
+  line_no INTEGER NOT NULL,
+  item_type TEXT NOT NULL,
+  stock_item_id UUID,
+  semi_item_id UUID,
+  item_name TEXT NOT NULL,
+  item_sku TEXT,
+  unit TEXT,
+  unit_price NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  vat_rate NUMERIC(6,4) DEFAULT 0 NOT NULL,
+  ordered_qty NUMERIC(14,4) NOT NULL,
+  shipped_qty NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  line_total NUMERIC(14,4) DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT b2b_sales_order_lines_pkey PRIMARY KEY (id),
+  CONSTRAINT b2b_sales_order_lines_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.b2b_sales_orders(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS public.customer_app_config (
@@ -1769,6 +1819,10 @@ CREATE TABLE IF NOT EXISTS public.stock_items (
   deleted_at TIMESTAMPTZ,
   image_url TEXT,
   temperature_class TEXT,
+  is_central_warehouse_good BOOLEAN DEFAULT false NOT NULL,
+  central_warehouses JSONB DEFAULT '[]'::jsonb NOT NULL,
+  is_central_kitchen_good BOOLEAN DEFAULT false NOT NULL,
+  central_kitchens JSONB DEFAULT '[]'::jsonb NOT NULL,
   CONSTRAINT stock_items_pkey PRIMARY KEY (id),
   CONSTRAINT stock_items_cat_l1_fkey FOREIGN KEY (cat_l1) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT stock_items_cat_l2_fkey FOREIGN KEY (cat_l2) REFERENCES categories(id) ON DELETE SET NULL,
