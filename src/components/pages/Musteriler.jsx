@@ -652,7 +652,7 @@ function AdresForm({ adres, onChange, onRemove, idx, iller, ilceler, mahalleler,
 function MusteriModal({ musteri, onClose, onSaved, iller, ilceler, setIlceler, mahalleler, setMahalleler }) {
   const isNew = !musteri?.id
   const empty = {
-    ad_soyad: '', cari: false, musteri_tipi: 'gercek',
+    ad_soyad: '', cari: false, is_b2b: false, tax_office: '', musteri_tipi: 'gercek',
     sirket_adi: '', vergi_no: '', email: '', notlar: '',
     telefon: '', telefon_ulke: '+90',
     adresler: [{ baslik: 'Ev', il_id: '', ilce_id: '', mahalle_id: null, sokak: '', apt_no: '', daire_no: '', kat: '', aciklama: '', birincil: true }]
@@ -737,6 +737,8 @@ function MusteriModal({ musteri, onClose, onSaved, iller, ilceler, setIlceler, m
       const payload = {
         ad_soyad: form.ad_soyad.trim(),
         cari: form.cari,
+        is_b2b: !!form.is_b2b,
+        tax_office: form.tax_office?.trim() || null,
         musteri_tipi: form.musteri_tipi,
         sirket_adi: form.sirket_adi?.trim() || null,
         vergi_no: form.vergi_no?.trim() || null,
@@ -785,6 +787,26 @@ function MusteriModal({ musteri, onClose, onSaved, iller, ilceler, setIlceler, m
             <div className="tog"><div className={`tog-sl${form.cari ? ' on' : ''}`} /></div>
             <span style={{ fontSize: '.855rem', fontWeight: 600, color: form.cari ? '#92400e' : '#64748b' }}>Cari Müşteri olarak işaretle</span>
           </div>
+
+          {/* B2B toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: form.is_b2b ? '#f5f3ff' : '#f8fafc', borderRadius: 10, border: `1.5px solid ${form.is_b2b ? '#8b5cf6' : '#e2e8f0'}`, cursor: 'pointer' }}
+            onClick={() => setF('is_b2b', !form.is_b2b)}>
+            <div className="tog"><div className={`tog-sl${form.is_b2b ? ' on' : ''}`} /></div>
+            <span style={{ fontSize: '.855rem', fontWeight: 600, color: form.is_b2b ? '#6d28d9' : '#64748b' }}>B2B Müşteri (Toptan Alıcı) olarak işaretle</span>
+          </div>
+
+          {form.is_b2b && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, background: '#faf5ff', padding: 12, borderRadius: 10, border: '1px solid #ddd6fe' }}>
+              <div>
+                <label className="f-label">Vergi Dairesi</label>
+                <input className="f-input" placeholder="Örn: Kadıköy VD" value={form.tax_office || ''} onChange={e => setF('tax_office', e.target.value)} />
+              </div>
+              <div>
+                <label className="f-label">Şirket / Ticari Unvan</label>
+                <input className="f-input" placeholder="Örn: ABC Restoran Gıda A.Ş." value={form.sirket_adi || ''} onChange={e => setF('sirket_adi', e.target.value)} />
+              </div>
+            </div>
+          )}
 
           {/* Cari — ek alanlar */}
           {form.cari && (

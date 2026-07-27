@@ -357,7 +357,11 @@ const EMPTY = {
   supp_id:'', purchase_price:'', suppliers_list:[],
   saleable:false, sale_name:'', sale_group:'',
   warehouse_settings: {},
-  image_url: ''
+  image_url: '',
+  is_central_warehouse_good: false,
+  central_warehouses: [],
+  is_central_kitchen_good: false,
+  central_kitchens: []
 }
 
 function getSelectedWarehouseSuppliers(form, suppliers) {
@@ -748,7 +752,11 @@ export default function StockItems() {
       suppliers_list: item.suppliers_list||[],
       saleable: item.saleable||false, sale_name: item.sale_name||'', sale_group: item.sale_group||'',
       warehouse_settings: wset,
-      image_url: item.image_url||''
+      image_url: item.image_url||'',
+      is_central_warehouse_good: item.is_central_warehouse_good || false,
+      central_warehouses: item.central_warehouses || [],
+      is_central_kitchen_good: item.is_central_kitchen_good || false,
+      central_kitchens: item.central_kitchens || []
     })
     setEditId(item.id); setTab(0)
     setSkuStatus(item.auto_sku ? {type:'auto',msg:'Otomatik üretildi.'} : {type:'idle',msg:''})
@@ -915,7 +923,11 @@ export default function StockItems() {
       saleable: form.saleable,
       sale_name: form.saleable ? form.sale_name.trim()||null : null,
       sale_group: form.saleable ? form.sale_group||null : null,
-      image_url: form.image_url || null
+      image_url: form.image_url || null,
+      is_central_warehouse_good: !!form.is_central_warehouse_good,
+      central_warehouses: form.central_warehouses || [],
+      is_central_kitchen_good: !!form.is_central_kitchen_good,
+      central_kitchens: form.central_kitchens || []
     }
 
     let finalId = editId
@@ -1154,12 +1166,12 @@ export default function StockItems() {
   const tabs = [
     { label:'Temel Bilgiler',   icon:'fa-circle-info' },
     { label:'Ölçüm & Stok',    icon:'fa-ruler' },
-    { label:'Tedarikçi & Satış', icon:'fa-handshake' },
+    { label:'Tedarik Zinciri', icon:'fa-link' },
     {
       label:'Depo Ayarları',
       icon:'fa-warehouse',
       disabled: !hasWarehouseSupplier,
-      disabledReason: 'Depo Ayarları için Tedarikçi & Satış sekmesinde en az bir İç Depo tedarikçisi seçilmelidir.',
+      disabledReason: 'Depo Ayarları için Tedarik Zinciri sekmesinde en az bir İç Depo tedarikçisi seçilmelidir.',
     },
   ]
 
@@ -1401,12 +1413,37 @@ export default function StockItems() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="f-label">Lokasyon <span style={{color:'#ef4444'}}>*</span></label>
-                  <LocationPicker value={form.location} onChange={v=>set('location',v)}
-                    branches={branches} branchTemplates={branchTpls}/>
-                  <p className="f-hint">Birden fazla şube veya hazır grup seçebilirsiniz.</p>
-                </div>
+                <SectionHead label="Satış Malı"/>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'.855rem',color:'#334155',cursor:'pointer'}}>
+                  <input type="checkbox" checked={form.saleable}
+                    onChange={e=>set('saleable',e.target.checked)}
+                    style={{width:16,height:16,accentColor:'#fbbf24'}}/>
+                  Bu stok malı tek başına satılabilir
+                </label>
+                {form.saleable && (
+                  <div style={{marginTop:14,marginBottom:8}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:10}}>
+                      <div>
+                        <label className="f-label">Satış Malı Adı</label>
+                        <input className="f-input" value={form.sale_name} onChange={e=>set('sale_name',e.target.value)} placeholder="Ör: Su Pet"/>
+                      </div>
+                      <div>
+                        <label className="f-label">Satış Malı Grubu</label>
+                        <SearchableSelect
+                          value={form.sale_group}
+                          onChange={v=>set('sale_group',v)}
+                          options={cats.filter(c=>!c.parent_id).map(c=>({value:c.id,label:c.name}))}
+                          placeholder="Seçin…"
+                        />
+                      </div>
+                    </div>
+                    <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,
+                      padding:'9px 12px',fontSize:'.8rem',color:'#1e40af',display:'flex',alignItems:'flex-start',gap:8}}>
+                      <i className="fa-solid fa-circle-info" style={{marginTop:2,flexShrink:0}}/>
+                      Kaydedildikten sonra bu stok malı için otomatik bir satış malı oluşturulacaktır.
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="f-label"><i className="fa-solid fa-tags" style={{color:'#fbbf24',marginRight:4}}/>Kategori</label>
@@ -2009,95 +2046,142 @@ export default function StockItems() {
                 </div>
               </div>}
 
-              {/* ── Tab 2: Tedarikçi & Satış ── */}
-              {tab===2 && <div>
-                <SectionHead label="Tedarikçi & Fiyat"/>
-
-                {/* Multi-supplier list */}
-                <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12}}>
-                  {(form.suppliers_list||[]).map((s,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 140px auto auto',
-                      gap:8,alignItems:'center',background:'#f8fafc',borderRadius:10,
-                      padding:'10px 12px',border:'1px solid #e2e8f0'}}>
-                      <SearchableSelect
-                        value={s.supp_id}
-                        onChange={v=>{
-                          const l=[...form.suppliers_list]
-                          l[i]={...l[i],supp_id:v}
+              {/* ── Tab 2: Tedarik Zinciri ── */}
+              {tab===2 && <div style={{paddingTop: 8}}>
+                
+                {/* 1. Tedarikçi Block */}
+                <div style={{ position: 'relative', borderLeft: '3px solid #ef4444', paddingLeft: 20, paddingBottom: 24, marginLeft: 8 }}>
+                  <div style={{ position: 'absolute', bottom: -2, left: -7.5, width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '8px solid #ef4444' }} />
+                  <SectionHead label="Tedarikçi" />
+                  
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {(form.suppliers_list||[]).map((s,i)=>(
+                      <div key={i} style={{display:'flex', gap:8, alignItems:'center'}}>
+                        <div style={{flex: 1}}>
+                          <SearchableSelect
+                            value={s.supp_id}
+                            onChange={v=>{
+                              const l=[...form.suppliers_list]
+                              l[i]={...l[i],supp_id:v}
+                              set('suppliers_list',l)
+                            }}
+                            options={suppliers.map(sp=>({
+                              value:sp.id,
+                              label: sp.supplier_kind === 'internal_warehouse'
+                                ? `${sp.name || sp.marka_kisa_adi} [İç Depo]`
+                                : (sp.supplier_kind === 'internal_kitchen' ? `${sp.name || sp.marka_kisa_adi} [Mutfak]` : (sp.name || sp.marka_kisa_adi || String(sp.id)))
+                            }))}
+                            placeholder="Tedarikçi seçin…"
+                          />
+                        </div>
+                        <button className="ico-btn del" onClick={()=>{
+                          const deletedSuppId = form.suppliers_list[i]?.supp_id
+                          const l=form.suppliers_list.filter((_,j)=>j!==i)
                           set('suppliers_list',l)
-                        }}
-                        options={suppliers.map(sp=>({
-                          value:sp.id,
-                          label: sp.supplier_kind === 'internal_warehouse'
-                            ? `${sp.name || sp.marka_kisa_adi} [İç Depo]`
-                            : (sp.supplier_kind === 'internal_kitchen' ? `${sp.name || sp.marka_kisa_adi} [Mutfak]` : (sp.name || sp.marka_kisa_adi || String(sp.id)))
-                        }))}
-                        placeholder="Tedarikçi seçin…"
-                      />
-                      <input className="f-input" type="number" min="0" step="0.01"
-                        value={s.purchase_price||''}
-                        onChange={e=>{
-                          const l=[...form.suppliers_list]
-                          l[i]={...l[i],purchase_price:e.target.value}
-                          set('suppliers_list',l)
-                        }}
-                        placeholder="Alış fiyatı"/>
-                      {/* Varsayılan radio */}
-                      <label title="Varsayılan tedarikçi" style={{display:'flex',alignItems:'center',
-                        gap:4,cursor:'pointer',fontSize:'.75rem',color:s.is_default?'#d97706':'#94a3b8',
-                        fontWeight:s.is_default?700:400,whiteSpace:'nowrap'}}>
-                        <input type="radio" name="default_supp" checked={!!s.is_default}
-                          onChange={()=>{
-                            const l=form.suppliers_list.map((x,j)=>({...x,is_default:j===i}))
-                            set('suppliers_list',l)
-                          }}
-                          style={{accentColor:'#fbbf24'}}/>
-                        Varsayılan
-                      </label>
-                      <button className="ico-btn del" onClick={()=>{
-                        const l=form.suppliers_list.filter((_,j)=>j!==i)
-                        set('suppliers_list',l)
-                      }}><i className="fa-solid fa-xmark"/></button>
-                    </div>
-                  ))}
-                  <button className="btn-o" style={{fontSize:'.83rem',alignSelf:'flex-start'}}
-                    onClick={()=>set('suppliers_list',[...(form.suppliers_list||[]),{supp_id:'',purchase_price:'',is_default:form.suppliers_list?.length===0}])}>
-                    <i className="fa-solid fa-plus"/> Tedarikçi Ekle
-                  </button>
-                  <p className="f-hint">Birden fazla tedarikçi eklenebilir. Varsayılan tedarikçi sipariş oluşturmada önceliklidir.</p>
+                          if (deletedSuppId) {
+                            if (form.central_warehouses?.includes(deletedSuppId)) {
+                              const updated = form.central_warehouses.filter(id => id !== deletedSuppId)
+                              set('central_warehouses', updated)
+                              if (updated.length === 0) set('is_central_warehouse_good', false)
+                            }
+                            if (form.central_kitchens?.includes(deletedSuppId)) {
+                              const updated = form.central_kitchens.filter(id => id !== deletedSuppId)
+                              set('central_kitchens', updated)
+                              if (updated.length === 0) set('is_central_kitchen_good', false)
+                            }
+                          }
+                        }}><i className="fa-solid fa-xmark"/></button>
+                      </div>
+                    ))}
+                    <button className="btn-o" style={{fontSize:'.83rem',alignSelf:'flex-start', padding: '6px 12px', background: '#fff'}}
+                      onClick={()=>set('suppliers_list',[...(form.suppliers_list||[]),{supp_id:'',purchase_price:'',is_default:form.suppliers_list?.length===0}])}>
+                      <i className="fa-solid fa-plus"/> Tedarikçi Ekle
+                    </button>
+                  </div>
                 </div>
 
-                <SectionHead label="Satış Malı"/>
-                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'.855rem',color:'#334155',cursor:'pointer'}}>
-                  <input type="checkbox" checked={form.saleable}
-                    onChange={e=>set('saleable',e.target.checked)}
-                    style={{width:16,height:16,accentColor:'#fbbf24'}}/>
-                  Bu stok malı tek başına satılabilir
-                </label>
-                {form.saleable && (
-                  <div style={{marginTop:14}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:10}}>
-                      <div>
-                        <label className="f-label">Satış Malı Adı</label>
-                        <input className="f-input" value={form.sale_name} onChange={e=>set('sale_name',e.target.value)} placeholder="Ör: Su Pet"/>
+                {/* 2. Merkez Aktarımı Block */}
+                {suppliers.some(s => s.supplier_kind === 'internal_warehouse') && (
+                  <div style={{ position: 'relative', borderLeft: form.is_central_warehouse_good ? '3px solid #3b82f6' : '3px solid #ef4444', paddingLeft: 20, paddingBottom: 24, marginLeft: 8 }}>
+                    <div style={{ position: 'absolute', bottom: -2, left: -7.5, width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: `8px solid ${form.is_central_warehouse_good ? '#3b82f6' : '#ef4444'}` }} />
+                    <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'4px 0',marginBottom: form.is_central_warehouse_good ? 10 : 0}}>
+                      <span style={{fontSize:'.9rem',color:form.is_central_warehouse_good?'#3b82f6':'#64748b',fontWeight:form.is_central_warehouse_good?700:600}}>Merkez Depo Aktarımı</span>
+                      <div style={{position:'relative',width:44,height:24,background:form.is_central_warehouse_good?'#3b82f6':'#cbd5e1',borderRadius:24,transition:'.2s'}}>
+                        <div style={{position:'absolute',top:2,left:form.is_central_warehouse_good?22:2,width:20,height:20,background:'#fff',borderRadius:'50%',transition:'.2s',boxShadow:'0 1px 2px rgba(0,0,0,0.1)'}}/>
+                        <input type="checkbox" checked={!!form.is_central_warehouse_good}
+                          onChange={e=>{
+                            const checked = e.target.checked
+                            set('is_central_warehouse_good', checked)
+                            if (!checked) {
+                              set('central_warehouses', [])
+                              const updatedSuppliers = (form.suppliers_list || []).filter(s => {
+                                const sup = suppliers.find(x => x.id === s.supp_id)
+                                return sup?.supplier_kind !== 'internal_warehouse'
+                              })
+                              set('suppliers_list', updatedSuppliers)
+                            }
+                          }}
+                          style={{display:'none'}}/>
                       </div>
-                      <div>
-                        <label className="f-label">Satış Malı Grubu</label>
-                        <SearchableSelect
-                          value={form.sale_group}
-                          onChange={v=>set('sale_group',v)}
-                          options={cats.filter(c=>!c.parent_id).map(c=>({value:c.id,label:c.name}))}
-                          placeholder="Seçin…"
-                        />
+                    </label>
+                    
+                    {form.is_central_warehouse_good && (
+                      <div style={{background:'#f8fafc',padding:14,borderRadius:10,border:'1px solid #e2e8f0'}}>
+                        <label className="f-label" style={{fontSize:'.78rem',color:'#64748b',marginBottom:8}}>Hangi Merkez Deponun/Depoların Malı?</label>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:10}}>
+                          {suppliers.filter(s => s.supplier_kind === 'internal_warehouse').map(wh => {
+                            const isChecked = (form.central_warehouses || []).includes(wh.id)
+                            return (
+                              <label key={wh.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:'.8rem',color:'#475569',cursor:'pointer',background:isChecked?'#eff6ff':'#fff',padding:'6px 12px',borderRadius:20,border:`1px solid ${isChecked?'#3b82f6':'#cbd5e1'}`}}>
+                                <input type="checkbox" checked={isChecked}
+                                  onChange={e=>{
+                                    let list = [...(form.central_warehouses || [])]
+                                    if (e.target.checked) {
+                                      if (!list.includes(wh.id)) list.push(wh.id)
+                                      let suppList = [...(form.suppliers_list || [])]
+                                      if (!suppList.some(s => s.supp_id === wh.id)) {
+                                        suppList.push({ supp_id: wh.id, purchase_price: '', is_default: suppList.length === 0 })
+                                      }
+                                      if (suppList.length > 0) {
+                                        if (!suppList.some(s => s.is_default)) {
+                                          suppList = suppList.map((s) => ({ ...s, is_default: s.supp_id === wh.id }))
+                                        } else if (list.length === 1) {
+                                          suppList = suppList.map(s => ({ ...s, is_default: s.supp_id === wh.id }))
+                                        }
+                                      }
+                                      set('suppliers_list', suppList)
+                                    } else {
+                                      list = list.filter(id => id !== wh.id)
+                                      let suppList = (form.suppliers_list || []).filter(s => s.supp_id !== wh.id)
+                                      if (suppList.length > 0 && !suppList.some(s => s.is_default)) {
+                                        suppList[0].is_default = true
+                                      }
+                                      set('suppliers_list', suppList)
+                                    }
+                                    set('central_warehouses', list)
+                                  }}
+                                  style={{display:'none'}}/>
+                                <i className={`fa-solid ${isChecked?'fa-square-check':'fa-square'}`} style={{color:isChecked?'#3b82f6':'#94a3b8'}} />
+                                {wh.name}
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                    <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,
-                      padding:'9px 12px',fontSize:'.8rem',color:'#1e40af',display:'flex',alignItems:'flex-start',gap:8}}>
-                      <i className="fa-solid fa-circle-info" style={{marginTop:2,flexShrink:0}}/>
-                      Kaydedildikten sonra bu stok malı için otomatik bir satış malı oluşturulacaktır.
-                    </div>
+                    )}
                   </div>
                 )}
+
+                {/* 3. Lokasyonlar Block */}
+                <div style={{ paddingLeft: 20, marginLeft: 8, marginTop: 4 }}>
+                  <SectionHead label="Lokasyonlar"/>
+                  <div style={{marginBottom:18}}>
+                    <LocationPicker value={form.location} onChange={v=>set('location',v)}
+                      branches={branches} branchTemplates={branchTpls}/>
+                    <p className="f-hint" style={{marginTop:8}}>Birden fazla şube veya hazır grup seçebilirsiniz.</p>
+                  </div>
+                </div>
+
               </div>}
 
               {/* ── Tab 3: Depo (WMS) Ayarları ── */}

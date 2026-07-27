@@ -125,6 +125,20 @@ function getAnaDepoNodes(nodes) {
   return list
 }
 
+function getUretimNodes(nodes) {
+  if (!Array.isArray(nodes)) return []
+  const list = []
+  for (const n of nodes) {
+    if (n.type === 'uretim') {
+      list.push(n)
+    }
+    if (n.children && n.children.length) {
+      list.push(...getUretimNodes(n.children))
+    }
+  }
+  return list
+}
+
 export default function Company() {
   const toast = useToast()
   const [tree, setTree]       = useState([])
@@ -178,8 +192,9 @@ export default function Company() {
     await db.from('settings').upsert({ key: 'company_tree', value: newTree }, { onConflict: 'key' })
     setTree([...newTree])
 
-    // Sync anadepo nodes to suppliers
+    // Sync nodes to suppliers
     try {
+      // 1. Sync anadepo nodes to suppliers
       const anadepoNodes = getAnaDepoNodes(newTree)
       const activeSyncKeys = anadepoNodes.map(n => `anadepo_${n.id}`)
 
@@ -211,6 +226,47 @@ export default function Company() {
         for (const s of existingSuppliers) {
           if (s.sync_key && !activeSyncKeys.includes(s.sync_key)) {
             // Soft delete/deactivate this warehouse since it was removed from the tree
+            const { error: updateErr } = await db.from('suppliers').update({
+              active: false,
+              deleted_at: new Date().toISOString()
+            }).eq('id', s.id)
+            if (updateErr) throw updateErr
+          }
+        }
+      }
+
+      // 2. Sync uretim (Merkez Mutfak) nodes to suppliers
+      const uretimNodes = getUretimNodes(newTree)
+      const activeKitchenSyncKeys = uretimNodes.map(n => `uretim_${n.id}`)
+
+      // Upsert current kitchen nodes
+      for (const node of uretimNodes) {
+        const syncKey = `uretim_${node.id}`
+        const { error: upsertErr } = await db.from('suppliers').upsert({
+          name: node.name,
+          supplier_kind: 'internal_kitchen',
+          source_workspace_scope: 'uretim',
+          source_branch_id: node.id,
+          is_system_generated: true,
+          sync_key: syncKey,
+          active: true,
+          deleted_at: null
+        }, { onConflict: 'sync_key' })
+        if (upsertErr) throw upsertErr
+      }
+
+      // Fetch all system-generated internal kitchens to deactivate deleted ones
+      const { data: existingKitchens, error: selectKitchenErr } = await db.from('suppliers')
+        .select('id, sync_key')
+        .eq('supplier_kind', 'internal_kitchen')
+        .eq('is_system_generated', true)
+
+      if (selectKitchenErr) throw selectKitchenErr
+
+      if (existingKitchens) {
+        for (const s of existingKitchens) {
+          if (s.sync_key && !activeKitchenSyncKeys.includes(s.sync_key)) {
+            // Soft delete/deactivate this kitchen since it was removed from the tree
             const { error: updateErr } = await db.from('suppliers').update({
               active: false,
               deleted_at: new Date().toISOString()

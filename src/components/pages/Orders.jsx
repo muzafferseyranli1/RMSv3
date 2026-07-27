@@ -47,6 +47,7 @@ import {
   resolveSelectionIds,
 } from '@/lib/branchPurchasing'
 import { calculateWarehouseDemand } from '@/lib/warehouseDemandPlanning'
+import { calculateKitchenDemand } from '@/lib/kitchenDemandPlanning'
 
 function OrderTabBar({ activeTab, onChange, counts }) {
   return (
@@ -1108,7 +1109,7 @@ function collectMissingDueFlows({ flows, orders, branch, branchId, targetDate, s
     if (matchedItems.length === 0) return false
 
     for (const item of matchedItems) {
-      const supId = flow.receiver_scope === 'warehouse'
+      const supId = (flow.receiver_scope === 'warehouse' || flow.receiver_scope === 'kitchen')
         ? flow.supplier_id
         : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
       if (supId) expectedSupplierIds.add(String(supId).toLowerCase())
@@ -1266,7 +1267,7 @@ function createDraftLines({
 
   if (targetSupplierId) {
     items = items.filter(item => {
-      const resolvedSuppId = flow.receiver_scope === 'warehouse'
+      const resolvedSuppId = (flow.receiver_scope === 'warehouse' || flow.receiver_scope === 'kitchen')
         ? flow.supplier_id
         : resolveBranchLineSupplierId(item, flow.supplier_id, allSuppliers)
       return String(resolvedSuppId).toLowerCase() === String(targetSupplierId).toLowerCase()
@@ -1331,12 +1332,12 @@ function createDraftLines({
     }
   }
 
-  if (flow.receiver_scope === 'warehouse') {
+  if (flow.receiver_scope === 'warehouse' || flow.receiver_scope === 'kitchen') {
     const receivedByOrderLine = buildReceivedQtyByOrderLine(allReceiptLines)
     const planningEnd = toDateOnly(planningEndDate)
     const connectedBranchIds = new Set(connectedBranches.map(item => item.id))
     const warehouseSupplier = allSuppliers.find(
-      supplier => supplier?.supplier_kind === 'internal_warehouse' && supplier?.source_branch_id === branch.id
+      supplier => (supplier?.supplier_kind === 'internal_warehouse' || supplier?.supplier_kind === 'internal_kitchen') && supplier?.source_branch_id === branch.id
     )
 
     // 1. Calculate connected branches' recipe forecasts dynamically using the grouped maps
@@ -2636,7 +2637,7 @@ export default function Orders() {
       // Group draft lines by supplier
       const linesBySupplier = {}
       for (const item of matchedItems) {
-        const supId = flow.receiver_scope === 'warehouse'
+        const supId = (flow.receiver_scope === 'warehouse' || flow.receiver_scope === 'kitchen')
           ? flow.supplier_id
           : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
         if (!supId) continue
@@ -2896,7 +2897,7 @@ export default function Orders() {
       const linesBySupplier = {}
       for (const line of allDraftLines) {
         const item = stockItems.find(x => x.id === line.stock_item_id)
-        const resolvedSupId = flow.receiver_scope === 'warehouse'
+        const resolvedSupId = (flow.receiver_scope === 'warehouse' || flow.receiver_scope === 'kitchen')
           ? flow.supplier_id
           : resolveBranchLineSupplierId(item, flow.supplier_id, suppliers)
         if (!linesBySupplier[resolvedSupId]) {
@@ -2919,8 +2920,12 @@ export default function Orders() {
 
         const targetSupplier = suppliers.find(row => row.id === supId)
         const supplierKind = targetSupplier?.supplier_kind || 'external'
-        if (flow.receiver_scope === 'warehouse' && supplierKind !== 'external') {
-          toast('Ana depo satinalma akisi yalnizca dis tedarikci ile siparis olusturabilir.', 'error')
+        if (flow.receiver_scope === 'warehouse' && supplierKind === 'internal_warehouse') {
+          toast('Ana depo satınalma akışı ana deponun kendisi ile sipariş oluşturamaz.', 'error')
+          continue
+        }
+        if (flow.receiver_scope === 'kitchen' && supplierKind === 'internal_kitchen') {
+          toast('Merkez mutfak satınalma akışı merkez mutfağın kendisi ile sipariş oluşturamaz.', 'error')
           continue
         }
         
