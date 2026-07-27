@@ -52,17 +52,68 @@ fun AppScaffold(
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("PersonelPrefs", Context.MODE_PRIVATE)
     var showSidebarMenu by remember { mutableStateOf(false) }
+    var unreadNotificationCount by remember { mutableStateOf(0) }
+
+    val currentPersonnelId = staffSession?.id ?: ""
+    val currentBranchId = staffSession?.activeBranchId ?: ""
+
+    LaunchedEffect(key1 = staffSession) {
+        if (currentPersonnelId.isNotBlank()) {
+            try {
+                val repo = com.suitable.personel.data.NotificationRepository()
+                val list = repo.fetchNotifications(currentPersonnelId, currentBranchId)
+                unreadNotificationCount = list.count { !it.isRead }
+            } catch (_: Exception) {}
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         content()
 
         if (showMenu) {
-            Box(
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 16.dp, end = 16.dp)
+                    .padding(top = 16.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Notifications Bell
+                if (currentPersonnelId.isNotBlank()) {
+                    IconButton(
+                        onClick = { onNavigate("notifications") },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Bildirimler",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            if (unreadNotificationCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Red)
+                                        .align(Alignment.TopEnd),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (unreadNotificationCount > 9) "9+" else unreadNotificationCount.toString(),
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                // Menu Trigger
                 IconButton(
                     onClick = { showSidebarMenu = true },
                     modifier = Modifier.size(48.dp)
@@ -84,6 +135,20 @@ fun AppScaffold(
                         onClick = {
                             showSidebarMenu = false
                             onNavigate("home")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("📢  Duyurular") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("announcements")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("🔔  Bildirimler") },
+                        onClick = {
+                            showSidebarMenu = false
+                            onNavigate("notifications")
                         }
                     )
                     DropdownMenuItem(
@@ -227,6 +292,20 @@ fun HomeScreen(
     
     val repo = remember { TaskRepository() }
 
+    // Recent announcements
+    var recentAnnouncements by remember { mutableStateOf<List<com.suitable.personel.data.AnnouncementItem>>(emptyList()) }
+    val actorId = staffSession?.id ?: ""
+    val activeBranchId = staffSession?.activeBranchId ?: ""
+
+    LaunchedEffect(staffSession) {
+        if (actorId.isNotBlank()) {
+            try {
+                val annRepo = com.suitable.personel.data.AnnouncementRepository()
+                recentAnnouncements = annRepo.fetchAnnouncements(actorId, activeBranchId).take(2)
+            } catch (_: Exception) {}
+        }
+    }
+
     // PDKS State Machine
     var pdksState by remember { mutableStateOf(pref.getString("pdksState", "OUT") ?: "OUT") }
     var pdksAccumulatedSeconds by remember { mutableStateOf(pref.getLong("pdksAccumulatedSeconds", 0L)) }
@@ -294,8 +373,6 @@ fun HomeScreen(
         val afterTomorrow = sdf.format(cal.time)
         Triple(today, tomorrow, afterTomorrow)
     }
-
-    val actorId = staffSession?.id ?: ""
 
     LaunchedEffect(actorId) {
         if (actorId.isNotBlank()) {
@@ -982,6 +1059,62 @@ fun HomeScreen(
                 }
 
 
+
+                // Son Duyurular
+                if (recentAnnouncements.isNotEmpty()) {
+                    Text(
+                        text = "Son Duyurular",
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                    recentAnnouncements.forEach { ann ->
+                        val priorityColor = when (ann.priority.lowercase()) {
+                            "urgent" -> Color(0xFFDC2626)
+                            "high" -> Color(0xFFF5A623)
+                            "normal" -> Color(0xFF2563EB)
+                            else -> Color(0xFF4B5563)
+                        }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNavigate("announcements") },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            border = BorderStroke(1.dp, priorityColor.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(priorityColor)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = ann.title,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = ann.content,
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 11.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF94A3B8))
+                            }
+                        }
+                    }
+                }
 
                 // Card 3: Görevler (Geniş Kart)
                 Card(

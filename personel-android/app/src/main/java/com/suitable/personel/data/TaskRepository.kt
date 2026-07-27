@@ -177,6 +177,15 @@ data class FormSubmissionPhoto(
 
 class TaskRepository {
 
+    private fun parseBool(v: Any?): Boolean {
+        return when (v) {
+            is Boolean -> v
+            is String -> v.toBoolean()
+            is Number -> v.toInt() == 1
+            else -> false
+        }
+    }
+
     // ─── Hiyerarşi & Ayarlar Yükleme ─────────────────────────────────────────
 
     suspend fun fetchEmployeesAndPositionsAndBranches(): Triple<List<EmployeeInfo>, List<PositionInfo>, List<BranchInfo>> {
@@ -549,6 +558,27 @@ class TaskRepository {
         }
     }
 
+    suspend fun fetchEmployeeName(employeeId: String): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val empReq = QueryRequest(
+                    table = "settings",
+                    select = "value",
+                    filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
+                )
+                val empRes = ApiClient.apiService.executeQuery(empReq)
+                val empList = parseJsonList((empRes.data as? List<*>)?.firstOrNull() as? Map<*, *>) ?: emptyList()
+                val employeeRow = empList.find { it["id"]?.toString() == employeeId }
+                if (employeeRow != null) {
+                    val firstName = employeeRow["firstName"]?.toString() ?: ""
+                    val lastName = employeeRow["lastName"]?.toString() ?: ""
+                    return@withContext "$firstName $lastName".trim()
+                }
+            } catch (_: Exception) {}
+            "Bir personel"
+        }
+    }
+
     suspend fun updateTaskStatus(
         taskId: String,
         newStatus: String,
@@ -562,23 +592,25 @@ class TaskRepository {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                if (newStatus == "completed" || newStatus == "pending_completion_approval") {
-                    // 0) Fetch task details to check if creator
-                    val taskReq = QueryRequest(
-                        table = "tasks",
-                        filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId))
-                    )
-                    val taskRes = ApiClient.apiService.executeQuery(taskReq)
-                    val taskRow = (taskRes.data as? List<*>)?.firstOrNull() as? Map<*, *>
-                    val createdBy = taskRow?.get("created_by_personnel_id")?.toString() ?: ""
-                    val approvalRequired = when (val appReqVal = taskRow?.get("approval_required")) {
-                        is Boolean -> appReqVal
-                        is String -> appReqVal.toBoolean()
-                        is Number -> appReqVal.toInt() == 1
-                        else -> false
-                    }
-                    val isCreator = createdBy == personnelId
+                // Fetch task details first
+                val taskReq = QueryRequest(
+                    table = "tasks",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId))
+                )
+                val taskRes = ApiClient.apiService.executeQuery(taskReq)
+                val taskRow = (taskRes.data as? List<*>)?.firstOrNull() as? Map<*, *> ?: return@withContext false
+                val createdBy = taskRow["created_by_personnel_id"]?.toString() ?: ""
+                val title = taskRow["title"]?.toString() ?: "Görev"
+                val approvalRequired = when (val appReqVal = taskRow["approval_required"]) {
+                    is Boolean -> appReqVal
+                    is String -> appReqVal.toBoolean()
+                    is Number -> appReqVal.toInt() == 1
+                    else -> false
+                }
+                val isCreator = createdBy == personnelId
+                val employeeName = fetchEmployeeName(personnelId)
 
+                if (newStatus == "completed" || newStatus == "pending_completion_approval") {
                     if (isCreator) {
                         // Force update all assignees for this task to is_completed = true
                         val partUpdateAllReq = QueryRequest(
@@ -622,19 +654,6 @@ class TaskRepository {
                             }
                         }
 
-                        // Fetch employee name
-                        val empReq = QueryRequest(
-                            table = "settings",
-                            select = "value",
-                            filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
-                        )
-                        val empRes = ApiClient.apiService.executeQuery(empReq)
-                        val empList = parseJsonList((empRes.data as? List<*>)?.firstOrNull() as? Map<*, *>) ?: emptyList()
-                        val employeeRow = empList.find { it["id"]?.toString() == personnelId }
-                        val firstName = employeeRow?.get("firstName")?.toString() ?: ""
-                        val lastName = employeeRow?.get("lastName")?.toString() ?: ""
-                        val employeeName = "$firstName $lastName".trim().ifEmpty { "Görevi veren" }
-
                         // Mark entire task completed / pending completion approval
                         val dataMap = mutableMapOf<String, Any?>(
                             "status" to newStatus,
@@ -655,6 +674,30 @@ class TaskRepository {
                         if (isSuccess) {
                             val text = "${employeeName} (Görevi veren) görevi tamamen kapattı. Görev ${if (newStatus == "pending_completion_approval") "kapanış onayına gönderildi" else "tamamlandı"}."
                             addSystemChatMessage(taskId, text)
+
+                            // Notify all assignees
+                            val partFetchReq = QueryRequest(
+                                table = "task_participants",
+                                filters = listOf(
+                                    mapOf("type" to "eq", "col" to "task_id", "val" to taskId),
+                                    mapOf("type" to "eq", "col" to "participant_type", "val" to "assignee")
+                                )
+                            )
+                            val partRes = ApiClient.apiService.executeQuery(partFetchReq)
+                            val participantsList = (partRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                            
+                            participantsList.forEach { p ->
+                                val assigneeId = p["personnel_id"]?.toString() ?: ""
+                                if (assigneeId != personnelId) {
+                                    NotificationRepository().createNotification(
+                                        personnelId = assigneeId,
+                                        title = "Görev Kapatıldı",
+                                        message = "'$title' görevi veren kişi tarafından kapatıldı.",
+                                        type = "task_updated",
+                                        relatedId = taskId
+                                    )
+                                }
+                            }
 
                             // Resolve linked maintenance ticket if necessary
                             if (cost != null && linkedEntityTable == "maintenance_tickets" && !linkedEntityId.isNullOrBlank()) {
@@ -698,38 +741,27 @@ class TaskRepository {
                     val partRes = ApiClient.apiService.executeQuery(partFetchReq)
                     val participantsList = (partRes.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
 
-                    val parseBool = { v: Any? ->
-                        when (v) {
-                            is Boolean -> v
-                            is String -> v.toBoolean()
-                            is Number -> v.toInt() == 1
-                            else -> false
-                        }
-                    }
-
                     // Check if other assignees are completed
                     val remainingIncomplete = participantsList.filter { p ->
                         val isSelf = p["personnel_id"]?.toString() == personnelId
                         if (isSelf) false else !parseBool(p["is_completed"])
                     }
 
-                    // Fetch employee name
-                    val empReq = QueryRequest(
-                        table = "settings",
-                        select = "value",
-                        filters = listOf(mapOf("type" to "eq", "col" to "key", "val" to "personnel_records"))
-                    )
-                    val empRes = ApiClient.apiService.executeQuery(empReq)
-                    val empList = parseJsonList((empRes.data as? List<*>)?.firstOrNull() as? Map<*, *>) ?: emptyList()
-                    val employeeRow = empList.find { it["id"]?.toString() == personnelId }
-                    val firstName = employeeRow?.get("firstName")?.toString() ?: ""
-                    val lastName = employeeRow?.get("lastName")?.toString() ?: ""
-                    val employeeName = "$firstName $lastName".trim().ifEmpty { "Bir personel" }
-
                     val isSuccess = if (remainingIncomplete.isNotEmpty()) {
                         // Not all completed! Just add a system message and update task's updated_at
                         val text = "${employeeName} görevini tamamladı. Özet: ${closureSummary ?: "Özet girilmedi"}"
                         addSystemChatMessage(taskId, text)
+
+                        // Notify creator
+                        if (createdBy != personnelId) {
+                            NotificationRepository().createNotification(
+                                personnelId = createdBy,
+                                title = "Görevde İşlem Yapıldı",
+                                message = "$employeeName '$title' görevi için kendi kısmını tamamladı.",
+                                type = "task_updated",
+                                relatedId = taskId
+                            )
+                        }
 
                         // Update tasks table's updated_at to notify changes
                         val req = QueryRequest(
@@ -758,6 +790,17 @@ class TaskRepository {
                             data = dataMap
                         )
                         val res = ApiClient.apiService.executeQuery(req)
+                        
+                        // Notify creator
+                        if (res.error == null && createdBy != personnelId) {
+                            NotificationRepository().createNotification(
+                                personnelId = createdBy,
+                                title = "Görev Tamamlandı",
+                                message = "'$title' görevi atanan tüm kişiler tarafından tamamlandı.",
+                                type = "task_updated",
+                                relatedId = taskId
+                            )
+                        }
                         res.error == null
                     }
 
@@ -796,12 +839,35 @@ class TaskRepository {
                         data = dataMap
                     )
                     val res = ApiClient.apiService.executeQuery(req)
-                    if (res.error == null) {
+                    val isSuccess = res.error == null
+                    if (isSuccess) {
                         if (newStatus == "in_progress") {
                             addSystemChatMessage(taskId, "Göreve başlandı.")
+                            
+                            // Notify creator that assignee started the task
+                            if (createdBy != personnelId) {
+                                NotificationRepository().createNotification(
+                                    personnelId = createdBy,
+                                    title = "Göreve Başlandı",
+                                    message = "$employeeName '$title' görevine başladı.",
+                                    type = "task_updated",
+                                    relatedId = taskId
+                                )
+                            }
+                        } else {
+                            // Notify status change
+                            if (createdBy != personnelId) {
+                                NotificationRepository().createNotification(
+                                    personnelId = createdBy,
+                                    title = "Görev Durumu Güncellendi",
+                                    message = "$employeeName '$title' görev durumunu '$newStatus' olarak güncelledi.",
+                                    type = "task_updated",
+                                    relatedId = taskId
+                                )
+                            }
                         }
-                        true
-                    } else false
+                    }
+                    isSuccess
                 }
             } catch (e: Exception) {
                 Log.e("TaskRepository", "updateTaskStatus error", e)
@@ -1153,6 +1219,24 @@ class TaskRepository {
                     )
                 )
                 ApiClient.apiService.executeQuery(systemMsgReq)
+
+                // 8) Trigger "yeni görev atandı" notifications
+                val allAssigneeIds = (listOf(responsibleId) + collaboratorIds).filter { it.isNotBlank() }.distinct()
+                allAssigneeIds.forEach { assigneeId ->
+                    if (assigneeId != creatorId) {
+                        try {
+                            NotificationRepository().createNotification(
+                                personnelId = assigneeId,
+                                title = "Yeni Görev Atandı",
+                                message = "Size yeni bir görev atandı: $title",
+                                type = "task_assigned",
+                                relatedId = taskId
+                            )
+                        } catch (ne: Exception) {
+                            Log.e("TaskRepository", "Failed to create task notification for $assigneeId", ne)
+                        }
+                    }
+                }
 
                 true
             } catch (e: Exception) {
@@ -1585,6 +1669,14 @@ class TaskRepository {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                // Fetch task title first
+                val taskRes = ApiClient.apiService.executeQuery(QueryRequest(
+                    table = "tasks",
+                    filters = listOf(mapOf("type" to "eq", "col" to "id", "val" to taskId))
+                ))
+                val taskRow = (taskRes.data as? List<*>)?.firstOrNull() as? Map<*, *>
+                val title = taskRow?.get("title")?.toString() ?: "Görev"
+
                 val requiresApproval = !isFormTask && canReject(fromPositionId ?: "", toPositionId ?: "", positions)
                 val now = java.time.Instant.now().toString()
 
@@ -1606,6 +1698,16 @@ class TaskRepository {
                     if (res.error != null) return@withContext false
 
                     addSystemChatMessage(taskId, "Delege talebi onay bekliyor.")
+
+                    // Notify target about delegation request
+                    val fromEmployee = fetchEmployeeName(fromPersonnelId)
+                    NotificationRepository().createNotification(
+                        personnelId = toPersonnelId,
+                        title = "Görev Delege Talebi",
+                        message = "$fromEmployee size '$title' görevini delege etmek istiyor.",
+                        type = "task_assigned",
+                        relatedId = taskId
+                    )
                     true
                 } else {
                     // Immediate delegation!
@@ -1664,6 +1766,16 @@ class TaskRepository {
 
                     val nameText = if (toEmployee != null) "${toEmployee.firstName} ${toEmployee.lastName}" else "yeni personele"
                     addSystemChatMessage(taskId, "Görev $nameText personeline delege edildi.")
+
+                    // Notify target about immediate delegation
+                    val fromEmployee = fetchEmployeeName(fromPersonnelId)
+                    NotificationRepository().createNotification(
+                        personnelId = toPersonnelId,
+                        title = "Görev Delege Edildi",
+                        message = "'$title' görevi $fromEmployee tarafından size delege edildi.",
+                        type = "task_assigned",
+                        relatedId = taskId
+                    )
                     true
                 }
             } catch (e: Exception) {
@@ -1818,6 +1930,104 @@ class TaskRepository {
             } catch (e: Exception) {
                 Log.e("TaskRepository", "addTaskAttachment error", e)
                 false
+            }
+        }
+    }
+
+    suspend fun fetchFormTemplate(templateId: String): Map<String, Any>? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = QueryRequest(
+                    table = "form_templates",
+                    filters = listOf(
+                        mapOf("type" to "eq", "col" to "id", "val" to templateId),
+                        mapOf("type" to "is", "col" to "deleted_at", "val" to null)
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(req)
+                val rows = (res.data as? List<*>)?.mapNotNull { it as? Map<String, Any> } ?: emptyList()
+                rows.firstOrNull()
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "fetchFormTemplate error", e)
+                null
+            }
+        }
+    }
+
+    suspend fun submitForm(
+        templateId: String,
+        branchId: String,
+        submittedBy: String,
+        answers: List<Map<String, Any?>>,
+        taskId: String,
+        latitude: Double?,
+        longitude: Double?,
+        photos: List<Map<String, Any?>> = emptyList()
+    ): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val submissionId = java.util.UUID.randomUUID().toString()
+                
+                val branchName = fetchEmployeesAndPositionsAndBranches().third.find { it.id == branchId }?.name ?: "Şube"
+                val todayDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                
+                val metadata = mapOf(
+                    "branch_name" to branchName,
+                    "form_date" to todayDate,
+                    "device_timestamp" to java.time.Instant.now().toString()
+                )
+
+                // 1) Insert form_submissions
+                val subReq = QueryRequest(
+                    table = "form_submissions",
+                    operation = "insert",
+                    data = mapOf(
+                        "id" to submissionId,
+                        "template_id" to templateId,
+                        "branch_id" to branchId,
+                        "submitted_by" to submittedBy,
+                        "status" to "completed",
+                        "answers_json" to ApiClient.gson.toJson(answers),
+                        "geo_latitude" to (latitude ?: 0.0),
+                        "geo_longitude" to (longitude ?: 0.0),
+                        "device_timestamp" to java.time.Instant.now().toString(),
+                        "metadata" to ApiClient.gson.toJson(metadata),
+                        "created_at" to java.time.Instant.now().toString()
+                    )
+                )
+                val res = ApiClient.apiService.executeQuery(subReq)
+                if (res.error != null) {
+                    Log.e("TaskRepository", "submitForm error: ${res.error}")
+                    return@withContext null
+                }
+
+                // 2) Insert photos
+                photos.forEach { photoInfo ->
+                    val fileUrl = photoInfo["file_url"]?.toString() ?: ""
+                    val fieldId = photoInfo["field_id"]?.toString() ?: ""
+                    if (fileUrl.isNotBlank()) {
+                        val photoReq = QueryRequest(
+                            table = "form_submission_photos",
+                            operation = "insert",
+                            data = mapOf(
+                                "id" to java.util.UUID.randomUUID().toString(),
+                                "submission_id" to submissionId,
+                                "field_id" to fieldId,
+                                "file_url" to fileUrl,
+                                "file_name" to (photoInfo["file_name"]?.toString() ?: "photo.jpg"),
+                                "captured_at" to java.time.Instant.now().toString(),
+                                "is_live_capture" to true,
+                                "created_at" to java.time.Instant.now().toString()
+                            )
+                        )
+                        ApiClient.apiService.executeQuery(photoReq)
+                    }
+                }
+
+                submissionId
+            } catch (e: Exception) {
+                Log.e("TaskRepository", "submitForm exception", e)
+                null
             }
         }
     }

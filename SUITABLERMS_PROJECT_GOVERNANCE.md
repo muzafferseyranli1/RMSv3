@@ -1,4 +1,4 @@
-﻿# SuitableRMS Project Governance
+# SuitableRMS Project Governance
 
 Yürürlük tarihi: `2026-05-09`  
 Status: `active — tüm agent'lar için bağlayıcı`
@@ -15,12 +15,13 @@ Status: `active — tüm agent'lar için bağlayıcı`
 
 ## 2. Üretim Altyapısı
 
-| Servis | Platform | URL |
-|--------|----------|-----|
-| Veritabanı | Railway Postgres | `postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway` |
-| API | Railway | `https://rms-api-production-219d.up.railway.app` |
-| Frontend | Railway | `https://suitablerms.up.railway.app` |
-| Railway Proje | railway.com | `SuitableRMS / production` |
+| Servis | Platform / Sunucu | URL / Adres |
+|--------|------------------|-------------|
+| Web Uygulaması (Frontend) | Hosting Dünyam VPS (Nginx) | `http://188.132.198.144:3000` |
+| API Servisi (Node Backend) | Hosting Dünyam VPS (Node.js) | `http://188.132.198.144:3001` |
+| Veritabanı | Hosting Dünyam VPS (PostgreSQL 15) | `postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway` |
+| Yönetim Paneli | Coolify v4 | `http://188.132.198.144:8000` |
+| Git & Release Deposu | GitHub | `https://github.com` (Yayinla.bat ve git push akışları aynen geçerlidir) |
 
 ---
 

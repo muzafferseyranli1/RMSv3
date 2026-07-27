@@ -118,7 +118,7 @@ const WmsVehicles = lazy(() => import('@/components/pages/WmsVehicles'))
 const WmsDashboard = lazy(() => import('@/components/pages/WmsDashboard'))
 const WmsReports = lazy(() => import('@/components/pages/WmsReports'))
 
-const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket', '/soru-cevap', '/cihaz-ekrani']
+const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket', '/soru-cevap', '/cihaz-ekrani', '/cihazekrani', '/cihazekranı', '/cihaz-ekranı']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
 
 function isDynamicImportError(error) {
@@ -383,6 +383,9 @@ function AppShell() {
             <Route path="/kds-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><KDS /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/pickup-screen" element={<WorkspaceBranchScope><WorkspaceGate><ScreenFrame><PickupScreen /></ScreenFrame></WorkspaceGate></WorkspaceBranchScope>} />
             <Route path="/cihaz-ekrani" element={<MultiDeviceTerminal />} />
+            <Route path="/cihazekrani" element={<Navigate to="/cihaz-ekrani" replace />} />
+            <Route path="/cihazekranı" element={<Navigate to="/cihaz-ekrani" replace />} />
+            <Route path="/cihaz-ekranı" element={<Navigate to="/cihaz-ekrani" replace />} />
             <Route path="/q/:token" element={<QrRedirector />} />
             <Route path="/anket/:token" element={<PublicSurvey />} />
             <Route path="/soru-cevap" element={<QuestionAnswerPortal />} />

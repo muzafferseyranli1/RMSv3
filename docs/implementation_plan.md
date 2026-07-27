@@ -1,28 +1,24 @@
-# Servis Sırası (Courses) ve Hold & Fire Yönetimi Geliştirme Planı
+# Duyuru ve Bildirim Sistemi Geliştirme Planı
 
-Bu plan, RMS/POS sistemimize servis sırası yönetimi (Başlangıçlar, Ara Sıcaklar, Ana Yemekler, Tatlılar, İçecekler vb.) ve "Hold & Fire" (Beklet / Marş Et) akışını kazandırmayı amaçlar. DB-First mimarisini koruyarak, KDS ekranının açık masalardaki sipariş durumlarını anlık yansıtmasını sağlar.
+Bu plan, `personel-android` mobil uygulamasına çalışanlar arası duyuru yapma, okuma, okundu onayı verme özellikleri ile yeni görev atama, durum güncelleme, geciken görevler ve yeni duyuru olaylarına dair bildirim takip arayüzleri eklemeyi amaçlar.
 
 ---
 
 ## Kullanıcı İncelemesi Gereken Konular
 
 > [!IMPORTANT]
-> **Aktif Masaların KDS Üzerindeki Görünürlüğü (Kritik Mimari Karar):**
-> Mevcut yapıda KDS ekranı sadece ödemesi tamamlanmış (`status = 'completed'`) siparişleri göstermektedir. Servis sırası ve Hold & Fire yönetiminin mutfakta anlamlı olabilmesi için açık masalardaki siparişlerin ödeme alınmadan önce de KDS'e düşmesi gerekir.
-> - Bu sorunu çözmek için `sales.status` kolonunun check constraint sınırlarını genişleterek `'active'` durumunu ekleyeceğiz.
-> - Garson "Siparişi Onayla" dediğinde açık masa siparişi `sales` tablosuna `status = 'active'` ve `kds_status = 'pending'` ile kaydedilecek/güncellenecektir.
-> - Ödeme alındığında ise bu kayıt `status = 'completed'` olarak güncellenecektir.
-> - Ciro/Finans raporları (`Reports.jsx`) halihazırda sadece `status = 'completed'` olan kayıtları filtrelediği için açık masalar raporlara yanlışlıkla dahil edilmeyecektir.
+> **Yetki Seviyeleri ve Duyuru Yapma:**
+> Duyuru ekleme yetkisi varsayılan olarak `staffSession.authorityLevel` değeri `"ADMIN"`, `"MANAGER"`, `"GENEL MERKEZ"` veya `"ŞUBE MÜDÜRÜ"` olan kişilere verilecektir. Diğer personel ise sadece duyuruları okuyabilecek ve okundu onayı (receipt) gönderebilecektir.
 
 > [!NOTE]
-> **Hazırlanma Süreleri (PrepTime):**
-> Veritabanı şemamızda (`sale_items` ve `sale_lines`) `prep_time_minutes` alanları halihazırda mevcuttur. Bu plan kapsamında bu alanlar hem ürün yönetim paneline (`SaleItems.jsx`) eklenecek hem de KDS üzerinde gecikme sayaçlarında kullanılacaktır.
+> **Görev Gecikme Bildirimleri (Auto-Detection):**
+> Gecikmiş görevlerin bildirimlerini oluşturmak için arka planda bir cron çalıştırılamayacağı için (Postgres trigger'ı yerine), kullanıcının görevler ekranını veya ana sayfayı açtığı anda **istemci bazlı otomatik tarama (overdue check)** yapılacak ve eğer veritabanında o gecikme için daha önce bildirim oluşturulmadıysa otomatik olarak `personnel_notifications` tablosuna bir satır yazılacaktır.
 
 ---
 
 ## Açık Sorular
 
-* **Counter/Zamanlayıcı (Auto-Fire):** Belirli bir servis (örn. Başlangıç) mutfakta hazırlandıktan kaç dakika sonra sonraki "HOLD" durumundaki servis (örn. Ana Yemek) otomatik olarak "FIRE" (Marş) durumuna geçmeli? Yoksa bu işlem tamamen garson kontrolünde manuel mi kalmalı? *(Varsayılan olarak 15 dakika auto-fire süresi tanımlanıp ayarlanabilir yapılacaktır.)*
+* **Duyuru Hedef Seçenekleri:** Duyuru oluşturulurken hedef kitle olarak "Tüm Şubeler" (all) ve "Sadece Kendi Şubem" (branch) dışında "Departman Bazlı" (position/role) bir ayrım eklenmeli mi? *(Plana şimdilik tüm şubeler ve aktif şube hedefleri eklenmiştir.)*
 
 ---
 
@@ -30,81 +26,77 @@ Bu plan, RMS/POS sistemimize servis sırası yönetimi (Başlangıçlar, Ara Sı
 
 ### [Veritabanı Katmanı]
 
-#### [MODIFY] [schema-railway-master.sql](file:///x:/RMSv3/schema-railway-master.sql)
-- `sales` tablosundaki `sales_status_check` kısıtlamasını (constraint) güncelleyerek `'active'` durumunu desteklemesini sağlayacağız:
+#### [NEW] [create_notifications_table.sql](file:///x:/RMSv3/sql/create_notifications_table.sql)
+- Bildirimleri veritabanında saklamak için yeni `personnel_notifications` tablosunun ve indeksinin oluşturulması:
   ```sql
-  ALTER TABLE public.sales DROP CONSTRAINT IF EXISTS sales_status_check;
-  ALTER TABLE public.sales ADD CONSTRAINT sales_status_check CHECK (status = ANY (ARRAY['completed'::text, 'cancelled'::text, 'refunded'::text, 'partially_refunded'::text, 'active'::text]));
-  ```
-- `sale_items` tablosuna varsayılan servis sırasını belirten yeni kolon eklenmesi:
-  ```sql
-  ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS default_course TEXT DEFAULT 'main_dish';
-  ```
-- `sale_lines` tablosuna servis sırası, Hold/Fire durumu ve ateşleme zamanını belirten yeni kolonların eklenmesi:
-  ```sql
-  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS course_type TEXT DEFAULT 'main_dish';
-  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS course_status TEXT DEFAULT 'fire';
-  ALTER TABLE public.sale_lines ADD COLUMN IF NOT EXISTS fired_at TIMESTAMPTZ DEFAULT now();
+  CREATE TABLE IF NOT EXISTS public.personnel_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    personnel_id TEXT NOT NULL, -- Alıcı personel ID veya 'all' veya 'branch_[branchId]'
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL, -- 'task_assigned', 'task_updated', 'task_overdue', 'new_announcement', 'order_approval_pending'
+    related_id VARCHAR(255),
+    is_read BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_personnel_notifications_personnel ON public.personnel_notifications (personnel_id);
   ```
 
 ---
 
-### [Ürün Yönetimi Katmanı]
+### [Veri / Depo Katmanı]
 
-#### [MODIFY] [SaleItems.jsx](file:///x:/RMSv3/src/components/pages/SaleItems.jsx)
-- **Tab 4 (Ayarlar)** içerisine her ürün için aşağıdaki alanları düzenleme arayüzü eklenecektir:
-  - **Varsayılan Servis Sırası (default_course):** Açılır menü (Başlangıç, Çorba, Ara Sıcak, Ana Yemek, Tatlı, İçecek).
-  - **Hazırlanma Süresi (prep_time_minutes):** Sayısal girdi alanı (Dakika bazında).
+#### [NEW] [AnnouncementRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/AnnouncementRepository.kt)
+- Duyuru verilerini Supabase/Query API üzerinden yöneten sınıf:
+  - `fetchAnnouncements(personnelId: String, branchId: String): List<AnnouncementItem>`
+  - `markAsRead(announcementId: String, personnelId: String): Boolean`
+  - `createAnnouncement(title: String, content: String, targetType: String, targetId: String?, priority: String, requestReadReceipt: Boolean, createdBy: String): Boolean`
 
----
+#### [NEW] [NotificationRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/NotificationRepository.kt)
+- Bildirim verilerini ve okundu durumlarını yöneten sınıf:
+  - `fetchNotifications(personnelId: String, branchId: String): List<NotificationItem>`
+  - `markAsRead(notificationId: String): Boolean`
+  - `markAllAsRead(personnelId: String, branchId: String): Boolean`
+  - `createNotification(personnelId: String, title: String, message: String, type: String, relatedId: String?): Boolean`
 
-### [Garson / POS Sipariş Katmanı]
-
-#### [MODIFY] [Garson.jsx](file:///x:/RMSv3/src/components/pages/Garson.jsx) & [POS.jsx](file:///x:/RMSv3/src/components/pages/POS.jsx)
-- Sepete eklenen her ürüne varsayılan olarak `default_course` değeri atanacak ve `course_status = 'fire'` olacaktır.
-- Garson sipariş sepetinde ürünler servis sırası (Course) başlıklarına göre otomatik gruplanacaktır.
-- Her ürün satırına servis sırasını değiştirmek için hızlı dropdown ve `HOLD / FIRE` durumları arasında geçiş yapmak için ikonik butonlar eklenecektir.
-- Grup başlıklarına toplu eylem butonları eklenecektir: `"Tümünü Marş Et (Fire)"`, `"Tümünü Beklet (Hold)"`.
-- **"Siparişi Onayla" (Confirm Order) Akışı:**
-  - İlgili masanın mevcut bir `'active'` satışı olup olmadığı sorgulanacaktır.
-  - Varsa, o satışa ait eski `sale_lines` silinecek ve sepetin güncel hali yeni `sale_lines` (durumlarıyla birlikte) olarak kaydedilecektir.
-  - Yoksa, yeni bir `sales` kaydı oluşturulup `status = 'active'` ve `kds_status = 'pending'` ile kaydedilecektir.
-  - Sipariş onaylandıktan sonra KDS anlık tetiklenecektir.
+#### [MODIFY] [TaskRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
+- Görev durum güncellemelerinde (`updateTaskStatus`, `updateTaskParticipant`) ilgili kişilere bildirim üretmek üzere `NotificationRepository` çağrılarının entegre edilmesi:
+  - Yeni görev atandığında alıcıya `'task_assigned'` bildirimi yazılması.
+  - Göreve yeni bir checklist eklendiğinde veya tamamlandığında oluşturana `'task_updated'` bildirimi yazılması.
 
 ---
 
-### [Mutfak Ekranı (KDS) Katmanı]
+### [Mobil Kullanıcı Arayüzü Katmanı]
 
-#### [MODIFY] [KDS.jsx](file:///x:/RMSv3/src/components/pages/KDS.jsx)
-- **Veri Sorgulama:** KDS sipariş çekme sorgusu hem `'completed'` hem de `'active'` durumundaki siparişleri kapsayacak şekilde güncellenecektir:
-  ```javascript
-  .in('status', ['completed', 'active'])
-  ```
-- **Hold & Fire Görsel Ayrımı:**
-  - `course_status === 'hold'` olan ürünler KDS kartlarında yarı saydam, soluk ve pasif görünerek mutfağın hazırlamaya başlamaması gerektiği belirtilecektir.
-  - `course_status === 'fire'` olanlar ise normal görünümde ve aktif hazırlık süresi sayacı ile gösterilecektir.
-- **Auto-Fire Mekanizması:**
-  - KDS'te bir önceki servis sırasındaki tüm ürünler tamamlandığında (veya belirli bir süre geçtiğinde), sonraki "HOLD" durumundaki ürünler otomatik olarak veritabanında "FIRE" durumuna çekilecektir.
+#### [NEW] [AnnouncementsScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/AnnouncementsScreen.kt)
+- **Liste Ekranı:** Önceliklerine göre sıralanmış (Düşük, Normal, Yüksek, Acil) duyuruların kart şeklinde gösterimi.
+- **Detay Modalı:** Tıklanan duyurunun içeriği, yazarı, tarihi ve `Okundu Bilgisi` isteği varsa "Okudum ve Anladım" onay butonu.
+- **Duyuru Ekleme Formu:** Yetkili personeller için (Admin/Müdür) başlık, içerik, hedef şube, öncelik ve okundu bilgisi onay kutusu içeren form modalı.
 
----
+#### [NEW] [NotificationsScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/NotificationsScreen.kt)
+- Bildirimlerin tarih sırasına göre listesi (Okunmuş/Okunmamış ayrımı).
+- Türüne göre ikonik görselleştirme (Gecikme -> Kırmızı Uyarı İkonu, Yeni Görev -> Liste İkonu, Duyuru -> Megafon).
+- Bildirime tıklanıldığında ilgili göreve veya duyuruya otomatik yönlendirme ve bildirimin otomatik okunmuş yapılması.
+- "Hepsini Okundu Yap" butonu.
 
-### [Offline-First ve Senkronizasyon Güvenliği]
+#### [MODIFY] [HomeScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
+- **TopAppBar Entegrasyonu:** `AppScaffold` bileşenine Menu ikonunun soluna gelecek şekilde bildirim zili (bell) ikonu eklenmesi. Okunmamış bildirim sayısı kadar zil üzerinde kırmızı badge gösterilecektir.
+- **Duyurular Panosu:** Ana sayfanın üst kısmına, en son yayınlanan duyuruları gösteren kaydırılabilir bir "Duyurular ve Haberler" panosu eklenmesi.
+- **Sidebar Menüsü:** Dropdown içerisine `Megafon İkonlu Duyurular` ve `Zil İkonlu Bildirimler` menü kalemlerinin eklenmesi.
 
-#### [MODIFY] [posTablePersistence.js](file:///x:/RMSv3/src/lib/posTablePersistence.js)
-- İnternet bağlantısının kopması durumunda, açık masa siparişlerine ait tüm detaylar (servis sıraları ve Hold/Fire durumları) `localStorage` üzerinde saklanacaktır.
-- Cihaz tekrar çevrimiçi olduğunda, arka planda bir senkronizasyon kuyruğu çalıştırılarak yerel değişiklikler PostgreSQL DB'deki `sales` ve `sale_lines` tabloları ile eşitlenecektir.
+#### [MODIFY] [MainScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt)
+- Rota ağacına `"announcements"` ve `"notifications"` ekranlarının rotalarının eklenmesi ve view state'lerinin tanımlanması.
 
 ---
 
 ## Doğrulama Planı
 
 ### Otomatik Testler
-- Arayüz bileşenlerinin hatasız derlenmesi:
-  `npm run build`
+- Değişikliklerden sonra android projesinin başarıyla derlendiğinin doğrulanması:
+  `.\gradlew.bat assembleDebug` (personel-android klasöründe)
 
 ### Manuel Doğrulama
-1. **Ürün Tanımlama:** `SaleItems.jsx` üzerinden bir ürüne "Ana Yemek" sırası ve "15 dk" hazırlanma süresi atanıp kaydedildiği doğrulanacaktır.
-2. **Garson Sepet Görünümü:** Sepete eklenen ürünlerin "Başlangıçlar", "Ana Yemekler" şeklinde gruplandığı, bir ürünün sırasının elle değiştirilebildiği ve "HOLD" durumuna alınabildiği gözlemlenecektir.
-3. **Mutfak Entegrasyonu (Hold/Fire):** Garson siparişi onayladığında masanın ödeme alınmadan KDS'e düştüğü, "HOLD" olan ürünlerin soluk, "FIRE" olanların aktif göründüğü doğrulanacaktır.
-4. **Marş Tetikleme:** Garson terminalinden "Marş Et" butonuna tıklandığında KDS'teki ürünün anında renkli/aktif hale geldiği doğrulanacaktır.
-5. **Offline Test:** Ağ kablosu/bağlantı kesildiğinde terminalde sipariş alınabildiği, bağlantı geri geldiğinde KDS ekranının güncellendiği doğrulanacaktır.
+1. **Duyuru Yayınlama:** Yönetici olarak giriş yapıp yeni bir "Acil" ve "Okundu Onaylı" duyuru oluşturulduğunda bu duyurunun tüm personelin ana sayfasına düştüğü teyit edilecek.
+2. **Okundu Bilgisi:** Çalışan duyuruyu açıp "Okudum" butonuna bastığında veritabanında `announcement_reads` tablosuna ilgili satırın eklendiği ve butonun kaybolduğu kontrol edilecek.
+3. **Görev Bildirimi:** Bir çalışana yeni görev atandığında zil ikonunun üstündeki kırmızı sayacın arttığı ve bildirim detayının "Yeni Görev Atandı" şeklinde göründüğü test edilecek.
+4. **Yönlendirme:** Gecikmiş görev bildirimine tıklandığında uygulamanın doğrudan Görevler ekranına yönlendirdiği ve o bildirimi "okunmuş" olarak güncellediği doğrulanacak.

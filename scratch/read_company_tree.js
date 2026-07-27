@@ -1,70 +1,30 @@
-import pg from 'pg';
-const { Client } = pg;
-import fs from 'fs';
-import path from 'path';
-
-let connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  try {
-    const envPath = path.resolve('server/.env');
-    if (fs.existsSync(envPath)) {
-      const envContent = fs.readFileSync(envPath, 'utf8');
-      const match = envContent.match(/DATABASE_URL=(.*)/);
-      if (match) {
-        connectionString = match[1].trim();
-      }
-    }
-  } catch (err) {
-    console.error("Failed to read server/.env:", err.message);
-  }
-}
-
-if (!connectionString) {
-  connectionString = 'postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway';
-}
-
 async function main() {
-  const client = new Client({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
-  });
-
   try {
-    await client.connect();
-    const res = await client.query("SELECT value FROM public.settings WHERE key = 'company_tree';");
-    if (res.rows.length === 0) {
-      console.log("No company_tree setting found.");
-    } else {
-      const tree = res.rows[0].value;
-      
-      // Let's search for nodes of type uretim, mutfak, or name containing Mutfak
-      const results = [];
-      function walk(node) {
-        if (!node) return;
-        if (node.type === 'mutfak' || node.type === 'uretim' || String(node.name).toLowerCase().includes('mutfak')) {
-          results.push({ id: node.id, name: node.name, type: node.type, workspace_scope: node.workspace_scope });
+    const fetchRes = await fetch('https://rms-api-production-219d.up.railway.app/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table: 'settings',
+        operation: 'select',
+        filters: [{ type: 'eq', col: 'key', val: 'company_tree' }]
+      })
+    });
+    const fetchJson = await fetchRes.json();
+    const currentTree = fetchJson.data?.[0]?.value || [];
+    
+    function findKadikoy(nodes) {
+      for (const node of nodes) {
+        if (node.name && (node.name.includes("Kadıköy") || node.name.includes("Kadikoy"))) {
+          console.log("Found Kadikoy:", JSON.stringify(node, null, 2));
         }
         if (node.children) {
-          for (const child of node.children) {
-            walk(child);
-          }
+          findKadikoy(node.children);
         }
       }
-      
-      if (Array.isArray(tree)) {
-        tree.forEach(walk);
-      } else {
-        walk(tree);
-      }
-      
-      console.log("Nodes containing Mutfak or with type mutfak/uretim:");
-      console.log(JSON.stringify(results, null, 2));
     }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    await client.end();
+    findKadikoy(currentTree);
+  } catch (e) {
+    console.error("Error reading tree:", e);
   }
 }
-
 main();

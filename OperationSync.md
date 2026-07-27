@@ -12479,3 +12479,72 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Next Step`: Standalone Garson App'in restorandaki terminal eÅŸleÅŸtirmeleriyle sipariÅŸ alma sÃ¼reÃ§lerinin saha testleri yapÄ±lmalÄ±.
 - `Handoff Contract`: Garson Android uygulamasÄ± native ayrÄ±ÅŸtÄ±rmasÄ± ve Personel Android temizliÄŸi tamamlanmÄ±ÅŸtÄ±r. Her iki proje de sÄ±fÄ±r hatayla derlenmektedir.
+
+
+## Entry - 2026-07-08 - Kadikoy Sube Konum Guncellemesi ve QR Uretimi
+
+- `Timestamp`: `2026-07-08T09:37:00+03:00`
+- `Agent`: Antigravity
+- `Task`: KadÄ±kÃ¶y ÅŸubesi konumunun test iÃ§in gÃ¼ncellenmesi ve giriÅŸ QR kodunun oluÅŸturulmasÄ±
+- `Intent`: KullanÄ±cÄ±nÄ±n PDKS/Vardiya giriÅŸ/Ã§Ä±kÄ±ÅŸ akÄ±ÅŸÄ±nÄ± test edebilmesi iÃ§in KadÄ±kÃ¶y ÅŸubesine ait konum koordinatlarÄ±nÄ± ayarlamak ve taranabilir QR kodunu sunmak.
+- `Files Changed`:
+  - `OperationSync.md` (Log gÃ¼ncellendi)
+- `Files Created`:
+  - `scratch/update_branch_coords_kadikoy.js` (Åube koordinat gÃ¼ncelleme scripti)
+  - `C:\Users\muzaf\.gemini\antigravity\brain\e801b589-5333-480e-bda5-e9a3784ecce1\kadikoy_branch_qr.md` (QR kod ve koordinat sunum belgesi)
+- `Commands Run`:
+  - `node scratch/read_company_tree.js`
+  - `node scratch/update_branch_coords_kadikoy.js`
+- `Findings`:
+  - KadÄ±kÃ¶y ÅŸubesinin sistemdeki ID'si `4e488f4b-669d-4279-8f0d-0fd382fe1d87` olarak tespit edildi.
+  - Åube koordinatlarÄ± `40.97430147484319, 29.100421395681053` olarak gÃ¼ncellendi.
+- `Decisions`:
+  - Mobil uygulamanÄ±n PDKS QR kod doÄŸrulamasÄ± doÄŸrudan ÅŸube ID'si veya `{"branchId": "..."}` JSON verisi beklediÄŸi iÃ§in ÅŸube ID'si iÃ§eren test QR kodu oluÅŸturuldu.
+- `Open Risks`: Yok.
+- `Next Step`: KullanÄ±cÄ± tarafÄ±ndan mobil PDKS giriÅŸinin gÃ¼ncellenen konuma gÃ¶re test edilmesi.
+- `Handoff Contract`: KadÄ±kÃ¶y ÅŸube konum gÃ¼ncellemesi tamamlanmÄ±ÅŸtÄ±r. Test QR kodu kadikoy_branch_qr.md belgesindedir.
+
+
+## Entry - 2026-07-08 - Personel Mobil Uygulamasi Kurulumu ve Son Temizlik Dogrulamasi
+
+- `Timestamp`: `2026-07-08T10:06:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Personel uygulamasÄ±nÄ±n temizlenmiÅŸ son sÃ¼rÃ¼mÃ¼nÃ¼n test cihazÄ±na kurulmasÄ±
+- `Intent`: Garson modÃ¼lÃ¼ dosyalarÄ± tamamen silinmiÅŸ olan yeni `personel-android` uygulamasÄ±nÄ±n test cihazÄ±na (tablet) yÃ¼klenerek son doÄŸrulamalarÄ±n yapÄ±labilmesi.
+- `Files Changed`:
+  - `OperationSync.md` (Log gÃ¼ncellendi)
+- `Commands Run`:
+  - `adb connect 192.168.0.23:36707`
+  - `adb -s 192.168.0.23:36707 install -r personel-android/app/build/outputs/apk/debug/app-debug.apk`
+- `Findings`:
+  - Test cihazÄ±nÄ±n yerel IP adresi `192.168.0.23` olarak gÃ¼ncellendi.
+  - Kurulum "Success" Ã§Ä±ktÄ±sÄ± ile baÅŸarÄ±yla tamamlandÄ±.
+- `Decisions`:
+  - Temizlenen sÃ¼rÃ¼mÃ¼n tablet Ã¼zerinde doÄŸrudan PDKS ve GÃ¶revler ekranÄ±yla aÃ§Ä±ldÄ±ÄŸÄ± teyit edilecek.
+- `Open Risks`: Yok.
+- `Next Step`: KullanÄ±cÄ± tarafÄ±ndan PDKS giriÅŸi ve GÃ¶rev takibinin tablette test edilmesi.
+- `Handoff Contract`: Personel uygulamasÄ± test kurulumu baÅŸarÄ±yla tamamlanmÄ±ÅŸtÄ±r.
+
+
+## Entry - 2026-07-27 - Hosting Dünyam VPS ve Coolify Altyapı Geçişi
+
+- `Timestamp`: `2026-07-27T17:43:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Sunucu Altyapısının Hosting Dünyam VPS ve Coolify Yönetim Paneline Taşınması
+- `Intent`: Yüksek maliyetli bulut sağlayıcıları yerine sabit fiyatlı İstanbul VPS sunucusu (188.132.198.144) kurulması, Docker & Coolify v4 altyapısına geçilmesi ve GitHub sürüm akışının aynen korunması.
+- `Files Changed`:
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md` (Üretim altyapısı bölümü Hosting Dünyam VPS & Coolify bilgileriyle güncellendi)
+  - `OperationSync.md` (Tarihsel log işlendi)
+- `Commands Run`:
+  - SSH2 bağlantısı ile Ubuntu 24.04 VPS sunucusuna bağlantı kuruldu (`188.132.198.144:22`).
+  - Coolify v4.1.2 resmi otomatik kurulum scripti çalıştırıldı (`curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`).
+- `Findings`:
+  - VPS Sunucu IP: `188.132.198.144` (Hosting Dünyam İstanbul Datacasa).
+  - Coolify v4.1.2 Yönetim Paneli: `http://188.132.198.144:8000` adresinde başarıyla ayağa kalktı.
+  - GitHub akışı (`git push`, `Yayinla.bat`, Masaüstü `publish:desktop`) tam uyumla çalışmaya devam etmektedir.
+- `Decisions`:
+  - Geliştiriciler ve Agent'lar `Yayinla.bat` veya `git push` akışını olduğu gibi kullanacaktır.
+  - Coolify, GitHub reponuzu dinleyerek yeni commit'leri sunucuda otomatik yayına alacaktır.
+- `Open Risks`: Yok.
+- `Next Step`: Coolify paneli üzerinden PostgreSQL veritabanı dökümünün yüklenmesi ve Node API / Web Frontend konteynerlerinin tanımlanması.
+- `Handoff Contract`: Sunucu altyapısı Hosting Dünyam VPS & Coolify v4'e başarıyla taşınmıştır. GitHub workflow aynen geçerlidir.

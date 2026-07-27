@@ -1,21 +1,15 @@
-# Görev Listesi (TODO) - Servis Sırası ve Hold & Fire Yönetimi
+# Duyuru ve Bildirim Sistemi Görev Takip Listesi (task.md)
 
-- `[x]` **Faz 1: Veritabanı ve Şema Güncellemeleri**
-  - `[x]` `schema-railway-master.sql` dosyasının güncellenmesi
-  - `[x]` Railway Postgres üzerinde migration SQL komutlarının çalıştırılması
-- `[x]` **Faz 2: Ürün Yönetimi Geliştirmeleri**
-  - `[x]` `SaleItems.jsx` içerisine `default_course` ve `prep_time_minutes` alanlarının eklenmesi
-- `[ ]` **Faz 3: Garson & POS Terminal Sipariş Katmanı**
-  - `[ ]` Sepet elemanlarında varsayılan kurs değeri ve otomatik gruplama
-  - `[ ]` Arayüzde servis sırası değiştirme dropdown ve Hold/Fire butonları
-  - `[ ]` Masa sipariş onayında `sales` tablosuna `status = 'active'` olarak kaydetme/güncelleme mantığı
-- `[ ]` **Faz 4: Mutfak (KDS) Katmanı Geliştirmeleri**
-  - `[ ]` `KDS.jsx` sorgularının `status = 'active'` siparişlerini de kapsayacak şekilde güncellenmesi
-  - `[ ]` KDS ekranında "HOLD" durumundaki siparişlerin soluk gösterilmesi
-  - `[ ]` Auto-Fire zamanlayıcı mekanizmasının eklenmesi
-- `[ ]` **Faz 5: Çevrimdışı (Offline-First) ve Senkronizasyon Güvenliği**
-  - `[ ]` Bağlantı koptuğunda `localStorage` yedeklemesi
-  - `[ ]` Bağlantı geri geldiğinde otomatik arka plan senkronizasyonu
-- `[ ]` **Faz 6: Doğrulama ve Test**
-  - `[ ]` Projenin build edilmesi (`npm run build`)
-  - `[ ]` Masa durumlarının kontrol edilmesi
+- `[x]` 1. Veritabanı Katmanı: `personnel_notifications` tablosunun oluşturulması
+- `[x]` 2. Veri / Depo Katmanı
+  - `[x]` `AnnouncementRepository.kt` oluşturulması (duyuru getirme, okuma, oluşturma)
+  - `[x]` `NotificationRepository.kt` oluşturulması (bildirim getirme, okundu yapma, oluşturma)
+  - `[x]` `TaskRepository.kt` entegrasyonu (görev atama ve güncellemelerde bildirim yazımı)
+- `[x]` 3. Arayüz ve Rotalama
+  - `[x]` `AnnouncementsScreen.kt` oluşturulması (Duyuru listesi, detay modalı, ekleme formu)
+  - `[x]` `NotificationsScreen.kt` oluşturulması (Bildirim listesi, yönlendirmeler, okunmuş/okunmamış)
+  - `[x]` `HomeScreen.kt` entegrasyonu (TopAppBar zili, duyurular panosu, sidebar menüsü)
+  - `[x]` `MainScreen.kt` entegrasyonu (yeni rotaların eklenmesi)
+- `[ ]` 4. Derleme ve Doğrulama
+  - `[ ]` Projenin hatasız derlenmesi (`.\gradlew.bat assembleDebug`)
+  - `[ ]` Test cihazına kurulum ve manuel doğrulama (PDKS girişi, duyuru ekleme, bildirim tetikleme)

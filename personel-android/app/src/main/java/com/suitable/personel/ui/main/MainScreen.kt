@@ -12,7 +12,6 @@ import androidx.navigation3.runtime.NavKey
 import com.google.gson.Gson
 import com.suitable.personel.data.AppConfig
 import com.suitable.personel.data.ShiftScheduleEntry
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,7 +22,6 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("PersonelPrefs", Context.MODE_PRIVATE)
-    val scope = rememberCoroutineScope()
 
     var staffSession by remember {
         mutableStateOf(
@@ -78,12 +76,6 @@ fun MainScreen(
                     },
                     onNavigate = { dest ->
                         if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
                             sharedPref.edit().remove("staffSession").apply()
                             staffSession = null
                         }
@@ -97,12 +89,6 @@ fun MainScreen(
                     staffSession = staffSession,
                     onNavigate = { dest ->
                         if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
                             sharedPref.edit().remove("staffSession").apply()
                             staffSession = null
                         }
@@ -124,17 +110,25 @@ fun MainScreen(
                     },
                     onNavigate = { dest ->
                         if (dest == "login") {
-                            val terminalId = sharedPref.getString("selectedGarsonTerminalId", null)
-                            if (terminalId != null) {
-                                scope.launch {
-                                    com.suitable.personel.data.DeviceRepository().updateGarsonActiveSession(terminalId, null)
-                                }
-                            }
                             sharedPref.edit().remove("staffSession").apply()
                             staffSession = null
                         }
                         currentRoute = dest
                     }
+                )
+            }
+            "announcements" -> {
+                AnnouncementsScreen(
+                    staffSession = staffSession,
+                    onNavigateBack = { currentRoute = "home" }
+                )
+            }
+            "notifications" -> {
+                NotificationsScreen(
+                    staffSession = staffSession,
+                    onNavigateBack = { currentRoute = "home" },
+                    onNavigateToTasks = { currentRoute = "tasks" },
+                    onNavigateToAnnouncements = { currentRoute = "announcements" }
                 )
             }
             else -> {
