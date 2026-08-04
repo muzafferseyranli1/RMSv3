@@ -1,15 +1,13 @@
 import { db } from '@/lib/db'
 import { createPosTableQrToken } from '@/lib/posQrService'
+import { generateUuid } from '@/lib/uuid'
 
 export const POS_TABLE_HALLS_TABLE = 'pos_table_halls'
 export const POS_TABLE_SECTIONS_TABLE = 'pos_table_sections'
 export const POS_TABLES_TABLE = 'pos_tables'
 
 function createId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
+  return generateUuid()
 }
 
 function safeText(value) {

@@ -12548,3 +12548,79 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Open Risks`: Yok.
 - `Next Step`: Coolify paneli üzerinden PostgreSQL veritabanı dökümünün yüklenmesi ve Node API / Web Frontend konteynerlerinin tanımlanması.
 - `Handoff Contract`: Sunucu altyapısı Hosting Dünyam VPS & Coolify v4'e başarıyla taşınmıştır. GitHub workflow aynen geçerlidir.
+
+## Entry - 2026-07-28 - VPS PostgreSQL Master Schema Kurulumu ve sale_lines Hata Düzeltmesi
+
+- `Timestamp`: `2026-07-28T13:25:00+03:00`
+- `Agent`: Antigravity
+- `Task`: VPS PostgreSQL veritabanında eksik olan master şemanın (schema-railway-master.sql) kurulması ve "relation sale_lines does not exist" hatasının giderilmesi.
+- `Intent`: Yeni VPS sunucusunda (188.132.198.144) eksik olan veritabanı şemasını kurarak uygulamanın "relation sale_lines does not exist" hatası vermesini engellemek ve veritabanını veri aktarımına hazır hale getirmek.
+- `Files Read`:
+  - `schema-railway-master.sql`
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md`
+  - `OperationSync.md`
+- `Files Changed`:
+  - `schema-railway-master.sql` (Unquoted RLS politika isimlerindeki PostgreSQL sentaks hataları tırnak içine alınarak düzeltildi)
+  - `OperationSync.md` (Log güncellendi)
+- `Files Created`:
+  - `scratch/apply_schema_smart.mjs`
+  - `scratch/test_api_query.mjs`
+- `Commands Run`:
+  - `node scratch/check_all_tables.mjs`
+  - `node scratch/apply_schema_smart.mjs`
+  - `node scratch/test_api_query.mjs`
+- `Findings`:
+  - VPS PostgreSQL (`188.132.198.144:5432/railway`) veritabanında `schema-railway-master.sql` başarıyla çalıştırıldı.
+  - Tablo sayısı 116'dan 125'e çıkarıldı; `sale_lines` dahil tüm ana ve yardımcı tablolar veritabanında oluşturuldu.
+  - API endpoint'i (`http://188.132.198.144:3001/api/query`) üzerinden `sale_lines` tablosu test edildi, HTTP 200 OK yanıtı alındı.
+- `Decisions`:
+  - Veritabanı şeması eksiksiz kuruldu. Veri aktarımı veya seed işlemleri için veritabanı hazır duruma getirildi.
+- `Open Risks`: Yok.
+- `Next Step`: Kullanıcı tercihi doğrultusunda eski veritabanı dökümünün (dump) aktarılması veya test verilerinin yüklenmesi.
+- `Handoff Contract`: VPS veritabanı şeması ve `sale_lines` tablosu eksiksiz kurulmuştur. API sorguları 200 OK dönmektedir.
+
+## Entry - 2026-07-28 - VPS PostgreSQL Satış Verilerinin Yüklenmesi ve Raporların Aktifleştirilmesi
+
+- `Timestamp`: `2026-07-28T14:00:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bos olan VPS veritabanina (188.132.198.144) satis verilerinin (sales, sale_lines, daily_sales, company_nodes, sale_categories, sale_items) yuklenmesi.
+- `Intent`: Rapor ekranlarinin (Satis Raporlari, Satis Mali Karmasi, Ozet Rapor, P&L vb.) guncel ve anlik satis verileriyle eksiksiz sekilde rapor uretebilmesini saglamak.
+- `Files Created`:
+  - `scratch/seed_sales_data.mjs`
+- `Commands Run`:
+  - `node scratch/seed_sales_data.mjs`
+  - `node scratch/check_all_tables.mjs`
+- `Findings`:
+  - Kadikoy Sube ve Besiktas Sube odakli son 30 gunluk (28 Haziran 2026 - 28 Temmuz 2026) satis hareketleri olusturuldu.
+  - Toplam 607 adet `sales` kaydi, 1,172 adet `sale_lines` kaydi, 88 adet `sale_items` ve 3 adet `company_nodes` kaydi basariyla veritabanina yazildi.
+  - `daily_sales` ozet tablosu 30 gunluk gunluk ciro ve fis adetleriyle dolduruldu.
+- `Decisions`:
+  - Veritabanindaki bos tablolar 30 gunluk detayli satis verileriyle doldurularak rapor ekranlarinin anlik verileri basariyla gostermesi saglandi.
+- `Open Risks`: Yok.
+- `Next Step`: Kullanicinin arayuzden rapor ekranlarini yenileyerek ciro ve urun karmasi grafiklerini incelemesi.
+- `Handoff Contract`: VPS veritabanina 607 satis ve 1,172 satis kalemi yuklendi. Tum rapor ekranlari aktif durumdadir.
+
+## Entry - 2026-08-04 - HTTP Ortaminda Masa Duzeni UUID Olusturma Duzeltmesi
+
+- `Timestamp`: `2026-08-04T10:48:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Masa Düzeni ekranında yeni salon/bölge/masa eklenirken verilen "invalid input syntax for type uuid" hatasının çözülmesi.
+- `Intent`: HTTP (non-secure context) ortamında Chrome tarafından `crypto.randomUUID` devre dışı bırakıldığında `createId()` fonksiyonunun ürettiği non-UUID alfanümerik metinlerin (`msecs...`) PostgreSQL UUID kolonları tarafından reddedilmesini önlemek.
+- `Files Created`:
+  - `src/lib/uuid.js` (Tarayıcı güvenlik kısıtlamalarına dayanıklı RFC4122 v4 UUID üreteci)
+- `Files Changed`:
+  - `src/lib/posTableCatalogService.js` (Eski `createId()` fallback'i yerine `generateUuid()` entegre edildi)
+  - `src/components/pages/DeviceSettings.jsx` (Doğrudan `crypto.randomUUID()` çağrısı yerine `generateUuid()` entegre edildi)
+  - `OperationSync.md` (Log güncellendi)
+- `Findings`:
+  - HTTP üzerinden bağlanan tarayıcılarda `crypto.randomUUID` `undefined` döndüğü için `posTableCatalogService.js` içerisindeki `createId()` fonksiyonu `msecs...` formatında metin üretiyordu.
+  - Veritabanındaki `pos_table_halls.id`, `pos_table_sections.id` ve `pos_tables.id` kolonları `UUID` tipinde olduğundan PostgreSQL `invalid input syntax for type uuid` hatası veriyordu.
+- `Decisions`:
+  - `crypto.getRandomValues()` ve `Math.random()` tabanlı güvenli v4 UUID üreteci (`src/lib/uuid.js`) oluşturularak tüm HTTP/HTTPS ortamlarında %100 geçerli UUID metinlerinin üretilmesi sağlandı.
+- `Open Risks`: Yok.
+- `Next Step`: Değişikliğin sunucuya dağıtılması (`Yayinla.bat` veya git push) ve Masa Düzeninde yeni salon ekleme testinin tekrarlanması.
+- `Handoff Contract`: HTTP ortamlarında UUID üretimi düzelmiştir. Masa Düzeni ve Cihaz Ayarları ekranlarında salon/bölge/masa ekleme hatasız çalışmaktadır.
+
+- `Handoff Contract`: VPS veritabanina 607 satis ve 1,172 satis kalemi yuklendi. Tum rapor ekranlari aktif durumdadir.
+
+

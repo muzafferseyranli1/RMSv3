@@ -8,6 +8,8 @@ import { useWorkspace } from '@/context/WorkspaceContext'
 import { loadTableManagementCatalog } from '@/lib/posTableCatalogService'
 import { loadKioskSettings, saveKioskSettings } from '@/lib/kioskSettings'
 
+import { generateUuid } from '@/lib/uuid'
+
 export default function DeviceSettings() {
   const { branchId } = useWorkspace()
   const [devices, setDevices] = useState([])
@@ -148,7 +150,7 @@ export default function DeviceSettings() {
     }
 
     const newDevice = {
-      terminal_id: crypto.randomUUID(),
+      terminal_id: generateUuid(),
       branch_id: branchId,
       device_type: formData.device_type,
       screen_mode: DEVICE_TYPE_TO_SCREEN_MODE[formData.device_type] || 'pos',
