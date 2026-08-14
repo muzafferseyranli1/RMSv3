@@ -1,6 +1,6 @@
 import { getTerminalRole, getSlaveConfig, getTerminalId, getBranchId, isDesktopMode, injectTerminalFields } from './terminalIdentity.js'
 
-const DEFAULT_API_URL = 'https://rms-api-production-219d.up.railway.app'
+const DEFAULT_API_URL = 'http://188.132.198.144:3001'
 const LOCAL_API_URLS = ['http://127.0.0.1:3001', 'http://localhost:3001']
 const API_URL_CACHE_KEY = 'suitable_rms_api_base_url_v1'
 

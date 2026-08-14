@@ -1,0 +1,228 @@
+Restoran Yönetim Sistemleri İçin Ölçeklenebilir E-Dönüşüm Mimarisi ve Uyumsoft Simülasyon Raporu
+Türkiye'deki yeme-içme (HORECA) sektöründe faaliyet gösteren işletmeler, Gelir İdaresi Başkanlığı (GİB) tarafından yayımlanan Vergi Usul Kanunu (VUK) tebliğleri doğrultusunda hızla dijitalleşmekte ve finansal operasyonlarını elektronik belge ekosistemine taşımaktadırlar. Bir restoran yönetim yazılımı (POS, ERP, adisyon ve arka ofis sistemleri bütünü) inşa edilirken, yasal elektronik belgelerin doğru formatta üretilmesi, iletilmesi ve durumlarının izlenmesi, sistemin operasyonel yetenekleri kadar kritik bir mimari karardır. Geliştirilecek olan restoran yönetim yazılımının temel stratejik yaklaşımı; GİB sistemlerine doğrudan entegrasyon yapmak yerine, GİB tarafından yetkilendirilmiş &quot;Özel Entegratörler&quot; (örneğin Uyumsoft, EDM Bilişim) aracılığıyla elektronik belge süreçlerini yönetmek olarak belirlenmiştir. Bu rapor, geliştirme süreçlerini yürütecek olan kodlama ajanına rehberlik etmek üzere, e-Dönüşüm mevzuatını, çoklu entegratör mimarisini, UBL-TR veri yapılarını ve Uyumsoft özelindeki web servis simülasyonunu derinlemesine incelemektedir.
+1. Stratejik Mimari Vizyon: Doğrudan GİB Entegrasyonunun Reddi ve Entegratör Modeli
+Yazılım mimarisinin başlangıç noktasında alınması gereken en hayati karar, e-Dönüşüm belgelerinin GİB'e hangi yöntemle iletileceğidir. GİB, mükelleflere GİB Portal, Doğrudan Entegrasyon ve Özel Entegratör olmak üzere üç ana yöntem sunmaktadır1. Geliştirilen restoran yönetim sisteminde &quot;Doğrudan Entegrasyon&quot; yönteminden kesinlikle uzak durulmalıdır.
+Doğrudan entegrasyon yöntemi, yazılımı geliştiren kurumun veya işletmenin kendi sunucularını doğrudan GİB'in sunucularına bağlamasını gerektirir. Bu yaklaşım, sistemin 7 gün 24 saat kesintisiz çalışmasını (SLA zorunlulukları), felaket kurtarma (disaster recovery) merkezlerinin kurulmasını, donanımsal güvenlik modüllerinin (HSM) ve mali mühürlerin fiziksel olarak barındırılmasını ve sürekli güncellenen GİB Şematron kurallarının anlık olarak yazılıma entegre edilmesini mecburi kılar3. Bunun yerine, Özel Entegratör modelinin benimsenmesi, tüm bu donanımsal ve yasal riskleri, GİB'den resmi olarak yetki almış lisanslı kurumlara (Uyumsoft, EDM Bilişim vb.) devreder4. Yazılım sistemi, bu entegratörlerin sunduğu web servislere (API) bağlanan bir istemci (client) rolü üstlenerek karmaşıklığı soyutlar.
+Aşağıdaki tablo, doğrudan GİB entegrasyonu ile özel entegratör kullanımının mimari ve operasyonel karşılaştırmasını sunmaktadır:
+Karşılaştırma Kriteri
+Doğrudan GİB Entegrasyonu
+Özel Entegratör Modeli (Önerilen)
+Altyapı ve Sunucu Yönetimi
+Kendi sunucularında 7/24 kesintisiz çalışma ve felaket kurtarma zorunluluğu.
+Entegratörün yüksek erişilebilir bulut altyapısı kullanılır.
+Mali Mühür / İmzalama
+Donanımsal HSM cihazları ile fiziksel imzalama süreçleri sistem sahibindedir.
+Mali mühür entegratör sunucularında barındırılır, imzalama otomatik yapılır.
+Yasal Raporlama
+e-Arşiv faturalarının gün sonu raporlamaları yazılım tarafından manuel yapılır.
+Entegratör, ertesi gün saat 24.00'e kadar GİB'e otomatik olarak raporlar.
+Güncelleme ve Bakım
+GİB'in UBL-TR ve Şematron değişiklikleri anında koda yansıtılmalıdır.
+Entegratörler mevzuat güncellemelerini kendi sistemlerinde şeffafça uygular.
+Arşivleme Yükümlülüğü
+Belgelerin 10 yıl boyunca güvenli depolanması ve yedeklenmesi şarttır.
+Entegratörler 10 yıllık yasal saklama hizmetini bulut ortamında sunar.
+Bu stratejik karar doğrultusunda, restoran arayüzünden oluşturulan belgeler, arka planda entegratör web servislerine iletilecek ve sürecin tamamı kullanıcının entegratör paneline gitmesine gerek kalmadan ana yazılım içerisinden yönetilecektir.
+2. Ortak Çatı Mimarisi (Common Roof Architecture) ve Adaptör Deseni
+Kodlama ajanının yanıtlaması gereken en temel mimari sorulardan biri şudur: Her entegratör (Uyumsoft, EDM Bilişim vb.) için sıfırdan, tamamen farklı bir yapı mı kurulmalıdır, yoksa temel bir çatı kurularak ufak eklentilerle farklı entegratörlere entegre olmak mümkün müdür?
+Araştırma ve sistem analizi göstermektedir ki, e-Dönüşüm ekosisteminde farklı entegratörler için ayrı sistemler inşa etmek büyük bir mimari hatadır. Tüm entegratörlerin temel amacı, işletmenin verilerini Gelir İdaresi Başkanlığı'nın dayattığı evrensel standart olan UBL-TR (Universal Business Language - Turkey) yapısındaki XML dosyalarına dönüştürmek ve iletmektir1. Dolayısıyla, yazılımın çekirdeğinde üretilecek olan veri formatı (UBL-TR XML), hangi entegratör kullanılırsa kullanılsın sabit kalacaktır9. Değişen tek unsur, bu üretilen standart XML dosyasının entegratörün sistemine nasıl iletileceği (örneğin REST tabanlı JSON gövdesiyle mi, yoksa SOAP tabanlı WCF servisleriyle mi) ve entegratörün kimlik doğrulama (authentication) mekanizmalarıdır11.
+2.1. Adaptör Tasarım Deseni (Adapter Design Pattern) ile Soyutlama
+Bu gereksinimi karşılamak üzere sistemin iletişim katmanında Adaptör Tasarım Deseni (Adapter Design Pattern) uygulanmalıdır. Adaptör deseni, yazılım alanında birbirleriyle doğrudan uyumlu olmayan arayüzleri birbirine bağlayan ve istemci (restoran yazılımı) ile hedef sistem (entegratör API'si) arasında bir köprü görevi gören yapısal bir tasarım modelidir13.
+Sistem, aşağıdaki katmanlardan oluşacak şekilde tasarlanmalıdır:
+UBL-TR Üretim Motoru (Core Generator): Bu katman, restoranın veritabanından sipariş (Order), müşteri (Customer), vergi (Tax) ve ödeme (Payment) bilgilerini çeker. Vergi hesaplamalarını yapar ve hiçbir entegratöre bağımlı olmadan, salt GİB standartlarına uygun bir XML belgesi oluşturur10. Çekirdek iş mantığı burada yatar.
+Ortak Entegrasyon Arayüzü (IIntegrationService): Sistemin dış dünya ile nasıl konuşacağını tanımlayan standart bir sözleşmedir (interface). Restoran yazılımı yalnızca bu arayüzü tanır. İçerisinde CheckUser (Mükellef sorgulama), SendDocument (Belge gönderme) ve GetDocumentStatus (Belge durumu sorgulama) gibi temel metodlar bulunur.
+Somut Adaptörler (Concrete Adapters):
+UyumsoftAdapter: IIntegrationService arayüzünü uygular. Yazılımın ürettiği UBL XML'ini alır, Uyumsoft'un SOAP 1.1 altyapısına (BasicHttpBinding) uygun olarak paketler ve SendInvoice metodunu tetikler12.
+EdmAdapter: Aynı arayüzü uygular ancak XML'i alır, EDM Bilişim'in WCF tabanlı web servisine bir LoginRequest atarak SessionID elde eder ve bu oturum kimliğini REQUEST_HEADER içine yerleştirerek gönderimi sağlar11.
+Bu &quot;Ortak Çatı&quot; mimarisi sayesinde, sistemin ana işleyişi entegratörlerin altyapısal farklılıklarından tamamen yalıtılır. Gelecekte yeni bir entegratör sisteme dahil edilmek istendiğinde, ana kod tabanına dokunulmaz; yalnızca yeni bir adaptör sınıfı yazılarak sisteme entegre edilir14.
+3. E-Dönüşüm Belgeleri ve Restoran Operasyonel Akışları
+Restoran yönetim sisteminin iş akışı (workflow) tasarlanırken, geliştirme ekibinin E-Fatura, E-Arşiv Fatura, İnteraktif E-Arşiv Fatura, E-İrsaliye ve E-Adisyon belgelerinin birbirleriyle olan yasal ilişkilerini ve sınırlarını net olarak anlaması gerekmektedir. E-Dönüşüm sistemi bağımsız modüllerden değil, siparişten ödemeye ve sevkiyata kadar uzanan entegre bir zincirden oluşur.
+3.1. E-Adisyon Mevzuatı ve Süreç İçi Rolü
+E-Adisyon, Vergi Usul Kanunu'nun (VUK) 509 ve 526 Sıra No'lu Genel Tebliğleri uyarınca, masada servis yapan ve gerçek usulde vergilendirilen yeme-içme işletmeleri (restoran, kafe, pastane vb.) için kâğıt adisyonun yerini alan dijital bir belgedir21. Geliştirilecek sistemin en temel bileşenlerinden biridir.
+Sistem tasarımında en çok düşülen hata, E-Adisyon'un bir ödeme makbuzu veya fatura olarak değerlendirilmesidir. E-Adisyon, mali bir kapanış belgesi değildir; yalnızca siparişlerin elektronik ortamda kayıt altına alındığını gösteren bir &quot;hizmet ön kaydı&quot;dır23. Yazılım mimarisindeki operasyonel akış şu adımları izlemek zorundadır:
+Siparişin Açılması: Müşteri masaya oturduğunda ve garson tarafından (tablet veya sabit POS üzerinden) sisteme ilk sipariş kalemi girildiğinde, arka planda anlık olarak bir E-Adisyon belgesi oluşturulmalıdır22. Bu belge elektronik ortamda düzenlenir, saklanır ve Gelir İdaresi Başkanlığı'na iletilmek üzere entegratör sistemine kaydedilir21.
+Evrensel Tekil Numara (ETTN) Atanması: Oluşturulan her E-Adisyon belgesine sistem tarafından (veya entegratör aracılığıyla) 36 karakterlik bir UUID (Evrensel Tekil Tanımlama Numarası) atanır21. ETTN, belgenin yasal kimliğidir.
+Masa Süreci ve Güncellemeler: Müşterinin masada geçirdiği süre boyunca verdiği ek siparişler veya yapılan iptaller, aynı E-Adisyon belgesi üzerinde dijital olarak güncellenir ve loglanır22. Masada fiziksel bir kâğıt adisyon bulundurma zorunluluğu yasal olarak ortadan kalkmıştır21.
+Hesap Kapatma ve Belge Dönüşümü: Hizmet tamamlanıp ödeme alındığında, eş zamanlı olarak bir mali kapanış belgesi (e-Fatura, e-Arşiv Fatura veya Yeni Nesil ÖKC perakende satış fişi) düzenlenmesi kanuni bir zorunluluktur24.
+Kritik Yazılım Kuralı (Belgeler Arası Bağlantı): Ödeme sırasında kesilen nihai mali belgenin (örneğin e-Fatura'nın) içerisine, sipariş açılırken üretilen E-Adisyon'a ait ETTN numarası referans (Reference) olarak eklenmek zorundadır25. Yazılımın veritabanı şemasında E-Adisyon tablosu ile Fatura tablosu arasında kesin bir ilişki (foreign key veya NoSQL referans bağı) kurulmalı ve fatura üretilirken E-Adisyon ETTN'si otomatik olarak çekilmelidir. Bu bağlantı kurulmadan kesilen faturalar, GİB denetimlerinde geçersiz sayılarak belge başına usulsüzlük cezalarına yol açabilir25.
+3.2. E-Fatura ve E-Arşiv Fatura Dinamikleri
+Hesap ödenirken kesilecek olan belgenin türü, müşterinin işletme veya son tüketici olmasına göre sistemsel olarak değişir. Yazılım arayüzü, personelin inisiyatifine bırakılmayacak otomatize edilmiş bir &quot;Mükellef Sorgulama&quot; altyapısına sahip olmalıdır24.
+E-Fatura: Alıcı ve satıcının her ikisinin de GİB'in e-Fatura sistemine kayıtlı kullanıcı (B2B) olduğu durumlarda kesilen elektronik belgedir1. E-Fatura sistemi tamamen kapalı bir devre olup, düzenlenen fatura GİB'in merkez sistemi üzerinden alıcının posta kutusuna iletilir29. UBL-TR formatı zorunludur ve fatura GİB'den başarılı bir şekilde (1300 durum kodu ile) geçmedikçe hukuken geçerli sayılmaz1.
+E-Arşiv Fatura: Nihai tüketicilere (B2C) veya e-Fatura sistemine kayıtlı olmayan işletmelere düzenlenen elektronik fatura türüdür2. E-Arşiv Fatura, GİB üzerinden anlık olarak alıcıya iletilmez. Bunun yerine, faturanın PDF formatı veya kağıt çıktısı alıcıya e-posta veya elden teslim edilir29. Özel entegratörler, gün içinde düzenlenen bu e-Arşiv faturaları ertesi gün saat 24.00'e kadar toplu bir rapor halinde GİB'e iletirler1.
+Geliştirilecek restorant yazılımında, ödeme ekranında müşterinin Vergi Kimlik Numarası (VKN) veya T.C. Kimlik Numarası (TCKN) girildiği anda, entegratörün API'sinde bulunan IsEInvoiceUser (veya benzeri) fonksiyon tetiklenmelidir12. Yanıt olumluysa belge e-Fatura, olumsuzsa e-Arşiv Fatura olarak oluşturulmalı ve şema yapısı buna göre şekillenmelidir.
+3.3. İnteraktif E-Arşiv Fatura: Portal Entegrasyon Farkı
+Yazılımın müşteri portföyünde sadece büyük e-Dönüşüm mükellefleri değil, yıllık cirosu nedeniyle henüz e-Fatura mükellefiyeti başlamamış butik kafe ve restoranlar da bulunabilir. Mevzuat gereği, e-Fatura mükellefi olmayan işletmeler de, aynı gün içinde aynı kişiye düzenlenen ve toplam tutarı GİB tarafından belirlenen yasal hadleri (örneğin güncel limitlere göre 5.000 TL veya 30.000 TL gibi sınırları) aşan satışlar için kâğıt fatura düzenleyemezler; bu belgeleri GİB'in &quot;İnteraktif Vergi Dairesi (e-Arşiv Portal)&quot; üzerinden düzenlemek zorundadırlar32.
+İnteraktif e-Arşiv Fatura'nın mimari mantığı, standart e-Arşiv Fatura'dan temelden farklıdır. Standart e-Arşiv'de belge, özel entegratörün mali mührü ile imzalanarak saklanır33. İnteraktif e-Arşiv'de ise belge doğrudan GİB'in portalinde, işletme sahibinin kişisel şifresi ile mali mühre gerek kalmadan oluşturulur32.
+Yoğun bir restoran ortamında kasiyerin web tarayıcısını açıp GİB portaline şifre ile girmesi ve manuel fatura kesmesi operasyonel olarak imkansızdır. Bu sorunu çözmek adına KolayBi, Uyumsoft ve EDM Bilişim gibi sistemler, arka planda GİB Portaline Robotik Süreç Otomasyonu (RPA) veya tersine mühendislik ile bağlanan özel API'ler sunarlar32. Geliştirici ekip, veritabanında &quot;İnteraktif GİB Şifresi&quot; alanını şifreli olarak barındırmalı ve fatura tutarı yasal sınırı aştığında, API üzerinden yükü GİB portale aktaran entegratör fonksiyonlarını (Örn: İnteraktif Fatura Oluştur/Gönder) otomatik olarak tetiklemelidir.
+3.4. E-İrsaliye ve Restoran Lojistiği
+E-İrsaliye (Despatch Advice), fiziksel malın depodan çıkışını ve sevkiyat sürecini belgeleyen kâğıt sevk irsaliyesinin elektronik eşdeğeridir35. Bir restoran yazılımı için E-İrsaliye süreçleri genellikle iki ana senaryoda karşımıza çıkar:
+Merkezi Mutfak (Catering) Sevkiyatları: Restoran zincirinin kendi merkezi üretim tesisinden, şubelerine hammadde veya yarı mamul göndermesi durumunda E-İrsaliye kesilir. Bu belgede; taşıyıcı firma (CarrierParty), fiili sevk tarihi ve zamanı, araç plaka bilgisi ve teslimat noktası adreslerinin bulunması zorunludur35.
+Mal Kabul (Gelen İrsaliyeler): Tedarikçilerden restorana gelen mallar için kesilen E-İrsaliyeler sistem üzerinden görüntülenir. Depo görevlisi, gelen malları sayarak eksik, hatalı veya tam teslimat durumuna göre sistem üzerinden &quot;Uygulama Yanıtı&quot; (Kabul, Kısmi Kabul, Red) döner7. Bu yanıtlar entegratör web servisleri (örneğin Uyumsoft DespatchIntegration altındaki metotlar) aracılığıyla iletilir ve restoranın stok kayıtları otomatik olarak güncellenir38.
+Aşağıdaki tablo, restoran ekosistemindeki elektronik belgelerin temel farklarını özetlemektedir:
+Belge Türü
+Hedef Kitle / Alıcı
+Temel İşlev ve Operasyonel Rolü
+GİB İletim Mekanizması
+E-Adisyon
+Müşteri (Masada)
+Siparişin dijital ön kaydıdır. Fatura yerine geçmez. Kapanış belgesine ETTN ile bağlanır.
+Entegratör üzerinden GİB'e iletilir, yasal iz bırakır.
+E-Fatura
+E-Fatura Mükellefleri (B2B)
+Mali kapanış belgesidir. Alıcının ticari sistemine doğrudan işlenir. UBL-TR formatı şarttır.
+GİB merkez sistemi üzerinden alıcı posta kutusuna iletilir.
+E-Arşiv Fatura
+Nihai Tüketici (B2C)
+Mali kapanış belgesidir. Kâğıt veya e-posta ile iletilir. KDV indirimi vb. için kullanılır.
+Ertesi gün 24.00'e kadar entegratörce raporlanır.
+İnteraktif E-Arşiv
+Nihai Tüketici (B2C)
+Ciro sınırı altındaki firmaların yüksek tutarlı (örn: 5.000 TL) satışları için kullanılır.
+GİB Portali üzerinden mükellef şifresi ile kesilir.
+E-İrsaliye
+Şube veya Tedarikçi
+Fiziksel mal sevkiyatını belgeler. Taşıyıcı ve araç bilgilerini içerir. Mal kabulünde kullanılır.
+GİB sistemi üzerinden alıcıya iletilir, yanıt (kabul/red) beklenir.
+4. UBL-TR Standartları ve Şematron (Schematron) Doğrulaması
+Sistemin mimarisinde veri güvenliği ve mevzuat uyumunun kalbi, UBL-TR şemalarının doğru üretilmesinde ve Şematron (Schematron) denetimlerinde yatmaktadır15. Özel Entegratörler, yazılımdan gelen veriyi ham haliyle GİB'e iletmezler; veriyi bir dizi mantıksal ve teknik süzgeçten geçirirler5. Geliştirici ajan, veritabanındaki kayıtları XML dosyasına dönüştürürken bu kuralları UBL Üretim Motorunda (UBL-TR Generator) kesin bir şekilde uygulamalıdır.
+Şematron, XML belgelerinin mantıksal kurallara uyup uymadığını kontrol eden bir doğrulama dilidir15. Örneğin, XML dosyası teknik olarak hatasız açılabilir, ancak içerisindeki bir vergi hesaplaması yanlışsa Şematron bu belgeyi reddeder15.
+Yazılım geliştirilirken dikkat edilmesi gereken majör UBL-TR ve Şematron kuralları şunlardır:
+Kimlik Doğrulamaları: T.C. Kimlik Numarası tam 11 haneli rakam, Vergi Kimlik Numarası ise tam 10 haneli rakam olmalıdır40. Hatalı bir karakter veya boşluk, belgenin reddedilmesine (&quot;1163 - Zarf Reddedildi&quot; hata kodu) sebep olur31.
+Matematiksel Bütünlük: Satır bazındaki tutarlar (miktar çarpı birim fiyat), uygulanan iskonto ve vergiler (KDV) hesaplandığında çıkan sonuç, XML dosyasının alt kısmında yer alan genel toplam (LegalMonetaryTotal) bloklarındaki tutarlarla kuruşu kuruşuna (virgülden sonraki hane hassasiyetine kadar) eşleşmek zorundadır5.
+Versiyon ve Profil Bilgileri: Oluşturulan XML belgesinin başlık (header) kısmında UBLVersionID elemanı daima 2.1 olarak, CustomizationID ise TR1.2 (veya GİB'in güncellediği paket sürümüne göre) olarak sabitlenmelidir8.
+Belge Numaralandırma (UUID ve Seri No): Her belgenin benzersiz bir Evrensel Tekil Tanımlama Numarası (UUID / ETTN) olmalı ve bu numara bir daha asla kullanılmamalıdır8. Fatura numaraları ise GİB'in belirlediği 16 haneli (Örn: ABC2026000000123) standartlara uygun şekilde müteselsil (sıralı) olmalıdır15.
+4.1. E-Adisyon ve Fatura İlişkisinin UBL-TR Kodlaması
+Daha önce bahsedilen &quot;E-Adisyon ile faturanın ilişkilendirilmesi&quot; kuralı, UBL-TR XML dosyasında AdditionalDocumentReference (Ek Belge Referansı) düğümü kullanılarak kodlanmalıdır16. Bir E-Fatura veya E-Arşiv Fatura oluşturulurken, faturanın UBL-TR şemasına şu bloğun eklenmesi şarttır:
+XML
+&lt;cac:AdditionalDocumentReference&gt;    &lt;cbc:ID&gt;ADISYON-UUID-DEGERI-BURAYA-YAZILACAK&lt;/cbc:ID&gt;    &lt;cbc:IssueDate&gt;2026-08-14&lt;/cbc:IssueDate&gt;    &lt;cbc:DocumentTypeCode&gt;E-ADISYON&lt;/cbc:DocumentTypeCode&gt;    &lt;cbc:DocumentType&gt;Elektronik Adisyon&lt;/cbc:DocumentType&gt;&lt;/cac:AdditionalDocumentReference&gt;
+Bu kod bloğu, mali denetimlerde faturanın hangi adisyona ait olduğunu dijital olarak kanıtlar ve restoranı usulsüzlük cezalarından korur10.
+5. Uyumsoft E-Dönüşüm Entegrasyon Simülasyonu
+Kullanıcının belirlediği gereksinimler ışığında, sistemin entegre olacağı ilk somut adaptör olarak Uyumsoft e-Dönüşüm API'lerinin kullanıldığı bir simülasyon geliştirilmiştir. Uyumsoft, işletmelere bulut tabanlı, ERP ile sorunsuz bütünleşen ve yasal mevzuatları otomatik güncelleyen bir altyapı sunar6. Uyumsoft'un sunduğu web servisler (API'ler), genellikle Microsoft WCF (Windows Communication Foundation) tabanlı SOAP servisleri ve yeni nesil ürünler için (Örn: E-Adisyon) RESTful API'ler olarak tasarlanmıştır11.
+5.1. Web Servis Altyapısı ve Uç Noktalar (Endpoints)
+Yazılım ekibi, entegrasyon süreçlerini test edebilmek için öncelikle Uyumsoft'un test ortamlarına (sandbox) bağlanmalıdır.
+E-Fatura / E-Arşiv Fatura Web Servisi (SOAP 1.1):
+Canlı Sistem: https://efatura.uyumsoft.com.tr/services/Integration[cite: 45]
+Test Sistemi: https://efatura-test.uyumsoft.com.tr/services/Integration[cite: 45]
+E-İrsaliye Web Servisi:
+Canlı Sistem: https://efatura.uyum.com.tr/Services/DespatchIntegration[cite: 38]
+Test Ortamı Kimlik Bilgileri: Geliştirme süreci boyunca bağlantı kurmak için varsayılan kimlik bilgileri Kullanıcı Adı: Uyumsoft ve Şifre: Uyumsoft olarak kullanılabilir45.
+SOAP 1.1 protokolünü kullanan bu servislere C#/.NET ortamında bağlanmak için BasicHttpBinding kullanılırken, PHP, Java veya Python gibi dillerde WSDL dokümanı parse edilerek (örneğin PHP'de SoapClient sınıfı ile) istemci sınıfları oluşturulur17.
+5.2. E-Adisyon REST API Simülasyonu
+Uyumsoft (ve bağlantılı servis sağlayıcıları, örn. eKüp Bilişim), E-Adisyon için daha hızlı çalışan JSON tabanlı REST uç noktaları sağlamaktadır46.
+Siparişin Gönderilmesi: Müşteri siparişi verildiğinde sistem bir UUID oluşturur ve UBL-TR formatında XML üretir. Bu XML dosyası Base64 ile şifrelenir ve POST isteğiyle gönderilir48.
+URL: https://webservis.ekupbilisim.com/api/outsource-test/check/send[cite: 48]
+Header: Authorization: Bearer &lt;TOKEN&gt;
+Body (JSON):
+JSON{  &quot;xml&quot;: &quot;PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iV...&quot; }
+Yanıtın İzlenmesi: İstek başarılı olduğunda, API sunucusu 200 OK koduyla birlikte belgenin sistemde oluşan ID'sini, UUID'sini ve GİB durumunu (Örn: 130) JSON yanıtı olarak döner47. Bu yanıt alınarak veritabanındaki Orders tablosunda güncellenir.
+5.3. E-Fatura ve E-Arşiv Fatura Süreçleri (SOAP IIntegration)
+Hesap kapandığında oluşturulan fatura, Uyumsoft'un IIntegration WCF arayüzü üzerinden GİB'e iletilir12.
+Aşağıdaki tablo, entegrasyon sürecinde kullanılacak en kritik Uyumsoft SOAP metotlarını ve işlevlerini göstermektedir:
+Metot Adı (WSDL)
+Parametreler
+Dönüş Değeri / İşlev
+IsEInvoiceUser
+vknTckn (String), alias (String)
+FlagResponse döner. Sorgulanan kişinin e-Fatura mükellefi olup olmadığını doğrular12.
+SendInvoice
+invoice (InvoiceType Nesnesi / UBL)
+Hazırlanan fatura UBL-TR nesnesini Uyumsoft sistemine iletir7.
+GetOutboxInvoiceList
+query (OutboxInvoiceListQueryModel)
+Gönderilen faturaların giden kutusundaki listesini, sayfalama ve tarih parametreleriyle çeker45.
+GetInboxInvoiceList
+query (InboxInvoiceListQueryModel)
+Firmaya kesilen gelen faturaların listesini getirir. OnlyNewestInvoices bayrağı desteklenir12.
+SetInvoicesTaken
+invoices (ArrayOfString / UUIDs)
+Gelen faturaların yazılım tarafından alındığını (işlendiğini) Uyumsoft'a bildirerek &quot;yeni&quot; işaretini kaldırır12.
+E-Arşiv Fatura Özelinde Simülasyon: E-Arşiv faturalarının Uyumsoft'a iletilmesi, e-Fatura ile tamamen aynı SendInvoice metodu kullanılarak yapılır7. Tek fark, UBL-TR veri nesnesi hazırlanırken profil (ProfileID) değerinin EARSIVFATURA olarak atanması ve alıcı posta kutusu adreslerinin doldurulmamasıdır. Uyumsoft altyapısı bu durumu algılar, faturayı işler ve GİB'e otomatik raporlama sürecini yazılım ekibinden bağımsız olarak kendisi gerçekleştirir7. Ayrıca GetOutboxInvoiceList metodu kullanılarak, e-Arşiv senaryosu (Scenario) ve Onaylı (Approved) durumuyla filtrelenmiş arşiv belgeleri sistemden çekilebilir45.
+6. Hata Yönetimi, Durum Kodları ve Asenkron Kuyruk Mimarisi
+E-Dönüşüm süreçlerinde geliştirici ekipleri en çok zorlayan alanlardan biri, GİB'in asenkron (eşzamanlı olmayan) çalışan durum bildirim sistemidir. Bir fatura entegratöre iletildiği anda GİB tarafından anında onaylanmaz. Fatura bir &quot;zarf&quot; (envelope) içerisine konur, kuyruğa alınır, şematronlardan geçer ve ardından alıcıya ulaştırılır7.
+Yazılım sisteminin, gönderilen faturaların akıbetini öğrenebilmesi için periyodik olarak QueryOutboxInvoiceStatus veya benzeri sorgulama metotlarını tetiklemesi gerekir7.
+6.1. GİB Durum Kodları (Status Codes) ve Aksiyonlar
+Yazılım veritabanında belgelerin durumunu tutan bir Status_Code alanı bulunmalıdır. Aşağıdaki tabloda, karşılaşılabilecek temel durum kodları ve yazılımın alması gereken aksiyonlar özetlenmiştir31:
+Durum Kodu
+Açıklama
+Sistem Tarafından Alınacak Aksiyon
+1000
+Zarf Kuyruğa Eklendi. Fatura GİB'e gönderildi ve sıraya alındı31.
+Beklenmelidir. Fatura henüz onaylanmadı.
+1100
+Zarf İşleniyor. GİB şema ve şematron kontrollerini yapıyor31.
+Beklenmelidir. Süreç devam etmektedir.
+1120
+Teknik Geçersizlik. Zarf XML standartlarına uygun değil40.
+Yazılımın UBL Üretim Motoru incelenmeli, hata düzeltilmelidir.
+1163
+Zarf Reddedildi. Vergi numarası hatalı, matematiksel uyumsuzluk veya UUID çakışması var40.
+Belge iptal statüsüne çekilmeli, ETTN değiştirilerek hatalı veri düzeltilip yeniden gönderilmelidir.
+1200
+Zarf Başarıyla İşlendi. Kontroller tamamlandı, alıcıya gönderim aşamasında31.
+Sürecin başarıyla ilerlediği kaydedilmeli, alıcı yanıtı beklenmelidir.
+1300
+Başarıyla Tamamlandı. Fatura alıcıya ulaştı31.
+İşlem başarıyla sonlandırılmalı ve fatura &quot;Resmileşti&quot; olarak işaretlenmelidir.
+6.2. Asenkron Kuyruk (Queue) Mimarisi İhtiyacı
+Bir restoranın en yoğun saatlerinde (örneğin Cuma akşamı) onlarca masanın aynı anda hesap istemesi ve ödeme yapması muhtemeldir. Eğer POS yazılımı, her hesap kapatıldığında fatura oluşturmak ve Uyumsoft web servislerinden yanıt almak için senkron (HTTP Call) bir bekleme yaparsa, sistem kilitlenir ve operasyonel hız düşer.
+Bu sorunu çözmek için yazılım mimarisinde bir Mesaj Kuyruğu (Message Broker / Queue) kullanılmalıdır (Örn: RabbitMQ, Apache Kafka veya veritabanı tabanlı bir Job tablosu). Kasiyer &quot;Hesap Kapat&quot; butonuna bastığında:
+Müşteri işlemi anında sonlandırılır ve tahsilat kaydedilir.
+Fatura üretme emri arka plandaki &quot;Kuyruk&quot; sistemine atılır.
+Arka planda çalışan bir Background Worker servisi (Adaptör katmanı), kuyruktaki fatura verilerini toplar, UBL-TR üretir ve asenkron olarak Uyumsoft API'sine gönderir.
+Bir başka Worker servisi ise belirli periyotlarla GİB durum kodlarını (1000'den 1300'e geçişleri) sorgulayarak veritabanındaki fatura statülerini günceller.
+Bu asenkron mimari, hem API limitasyonlarına (Rate Limiting) takılmayı önler hem de internet kesintilerinde fatura verilerinin kaybolmadan tekrar gönderilmesini (Retry Mechanism) garanti altına alır.
+7. Sonuç ve Stratejik Yol Haritası
+İnşa edilecek olan restoran yönetim sistemi, yüksek tempolu HORECA sektörünün gereksinimlerini karşılarken GİB mevzuatına (VUK 509/526) tam uyum sağlamak zorundadır. Kodlama ajanı için bu rapor doğrultusunda oluşturulan mimari yol haritası şu temel sütunlara dayanmaktadır:
+Öncelikle, sistem hiçbir şart altında Gelir İdaresi Başkanlığı'na (GİB) doğrudan entegre olmaya çalışmamalı, bütün veri trafiğini yetkili Özel Entegratörlerin (Uyumsoft, EDM vb.) yüksek güvenlikli bulut altyapıları üzerinden yürütmelidir. Bu entegrasyon süreci tasarlanırken Adaptör Tasarım Deseni uygulanmalı; yazılımın merkezinde evrensel UBL-TR standartlarına uygun fatura, adisyon ve irsaliye XML'leri üreten izole bir çekirdek motor bulunmalı, dışarıya açılan kapıda ise yalnızca entegratörün iletişim katmanını soyutlayan arayüzler yer almalıdır.
+İkinci olarak, işletmedeki sipariş döngüsü yasal adımlara tam uyumlu olarak kodlanmalıdır. Masaya sipariş girildiği anda oluşan E-Adisyon belgesine ait UUID (ETTN), masa kapanıp mali ödeme alındığında oluşturulan E-Fatura veya E-Arşiv faturanın UBL-TR yapısına (AdditionalDocumentReference düğümü ile) otomatik olarak enjekte edilmeli, böylece yasal bağ dijital ortamda tesis edilmelidir. Tüm bu iletişim ve veri gönderim süreçleri, yoğun restoran saatlerinde POS cihazlarının donmasını engellemek amacıyla arka planda asenkron (kuyruk tabanlı) çalışan servisler tarafından üstlenilmeli ve GİB durum kodları (1300 başarısı veya 1163 red durumları) anlık olarak veritabanında güncellenmelidir.
+Bu çok katmanlı, soyutlanmış ve e-Dönüşüm yasal regülasyonlarına eksiksiz adapte edilmiş mimari; işletmelere esneklik sunarken, restoran yönetim sisteminin uzun yıllar boyunca farklı entegratörlerle, minimum kod değişikliği ile ölçeklenebilmesini güvence altına alacaktır.
+Alıntılanan çalışmalar
+e-Fatura ve e-Arşiv Fatura Arasındaki Farklar - TÜRMOB, https://www.turmob.org.tr/e-donusum/eArsivfatura/farklar
+e-Fatura Nedir? - Mysoft e-Belge, https://mysoftebelge.com/e-fatura
+E-Faturada Gib Portal Ve Özel Entegratör Farkı - EDM Bilişim, https://www.edmbilisim.com.tr/blog/e-faturada-gib-portal-ve-ozel-entegrator-farki.html
+E Fatura API Nedir ve Kimler Kullanabilir? | 2026 Rehber - EMA Bilgi Teknoloji, https://www.emabilgiteknoloji.com/e-fatura-api-nedir-ve-kimler-kullanabilir/
+Dijital Vergi Yönetiminde Özel Entegratörlerin Rolü: 2026 Vizyonu - Bu Muşavirlik ve Hukuk, https://bumusavirlik.com/dijital-vergi-yonetiminde-ozel-entegratorlerin-rolu-2026-vizyonu/
+e-Fatura Entegratörü Seçerken Nelere Dikkat Edilmeli? | Uyumsoft, https://www.uyumsoft.com/blog/e-fatura-entegratoru-secerken-nelere-dikkat-edilmelidir
+Uyumsoft E-Fatura Ve E-Arşiv | PDF - Scribd, https://www.scribd.com/document/431324589/Uyumsoft-E-Fatura-Ve-E-Ar%C5%9Fiv
+UBL-TR - İZİBİZ E-Dönüşüm Entegrasyon Kılavuzu, https://dev.izibiz.com.tr/resource/BELGELER/UBL-TR%20Fatura%20-%20V%201.0.pdf
+UBL Formatı Nedir? XML Fatura Nedir ve Nasıl Görüntülenir? - Figopara, https://figopara.com/blog/ubl-formati-ve-xml-fatura-nedir-nasil-acilir
+e-Arşiv ve e-Fatura Arasındaki Fark Nedir? - SNI Technology, https://snitechnology.net/tr/e-arsiv-ve-e-fatura-farki-nedir/
+Giriş | EDM Web API, https://docs.edmbilisim.com.tr/api/api-documentation/introduction.html
+Import WSDL ile efatura entegratöründen aldığım function - Delphi Forum, https://www.delphiturkiye.com/forum/viewtopic.php?t=36559
+Adapter Design Pattern (Tasarım Deseni) – C# – #ALKANFATIH, https://alkanfatih.com/adapter-design-pattern-tasarim-deseni-c/
+Adapter Design Pattern: Uyumsuz API'ların Yönetimi - Can Cuma Yaman, https://cancumayaman.com/2025/11/15/adapter-design-pattern-uyumsuz-apilarin-yonetimi/
+UBL-TR Dokümantasyonu - Seaacademyik, https://seaacademyik.com/vergi-teknolojileri/ubl-tr-dokumantasyonu/
+İZİBİZ E-Dönüşüm Entegrasyon Kılavuzu, https://dev.izibiz.com.tr/
+Integration Service - Uyumsoft E-Fatura Portalı, https://efatura.uyumsoft.com.tr/Services/Integration
+soap - WCF BasicHttpBinding - Where can I find SOAP1.1 in WSDL - Stack Overflow, https://stackoverflow.com/questions/7189134/wcf-basichttpbinding-where-can-i-find-soap1-1-in-wsdl
+Namespace EFaturaEDMessageService | EDM Web API, https://docs.edmbilisim.com.tr/api/api-documentation/emessage/referenced/EFaturaEDMessageService.html
+https://docs.edmbilisim.com.tr/api/index.html
+e-Adisyon - TTProSoft, https://www.ttprosoft.com/DigitalServices/e-receipt.html
+E-Adisyon Nedir? Kafe ve Restoranlar İçin Eksiksiz Rehber (2026) | Kardo POS, https://kardopos.com/tr/blog/e-adisyon-nedir-kafe-restoran-rehberi-2026
+E-Adisyon Hakkında Her Şey - Ritapos, https://ritapos.com/e-adisyon-hakkinda-her-sey/
+Restoranda hangi belge kesilir: e-Adisyon, e-Fatura, e-Arşiv | Vorte Dijital Teknoloji A.Ş., https://www.vorte.com.tr/blog/restoranda-hangi-belge-kesilir
+E-Adisyon Nedir? 2026 Güncel Rehber ve Zorunluluk - Faturaport, https://faturaport.com/blog/e-donusum/e-adisyon-nedir-2026-guncel-rehber-kimler-kullanmak-zorunda
+e-Adisyon Nedir ve Kimler İçin Zorunludur? İşletmeler İçin Kapsamlı Rehber, https://www.qnbesolutions.com.tr/blog/e-adisyon-nedir-ve-kimler-icin-zorunludur-isletmeler-icin-kapsamli-rehber
+Uyumsoft e-Adisyon'a Başvurun İşletmenize Hız ve Verimlilik Katın, https://www.uyumsoft.com/e-adisyon
+Restoran E-Fatura Rehberi: Zorunluluklar ve POS Entegrasyonu (2026) - vRest, https://vrest.com.tr/blog/restoran-efatura-rehberi-2026
+e-Fatura İle e-Arşiv Fatura Arasındaki Fark Nedir? - Süper Entegratör, https://www.superentegrator.com/e-fatura-ile-e-arsiv-fatura-arasindaki-fark-nedir/
+e-Fatura ve e-Arşiv Fatura benzerlik ve farklılıklar | Vergi teknolojileri, https://vergiteknolojileri.com.tr/e-fatura-ve-e-arsiv-fatura-benzerlik-ve-farkliliklar
+e-Fatura Durum Kodu Nedir? | Uyumsoft, https://www.uyumsoft.com/blog/e-fatura-durum-kodu-nedir
+GİB e-Arşiv Portal Entegrasyonu ile Kolay Fatura Kesin - KolayBi, https://www.kolaybi.com/gib-e-arsiv-portal-entegrasyonu
+10 Soruda e-Fatura ve e-Arşiv Arasındaki Farklar - KolayBi, https://www.kolaybi.com/blog/e-fatura-ve-e-arsiv-arasindaki-farklar
+E Arşiv Fatura Entegrasyonu : r/CodingTR - Reddit, https://www.reddit.com/r/CodingTR/comments/1i2md8n/e_ar%C5%9Fiv_fatura_entegrasyonu/
+Hızlı, Güvenilir ve Kesintisiz Sevkiyat Yönetimi Uyumsoft e-İrsaliye'de, https://www.uyumsoft.com/e-irsaliye
+e-İrsaliye Kaynaklar - Uyumsoft Bilgi Sistemleri, https://www.uyumsoft.com/e-irsaliye/kaynaklar
+Invoice Message | UBL 2.1 - Truugo, https://www.truugo.com/ubl/2.1/invoice/
+Connect Services, https://efatura.uyum.com.tr/
+E-İrsaliye Kantar Programı — Uyumsoft, UBL, Luca, EDM Entegreli | OnlineKantar, https://www.onlinekantar.net/seo/e-irsaliye-kantar-programi.php
+e-Fatura Durum Kodları Rehberi: GİB Kod Listesi | Sopyo, https://www.sopyo.com/blog/e-fatura-durum-kodlari
+e-Fatura/e-Arşiv Rest Api Geliştirici Kılavuzu - Turkcell e-Şirket, https://developer.turkcellesirket.com/fatura
+e-Fatura Paketi ve UBL-TR (Kod Listeleri) Kılavuzu Güncellendi - NES, https://nes.com.tr/e-fatura-paketi-ubl-tr-kod-listeleri-2025
+E-Ticaret İçin ERP Rehberi: Süreçler, Faydalar, Çözümler | Uyumsoft, https://www.uyumsoft.com/blog/e-ticaret-icin-erp-rehberi-surecler-faydalar-cozumler
+Swagger UI, https://api.uyum.com.tr/index.html
+UyumSoft e-Fatura Entegrasyonu - PaperworkBPM - Document360, https://paperworkbpm.document360.io/docs/a5x070207000
+e-Adisyon - eKüpSoft API Dokümantasyonu, https://dokuman.ekupbilisim.com/docs/category/e-adisyon-1/
+Adisyon Detay - Show | eKüpSoft API Dokümantasyonu, https://dokuman.ekupbilisim.com/docs/e-Adisyon/AdisyonDetay/
+Adisyon Gönderim - Send Check (XML) - eKüpSoft API Dokümantasyonu, https://dokuman.ekupbilisim.com/docs/e-Adisyon/AdisyonXMLGonderim/
+e-Fatura Durum Kodları Detaylı Açıklamalı Liste - Yengeç, https://yengec.co/blog/e-fatura-durum-kodu-ve-hata-kodlari/

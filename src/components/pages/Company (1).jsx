@@ -93,7 +93,27 @@ function createEmptyForm(type = 'sirket') {
     salesTax:'', purchaseTax:'',
     laborSettings: { ...DEFAULT_LABOR_SETTINGS },
     latitude: '', longitude: '',
+    taxNumber: '',
+    legalTitle: '',
+    taxOffice: '',
+    legalAddress: '',
+    isLegalEntity: type === 'tuzel' || type === 'sirket',
+    parentLegalEntityId: '',
   }
+}
+
+function getLegalEntityNodes(nodes) {
+  if (!Array.isArray(nodes)) return []
+  const list = []
+  for (const n of nodes) {
+    if (n.type === 'tuzel' || n.type === 'sirket' || n.isLegalEntity || n.is_legal_entity || n.taxNumber || n.tax_number) {
+      list.push(n)
+    }
+    if (n.children && n.children.length) {
+      list.push(...getLegalEntityNodes(n.children))
+    }
+  }
+  return list
 }
 
 function findParentName(nodes, childId, parentName = '') {
@@ -187,6 +207,7 @@ export default function Company() {
   const selectedParentName = selectedNode ? findParentName(tree, selectedNode.id) : ''
   const selectedSalesTax = taxes.find(tax => tax.id === selectedNode?.salesTax)
   const selectedPurchaseTax = taxes.find(tax => tax.id === selectedNode?.purchaseTax)
+  const legalEntityNodes = useMemo(() => getLegalEntityNodes(tree), [tree])
 
   async function saveTree(newTree) {
     await db.from('settings').upsert({ key: 'company_tree', value: newTree }, { onConflict: 'key' })
@@ -317,6 +338,12 @@ export default function Company() {
       laborSettings: normalizeLaborSettings(node.laborSettings),
       latitude: node.latitude !== undefined && node.latitude !== null ? String(node.latitude) : '',
       longitude: node.longitude !== undefined && node.longitude !== null ? String(node.longitude) : '',
+      taxNumber: node.taxNumber || node.tax_number || '',
+      legalTitle: node.legalTitle || node.legal_title || '',
+      taxOffice: node.taxOffice || node.tax_office || '',
+      legalAddress: node.legalAddress || node.legal_address || '',
+      isLegalEntity: Boolean(node.isLegalEntity ?? node.is_legal_entity ?? (node.type === 'tuzel' || node.type === 'sirket')),
+      parentLegalEntityId: node.parentLegalEntityId || node.parent_legal_entity_id || '',
     })
     setEditId(node.id); setParentNode(null)
     setAllowedTypes([node.type])
@@ -350,25 +377,32 @@ export default function Company() {
     if (!form.name.trim()) { toast('Ad zorunludur', 'error'); return }
     if (form.type === 'sirket' && !form.currency) { toast('Para birimi seçmelisiniz', 'error'); return }
 
-    let extra = {}
+    let extra = {
+      taxNumber: form.taxNumber?.trim() || '',
+      legalTitle: form.legalTitle?.trim() || '',
+      taxOffice: form.taxOffice?.trim() || '',
+      legalAddress: form.legalAddress?.trim() || '',
+      isLegalEntity: Boolean(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket'),
+      parentLegalEntityId: form.parentLegalEntityId || null,
+    }
     if (form.type === 'sirket') {
-      extra = {
+      Object.assign(extra, {
         logo: form.logo, currency: form.currency,
         showSymbol: form.showSymbol, symbolBefore: form.symbolBefore,
         showDecimal: form.showDecimal,
         decimalPlaces: parseInt(form.decimalPlaces) || 2,
         invDecimal: parseInt(form.invDecimal) || 4,
         salesTax: form.salesTax, purchaseTax: form.purchaseTax,
-      }
+      })
     } else if (form.type === 'tuzel') {
-      extra = {
+      Object.assign(extra, {
         laborSettings: normalizeLaborSettings(form.laborSettings),
-      }
+      })
     } else if (form.type === 'sube') {
-      extra = {
+      Object.assign(extra, {
         latitude: form.latitude ? parseFloat(form.latitude) : null,
         longitude: form.longitude ? parseFloat(form.longitude) : null,
-      }
+      })
     }
 
     const newTree = JSON.parse(JSON.stringify(tree))
@@ -532,6 +566,36 @@ export default function Company() {
                   <div className="f-input" style={{ display:'flex', alignItems:'center', minHeight:44, color:value === '-' ? '#94a3b8' : '#475569', background:'#f8fbff' }}>{value}</div>
                 </div>
               ))}
+
+              {/* Tüzel Kişilik & E-Fatura Kartı */}
+              <div style={{ border:'1px solid #dbeafe', borderRadius:14, padding:14, background:'#f0f7ff' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                  <div style={{ fontSize:'.77rem', fontWeight:800, color:'#1e40af', letterSpacing:'.05em', display:'flex', alignItems:'center', gap:6 }}>
+                    <i className="fa-solid fa-landmark" /> TÜZEL KİŞİLİK & E-FATURA
+                  </div>
+                  <span className="badge" style={{ background: (selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? '#dcfce7' : '#f1f5f9', color: (selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? '#166534' : '#64748b', fontSize:'.7rem' }}>
+                    {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? 'Bağımsız Tüzel Kişilik' : 'Şube / Depo Düğümü'}
+                  </span>
+                </div>
+                <div style={{ display:'grid', gap:8, fontSize:'.8rem' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                    <span style={{ color:'#64748b' }}>VKN / TCKN:</span>
+                    <strong style={{ fontFamily:'monospace', color:'#0f172a' }}>{selectedNode.taxNumber || selectedNode.tax_number || '-'}</strong>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                    <span style={{ color:'#64748b' }}>Resmi Ünvan:</span>
+                    <strong style={{ color:'#0f172a', textAlign:'right', maxWidth:'60%' }}>{selectedNode.legalTitle || selectedNode.legal_title || selectedNode.name || '-'}</strong>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                    <span style={{ color:'#64748b' }}>Vergi Dairesi:</span>
+                    <strong style={{ color:'#0f172a' }}>{selectedNode.taxOffice || selectedNode.tax_office || '-'}</strong>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}>
+                    <span style={{ color:'#64748b' }}>Yasal Adres:</span>
+                    <span style={{ color:'#334155', textAlign:'right', maxWidth:'60%', fontSize:'.75rem' }}>{selectedNode.legalAddress || selectedNode.legal_address || '-'}</span>
+                  </div>
+                </div>
+              </div>
               {selectedNode.type === 'tuzel' && (
                 <div style={{ border:'1px solid #e2e8f0', borderRadius:14, padding:14, background:'#fbfdff' }}>
                   <div style={{ fontSize:'.77rem', fontWeight:800, color:'#64748b', letterSpacing:'.05em', marginBottom:10 }}>İŞÇİLİK PARAMETRELERİ</div>
@@ -693,6 +757,94 @@ export default function Company() {
             <label className="f-label">Ad <span style={{ color:'#ef4444' }}>*</span></label>
             <input className="f-input" value={form.name} onChange={e => set('name', e.target.value)}
               placeholder="ör. Ana Şirket, İstanbul Şubesi…"/>
+          </div>
+
+          {/* Tüzel Kişilik & E-Fatura Tanımları */}
+          <div style={{ display:'grid', gap:12, border:'1px solid #cbd5e1', borderRadius:14, padding:16, background:'#f8fafc' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'#e0f2fe', color:'#0369a1', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <i className="fa-solid fa-landmark"/>
+                </div>
+                <div>
+                  <div style={{ fontWeight:800, color:'#0f172a', fontSize:'.9rem' }}>Tüzel Kişilik & E-Fatura / E-İrsaliye Bilgileri</div>
+                  <div style={{ fontSize:'.75rem', color:'#64748b' }}>GİB e-Fatura ve şirketler arası transfer faturalandırması için kullanılır.</div>
+                </div>
+              </div>
+
+              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem', fontWeight:700, color:'#1e293b', cursor:'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={form.isLegalEntity}
+                  onChange={e => set('isLegalEntity', e.target.checked)}
+                  style={{ width:16, height:16, accentColor:'#0284c7' }}
+                />
+                Bu Düğüm Ayrı Bir Tüzel Kişiliktir
+              </label>
+            </div>
+
+            {form.isLegalEntity ? (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4 }}>
+                <div>
+                  <label className="f-label">VKN / TCKN <span style={{ color:'#ef4444' }}>*</span></label>
+                  <input
+                    className="f-input"
+                    maxLength={11}
+                    value={form.taxNumber}
+                    onChange={e => set('taxNumber', e.target.value.replace(/\D/g, ''))}
+                    placeholder="10 veya 11 haneli vergi no"
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Resmi Ticari Ünvan</label>
+                  <input
+                    className="f-input"
+                    value={form.legalTitle}
+                    onChange={e => set('legalTitle', e.target.value)}
+                    placeholder="ör. ABC Gıda Restorancılık A.Ş."
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Vergi Dairesi</label>
+                  <input
+                    className="f-input"
+                    value={form.taxOffice}
+                    onChange={e => set('taxOffice', e.target.value)}
+                    placeholder="ör. Beşiktaş / Kadıköy"
+                  />
+                </div>
+                <div>
+                  <label className="f-label">Yasal Tebligat / Şirket Adresi</label>
+                  <input
+                    className="f-input"
+                    value={form.legalAddress}
+                    onChange={e => set('legalAddress', e.target.value)}
+                    placeholder="ör. Nispetiye Cad. No:12 Beşiktaş / İstanbul"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="f-label">Bağlı Olduğu Tüzel Kişilik (Fatura Kesici)</label>
+                <div className="sel-wrap">
+                  <select
+                    className="f-input"
+                    value={form.parentLegalEntityId || ''}
+                    onChange={e => set('parentLegalEntityId', e.target.value)}
+                  >
+                    <option value="">Üst Hiyerarşiden Otomatik Devral</option>
+                    {legalEntityNodes.map(le => (
+                      <option key={le.id} value={le.id}>
+                        {le.name} {le.taxNumber ? `(VKN: ${le.taxNumber})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ fontSize:'.74rem', color:'#64748b', marginTop:4 }}>
+                  Bu şube/depodan yapılacak transferlerde e-fatura seçilen veya üstteki ana tüzel kişilik adına kesilir.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Şube Koordinatları */}

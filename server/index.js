@@ -72,7 +72,213 @@ async function checkSchema() {
         CONSTRAINT fk_qa_questions FOREIGN KEY (question_id) REFERENCES public.qa_questions (id) ON DELETE CASCADE
       );
     `);
-    console.log('Database schema auto-checked, image_url columns and QA tables verified.');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.e_integrator_configs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID,
+        branch_id UUID,
+        provider VARCHAR(50) NOT NULL DEFAULT 'mock',
+        username VARCHAR(255),
+        password VARCHAR(255),
+        api_key VARCHAR(255),
+        api_secret VARCHAR(255),
+        api_url VARCHAR(255),
+        alias_pk VARCHAR(255) DEFAULT 'urn:mail:defaultpk@gib.gov.tr',
+        alias_gb VARCHAR(255) DEFAULT 'urn:mail:defaultgb@gib.gov.tr',
+        sender_vkn_tckn VARCHAR(20) NOT NULL DEFAULT '1234567890',
+        sender_title VARCHAR(255) NOT NULL DEFAULT 'SuitableRMS Restoran Grubu A.Ş.',
+        sender_tax_office VARCHAR(100) DEFAULT 'Beşiktaş',
+        sender_address TEXT DEFAULT 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        is_test_mode BOOLEAN NOT NULL DEFAULT true,
+        auto_fetch_interval_min INTEGER DEFAULT 15,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE TABLE IF NOT EXISTS public.e_invoices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        direction VARCHAR(10) NOT NULL,
+        ettn UUID NOT NULL UNIQUE,
+        invoice_number VARCHAR(32) NOT NULL,
+        invoice_type VARCHAR(30) NOT NULL DEFAULT 'SATIS',
+        profile_id VARCHAR(30) NOT NULL DEFAULT 'TICARIFATURA',
+        issue_date DATE NOT NULL,
+        issue_time TIME WITHOUT TIME ZONE DEFAULT '00:00:00',
+        status_code INTEGER NOT NULL DEFAULT 1000,
+        status_description VARCHAR(255) DEFAULT 'Kuyrukta / Taslak',
+        currency_code VARCHAR(5) NOT NULL DEFAULT 'TRY',
+        currency_rate NUMERIC(12, 4) DEFAULT 1.0000,
+        sender_vkn_tckn VARCHAR(20) NOT NULL,
+        sender_title VARCHAR(255) NOT NULL,
+        sender_tax_office VARCHAR(100),
+        sender_address TEXT,
+        sender_alias VARCHAR(255),
+        receiver_vkn_tckn VARCHAR(20) NOT NULL,
+        receiver_title VARCHAR(255) NOT NULL,
+        receiver_tax_office VARCHAR(100),
+        receiver_address TEXT,
+        receiver_alias VARCHAR(255),
+        line_extension_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax_exclusive_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax_inclusive_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        allowance_total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        charge_total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax_total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        payable_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        payable_rounding_amount NUMERIC(15, 2) DEFAULT 0,
+        notes TEXT,
+        ubl_xml TEXT,
+        raw_json JSONB DEFAULT '{}',
+        response_code VARCHAR(50),
+        response_reason TEXT,
+        response_date TIMESTAMPTZ,
+        is_archived BOOLEAN DEFAULT false,
+        is_matched BOOLEAN DEFAULT false,
+        matched_purchase_order_id UUID,
+        matched_inventory_movement_id UUID,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_direction ON public.e_invoices(direction);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_status_code ON public.e_invoices(status_code);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_issue_date ON public.e_invoices(issue_date);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_invoice_number ON public.e_invoices(invoice_number);
+      CREATE TABLE IF NOT EXISTS public.e_invoice_lines (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES public.e_invoices(id) ON DELETE CASCADE,
+        line_number INTEGER NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        item_code VARCHAR(100),
+        item_description TEXT,
+        invoiced_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1,
+        unit_code VARCHAR(20) NOT NULL DEFAULT 'C62',
+        unit_price NUMERIC(15, 4) NOT NULL DEFAULT 0,
+        subtotal NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        discount_rate NUMERIC(5, 2) DEFAULT 0,
+        discount_amount NUMERIC(15, 2) DEFAULT 0,
+        tax_rate NUMERIC(5, 2) NOT NULL DEFAULT 20,
+        tax_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax_exemption_reason_code VARCHAR(20),
+        total_line_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        matched_stock_item_id UUID,
+        matched_stock_item_name VARCHAR(255),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE INDEX IF NOT EXISTS idx_e_invoice_lines_invoice_id ON public.e_invoice_lines(invoice_id);
+      CREATE TABLE IF NOT EXISTS public.e_document_responses (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES public.e_invoices(id) ON DELETE CASCADE,
+        ettn UUID NOT NULL,
+        reference_ettn UUID NOT NULL,
+        reference_invoice_number VARCHAR(32) NOT NULL,
+        response_type VARCHAR(20) NOT NULL,
+        response_code VARCHAR(50),
+        reason TEXT,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+        integrator_response_code VARCHAR(50),
+        integrator_response_message TEXT,
+        status VARCHAR(30) NOT NULL DEFAULT 'SUCCESS',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE INDEX IF NOT EXISTS idx_e_doc_responses_invoice_id ON public.e_document_responses(invoice_id);
+      CREATE TABLE IF NOT EXISTS public.e_invoice_matching_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES public.e_invoices(id) ON DELETE CASCADE,
+        invoice_line_id UUID REFERENCES public.e_invoice_lines(id) ON DELETE CASCADE,
+        matching_type VARCHAR(50) NOT NULL,
+        matched_entity_id UUID,
+        matched_entity_type VARCHAR(50),
+        discrepancy_type VARCHAR(50),
+        discrepancy_amount NUMERIC(15, 2) DEFAULT 0,
+        notes TEXT,
+        performed_by VARCHAR(255),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE INDEX IF NOT EXISTS idx_e_invoice_match_invoice_id ON public.e_invoice_matching_logs(invoice_id);
+    `);
+    console.log('Database schema auto-checked, image_url columns, QA tables, and E-Invoice tables verified.');
+    // FAZ 3: Inter-Company & Legal Entity Schema
+    await pool.query(`
+      ALTER TABLE public.company_nodes
+        ADD COLUMN IF NOT EXISTS tax_number VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS legal_title VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS tax_office VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS legal_address TEXT,
+        ADD COLUMN IF NOT EXISTS is_legal_entity BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS parent_legal_entity_id UUID REFERENCES public.company_nodes(id) ON DELETE SET NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_company_nodes_tax_number ON public.company_nodes(tax_number);
+      CREATE INDEX IF NOT EXISTS idx_company_nodes_parent_legal_entity_id ON public.company_nodes(parent_legal_entity_id);
+      CREATE INDEX IF NOT EXISTS idx_company_nodes_is_legal_entity ON public.company_nodes(is_legal_entity);
+
+      ALTER TABLE public.e_invoices
+        ADD COLUMN IF NOT EXISTS is_inter_company BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS source_transfer_doc_no VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS origin_node_id UUID,
+        ADD COLUMN IF NOT EXISTS destination_node_id UUID,
+        ADD COLUMN IF NOT EXISTS linked_adisyon_id UUID,
+        ADD COLUMN IF NOT EXISTS linked_adisyon_ettn UUID,
+        ADD COLUMN IF NOT EXISTS linked_adisyon_number VARCHAR(32);
+
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_is_inter_company ON public.e_invoices(is_inter_company);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_source_transfer_doc_no ON public.e_invoices(source_transfer_doc_no);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_linked_adisyon_id ON public.e_invoices(linked_adisyon_id);
+      CREATE INDEX IF NOT EXISTS idx_e_invoices_linked_adisyon_ettn ON public.e_invoices(linked_adisyon_ettn);
+
+      -- FAZ 4: E-Adisyon (VUK 509/526) Tabloları
+      CREATE TABLE IF NOT EXISTS public.e_adisyons (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        branch_id UUID,
+        table_key VARCHAR(100),
+        table_name VARCHAR(100),
+        order_id UUID,
+        ettn UUID NOT NULL UNIQUE,
+        adisyon_number VARCHAR(32) NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'OPEN',
+        opened_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+        closed_at TIMESTAMPTZ,
+        waiter_id UUID,
+        waiter_name VARCHAR(100) DEFAULT 'Garson',
+        guest_count INTEGER DEFAULT 1,
+        currency_code VARCHAR(5) NOT NULL DEFAULT 'TRY',
+        subtotal_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        tax_total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        payable_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        linked_invoice_id UUID,
+        linked_invoice_ettn UUID,
+        linked_invoice_number VARCHAR(32),
+        notes TEXT,
+        gib_status_code INTEGER DEFAULT 1200,
+        gib_status_description VARCHAR(255) DEFAULT 'E-Adisyon Başarıyla Kaydedildi (1200)',
+        integrator_reference_id VARCHAR(255),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_e_adisyons_table_key ON public.e_adisyons(table_key);
+      CREATE INDEX IF NOT EXISTS idx_e_adisyons_status ON public.e_adisyons(status);
+      CREATE INDEX IF NOT EXISTS idx_e_adisyons_ettn ON public.e_adisyons(ettn);
+      CREATE INDEX IF NOT EXISTS idx_e_adisyons_linked_invoice_id ON public.e_adisyons(linked_invoice_id);
+      CREATE INDEX IF NOT EXISTS idx_e_adisyons_opened_at ON public.e_adisyons(opened_at);
+
+      CREATE TABLE IF NOT EXISTS public.e_adisyon_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        adisyon_id UUID NOT NULL REFERENCES public.e_adisyons(id) ON DELETE CASCADE,
+        item_name VARCHAR(255) NOT NULL,
+        item_code VARCHAR(100),
+        quantity NUMERIC(12, 3) NOT NULL DEFAULT 1,
+        unit_code VARCHAR(20) NOT NULL DEFAULT 'C62',
+        unit_price NUMERIC(15, 4) NOT NULL DEFAULT 0,
+        tax_rate NUMERIC(5, 2) NOT NULL DEFAULT 10,
+        tax_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        status VARCHAR(30) NOT NULL DEFAULT 'SERVED',
+        cancel_reason TEXT,
+        added_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_e_adisyon_items_adisyon_id ON public.e_adisyon_items(adisyon_id);
+    `);
   } catch (err) {
     console.error('Error in database schema auto-check:', err.message);
   }

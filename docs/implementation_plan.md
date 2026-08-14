@@ -1,102 +1,120 @@
-# Duyuru ve Bildirim Sistemi Geliştirme Planı
+# Restoran E-Dönüşüm ve E-Fatura Entegrasyonu Uygulama Planı
 
-Bu plan, `personel-android` mobil uygulamasına çalışanlar arası duyuru yapma, okuma, okundu onayı verme özellikleri ile yeni görev atama, durum güncelleme, geciken görevler ve yeni duyuru olaylarına dair bildirim takip arayüzleri eklemeyi amaçlar.
+Bu plan; SuitableRMS sistemine Gelir İdaresi Başkanlığı (GİB) mevzuatına tam uyumlu, Özel Entegratör modeli tabanlı, UBL-TR 2.1 standardında ve Adaptör Tasarım Deseni ile çalışan kapsamlı bir **E-Dönüşüm ve E-Fatura Altyapısı** kazandırmayı hedefler.
+
+Planlama, her fazın bağımsız subagent'lar aracılığıyla geliştirileceği ve ana agent tarafından denetlenip onaylanacağı/reddedileceği aşamalı bir yönetim mimarisine dayanmaktadır.
 
 ---
 
 ## Kullanıcı İncelemesi Gereken Konular
 
 > [!IMPORTANT]
-> **Yetki Seviyeleri ve Duyuru Yapma:**
-> Duyuru ekleme yetkisi varsayılan olarak `staffSession.authorityLevel` değeri `"ADMIN"`, `"MANAGER"`, `"GENEL MERKEZ"` veya `"ŞUBE MÜDÜRÜ"` olan kişilere verilecektir. Diğer personel ise sadece duyuruları okuyabilecek ve okundu onayı (receipt) gönderebilecektir.
+> **Subagent Orkestrasyonu ve Kalite Denetimi:**
+> Her faz için özel bir subagent atanacak; subagent geliştirme tamamlandığında ana agent kodları satır satır denetleyecek, derleme ve DB kurallarını (`.antigravityrules.md`, `DESIGN_HANDBOOK_V3_TR.md`) doğrulayacak ve onay verirse bir sonraki faza geçecektir.
 
 > [!NOTE]
-> **Görev Gecikme Bildirimleri (Auto-Detection):**
-> Gecikmiş görevlerin bildirimlerini oluşturmak için arka planda bir cron çalıştırılamayacağı için (Postgres trigger'ı yerine), kullanıcının görevler ekranını veya ana sayfayı açtığı anda **istemci bazlı otomatik tarama (overdue check)** yapılacak ve eğer veritabanında o gecikme için daha önce bildirim oluşturulmadıysa otomatik olarak `personnel_notifications` tablosuna bir satır yazılacaktır.
+> **Mock Entegratör Simülatörü:**
+> Faz 1'de inşa edilecek olan simülatör, gerçek bir e-Fatura entegratörünün (Uyumsoft, EDM vb.) sunduğu tüm API davranışlarını (Gelen faturalar, Giden faturalar, UBL-TR XML/HTML görseli, 1000->1300 durum geçişleri, Ticari Fatura Kabul/Red yanıtları) yerel ortamda %100 birebir simüle edecektir.
 
 ---
 
 ## Açık Sorular
 
-* **Duyuru Hedef Seçenekleri:** Duyuru oluşturulurken hedef kitle olarak "Tüm Şubeler" (all) ve "Sadece Kendi Şubem" (branch) dışında "Departman Bazlı" (position/role) bir ayrım eklenmeli mi? *(Plana şimdilik tüm şubeler ve aktif şube hedefleri eklenmiştir.)*
+* **Fatura İptal / İade Süresi:** Ticari e-Faturalara yasal olarak 8 gün içinde sistem üzerinden Kabul/Red yanıtı verilebilmektedir. Simülatörde ve UI'da 8 günlük süreyi aşan faturalar için "Süre Aşımı / Otomatik Kabul" uyarısı gösterilsin mi? *(Plana varsayılan olarak 8 gün kontrolü eklenmiştir.)*
+* **Mal Kabul Toleransı:** Mal kabul irsaliyesi ile fatura miktar/fiyat karşılaştırmasında varsayılan kuruş/yüzde toleransı (Örn: %1 fiyat veya 0.05 kg tartım toleransı) parametrik mi olsun? *(Plana sistem ayarlarında tutulacak şekilde eklenmiştir.)*
 
 ---
 
-## Önerilen Değişiklikler
+## Fazlar ve Subagent Görev Dağılımı
 
-### [Veritabanı Katmanı]
-
-#### [NEW] [create_notifications_table.sql](file:///x:/RMSv3/sql/create_notifications_table.sql)
-- Bildirimleri veritabanında saklamak için yeni `personnel_notifications` tablosunun ve indeksinin oluşturulması:
-  ```sql
-  CREATE TABLE IF NOT EXISTS public.personnel_notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    personnel_id TEXT NOT NULL, -- Alıcı personel ID veya 'all' veya 'branch_[branchId]'
-    title VARCHAR(255) NOT NULL,
-    message TEXT NOT NULL,
-    type VARCHAR(50) NOT NULL, -- 'task_assigned', 'task_updated', 'task_overdue', 'new_announcement', 'order_approval_pending'
-    related_id VARCHAR(255),
-    is_read BOOLEAN DEFAULT false NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_personnel_notifications_personnel ON public.personnel_notifications (personnel_id);
-  ```
+```mermaid
+graph TD
+    A[FAZ 1: Çekirdek E-Dönüşüm & Mock Entegratör Simülatörü] -->|Ana Agent Onayı| B[FAZ 2: Gelen Fatura & Mal Kabul 3-Way Matching]
+    B -->|Ana Agent Onayı| C[FAZ 3: Şirket Ağacı Tüzel Kişilikler Arası Transfer Faturası]
+    C -->|Ana Agent Onayı| D[FAZ 4: Çoklu Entegratör Uyumsoft/EDM & E-Adisyon Entegrasyonu]
+```
 
 ---
 
-### [Veri / Depo Katmanı]
+## FAZ 1: Çekirdek E-Dönüşüm Altyapısı & Mock Entegratör Simülatörü
 
-#### [NEW] [AnnouncementRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/AnnouncementRepository.kt)
-- Duyuru verilerini Supabase/Query API üzerinden yöneten sınıf:
-  - `fetchAnnouncements(personnelId: String, branchId: String): List<AnnouncementItem>`
-  - `markAsRead(announcementId: String, personnelId: String): Boolean`
-  - `createAnnouncement(title: String, content: String, targetType: String, targetId: String?, priority: String, requestReadReceipt: Boolean, createdBy: String): Boolean`
+### 1.1. Veritabanı Şeması
+- `e_invoices`: Fatura üst bilgileri (ETTN UUID, Fatura No, Tür: SATIS/IADE/TEVKIFAT, Senaryo: TICARIFATURA/TEMELFATURA/EARSIVFATURA, Yön: IN/OUT, Durum: 1000-1300, Toplamlar, KDV, VKN/TCKN, Gönderici/Alıcı).
+- `e_invoice_lines`: Fatura satırları (Kalem adı, Stok eşleme ID, Miktar, Birim, Birim Fiyat, KDV Oranı, KDV Tutarı, İskonto).
+- `e_integrator_configs`: Entegratör ayarları (Aktif sağlayıcı: `mock`, `uyumsoft`, `edm`, API URL, Kullanıcı adı, Şifre, Şube/Tüzel kişilik bazlı).
+- `e_document_responses`: Ticari faturalara verilen Kabul/Red/İade uygulama yanıtları.
+- `e_invoice_matching_logs`: Mal kabul ve irsaliye eşleşme geçmişi.
 
-#### [NEW] [NotificationRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/NotificationRepository.kt)
-- Bildirim verilerini ve okundu durumlarını yöneten sınıf:
-  - `fetchNotifications(personnelId: String, branchId: String): List<NotificationItem>`
-  - `markAsRead(notificationId: String): Boolean`
-  - `markAllAsRead(personnelId: String, branchId: String): Boolean`
-  - `createNotification(personnelId: String, title: String, message: String, type: String, relatedId: String?): Boolean`
+### 1.2. Çekirdek UBL-TR & Adaptör Mimarisi (`src/lib/eInvoice/`)
+- `types.js`: E-Dönüşüm veri tipleri, GİB durum kodları, vergi tipleri.
+- `coreUblGenerator.js`: UBL-TR 2.1 standardında evrensel XML ve JSON üreteci (`AdditionalDocumentReference` desteği ile).
+- `integratorAdapter.js`: `IEInvoiceAdapter` ortak sözleşmesi.
+- `mockIntegratorAdapter.js`: Senaryo bazlı hayali faturalar üreten, gelen/giden kutusu yöneten, durum değiştiren simülatör adaptörü.
+- `eInvoiceService.js`: UI ve servisler için yüksek seviyeli arayüz.
 
-#### [MODIFY] [TaskRepository.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/data/TaskRepository.kt)
-- Görev durum güncellemelerinde (`updateTaskStatus`, `updateTaskParticipant`) ilgili kişilere bildirim üretmek üzere `NotificationRepository` çağrılarının entegre edilmesi:
-  - Yeni görev atandığında alıcıya `'task_assigned'` bildirimi yazılması.
-  - Göreve yeni bir checklist eklendiğinde veya tamamlandığında oluşturana `'task_updated'` bildirimi yazılması.
+### 1.3. Backend Mock Servisleri (`server/`)
+- `/api/einvoice/mock/inbox`: Simüle gelen faturaları listeleme.
+- `/api/einvoice/mock/generate-scenario`: Test senaryoları üretme (Örn: "Meyve Tedarikçisi Faturası", "Fiyat Farklı Fatura").
+- `/api/einvoice/send`: Fatura gönderme.
+- `/api/einvoice/response`: Kabul/Red yanıtı iletme.
+- `/api/einvoice/status/:id`: Durum güncelleme (1000 -> 1100 -> 1200 -> 1300).
+
+### 1.4. Arayüz: E-Fatura Yönetim Portalı & Simülatör (`src/components/pages/EInvoiceManager.jsx`)
+- **Gelen Kutusu & Giden Kutusu:** Gelişmiş filtreleme, durum rozetleri, arama, tarih aralığı.
+- **Fatura Görsel Önizleme Modalı:** Standart GİB şablonunda HTML/XSLT fatura görseli.
+- **Simülatör Kontrol Paneli:** "Senaryo Faturası Üret", "Durumu 1300 Yap", "Gelen Kutusunu Yenile" butonları.
+- **Ticari Yanıt Modalı:** Kabul / Red gerekçesi girip yanıt gönderme.
 
 ---
 
-### [Mobil Kullanıcı Arayüzü Katmanı]
+## FAZ 2: Gelen e-Fatura ile Mal Kabul (İrsaliye) 3-Way Matching
 
-#### [NEW] [AnnouncementsScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/AnnouncementsScreen.kt)
-- **Liste Ekranı:** Önceliklerine göre sıralanmış (Düşük, Normal, Yüksek, Acil) duyuruların kart şeklinde gösterimi.
-- **Detay Modalı:** Tıklanan duyurunun içeriği, yazarı, tarihi ve `Okundu Bilgisi` isteği varsa "Okudum ve Anladım" onay butonu.
-- **Duyuru Ekleme Formu:** Yetkili personeller için (Admin/Müdür) başlık, içerik, hedef şube, öncelik ve okundu bilgisi onay kutusu içeren form modalı.
+### 2.1. Eşleştirme Motoru
+- Gelen faturanın VKN'si üzerinden sistemdeki `suppliers` tablosu ile otomatik eşleşme.
+- Faturadaki irsaliye numaraları / tarihleri üzerinden ilgili şubenin `purchase_receipts` kayıtlarının bulunması.
+- Satır bazında miktar (irsaliyedeki teslimat vs faturadaki miktar) ve birim fiyat (siparişteki fiyat vs faturadaki fiyat) karşılaştırması.
 
-#### [NEW] [NotificationsScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/NotificationsScreen.kt)
-- Bildirimlerin tarih sırasına göre listesi (Okunmuş/Okunmamış ayrımı).
-- Türüne göre ikonik görselleştirme (Gecikme -> Kırmızı Uyarı İkonu, Yeni Görev -> Liste İkonu, Duyuru -> Megafon).
-- Bildirime tıklanıldığında ilgili göreve veya duyuruya otomatik yönlendirme ve bildirimin otomatik okunmuş yapılması.
-- "Hepsini Okundu Yap" butonu.
+### 2.2. Kullanıcı Arayüzü & Aksiyonlar
+- **Fatura Eşleştirme Ekranı:** Yan yana (Split View) Fatura Satırları vs İrsaliye Satırları.
+- **Uyuşmazlık Uyarıları:** Fiyat farkı veya miktar eksiği/fazlası durumunda sarı/kırmızı uyarılar.
+- **Eşleşme Onayı:** Fatura onaylandığında `cari_hareketler`'e borç kaydı ve `purchase_receipts.invoice_matched = true` işlenmesi.
 
-#### [MODIFY] [HomeScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/HomeScreen.kt)
-- **TopAppBar Entegrasyonu:** `AppScaffold` bileşenine Menu ikonunun soluna gelecek şekilde bildirim zili (bell) ikonu eklenmesi. Okunmamış bildirim sayısı kadar zil üzerinde kırmızı badge gösterilecektir.
-- **Duyurular Panosu:** Ana sayfanın üst kısmına, en son yayınlanan duyuruları gösteren kaydırılabilir bir "Duyurular ve Haberler" panosu eklenmesi.
-- **Sidebar Menüsü:** Dropdown içerisine `Megafon İkonlu Duyurular` ve `Zil İkonlu Bildirimler` menü kalemlerinin eklenmesi.
+---
 
-#### [MODIFY] [MainScreen.kt](file:///x:/RMSv3/personel-android/app/src/main/java/com/suitable/personel/ui/main/MainScreen.kt)
-- Rota ağacına `"announcements"` ve `"notifications"` ekranlarının rotalarının eklenmesi ve view state'lerinin tanımlanması.
+## FAZ 3: Şirket Ağacı ve Tüzel Kişilikler Arası Transferlerin Faturalaşması
+
+### 3.1. Tüzel Kişilik Tanımları
+- `company_nodes` tablosundaki düğümlere tüzel kişilik özellikleri (`vkn`, `vergi_dairesi`, `legal_title`, `address`) entegrasyonu.
+
+### 3.2. Otomatik Transfer Faturası Motoru
+- Şubeler/Depolar arası stok transferi (`inventory_movements` / `transfer`) tamamlandığında:
+  - Gönderen ve alan düğümlerin VKN'leri farklı ise sistem bunu "Tüzel Kişilikler Arası Transfer" olarak algılar.
+  - Gönderen şirket adına **e-İrsaliye** ve **e-Fatura** taslağı otomatik oluşturulur.
+  - Alıcı tüzel kişiliğin Gelen Kutusuna otomatik düşürülür.
+
+---
+
+## FAZ 4: Çoklu Entegratör (Uyumsoft / EDM) & E-Adisyon
+
+### 4.1. Gerçek Entegratör Adaptörleri
+- `UyumsoftAdapter`: SOAP 1.1 / BasicHttpBinding veya REST entegrasyonu.
+- `EdmAdapter`: WCF / SessionID tabanlı entegrasyon.
+
+### 4.2. E-Adisyon Entegrasyonu
+- Restoranda sipariş açıldığında ETTN üretimi.
+- Masa hesabı kapatıldığında e-Fatura/e-Arşiv kesilirken `AdditionalDocumentReference` ile E-Adisyon ETTN bağlantısı kurulması.
 
 ---
 
 ## Doğrulama Planı
 
 ### Otomatik Testler
-- Değişikliklerden sonra android projesinin başarıyla derlendiğinin doğrulanması:
-  `.\gradlew.bat assembleDebug` (personel-android klasöründe)
+1. **Derleme Testi:** `npm run build` (Sıfır hata ile tamamlanmalı).
+2. **Schema & Veritabanı Doğrulaması:** VPS PostgreSQL üzerinde tabloların ve kısıtlamaların oluşturulması.
+3. **API & Servis Testleri:** Mock entegratör endpoint'lerinin Node.js üzerinden test edilmesi (`test_einvoice_mock.mjs`).
 
 ### Manuel Doğrulama
-1. **Duyuru Yayınlama:** Yönetici olarak giriş yapıp yeni bir "Acil" ve "Okundu Onaylı" duyuru oluşturulduğunda bu duyurunun tüm personelin ana sayfasına düştüğü teyit edilecek.
-2. **Okundu Bilgisi:** Çalışan duyuruyu açıp "Okudum" butonuna bastığında veritabanında `announcement_reads` tablosuna ilgili satırın eklendiği ve butonun kaybolduğu kontrol edilecek.
-3. **Görev Bildirimi:** Bir çalışana yeni görev atandığında zil ikonunun üstündeki kırmızı sayacın arttığı ve bildirim detayının "Yeni Görev Atandı" şeklinde göründüğü test edilecek.
-4. **Yönlendirme:** Gecikmiş görev bildirimine tıklandığında uygulamanın doğrudan Görevler ekranına yönlendirdiği ve o bildirimi "okunmuş" olarak güncellediği doğrulanacak.
+1. **Fatura Üretimi ve Gelen Kutusu:** Simülatörden "Tedarikçi A - 3 Kalemlik Fatura" üretilip Gelen Kutusuna düştüğü doğrulanacak.
+2. **Fatura Önizleme:** Faturaya tıklandığında standart GİB faturası şeklinde görüntülendiği doğrulanacak.
+3. **Ticari Yanıt:** Faturaya "Kabul" veya "Red" yanıtı verildiğinde durumun ve logların güncellendiği teyit edilecek.
+4. **Mal Kabul Eşleştirmesi:** Mal kabul irsaliyesi ile gelen faturanın miktar/fiyat eşleşmesi test edilecek.

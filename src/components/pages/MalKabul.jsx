@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
+import { Link } from 'react-router-dom'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
@@ -256,6 +257,75 @@ function ReceiptEditorModal({
             Dikkat bu sevkiyat siparisinizden farkli gonderildi, kontrol et.
           </div>
         )}
+
+        {/* E-Fatura & 3-Way Matching Durum Rozeti & Bağlantısı */}
+        <div
+          style={{
+            border: form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB'))
+              ? '1px solid #10b981'
+              : '1px solid rgba(245,158,11,0.3)',
+            background: form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB'))
+              ? 'rgba(16,185,129,0.08)'
+              : 'rgba(245,158,11,0.08)',
+            borderRadius: 12,
+            padding: '10px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB')) ? '#10b981' : '#f5a623',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1rem',
+              }}
+            >
+              <i className={`fa-solid ${form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB')) ? 'fa-file-circle-check' : 'fa-scale-balanced'}`} />
+            </div>
+            <div>
+              <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                E-Fatura & 3-Way Matching Durumu
+              </div>
+              <div style={{ fontSize: '.88rem', fontWeight: 800, color: form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB')) ? '#10b981' : '#b45309' }}>
+                {form.meta?.matched_invoice_no || form.matched_invoice_no || (form.doc_no && String(form.doc_no).startsWith('GIB')) ? (
+                  <>Eşleşti — <span style={{ fontFamily: 'monospace' }}>{form.meta?.matched_invoice_no || form.matched_invoice_no || form.doc_no}</span></>
+                ) : (
+                  'Eşleşme Bekliyor (Henüz e-Fatura ile Eşleştirilmedi)'
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Link
+            to="/einvoice"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#0f172a',
+              fontSize: '.75rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-file-invoice-dollar" style={{ color: '#f5a623' }} />
+            E-Fatura Portalında Görüntüle →
+          </Link>
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12 }}>
           <SummaryCard label="Siparis Toplami" value={`₺${formatMoney(summary.subtotal)}`} hint={`${formatQty(summary.totalQty)} kabul miktari`} />
@@ -1058,6 +1128,22 @@ export default function MalKabul() {
               <option value="">{isWmsMode ? 'Ana Depo secin' : 'Sube secin'}</option>
               {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
+            <Link
+              to="/einvoice"
+              className="btn-o"
+              style={{
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontWeight: 700,
+                color: '#d97706',
+                borderColor: '#f59e0b',
+                background: 'rgba(245,166,35,0.08)',
+              }}
+            >
+              <i className="fa-solid fa-file-invoice-dollar" /> E-Fatura & Eşleştirme
+            </Link>
             <button className="btn-o" onClick={() => { loadBase(); loadInventory(selectedBranch) }}>
               <i className="fa-solid fa-rotate-right" /> Yenile
             </button>

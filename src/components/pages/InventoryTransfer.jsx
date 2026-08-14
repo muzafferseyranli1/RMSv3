@@ -8,6 +8,7 @@ import { useWorkspace } from '@/context/WorkspaceContext'
 import { readSettingValue, writeSettingValue } from '@/lib/settingsStore'
 import { db } from '@/lib/db'
 import { loadBranchContextsFromDb } from '@/lib/branchContexts'
+import { interCompanyTransferService } from '@/lib/eInvoice/interCompanyTransferService'
 
 const DRAFTS_SETTING_KEY = 'inventory_transfer_drafts_v1'
 const STANDARD_PORTION_ID = '__standart__'
@@ -799,6 +800,27 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
   )
 
   const invoiceRequired = useMemo(() => !sameEntity(actorMeta, destinationMeta), [actorMeta, destinationMeta])
+
+  const [interCompanyInfo, setInterCompanyInfo] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    if (destinationMeta && (form.originSnapshot || actorMeta)) {
+      interCompanyTransferService
+        .checkIfInterCompanyTransfer(form.originSnapshot || actorMeta, destinationMeta)
+        .then((res) => {
+          if (active) setInterCompanyInfo(res)
+        })
+        .catch((err) => {
+          console.warn('Inter-company transfer check warning:', err)
+        })
+    } else {
+      setInterCompanyInfo(null)
+    }
+    return () => {
+      active = false
+    }
+  }, [actorMeta, destinationMeta, form.originSnapshot])
 
   function updateForm(updater) {
     setForm(current => {
@@ -1640,6 +1662,37 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
       const { error } = await db.from('inventory_movements').insert([...sourceRows, ...destinationRows])
       if (error) throw error
 
+      // 🏢 Otomatik Şirketler Arası (Inter-Company) E-Fatura & E-İrsaliye Düzenleme
+      try {
+        const icCheck = interCompanyInfo || await interCompanyTransferService.checkIfInterCompanyTransfer(originSnapshot, destinationMeta)
+        if (icCheck?.isInterCompany) {
+          const interCompanyRes = await interCompanyTransferService.generateInterCompanyInvoice(
+            {
+              documentNo: form.documentNo,
+              movementDate: form.movementDate,
+              notes: form.note,
+              sourceBranchId: originSnapshot.branchId || null,
+              sourceBranchName: originSnapshot.branchName || WAREHOUSE_LABEL,
+              originSnapshot,
+              destinationBranchId: destinationMeta.branchId || null,
+              destinationBranchName: destinationMeta.label || WAREHOUSE_LABEL,
+              destinationMeta,
+            },
+            documentLines,
+            {
+              profileId: 'TICARIFATURA',
+              invoiceType: 'SATIS',
+            }
+          )
+
+          if (interCompanyRes?.success) {
+            toast(`🏢 Şirketler arası transfer faturası (${interCompanyRes.invoiceNumber}) otomatik düzenlendi ve Gelen Kutusuna eklendi.`, 'success')
+          }
+        }
+      } catch (invErr) {
+        console.warn('Inter-company invoice auto-generation warning:', invErr)
+      }
+
       if (form.draftId) {
         const nextDrafts = drafts.filter(draft => draft.draftId !== form.draftId)
         await persistDrafts(nextDrafts)
@@ -1758,7 +1811,14 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
               ) : documentEntries.map(entry => (
                 <tr key={entry.key}>
                   <td>
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{entry.documentNo}</div>
+                    <div style={{ fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {entry.documentNo}
+                      {entry.originLegalEntityId && entry.destinationLegalEntityId && String(entry.originLegalEntityId) !== String(entry.destinationLegalEntityId) && (
+                        <span className="badge" style={{ background: '#ffedd5', color: '#9a3412', fontSize: '.66rem', padding: '2px 6px' }}>
+                          <i className="fa-solid fa-building" style={{ marginRight: 4 }} /> Şirketler Arası
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: '.76rem', color: '#64748b', marginTop: 4 }}>
                       {(entry.originBranchName || WAREHOUSE_LABEL)} {' -> '} {(entry.destinationName || WAREHOUSE_LABEL)}
                     </div>
@@ -1864,20 +1924,59 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
               </div>
             </div>
 
-            {invoiceRequired && (
+            {(interCompanyInfo?.isInterCompany || invoiceRequired) && (
               <div
                 style={{
                   marginTop: 12,
-                  padding: '10px 12px',
+                  padding: '12px 14px',
                   borderRadius: 12,
                   border: '1px solid #fed7aa',
-                  background: '#fff7ed',
+                  background: 'linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%)',
                   color: '#9a3412',
-                  fontSize: '.76rem',
-                  lineHeight: 1.55,
+                  fontSize: '.82rem',
+                  lineHeight: 1.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  boxShadow: '0 4px 12px rgba(234, 88, 12, 0.06)',
                 }}
               >
-                Bu transfer farkli tuzel kisilikler arasinda gorunuyor. Bu islem icin fatura kesilmesi gerekebilir.
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: '#ffedd5',
+                    color: '#c2410c',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.1rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <i className="fa-solid fa-building-circle-arrow-right" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    🏢 Şirketler Arası Transfer (Otomatik e-Fatura/e-İrsaliye Düzenlenir)
+                    <span
+                      className="badge"
+                      style={{
+                        background: '#ea580c',
+                        color: '#fff',
+                        fontSize: '.68rem',
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                      }}
+                    >
+                      UBL-TR 2.1 E-Dönüşüm
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '.76rem', color: '#7c2d12', marginTop: 2 }}>
+                    {interCompanyInfo?.reason || 'Farklı tüzel kişilikler arası transfer.'} Belge kaydedildiğinde kaynak tüzel kişilik adına GİB e-fatura kesilecek ve hedef tüzel kişiliğin gelen kutusuna 3-way eşleşme için otomatik yansıtılacaktır.
+                  </div>
+                </div>
               </div>
             )}
           </div>
