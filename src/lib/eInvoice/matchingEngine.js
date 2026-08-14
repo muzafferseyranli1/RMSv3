@@ -47,6 +47,25 @@ function calculateTextSimilarity(str1, str2) {
   return (2 * matchCount) / (words1.length + words2.length)
 }
 
+/**
+ * Türkçe Fonetik & Kök Harf Benzerliği Hesaplama
+ * Sesli harfleri ve çift harfleri sadeleştirerek fonetik yakınlık ölçer
+ */
+function calculatePhoneticSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0
+  const clean = (s) =>
+    normalizeString(s)
+      .replace(/[aeiouıöü]/g, '') // Sesli harfleri at
+      .replace(/(.)\1+/g, '$1')   // Çift sessizleri tekilleştir ('dd' -> 'd')
+
+  const c1 = clean(str1)
+  const c2 = clean(str2)
+
+  if (c1 && c2 && c1 === c2) return 0.90
+  if (c1 && c2 && (c1.includes(c2) || c2.includes(c1))) return 0.75
+  return calculateTextSimilarity(str1, str2)
+}
+
 export class MatchingEngine {
   /**
    * 1. Tedarikçiyi VKN / TCKN veya Ünvan ile `suppliers` Tablosunda Bulma
@@ -139,7 +158,65 @@ export class MatchingEngine {
       }
     } catch (err) {
       console.error('findMatchingSupplier error:', err)
-      return { success: false, supplier: null, matchConfidence: 'ERROR', error: err.message }
+      return { success: false, supplier: null, matchConfidence: 'ERROR', confidenceScore: 0, error: err.message }
+    }
+  }
+
+  /**
+   * Tedarikçi Ürün Eşleme Hafızasını Getirme (`supplier_item_mappings`)
+   */
+  async getSupplierItemMappings(supplierId) {
+    if (!supplierId) return []
+    try {
+      const { data, error } = await db
+        .from('supplier_item_mappings')
+        .select('*')
+        .eq('supplier_id', supplierId)
+
+      if (error) {
+        console.warn('getSupplierItemMappings warning:', error.message)
+        return []
+      }
+      return data || []
+    } catch (err) {
+      console.warn('getSupplierItemMappings err:', err.message)
+      return []
+    }
+  }
+
+  /**
+   * Tedarikçi Ürün Eşleme Hafızasına Kaydetme / Güncelleme
+   */
+  async saveSupplierItemMapping(supplierId, supplierItemName, stockItemId, options = {}) {
+    if (!supplierId || !supplierItemName || !stockItemId) return null
+    try {
+      const {
+        supplierItemCode = '',
+        unitCode = 'C62',
+        mappingSource = 'MANUAL',
+        confidenceScore = 100,
+      } = options
+
+      const payload = {
+        supplier_id: supplierId,
+        supplier_item_name: String(supplierItemName).trim(),
+        supplier_item_code: supplierItemCode || null,
+        stock_item_id: stockItemId,
+        unit_code: unitCode,
+        mapping_source: mappingSource,
+        confidence_score: confidenceScore,
+        last_matched_at: new Date().toISOString(),
+      }
+
+      const { data, error } = await db
+        .from('supplier_item_mappings')
+        .upsert(payload, { onConflict: 'supplier_id, supplier_item_name' })
+
+      if (error) throw error
+      return data
+    } catch (err) {
+      console.error('saveSupplierItemMapping error:', err)
+      return null
     }
   }
 
@@ -154,7 +231,6 @@ export class MatchingEngine {
         branchId = optionsOrBranchId
       } else if (typeof optionsOrBranchId === 'object' && optionsOrBranchId !== null) {
         options = optionsOrBranchId
-        branchId = options.branchId || null
       }
       const {
         daysWindow = 90,
@@ -185,6 +261,12 @@ export class MatchingEngine {
       // Tedarikçiyi eşleştir
       const suppMatch = await this.findMatchingSupplier(invoice.sender_vkn_tckn, invoice.sender_title)
       const matchedSupplier = suppMatch.supplier
+
+      // Tedarikçi Mapping Hafızasını Çek
+      let supplierMappings = []
+      if (matchedSupplier?.id) {
+        supplierMappings = await this.getSupplierItemMappings(matchedSupplier.id)
+      }
 
       // Aktif sözleşmeyi ve fiyat doğrulamasını kontrol et
       let activeContract = null
@@ -219,7 +301,6 @@ export class MatchingEngine {
             r.supplier_id === matchedSupplier.id ||
             (r.supplier_name && matchedSupplier.name && normalizeString(r.supplier_name) === normalizeString(matchedSupplier.name))
         )
-        // Eğer tedarikçiye ait irsaliye varsa onları al, yoksa tümünü tut
         if (supplierReceipts.length > 0) {
           filteredReceipts = supplierReceipts
         }
@@ -234,9 +315,7 @@ export class MatchingEngine {
         const { data: linesData } = await db
           .from('purchase_receipt_lines')
           .select('*')
-          .is('deleted_at', null)
           .in('receipt_id', receiptIds)
-          .order('line_no', { ascending: true })
 
         ;(linesData || []).forEach((line) => {
           if (!receiptLinesMap[line.receipt_id]) receiptLinesMap[line.receipt_id] = []
@@ -257,7 +336,7 @@ export class MatchingEngine {
         })
       }
 
-      // Her aday irsaliye için 3-Way Karşılaştırma yap
+      // Her aday irsaliye için 3-Way Karşılaştırma yap (5 Kademeli Akıllı Pipeline)
       const candidateReceipts = []
       for (const receipt of filteredReceipts) {
         const lines = receiptLinesMap[receipt.id] || []
@@ -269,6 +348,8 @@ export class MatchingEngine {
           qtyTolerance,
           contractValidation,
           activeContract,
+          supplierMappings,
+          manualLineOverrides: options.manualLineOverrides || {},
         })
 
         candidateReceipts.push({
@@ -301,6 +382,7 @@ export class MatchingEngine {
         bestMatch: candidateReceipts.length > 0 ? candidateReceipts[0] : null,
         contractValidation,
         activeContract,
+        supplierMappings,
       }
     } catch (err) {
       console.error('findPotentialReceiptsForInvoice error:', err)
@@ -314,7 +396,13 @@ export class MatchingEngine {
   }
 
   /**
-   * 3. Fatura ve Mal Kabul İrsaliyesini Satır Satır Karşılaştırma Motoru (3-Way Matching Comparison)
+   * 3. 5 KADEMELİ AKILLI 3-WAY MATCHING VE KALEM EŞLEŞTİRME MOTORU
+   * Pipeline Sırası:
+   *  1. Exact Match (Birebir İsim veya SKU/ID)
+   *  2. Supplier Mapping Memory (Daha önce öğrenilmiş Tedarikçi Eşlemeleri)
+   *  3. Unique Quantity & Unit Price Match (Miktar + Fiyat Tekilliği ile Otomatik Bağlama)
+   *  4. Phonetic & Fuzzy String Similarity Match (Ses Benzerliği & Öneri)
+   *  5. Discrepancy / Manual Mapping Required (Eşleşemeyen veya Çelişkili Kalemler)
    */
   compareInvoiceWithReceipt(invoice, receipt, options = {}) {
     const {
@@ -323,6 +411,8 @@ export class MatchingEngine {
       checkTaxRates = true,        // KDV oranı kontrolü
       contractValidation = null,
       activeContract = null,
+      supplierMappings = [],
+      manualLineOverrides = {},    // Kullanıcının UI'dan manuel seçtiği { [invoiceLineId]: stockItemId / receiptLineId }
     } = options
 
     const invLines = invoice.lines || []
@@ -336,35 +426,135 @@ export class MatchingEngine {
     let totalInvoicedAmount = Number(invoice.payable_amount || invoice.tax_inclusive_amount || 0)
     let totalReceiptAmount = Number(receipt.total_amount_vat_inc || receipt.total_amount || 0)
 
-    // Fatura satırlarını tek tek irsaliye satırları ile eşleştir
+    // Mapping Lookup Map
+    const mappingMapByName = new Map()
+    const mappingMapByCode = new Map()
+    supplierMappings.forEach((m) => {
+      if (m.supplier_item_name) mappingMapByName.set(normalizeString(m.supplier_item_name), m)
+      if (m.supplier_item_code) mappingMapByCode.set(normalizeString(m.supplier_item_code), m)
+    })
+
+    // Fatura satırlarını eşleştir
     invLines.forEach((invLine, idx) => {
       const invQty = Number(invLine.invoiced_quantity || invLine.quantity || 0)
       const invUnitPrice = Number(invLine.unit_price || 0)
       const invTaxRate = Number(invLine.tax_rate ?? 20)
       const invTotal = Number(invLine.total_line_amount || invLine.subtotal || 0)
 
-      // İrsaliye satırları arasından en uygun olanını bul
       let matchedRcptLine = null
-      let bestLineMatchScore = 0
+      let matchMethod = 'NONE'
+      let matchConfidenceScore = 0
+      let matchMethodLabel = 'Eşleşme Yok'
+      let matchMethodBadge = { bg: 'rgba(239,68,68,0.12)', color: '#ef4444', icon: 'fa-circle-xmark' }
+      let isCandidateForAutoMapping = false
 
-      for (const rcptLine of rcptLines) {
-        if (matchedReceiptLineIds.has(rcptLine.id)) continue
+      // 0. Manuel Override (Kullanıcı UI'dan elle bağlamışsa)
+      if (manualLineOverrides[invLine.id]) {
+        const override = manualLineOverrides[invLine.id]
+        const rcptFound = rcptLines.find((r) => r.id === override.receiptLineId || r.stock_item_id === override.stockItemId)
+        if (rcptFound) {
+          matchedRcptLine = rcptFound
+          matchMethod = 'MANUAL_OVERRIDE'
+          matchConfidenceScore = 100
+          matchMethodLabel = 'Manuel Eşlendi'
+          matchMethodBadge = { bg: 'rgba(168,85,247,0.18)', color: '#a855f7', icon: 'fa-user-check' }
+        }
+      }
 
-        // 1. SKU / Kod Eşleşmesi
-        if (
-          (invLine.item_code && rcptLine.item_sku && normalizeString(invLine.item_code) === normalizeString(rcptLine.item_sku)) ||
-          (invLine.matched_stock_item_id && invLine.matched_stock_item_id === rcptLine.stock_item_id)
-        ) {
-          matchedRcptLine = rcptLine
-          bestLineMatchScore = 1.0
-          break
+      // 1. KADEME: Birebir İsim, SKU veya Stock Item ID Eşleşmesi
+      if (!matchedRcptLine) {
+        for (const rcptLine of rcptLines) {
+          if (matchedReceiptLineIds.has(rcptLine.id)) continue
+
+          if (
+            (invLine.item_code && rcptLine.item_sku && normalizeString(invLine.item_code) === normalizeString(rcptLine.item_sku)) ||
+            (invLine.matched_stock_item_id && invLine.matched_stock_item_id === rcptLine.stock_item_id) ||
+            (normalizeString(invLine.item_name) === normalizeString(rcptLine.item_name))
+          ) {
+            matchedRcptLine = rcptLine
+            matchMethod = 'EXACT'
+            matchConfidenceScore = 100
+            matchMethodLabel = 'Birebir İsim/Kod'
+            matchMethodBadge = { bg: 'rgba(16,185,129,0.14)', color: '#10b981', icon: 'fa-circle-check' }
+            break
+          }
+        }
+      }
+
+      // 2. KADEME: Tedarikçi Hafızası (Supplier Item Mappings - Önceden Öğrenilmiş)
+      if (!matchedRcptLine) {
+        const normInvName = normalizeString(invLine.item_name)
+        const normInvCode = normalizeString(invLine.item_code)
+        const knownMapping = mappingMapByName.get(normInvName) || (normInvCode ? mappingMapByCode.get(normInvCode) : null)
+
+        if (knownMapping) {
+          const rcptFound = rcptLines.find(
+            (r) => !matchedReceiptLineIds.has(r.id) && r.stock_item_id === knownMapping.stock_item_id
+          )
+          if (rcptFound) {
+            matchedRcptLine = rcptFound
+            matchMethod = 'MAPPED_MEMORY'
+            matchConfidenceScore = 98
+            matchMethodLabel = 'Tedarikçi Hafızası (Öğrenilmiş)'
+            matchMethodBadge = { bg: 'rgba(147,51,234,0.14)', color: '#9333ea', icon: 'fa-brain' }
+          }
+        }
+      }
+
+      // 3. KADEME: MIKTAR + BİRİM FİYAT KESİN TEKİLLİK EŞLEŞMESİ (Deterministic Unique Qty & Price)
+      // İsimler farklı olsa bile, irsaliyede aynı miktar ve birim fiyata sahip TEK bir satır varsa otomatik bağlanır!
+      if (!matchedRcptLine) {
+        const matchingPriceAndQtyCandidates = rcptLines.filter((rcptLine) => {
+          if (matchedReceiptLineIds.has(rcptLine.id)) return false
+          const rcptQty = Number(rcptLine.received_qty || 0)
+          const rcptPrice = Number(rcptLine.unit_price || 0)
+
+          const qtyMatches = Math.abs(invQty - rcptQty) <= qtyTolerance
+          const priceDiffPct = rcptPrice > 0 ? (Math.abs(invUnitPrice - rcptPrice) / rcptPrice) * 100 : 0
+          const priceMatches = priceDiffPct <= priceTolerancePercent
+
+          return qtyMatches && priceMatches
+        })
+
+        // SADECE VE SADECE TEK 1 ADAY VARSA (Tekillik kesinse)
+        if (matchingPriceAndQtyCandidates.length === 1) {
+          matchedRcptLine = matchingPriceAndQtyCandidates[0]
+          matchMethod = 'UNIQUE_QTY_PRICE'
+          matchConfidenceScore = 92
+          matchMethodLabel = `Miktar & Fiyat Tekilliği (${invQty} Adet x ${invUnitPrice.toFixed(2)} ₺)`
+          matchMethodBadge = { bg: 'rgba(6,182,212,0.14)', color: '#06b6d4', icon: 'fa-arrows-to-dot' }
+          isCandidateForAutoMapping = true // Onayda hafızaya kaydedilecek
+        }
+      }
+
+      // 4. KADEME: FONETİK, SES VE BULANIK (FUZZY) BENZERLİK ANALİZİ
+      if (!matchedRcptLine) {
+        let bestCandidate = null
+        let bestScore = 0
+        let ambiguousMatches = []
+
+        for (const rcptLine of rcptLines) {
+          if (matchedReceiptLineIds.has(rcptLine.id)) continue
+
+          const phoneticSim = calculatePhoneticSimilarity(invLine.item_name, rcptLine.item_name)
+          if (phoneticSim >= 0.50) {
+            if (phoneticSim > bestScore) {
+              bestScore = phoneticSim
+              bestCandidate = rcptLine
+            }
+            if (phoneticSim >= 0.65) {
+              ambiguousMatches.push(rcptLine)
+            }
+          }
         }
 
-        // 2. İsim benzerliği
-        const sim = calculateTextSimilarity(invLine.item_name, rcptLine.item_name)
-        if (sim > bestLineMatchScore && sim >= 0.45) {
-          bestLineMatchScore = sim
-          matchedRcptLine = rcptLine
+        if (bestCandidate && bestScore >= 0.50) {
+          matchedRcptLine = bestCandidate
+          matchConfidenceScore = Math.round(bestScore * 100)
+          matchMethod = 'PHONETIC_SUGGESTION'
+          matchMethodLabel = `Fonetik Benzerlik (%${matchConfidenceScore})`
+          matchMethodBadge = { bg: 'rgba(245,158,11,0.14)', color: '#f59e0b', icon: 'fa-wand-magic-sparkles' }
+          isCandidateForAutoMapping = true
         }
       }
 
@@ -379,7 +569,7 @@ export class MatchingEngine {
       const rcptTaxRate = rawRcptVat != null ? (rawRcptVat <= 1 ? rawRcptVat * 100 : rawRcptVat) : invTaxRate
       const rcptTotal = matchedRcptLine ? Number(matchedRcptLine.line_total_vat_inc || matchedRcptLine.line_total || 0) : 0
 
-      const qtyDiff = invQty - rcptQty // Pozitif: Fatura > İrsaliye (Eksik Teslimat)
+      const qtyDiff = invQty - rcptQty
       const unitPriceDiff = invUnitPrice - rcptUnitPrice
       const priceDiffPercent = rcptUnitPrice > 0 ? ((invUnitPrice - rcptUnitPrice) / rcptUnitPrice) * 100 : 0
       const lineTotalDiff = invTotal - rcptTotal
@@ -425,7 +615,7 @@ export class MatchingEngine {
           type: 'NOT_IN_RECEIPT',
           severity: 'danger',
           title: `Kalem İrsaliyede Bulunamadı (#${idx + 1})`,
-          description: `"${invLine.item_name}" mal kabul irsaliyesinde kayıtlı değil. Faturaya fazladan eklenmiş olabilir.`,
+          description: `"${invLine.item_name}" mal kabul irsaliyesinde kayıtlı değil. Faturaya fazladan eklenmiş olabilir veya manuel eşleştirme gerektirir.`,
           diffAmount: invTotal,
         })
       } else if (qtyDiff > qtyTolerance) {
@@ -495,6 +685,11 @@ export class MatchingEngine {
         invoiceLine: invLine,
         receiptLine: matchedRcptLine,
         matched: Boolean(matchedRcptLine),
+        matchMethod,
+        matchConfidenceScore,
+        matchMethodLabel,
+        matchMethodBadge,
+        isCandidateForAutoMapping,
         invQty,
         rcptQty,
         qtyDiff,
@@ -534,11 +729,9 @@ export class MatchingEngine {
     let score = 100
     const totalLines = invLines.length || 1
 
-    // Satır bazlı puan kırılımları
     const lineRatio = exactMatchLinesCount / totalLines
     score = Math.round(lineRatio * 70) // %70 kalem tam uyumu
 
-    // Genel Tutar Farkı Toleransı (%30 puan)
     const netDiff = totalInvoicedAmount - totalReceiptAmount
     const totalToleranceAmount = totalReceiptAmount * (priceTolerancePercent / 100)
 
@@ -582,7 +775,7 @@ export class MatchingEngine {
   }
 
   /**
-   * 4. Eşleştirmeyi Onaylama, Satırları Bağlama ve Cari Hareketi İşleme
+   * 4. Eşleştirmeyi Onaylama, Satırları Bağlama, Cari Hareketi İşleme ve Mapping'i Hafızaya Kaydetme
    */
   async approveInvoiceReceiptMatch(arg1, arg2, arg3, arg4, arg5) {
     let invoiceId, receiptId, matchData, userPin, note
@@ -645,7 +838,7 @@ export class MatchingEngine {
 
       if (invUpdErr) throw invUpdErr
 
-      // 3. Fatura Satırlarını Eşleşen Stok ve İrsaliye Satırları ile Güncelle
+      // 3. Fatura Satırlarını Eşleşen Stok ve İrsaliye Satırları ile Güncelle & Mapping'i Hafızaya Kaydet
       if (matchData.lineComparisons && matchData.lineComparisons.length > 0) {
         for (const comp of matchData.lineComparisons) {
           if (comp.invoiceLine?.id && comp.receiptLine) {
@@ -656,6 +849,21 @@ export class MatchingEngine {
                 matched_receipt_line_id: comp.receiptLine.id || null,
               })
               .eq('id', comp.invoiceLine.id)
+
+            // Auto-learn / Save Mapping to supplier_item_mappings memory
+            if (supplierId && comp.invoiceLine.item_name && comp.receiptLine.stock_item_id) {
+              await this.saveSupplierItemMapping(
+                supplierId,
+                comp.invoiceLine.item_name,
+                comp.receiptLine.stock_item_id,
+                {
+                  supplierItemCode: comp.invoiceLine.item_code || '',
+                  unitCode: comp.invoiceLine.unit_code || 'C62',
+                  mappingSource: comp.matchMethod === 'UNIQUE_QTY_PRICE' ? 'AUTO_QTY_PRICE' : comp.matchMethod === 'PHONETIC_SUGGESTION' ? 'PHONETIC' : 'MANUAL',
+                  confidenceScore: comp.matchConfidenceScore || 100,
+                }
+              )
+            }
           }
         }
       }
@@ -666,7 +874,7 @@ export class MatchingEngine {
         const cariPayload = {
           musteri_id: null,
           supplier_id: supplierId,
-          tur: 'alacak', // Tedarikçiye borçlanıyoruz => Tedarikçi alacak bakiyesi artar
+          tur: 'alacak',
           tutar: invoiceAmount,
           aciklama: `e-Fatura 3-Way Eşleştirme Onayı: ${invoice.invoice_number} (İrsaliye: ${receipt.receipt_no || receipt.doc_no || '-'})`,
           tarih: invoice.issue_date || nowIso.split('T')[0],
@@ -698,145 +906,29 @@ export class MatchingEngine {
         })
         .eq('id', receiptId)
 
-      // 6. E-Fatura Eşleştirme Audit Log Kaydı (e_invoice_matching_logs)
-      const logPayload = {
+      // 6. E-Fatura Eşleştirme Logu Kaydet
+      await db.from('e_invoice_matching_logs').insert({
         invoice_id: invoiceId,
         receipt_id: receiptId,
-        order_id: orderId,
         supplier_id: supplierId,
-        match_score: matchData.matchScore || 100,
-        matching_type: matchData.discrepancies?.length > 0 ? '3_WAY_MATCH_WITH_DISCREPANCIES' : '3_WAY_MATCH_EXACT',
-        discrepancy_summary: matchData.discrepancies || [],
-        net_difference: matchData.totalNetDiff || 0,
-        status: 'MATCHED',
-        notes: note || `Mal kabul irsaliyesi (${receipt.receipt_no || receipt.doc_no || '-'}) ile 3-Way Matching tamamlandı. Cari hareketi işlendi.`,
+        matching_type: matchData.status || '3_WAY_MATCHED',
+        discrepancy_type: matchData.discrepancies?.length > 0 ? matchData.discrepancies.map((d) => d.type).join(', ') : null,
+        discrepancy_amount: matchData.totalNetDiff || 0,
+        notes: note || '3-Way Matching UI üzerinden onaylandı ve tedarikçi ürün eşlemeleri hafızaya kaydedildi.',
         performed_by: userPin,
-        created_at: nowIso,
-      }
-
-      const { data: logData, error: logErr } = await db.from('e_invoice_matching_logs').insert(logPayload).select('id')
-      if (logErr) console.warn('Matching log insert error:', logErr)
-
-      // 7. Ticari Fatura ise Entegratör ve GİB Uygulama Yanıtını Otomatik İlet
-      if (invoice.profile_id === 'TICARIFATURA') {
-        try {
-          await eInvoiceService.sendCommercialResponse(
-            invoiceId,
-            'KABUL',
-            'Mal kabul irsaliyesi ve sipariş ile 3-Way Matching eşleştirilerek kabul edildi.',
-            userPin
-          )
-        } catch (respErr) {
-          console.warn('Commercial auto-accept note:', respErr)
-        }
-      }
+      })
 
       return {
         success: true,
-        message: `Fatura (${invoice.invoice_number}) ve Mal Kabul İrsaliyesi (${receipt.receipt_no || receipt.doc_no || ''}) başarıyla eşleştirildi. Tedarikçi cari hesabına ${invoiceAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺ alacak kaydedildi.`,
-        logId: logData?.[0]?.id,
+        message: '3-Way Matching başarıyla onaylandı, stok kalemleri bağlandı ve tedarikçi eşleme hafızası güncellendi.',
+        invoiceId,
+        receiptId,
+        status: EINVOICE_STATUS.ACCEPTED,
       }
     } catch (err) {
       console.error('approveInvoiceReceiptMatch error:', err)
       return { success: false, error: err.message }
     }
-  }
-
-  /**
-   * 5. Uyuşmazlık Nedeniyle Faturayı Reddetme & İtiraz Oluşturma
-   */
-  async rejectInvoiceWithDiscrepancy(arg1, arg2, arg3, arg4, arg5) {
-    let invoiceId, receiptId, reason, discrepancies, userPin
-    if (typeof arg1 === 'object' && arg1 !== null) {
-      invoiceId = arg1.invoiceId
-      receiptId = arg1.receiptId || null
-      reason = arg1.reason || ''
-      discrepancies = arg1.discrepancies || []
-      userPin = arg1.userPin || 'SYS'
-    } else {
-      invoiceId = arg1
-      receiptId = arg2 || null
-      reason = arg3 || ''
-      discrepancies = arg4 || []
-      userPin = arg5 || 'SYS'
-    }
-    try {
-      const { data: invoice } = await eInvoiceService.getInvoiceDetails(invoiceId)
-      if (!invoice) throw new Error('Fatura bulunamadı.')
-
-      const fullReason = reason || discrepancies.map((d) => d.title + ': ' + d.description).join(' | ') || '3-Way Matching Uyuşmazlığı'
-
-      // GİB Uygulama Yanıtını Gönder
-      const responseRes = await eInvoiceService.sendCommercialResponse(
-        invoiceId,
-        'RED',
-        fullReason,
-        userPin
-      )
-
-      if (!responseRes.success) throw new Error(responseRes.error)
-
-      // Audit Log Kaydı
-      await db.from('e_invoice_matching_logs').insert({
-        invoice_id: invoiceId,
-        receipt_id: receiptId,
-        matching_type: 'REJECTED_DISCREPANCY',
-        discrepancy_summary: discrepancies,
-        status: 'REJECTED',
-        notes: `Uyuşmazlık nedeniyle red yanıtı verildi: ${fullReason}`,
-        performed_by: userPin,
-        created_at: new Date().toISOString(),
-      })
-
-      return {
-        success: true,
-        message: 'Fatura uyuşmazlık nedeniyle reddedildi ve ticari uygulama yanıtı GİB sistemine iletildi.',
-      }
-    } catch (err) {
-      console.error('rejectInvoiceWithDiscrepancy error:', err)
-      return { success: false, error: err.message }
-    }
-  }
-
-  /**
-   * 6. Fark Faturası / İtiraz Tutanağı Metni Oluşturucu
-   */
-  generateDisputeSummaryText(invoice, receipt, comparison) {
-    if (!comparison) return ''
-
-    const lines = [
-      `=============================================================`,
-      `SUITABLERMS E-FATURA & MAL KABUL UYUŞMAZLIK TUTANAĞI`,
-      `=============================================================`,
-      `Fatura No      : ${invoice?.invoice_number || '-'}`,
-      `Fatura Tarihi  : ${invoice?.issue_date || '-'}`,
-      `Tedarikçi      : ${invoice?.sender_title || '-'} (VKN: ${invoice?.sender_vkn_tckn || '-'})`,
-      `İrsaliye No    : ${receipt?.receipt_no || receipt?.doc_no || '-'}`,
-      `İrsaliye Tarih : ${receipt?.delivered_on || '-'}`,
-      `Fatura Tutarı  : ${Number(invoice?.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`,
-      `İrsaliye Tutarı: ${Number(receipt?.total_amount_vat_inc || receipt?.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`,
-      `Net Fark Tutarı: ${Number(comparison.totalNetDiff || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`,
-      `Uyum Skoru     : %${comparison.matchScore}`,
-      `-------------------------------------------------------------`,
-      `TESPİT EDİLEN UYUŞMAZLIKLAR:`,
-    ]
-
-    if (comparison.discrepancies.length === 0) {
-      lines.push('Herhangi bir uyuşmazlık tespit edilmemiştir. Tam uyumludur.')
-    } else {
-      comparison.discrepancies.forEach((d, i) => {
-        lines.push(`${i + 1}. [${d.type}] ${d.title}`)
-        lines.push(`   Detay: ${d.description}`)
-        if (d.diffAmount) {
-          lines.push(`   Etki: ${Number(d.diffAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`)
-        }
-      })
-    }
-
-    lines.push(`=============================================================`)
-    lines.push(`Bu tutanak 3-Way Matching motoru tarafından otomatik oluşturulmuştur.`)
-
-    return lines.join('\n')
   }
 }
 

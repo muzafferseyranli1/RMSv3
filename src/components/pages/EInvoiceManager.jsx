@@ -79,6 +79,72 @@ export default function EInvoiceManager() {
   const [viewingContract, setViewingContract] = useState(null)
   const [loadingContract, setLoadingContract] = useState(false)
 
+  // Manual Item Mapping Modal State (Supplier Item Cross-Reference)
+  const [mappingModalOpen, setMappingModalOpen] = useState(false)
+  const [mappingTargetLine, setMappingTargetLine] = useState(null)
+  const [stockItemsList, setStockItemsList] = useState([])
+  const [stockSearchQuery, setStockSearchQuery] = useState('')
+  const [selectedStockForMapping, setSelectedStockForMapping] = useState(null)
+  const [saveToMemoryChecked, setSaveToMemoryChecked] = useState(true)
+  const [savingMapping, setSavingMapping] = useState(false)
+
+  const loadStockItemsForMapping = async () => {
+    if (stockItemsList.length > 0) return
+    const { data } = await db
+      .from('stock_items')
+      .select('id, name, sku, unit, current_cost')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    if (data) setStockItemsList(data)
+  }
+
+  const handleOpenItemMappingModal = (lineComp) => {
+    setMappingTargetLine(lineComp)
+    setSelectedStockForMapping(
+      lineComp.receiptLine
+        ? { id: lineComp.receiptLine.stock_item_id, name: lineComp.receiptLine.item_name, sku: lineComp.receiptLine.item_sku }
+        : null
+    )
+    setStockSearchQuery('')
+    setSaveToMemoryChecked(true)
+    setMappingModalOpen(true)
+    loadStockItemsForMapping()
+  }
+
+  const handleSaveItemMapping = async () => {
+    if (!selectedStockForMapping || !mappingTargetLine || !matchingInvoice) {
+      toast('Lütfen eşleştirilecek bir RMS stok kartı seçin.', 'error')
+      return
+    }
+
+    setSavingMapping(true)
+    try {
+      const supplierId = matchedSupplierInfo?.id || activeCandidate?.receipt?.supplier_id
+      const invoiceItemName = mappingTargetLine.invoiceLine.item_name
+      const invoiceItemCode = mappingTargetLine.invoiceLine.item_code || ''
+
+      if (saveToMemoryChecked && supplierId) {
+        await matchingEngine.saveSupplierItemMapping(supplierId, invoiceItemName, selectedStockForMapping.id, {
+          supplierItemCode: invoiceItemCode,
+          unitCode: mappingTargetLine.invoiceLine.unit_code || 'C62',
+          mappingSource: 'MANUAL',
+          confidenceScore: 100,
+        })
+      }
+
+      toast(`✅ "${invoiceItemName}" ➔ "${selectedStockForMapping.name}" eşleştirmesi hafızaya kaydedildi!`, 'success')
+      setMappingModalOpen(false)
+
+      // Refresh candidate comparisons immediately
+      await handleOpenMatchingModal(matchingInvoice)
+    } catch (err) {
+      console.error('Mapping save error:', err)
+      toast('Eşleştirme kaydedilirken hata: ' + err.message, 'error')
+    } finally {
+      setSavingMapping(false)
+    }
+  }
+
   const handleOpenContractModal = async (contractOrId) => {
     if (!contractOrId) return
     setContractModalOpen(true)
@@ -3164,16 +3230,64 @@ export default function EInvoiceManager() {
                                       {comp.lineIndex}
                                     </td>
 
-                                    {/* Ürün Adı & SKU */}
+                                    {/* Ürün Adı, Eşleşme Rozeti & RMS Stok Eşleme Butonu */}
                                     <td style={{ padding: '10px 12px' }}>
-                                      <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>
-                                        {comp.invoiceLine.item_name}
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                        <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>
+                                          {comp.invoiceLine.item_name}
+                                        </div>
+
+                                        {/* Manuel Eşle / Değiştir Butonu */}
+                                        <button
+                                          type="button"
+                                          title="Bu fatura kalemini farklı bir RMS Stok Kartı veya İrsaliye Satırına bağla"
+                                          onClick={() => handleOpenItemMappingModal(comp)}
+                                          style={{
+                                            padding: '2px 8px',
+                                            borderRadius: 6,
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--surface-2)',
+                                            color: 'var(--text-strong)',
+                                            fontSize: '.7rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          <i className="fa-solid fa-link" style={{ color: '#f5a623' }} />
+                                          {comp.receiptLine ? 'Eşlemeyi Değiştir' : 'Stok Eşle'}
+                                        </button>
                                       </div>
-                                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', display: 'flex', gap: 6, marginTop: 2 }}>
+
+                                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' }}>
                                         {comp.invoiceLine.item_code && <span>Kod: {comp.invoiceLine.item_code}</span>}
+
+                                        {/* Eşleştirme Yöntemi Rozeti (5-Stage Pipeline) */}
+                                        {comp.matchMethodLabel && comp.matchMethodBadge && (
+                                          <span
+                                            style={{
+                                              padding: '1px 6px',
+                                              borderRadius: 4,
+                                              background: comp.matchMethodBadge.bg,
+                                              color: comp.matchMethodBadge.color,
+                                              fontWeight: 700,
+                                              fontSize: '.68rem',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 4,
+                                            }}
+                                          >
+                                            <i className={`fa-solid ${comp.matchMethodBadge.icon}`} />
+                                            {comp.matchMethodLabel}
+                                          </span>
+                                        )}
+
                                         {comp.receiptLine && (
-                                          <span style={{ color: '#10b981' }}>
-                                            <i className="fa-solid fa-link" style={{ marginRight: 3 }} />
+                                          <span style={{ color: '#10b981', fontWeight: 600 }}>
+                                            <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, opacity: 0.7 }} />
                                             İrsaliye: {comp.receiptLine.item_name}
                                           </span>
                                         )}
@@ -4506,6 +4620,289 @@ export default function EInvoiceManager() {
                 }}
               >
                 Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 9: Manuel Stok Kartı Eşleme & Tedarikçi Hafızası Modalı (ItemMappingModal) */}
+      {mappingModalOpen && mappingTargetLine && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 680,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: 'rgba(147,51,234,0.15)',
+                    color: '#9333ea',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.1rem',
+                  }}
+                >
+                  <i className="fa-solid fa-brain" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '1.05rem' }}>
+                    Tedarikçi Kalem Eşleme & RMS Stok Kartı Bağlama
+                  </div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
+                    Tedarikçi: <strong>{matchingInvoice?.sender_title}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMappingModalOpen(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 20, overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Target Invoice Line Summary */}
+              <div
+                style={{
+                  background: 'var(--app-bg)',
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Faturadaki Tedarikçi Kalem İsmi
+                  </div>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)', marginTop: 2 }}>
+                    {mappingTargetLine.invoiceLine.item_name}
+                  </div>
+                  {mappingTargetLine.invoiceLine.item_code && (
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      Tedarikçi Kodu: {mappingTargetLine.invoiceLine.item_code}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Fatura Miktarı & Fiyatı</div>
+                  <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#f5a623', marginTop: 2 }}>
+                    {Number(mappingTargetLine.invQty).toLocaleString('tr-TR')} {mappingTargetLine.invoiceLine.unit_code || 'Birim'} x {Number(mappingTargetLine.invUnitPrice).toFixed(2)} ₺
+                  </div>
+                </div>
+              </div>
+
+              {/* RMS Stock Items Search & Select */}
+              <div>
+                <label style={{ display: 'block', fontSize: '.82rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6 }}>
+                  Eşleştirilecek RMS Standart Stok Kartını Seçin
+                </label>
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    value={stockSearchQuery}
+                    onChange={(e) => setStockSearchQuery(e.target.value)}
+                    placeholder="Stok kartı adı veya SKU ile ara (Örn: Cheddar, STK-01)..."
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px 9px 36px',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface-2)',
+                      color: 'var(--text-strong)',
+                      fontSize: '.85rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                {/* Stock Items List */}
+                <div
+                  style={{
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    background: 'var(--app-bg)',
+                  }}
+                >
+                  {stockItemsList
+                    .filter((s) => {
+                      if (!stockSearchQuery) return true
+                      const q = stockSearchQuery.toLowerCase()
+                      return (
+                        (s.name && s.name.toLowerCase().includes(q)) ||
+                        (s.sku && s.sku.toLowerCase().includes(q))
+                      )
+                    })
+                    .map((item) => {
+                      const isSelected = selectedStockForMapping?.id === item.id
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedStockForMapping(item)}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            background: isSelected ? 'rgba(16,185,129,0.12)' : 'transparent',
+                            borderLeft: isSelected ? '4px solid #10b981' : '4px solid transparent',
+                            transition: 'background 0.15s',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700, color: isSelected ? '#10b981' : 'var(--text-strong)', fontSize: '.86rem' }}>
+                              {item.name}
+                            </div>
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
+                              <span>SKU: {item.sku || '—'}</span>
+                              <span>Birim: {item.unit || 'Adet'}</span>
+                            </div>
+                          </div>
+
+                          {isSelected && (
+                            <i className="fa-solid fa-circle-check" style={{ color: '#10b981', fontSize: '1.1rem' }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+
+              {/* Save To Memory Checkbox */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 14px',
+                  background: 'rgba(147,51,234,0.06)',
+                  border: '1px solid rgba(147,51,234,0.25)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={saveToMemoryChecked}
+                  onChange={(e) => setSaveToMemoryChecked(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: '#9333ea', cursor: 'pointer' }}
+                />
+                <div style={{ fontSize: '.82rem', color: 'var(--text-strong)', fontWeight: 600 }}>
+                  Bu tedarikçi (<strong>{matchingInvoice?.sender_title}</strong>) için <strong>"{mappingTargetLine.invoiceLine.item_name}"</strong> tanımını kalıcı hafızaya kaydet ve gelecek tüm faturalarda otomatik eşleştir.
+                </div>
+              </label>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '12px 20px',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMappingModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-strong)',
+                  fontWeight: 600,
+                  fontSize: '.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                İptal
+              </button>
+
+              <button
+                type="button"
+                disabled={!selectedStockForMapping || savingMapping}
+                onClick={handleSaveItemMapping}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: selectedStockForMapping ? 'linear-gradient(135deg, #9333ea, #7e22ce)' : 'var(--border)',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: selectedStockForMapping && !savingMapping ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: selectedStockForMapping ? '0 2px 8px rgba(147,51,234,0.35)' : 'none',
+                }}
+              >
+                <i className={`fa-solid ${savingMapping ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
+                {savingMapping ? 'Kaydediliyor...' : 'Eşleştirmeyi Kaydet & Uygula'}
               </button>
             </div>
           </div>

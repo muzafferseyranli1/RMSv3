@@ -80,7 +80,7 @@ const SIPARIS_OPTS = [
   {value:'whatsapp',label:'Whatsapp'},{value:'entegrasyon',label:'Entegrasyon'},
   {value:'portal',label:'Suitable Tedarikçi Arayüzü'},
 ]
-const TABS = [
+const BASE_TABS = [
   {label:'Genel Bilgiler',icon:'fa-building'},
   {label:'Yetkili & İletişim',icon:'fa-users'},
   {label:'Sipariş Ayarları',icon:'fa-cart-shopping'},
@@ -109,6 +109,34 @@ export default function Suppliers() {
   const [editId,setEditId] = useState(null)
   const [confirm,setConfirm] = useState(null)
 
+  // Supplier Item Mappings State
+  const [mappings, setMappings] = useState([])
+  const [stockItems, setStockItems] = useState([])
+  const [newMapItemName, setNewMapItemName] = useState('')
+  const [newMapStockId, setNewMapStockId] = useState('')
+  const [loadingMappings, setLoadingMappings] = useState(false)
+
+  const TABS = editId
+    ? [...BASE_TABS, { label: 'Eşleme Hafızası', icon: 'fa-brain' }]
+    : BASE_TABS
+
+  const loadMappings = async (suppId) => {
+    if (!suppId) return
+    setLoadingMappings(true)
+    try {
+      const [mapRes, stockRes] = await Promise.all([
+        db.from('supplier_item_mappings').select('*').eq('supplier_id', suppId).order('created_at', { ascending: false }),
+        db.from('stock_items').select('id, name, sku, unit').is('deleted_at', null).order('name', { ascending: true }),
+      ])
+      setMappings(mapRes.data || [])
+      setStockItems(stockRes.data || [])
+    } catch (e) {
+      console.warn('Mappings load error:', e)
+    } finally {
+      setLoadingMappings(false)
+    }
+  }
+
   const load = useCallback(async()=>{
     setLoading(true)
     const {data,error} = await db.from('suppliers').select('*').order('name')
@@ -126,7 +154,7 @@ export default function Suppliers() {
       && (!kindFilter||i.supplier_kind===kindFilter)
   })
 
-  function openAdd(){setForm(EMPTY);setEditId(null);setTab(0);setModal(true)}
+  function openAdd(){setForm(EMPTY);setEditId(null);setTab(0);setModal(true);setMappings([])}
   function openEdit(s){
     setForm({
       cari_kodu:s.cari_kodu||'',muhasebe_kodu:s.muhasebe_kodu||'',karsi_taraf_kodu:s.karsi_taraf_kodu||'',
@@ -138,9 +166,42 @@ export default function Suppliers() {
       logo_url:s.logo_url||'',cat:s.cat||'',address:s.address||'',notes:s.notes||'',active:s.active!==false,
       supplier_kind:s.supplier_kind||'external',
     })
-    setEditId(s.id);setTab(0);setModal(true)
+    setEditId(s.id);setTab(0);setModal(true);
+    loadMappings(s.id)
   }
-  function closeModal(){setModal(false);setForm(EMPTY);setEditId(null)}
+  function closeModal(){setModal(false);setForm(EMPTY);setEditId(null);setMappings([])}
+
+  const handleAddMapping = async () => {
+    if (!newMapItemName.trim() || !newMapStockId || !editId) {
+      toast('Lütfen faturadaki ürün adı ve RMS stok kartını seçin.', 'error')
+      return
+    }
+    const { data, error } = await db.from('supplier_item_mappings').insert({
+      supplier_id: editId,
+      supplier_item_name: newMapItemName.trim(),
+      stock_item_id: newMapStockId,
+      mapping_source: 'MANUAL',
+      confidence_score: 100,
+    })
+    if (error) {
+      toast('Eşleme eklenemedi: ' + error.message, 'error')
+    } else {
+      toast(`"${newMapItemName}" eşlemesi eklendi`, 'success')
+      setNewMapItemName('')
+      setNewMapStockId('')
+      loadMappings(editId)
+    }
+  }
+
+  const handleDeleteMapping = async (mapId) => {
+    const { error } = await db.from('supplier_item_mappings').delete().eq('id', mapId)
+    if (error) {
+      toast('Silinemedi: ' + error.message, 'error')
+    } else {
+      toast('Eşleme hafızadan silindi', 'info')
+      loadMappings(editId)
+    }
+  }
 
   async function save(){
     if(!form.name.trim()){toast('Tedarikçi adı zorunludur','error');setTab(0);return}
@@ -455,6 +516,141 @@ export default function Suppliers() {
           <div><label className="f-label">Sipariş WhatsApp No</label>
             <input className="f-input" value={form.siparis_wa_no} onChange={e=>set('siparis_wa_no',e.target.value)} placeholder="905xxxxxxxxx"/></div>
         </div>}
+
+        {tab===3 && (
+          <div style={{display:'grid',gap:16}}>
+            <div style={{background:'rgba(147,51,234,0.06)',border:'1px solid rgba(147,51,234,0.2)',borderRadius:10,padding:'10px 14px'}}>
+              <div style={{fontWeight:700,fontSize:'.82rem',color:'#9333ea',display:'flex',alignItems:'center',gap:6}}>
+                <i className="fa-solid fa-brain" />
+                Tedarikçi Ürün Kodları & E-Fatura Eşleme Hafızası (Cross-Reference)
+              </div>
+              <div style={{fontSize:'.75rem',color:'#64748b',marginTop:3}}>
+                Bu tedarikçiden gelen faturalardaki farklı ürün isimleri (Örn: "çedar peynr") ile RMS standart stok kartlarınız ("Cheddar Peyniri") arasındaki kalıcı eşleştirmeler burada saklanır.
+              </div>
+            </div>
+
+            {/* Yeni Eşleme Ekleme Formu */}
+            <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:12}}>
+              <div style={{fontSize:'.78rem',fontWeight:700,color:'#334155',marginBottom:8}}>Yeni Ürün Eşlemesi Tanımla</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8,alignItems:'end'}}>
+                <div>
+                  <label className="f-label" style={{fontSize:'.72rem'}}>Faturadaki Tedarikçi Ürün Adı</label>
+                  <input
+                    className="f-input"
+                    value={newMapItemName}
+                    onChange={(e)=>setNewMapItemName(e.target.value)}
+                    placeholder='Örn: "çedar peynr", "HRC-01"'
+                    style={{fontSize:'.8rem'}}
+                  />
+                </div>
+                <div>
+                  <label className="f-label" style={{fontSize:'.72rem'}}>RMS Standart Stok Kartı</label>
+                  <select
+                    className="f-input"
+                    value={newMapStockId}
+                    onChange={(e)=>setNewMapStockId(e.target.value)}
+                    style={{fontSize:'.8rem'}}
+                  >
+                    <option value="">-- Stok Kartı Seçin --</option>
+                    {stockItems.map((s)=>(
+                      <option key={s.id} value={s.id}>{s.name} ({s.sku || s.unit})</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddMapping}
+                  style={{
+                    padding:'8px 14px',
+                    borderRadius:8,
+                    background:'#9333ea',
+                    color:'#fff',
+                    border:'none',
+                    fontWeight:700,
+                    fontSize:'.78rem',
+                    cursor:'pointer',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:6,
+                    height:38,
+                  }}
+                >
+                  <i className="fa-solid fa-plus" /> Eşle
+                </button>
+              </div>
+            </div>
+
+            {/* Kayıtlı Eşlemeler Tablosu */}
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:'.78rem',fontWeight:700,color:'#64748b'}}>Kayıtlı Eşlemeler ({mappings.length})</span>
+                {loadingMappings && <span style={{fontSize:'.72rem',color:'#9333ea'}}>Yükleniyor...</span>}
+              </div>
+
+              {mappings.length === 0 ? (
+                <div style={{textAlign:'center',padding:'24px 0',color:'#94a3b8',fontSize:'.78rem',fontStyle:'italic',background:'#f8fafc',borderRadius:8,border:'1px dashed #cbd5e1'}}>
+                  Bu tedarikçi için henüz kayıtlı bir ürün eşlemesi bulunmuyor.
+                </div>
+              ) : (
+                <div style={{border:'1px solid #e2e8f0',borderRadius:8,overflow:'hidden',maxHeight:220,overflowY:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',textAlign:'left'}}>
+                    <thead>
+                      <tr style={{background:'#f1f5f9',borderBottom:'1px solid #e2e8f0',color:'#64748b'}}>
+                        <th style={{padding:'8px 10px'}}>Faturadaki İsim</th>
+                        <th style={{padding:'8px 10px'}}>RMS Stok Karşılığı</th>
+                        <th style={{padding:'8px 10px'}}>Kaynak</th>
+                        <th style={{padding:'8px 10px',textAlign:'center'}}>Kullanım</th>
+                        <th style={{padding:'8px 10px',textAlign:'center',width:40}}>İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mappings.map((m)=>{
+                        const matchedStock = stockItems.find((s)=>s.id === m.stock_item_id)
+                        return (
+                          <tr key={m.id} style={{borderBottom:'1px solid #f1f5f9'}}>
+                            <td style={{padding:'8px 10px',fontWeight:700,color:'#0f172a'}}>
+                              {m.supplier_item_name}
+                              {m.supplier_item_code && <div style={{fontSize:'.68rem',color:'#64748b'}}>Kod: {m.supplier_item_code}</div>}
+                            </td>
+                            <td style={{padding:'8px 10px',color:'#16a34a',fontWeight:600}}>
+                              <i className="fa-solid fa-arrow-right" style={{marginRight:4,color:'#94a3b8'}} />
+                              {matchedStock?.name || m.stock_item_id}
+                            </td>
+                            <td style={{padding:'8px 10px'}}>
+                              <span style={{
+                                padding:'2px 6px',
+                                borderRadius:4,
+                                fontSize:'.68rem',
+                                fontWeight:700,
+                                background: m.mapping_source === 'AUTO_QTY_PRICE' ? 'rgba(6,182,212,0.12)' : m.mapping_source === 'PHONETIC' ? 'rgba(245,158,11,0.12)' : 'rgba(147,51,234,0.12)',
+                                color: m.mapping_source === 'AUTO_QTY_PRICE' ? '#0891b2' : m.mapping_source === 'PHONETIC' ? '#d97706' : '#9333ea',
+                              }}>
+                                {m.mapping_source === 'AUTO_QTY_PRICE' ? 'Miktar+Fiyat' : m.mapping_source === 'PHONETIC' ? 'Fonetik' : 'Manuel'}
+                              </span>
+                            </td>
+                            <td style={{padding:'8px 10px',textAlign:'center',color:'#64748b'}}>
+                              {m.match_count || 1} kez
+                            </td>
+                            <td style={{padding:'8px 10px',textAlign:'center'}}>
+                              <button
+                                type="button"
+                                className="ico-btn del"
+                                title="Bu eşlemeyi sil"
+                                onClick={()=>handleDeleteMapping(m.id)}
+                              >
+                                <i className="fa-solid fa-trash" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
 
       <ConfirmDialog open={!!confirm} title={`"${confirm?.name}" silinsin mi?`}
