@@ -466,6 +466,24 @@ export default function EInvoiceManager() {
     }
   }
 
+  // Save Integrator Config
+  const handleSaveConfig = async (e) => {
+    if (e) e.preventDefault()
+    setSavingConfig(true)
+    try {
+      const res = await eInvoiceService.saveIntegratorConfig(integratorConfig)
+      if (res && res.success) {
+        toast('Entegratör ayarları başarıyla kaydedildi.', 'success')
+      } else {
+        toast('Ayarlar kaydedilemedi: ' + (res?.error || 'Bilinmeyen hata'), 'error')
+      }
+    } catch (err) {
+      toast('Kayıt hatası: ' + err.message, 'error')
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
   // Test Integrator Connection (Ping / Session Auth)
   const handleTestConnection = async () => {
     setTestingConnection(true)
