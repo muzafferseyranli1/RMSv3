@@ -12690,3 +12690,32 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - E-Dönüşüm ekosistemi %100 UBL-TR 2.1 standardına ve VUK 509/526 mevzuatına uygundur.
 - `Open Risks`: Yok.
 - `Handoff Contract`: E-Fatura, E-İrsaliye, 3-Way Matching, Inter-Company ve E-Adisyon modülleri eksiksiz çalışır durumdadır.
+
+
+## Entry - 2026-08-15 - E-Dönüşüm 2-Portal Ayrımı, Sözleşme Fiyat Kontrolü (Contracts) ve Sevkiyat Fatura Üreticisi Tamamlandı
+
+- `Timestamp`: `2026-08-15T00:20:00+03:00`
+- `Agent`: Antigravity (Lead Orchestrator) + Subagents (einvoice_split_and_contracts_builder)
+- `Task`: E-Dönüşüm ekosisteminin 2 bağımsız portala ayrılması, gelen faturaların /contracts sözleşme fiyatlarıyla zorunlu doğrulanması, sevkiyat bazlı akıllı fatura üretici stüdyosu ve şirket içi sevk irsaliyesi otomasyonunun geliştirilmesi.
+- `Intent`: İşletme içi ERP operasyonları ile bağımsız Özel Entegratör Simülatörü bulut stüdyosunun ayrılması; sözleşmede belirlenen fiyat dışında kesilen faturaların eşleştirilmesinin kilitlenmesi; sözleşme modalı açılması; gerçek mal kabul sevkiyatlarından akıllı fatura üretimi; aynı VKN transferlerinde sadece e-İrsaliye düzenlenmesi.
+- `Files Created`:
+  - `src/lib/eInvoice/contractPriceValidator.js` (Sözleşme fiyat kontrol ve doğrulama servisi)
+  - `src/components/pages/IntegratorStudio.jsx` (Bağımsız Özel Entegratör Bulut Yönetim Portalı /integrator-studio)
+- `Files Changed`:
+  - `src/lib/eInvoice/matchingEngine.js` (Sözleşme fiyat ihlallerini tespit etme ve onayı kilitleme)
+  - `src/lib/eInvoice/coreUblGenerator.js` (`generateDespatchNumber` ve `generateDespatchUBLXML` eklendi)
+  - `src/lib/eInvoice/interCompanyTransferService.js` (Aynı VKN sevk irsaliyesi vs farklı VKN fatura+irsaliye ayrımı)
+  - `src/components/pages/EInvoiceManager.jsx` (Sözleşme ihlali uyarı bandı, ContractQuickViewModal ve kilitli onay butonu)
+  - `src/App.jsx` (`/integrator-studio` ve `/e-entegrator-paneli` rotaları eklendi)
+  - `src/components/layout/Sidebar.jsx` (Tedarik Zinciri ve Test Araçları menülerine Özel Entegratör Stüdyosu eklendi)
+  - `docs/task.md` (Görevler güncellendi)
+- `Commands Run`:
+  - `npm run build` (✓ built in 40.71s, 0 hata ile doğrulandı)
+  - `git add . ; git commit ; git push origin main` (`Commit: 20b46e5`)
+- `Findings`:
+  - Sözleşme fiyat kontrolü faturadaki kalem fiyatlarını /contracts tablosundaki fiyat listesi ve toleransla karşılaştırır; ihlal varsa kullanıcıya sözleşme numarasına tıklama imkanı sunarak şartları açar ve onayı kilitler.
+  - Özel Entegratör Stüdyosu (/integrator-studio) gerçek mal kabul irsaliyelerini listeleyip tek tıkla Tam Doğru, Eksik Miktar, Fazla Miktar, Fiyat Farklı fatura üretir.
+- `Decisions`:
+  - ERP Portalı ve Özel Entegratör Portalı 2 bağımsız ekran olarak konumlandırıldı.
+- `Open Risks`: Yok.
+- `Handoff Contract`: 2 Portallı E-Dönüşüm mimarisi, Sözleşme Fiyat Denetimi ve E-İrsaliye otomasyonu tam fonksiyonel ve yayına hazırdır.
