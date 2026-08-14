@@ -1,5 +1,5 @@
 import { db } from '../db.js'
-import { generateETTN, generateInvoiceNumber, generateUBLXML, calculateInvoiceTotals } from './coreUblGenerator.js'
+import { generateETTN, generateInvoiceNumber, generateDespatchNumber, generateUBLXML, generateDespatchUBLXML, calculateInvoiceTotals } from './coreUblGenerator.js'
 import { EINVOICE_STATUS } from './types.js'
 
 /**
@@ -539,6 +539,345 @@ export class InterCompanyTransferService {
         isInterCompany: true,
         error: err.message || 'Inter-company fatura üretilirken hata oluştu.',
       }
+    }
+  }
+
+  /**
+   * Aynı Şirket İçi Transferler İçin UBL-TR 2.1 e-İrsaliye (Sevk İrsaliyesi) Üretimi
+   * VKN'ler aynı olduğunda e-Fatura gerekmez, yalnızca yasal sevkiyat e-İrsaliyesi düzenlenir.
+   */
+  async generateIntraCompanyDespatch(transferRecord, transferLines = [], options = {}) {
+    try {
+      const sourceNodeId =
+        transferRecord.sourceBranchId ||
+        transferRecord.origin_branch_id ||
+        transferRecord.originBranchId ||
+        transferRecord.sourceNodeId ||
+        transferRecord.originSnapshot?.branchId
+
+      const targetNodeId =
+        transferRecord.destinationBranchId ||
+        transferRecord.targetBranchId ||
+        transferRecord.destination_branch_id ||
+        transferRecord.targetNodeId
+
+      const [sourceLegalEntity, targetLegalEntity] = await Promise.all([
+        this.getNodeLegalEntity(sourceNodeId || transferRecord.originSnapshot),
+        this.getNodeLegalEntity(targetNodeId || transferRecord.destinationMeta),
+      ])
+
+      const outboundEttn = generateETTN()
+      const despatchNumber = generateDespatchNumber('IRS', new Date().getFullYear(), Math.floor(Math.random() * 899999 + 100000))
+      const issueDate = transferRecord.movementDate || new Date().toISOString().split('T')[0]
+      const issueTime = new Date().toTimeString().split(' ')[0]
+      const documentNo = transferRecord.documentNo || transferRecord.source_doc_no || `TRF-IRS-${Date.now().toString().slice(-8)}`
+
+      const lines = (transferLines || []).map((line, idx) => {
+        const qty = Number(line.quantity || line.rowQuantityOriginal || line.invoiced_quantity || 1)
+        const unitPrice = Number(line.rowTransferUnitCost || line.unitCost || line.unit_price || line.price || 0)
+        const lineSubtotal = Math.round(qty * unitPrice * 100) / 100
+
+        return {
+          line_number: idx + 1,
+          item_name: line.itemName || line.item_name || line.name || 'Transfer Kalemi',
+          item_code: line.itemSku || line.item_sku || line.sku || (line.itemId ? String(line.itemId).slice(0, 8) : null),
+          item_description: `Şirket İçi Sevk İrsaliyesi Kalemi: ${line.itemName || line.item_name || ''}`,
+          invoiced_quantity: qty,
+          unit_code: line.unit || line.unit_code || 'C62',
+          unit_price: unitPrice,
+          subtotal: lineSubtotal,
+          tax_rate: 0,
+          tax_amount: 0,
+          total_line_amount: lineSubtotal,
+          matched_stock_item_id: line.stock_item_id || line.itemId || null,
+          matched_stock_item_name: line.itemName || line.item_name || null,
+        }
+      })
+
+      const despatchPayload = {
+        ettn: outboundEttn,
+        despatch_number: despatchNumber,
+        invoice_number: despatchNumber,
+        profile_id: 'TEMELIRSALIYE',
+        invoice_type: 'SEVK_IRSALIYESI',
+        issue_date: issueDate,
+        issue_time: issueTime,
+        sender_vkn_tckn: sourceLegalEntity.taxNumber,
+        sender_title: sourceLegalEntity.legalTitle,
+        sender_tax_office: sourceLegalEntity.taxOffice,
+        sender_address: sourceLegalEntity.legalAddress,
+        receiver_vkn_tckn: targetLegalEntity.taxNumber,
+        receiver_title: targetLegalEntity.legalTitle,
+        receiver_tax_office: targetLegalEntity.taxOffice,
+        receiver_address: targetLegalEntity.legalAddress,
+        notes: `Şirket İçi Sevk İrsaliyesi (Aynı VKN: ${sourceLegalEntity.taxNumber}). Sevk Belge No: ${documentNo}. ${transferRecord.note || transferRecord.notes || ''}`.trim(),
+        lines,
+      }
+
+      const ublXml = generateDespatchUBLXML(despatchPayload)
+
+      // Save OUTBOUND e-Despatch
+      const outboundInsertData = {
+        direction: 'OUTBOUND',
+        ettn: outboundEttn,
+        invoice_number: despatchNumber,
+        invoice_type: 'SEVK_IRSALIYESI',
+        profile_id: 'TEMELIRSALIYE',
+        issue_date: issueDate,
+        issue_time: issueTime,
+        status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER, // 1200
+        status_description: 'Sevk İrsaliyesi İletildi (Şirket İçi)',
+        currency_code: 'TRY',
+        currency_rate: 1.0,
+        sender_vkn_tckn: sourceLegalEntity.taxNumber,
+        sender_title: sourceLegalEntity.legalTitle,
+        sender_tax_office: sourceLegalEntity.taxOffice,
+        sender_address: sourceLegalEntity.legalAddress,
+        receiver_vkn_tckn: targetLegalEntity.taxNumber,
+        receiver_title: targetLegalEntity.legalTitle,
+        receiver_tax_office: targetLegalEntity.taxOffice,
+        receiver_address: targetLegalEntity.legalAddress,
+        line_extension_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_exclusive_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_inclusive_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_total_amount: 0,
+        payable_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        notes: despatchPayload.notes,
+        ubl_xml: ublXml,
+        is_inter_company: false,
+        source_transfer_doc_no: documentNo,
+        origin_node_id: sourceNodeId || null,
+        destination_node_id: targetNodeId || null,
+        raw_json: {
+          transferRecord,
+          sourceLegalEntity,
+          targetLegalEntity,
+          isDespatchOnly: true,
+        },
+      }
+
+      const { data: savedOutboundArr, error: outboundErr } = await db
+        .from('e_invoices')
+        .insert(outboundInsertData)
+        .select('*')
+
+      if (outboundErr) throw outboundErr
+      const savedOutbound = savedOutboundArr?.[0] || outboundInsertData
+
+      if (savedOutbound.id) {
+        const outboundLinesData = lines.map((l) => ({
+          ...l,
+          invoice_id: savedOutbound.id,
+        }))
+        await db.from('e_invoice_lines').insert(outboundLinesData)
+      }
+
+      // Auto-create mirrored INBOUND Despatch
+      const inboundEttn = generateETTN()
+      const inboundInsertData = {
+        direction: 'INBOUND',
+        ettn: inboundEttn,
+        invoice_number: despatchNumber,
+        invoice_type: 'SEVK_IRSALIYESI',
+        profile_id: 'TEMELIRSALIYE',
+        issue_date: issueDate,
+        issue_time: issueTime,
+        status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER,
+        status_description: 'Sevk İrsaliyesi Alındı (Şirket İçi Transfer)',
+        currency_code: 'TRY',
+        currency_rate: 1.0,
+        sender_vkn_tckn: sourceLegalEntity.taxNumber,
+        sender_title: sourceLegalEntity.legalTitle,
+        sender_tax_office: sourceLegalEntity.taxOffice,
+        sender_address: sourceLegalEntity.legalAddress,
+        receiver_vkn_tckn: targetLegalEntity.taxNumber,
+        receiver_title: targetLegalEntity.legalTitle,
+        receiver_tax_office: targetLegalEntity.taxOffice,
+        receiver_address: targetLegalEntity.legalAddress,
+        line_extension_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_exclusive_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_inclusive_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        tax_total_amount: 0,
+        payable_amount: lines.reduce((s, l) => s + l.subtotal, 0),
+        notes: despatchPayload.notes,
+        ubl_xml: ublXml,
+        is_inter_company: false,
+        source_transfer_doc_no: documentNo,
+        origin_node_id: sourceNodeId || null,
+        destination_node_id: targetNodeId || null,
+        is_matched: true,
+        raw_json: {
+          transferRecord,
+          sourceLegalEntity,
+          targetLegalEntity,
+          isDespatchOnly: true,
+          pairedOutboundEttn: outboundEttn,
+        },
+      }
+
+      const { data: savedInboundArr, error: inboundErr } = await db
+        .from('e_invoices')
+        .insert(inboundInsertData)
+        .select('*')
+
+      if (inboundErr) throw inboundErr
+      const savedInbound = savedInboundArr?.[0] || inboundInsertData
+
+      if (savedInbound.id) {
+        const inboundLinesData = lines.map((l) => ({
+          ...l,
+          invoice_id: savedInbound.id,
+        }))
+        await db.from('e_invoice_lines').insert(inboundLinesData)
+
+        await db.from('e_invoice_matching_logs').insert({
+          invoice_id: savedInbound.id,
+          matching_type: 'INTRA_COMPANY_DESPATCH',
+          notes: `Aynı şirket içi transfer için e-İrsaliye düzenlendi. Belge No: ${despatchNumber}. Kaynak: ${sourceLegalEntity.legalTitle} -> Hedef: ${targetLegalEntity.legalTitle} (Aynı VKN).`,
+          performed_by: 'AUTO_INTRA_COMPANY_SERVICE',
+        })
+      }
+
+      return {
+        success: true,
+        isInterCompany: false,
+        despatchNumber,
+        outboundDespatch: savedOutbound,
+        inboundDespatch: savedInbound,
+        ublXml,
+        message: `Aynı şirket içi transfer için yalnız e-İrsaliye (${despatchNumber}) başarıyla düzenlendi.`,
+      }
+    } catch (err) {
+      console.error('generateIntraCompanyDespatch error:', err)
+      return { success: false, isInterCompany: false, error: err.message }
+    }
+  }
+
+  /**
+   * Transfer Belgesi Otomasyonu (Smart Router)
+   * - Aynı VKN: Yalnızca e-İrsaliye (Sevk İrsaliyesi)
+   * - Farklı VKN: Hem e-İrsaliye hem de e-Fatura
+   */
+  async generateTransferDocuments(transferRecord, transferLines = [], options = {}) {
+    const sourceNodeId =
+      transferRecord.sourceBranchId ||
+      transferRecord.origin_branch_id ||
+      transferRecord.originBranchId ||
+      transferRecord.sourceNodeId ||
+      transferRecord.originSnapshot?.branchId
+
+    const targetNodeId =
+      transferRecord.destinationBranchId ||
+      transferRecord.targetBranchId ||
+      transferRecord.destination_branch_id ||
+      transferRecord.targetNodeId
+
+    const checkResult = await this.checkIfInterCompanyTransfer(
+      sourceNodeId || transferRecord.originSnapshot,
+      targetNodeId || transferRecord.destinationMeta
+    )
+
+    if (!checkResult.isInterCompany) {
+      // Intra-company: Generate only e-Despatch
+      const despatchResult = await this.generateIntraCompanyDespatch(transferRecord, transferLines, options)
+      return {
+        success: despatchResult.success,
+        isInterCompany: false,
+        documentType: 'DESPATCH_ONLY',
+        despatch: despatchResult,
+        invoice: null,
+        message: despatchResult.message,
+      }
+    } else {
+      // Inter-company: Generate both e-Invoice and e-Despatch
+      const invoiceResult = await this.generateInterCompanyInvoice(transferRecord, transferLines, { ...options, force: true })
+      const despatchResult = await this.generateIntraCompanyDespatch(transferRecord, transferLines, options)
+      return {
+        success: invoiceResult.success && despatchResult.success,
+        isInterCompany: true,
+        documentType: 'INVOICE_AND_DESPATCH',
+        invoice: invoiceResult,
+        despatch: despatchResult,
+        message: `Şirketler arası transfer için e-Fatura (${invoiceResult.invoiceNumber}) ve e-İrsaliye (${despatchResult.despatchNumber}) başarıyla üretildi.`,
+      }
+    }
+  }
+
+  /**
+   * 1-Click Aynı Şirket İçi Transfer E-İrsaliyesi Simülasyonu
+   * Test ve demo amaçlı aynı VKN transferi için yalnız sevk irsaliyesi üretir.
+   */
+  async simulateIntraCompanyTransferDespatch(options = {}) {
+    try {
+      const timestamp = new Date().toISOString()
+      const dateText = timestamp.slice(0, 10)
+      const docNo = `TRF-IRS-${Math.floor(100000 + Math.random() * 900000)}`
+
+      // Source: Ana Depo (Same VKN: 1234567890)
+      const sourceEntity = {
+        id: '11111111-1111-4111-a111-111111111111',
+        nodeId: '11111111-1111-4111-a111-111111111111',
+        nodeName: 'Merkez Ana Depo',
+        nodeType: 'anadepo',
+        isLegalEntity: true,
+        taxNumber: '1234567890',
+        legalTitle: 'SuitableRMS Restoran Grubu A.Ş.',
+        taxOffice: 'Beşiktaş',
+        legalAddress: 'Büyükdere Cad. No:100 Levent / Beşiktaş / İstanbul',
+      }
+
+      // Target: Beşiktaş Şubesi (Same VKN: 1234567890)
+      const targetEntity = {
+        id: '33333333-3333-4333-a333-333333333333',
+        nodeId: '33333333-3333-4333-a333-333333333333',
+        nodeName: 'Beşiktaş Çarşı Şubesi',
+        nodeType: 'sube',
+        isLegalEntity: false,
+        parent_legal_entity_id: '11111111-1111-4111-a111-111111111111',
+        taxNumber: '1234567890',
+        legalTitle: 'SuitableRMS Restoran Grubu A.Ş.',
+        taxOffice: 'Beşiktaş',
+        legalAddress: 'Çarşı Cad. No:18 Beşiktaş / İstanbul',
+      }
+
+      const mockLines = [
+        {
+          itemType: 'stock_item',
+          itemId: '33333333-3333-4333-a333-333333333333',
+          itemName: 'Taze Sıkma Portakal Suyu (10 Lt)',
+          itemSku: 'ICE-POR-10',
+          unit: 'LTR',
+          quantity: 20.0,
+          rowTransferUnitCost: 65.0,
+        },
+        {
+          itemType: 'stock_item',
+          itemId: '44444444-4444-4444-a444-444444444444',
+          itemName: 'Kağıt Pipet & Servis Peçetesi Seti',
+          itemSku: 'AMB-PIP-100',
+          unit: 'PK',
+          quantity: 15.0,
+          rowTransferUnitCost: 45.0,
+        },
+      ]
+
+      const transferRecord = {
+        documentNo: docNo,
+        movementDate: dateText,
+        notes: 'Beşiktaş Çarşı Şubesi dahili sarf ve içecek ikmali (Aynı Şirket İçi)',
+        sourceBranchId: sourceEntity.nodeId,
+        sourceBranchName: sourceEntity.nodeName,
+        originSnapshot: sourceEntity,
+        targetBranchId: targetEntity.nodeId,
+        targetBranchName: targetEntity.nodeName,
+        destinationMeta: targetEntity,
+      }
+
+      const result = await this.generateIntraCompanyDespatch(transferRecord, mockLines, options)
+      return result
+    } catch (err) {
+      console.error('simulateIntraCompanyTransferDespatch error:', err)
+      return { success: false, error: err.message }
     }
   }
 

@@ -120,6 +120,7 @@ const WmsVehicles = lazy(() => import('@/components/pages/WmsVehicles'))
 const WmsDashboard = lazy(() => import('@/components/pages/WmsDashboard'))
 const WmsReports = lazy(() => import('@/components/pages/WmsReports'))
 const EInvoiceManager = lazy(() => import('@/components/pages/EInvoiceManager'))
+const IntegratorStudio = lazy(() => import('@/components/pages/IntegratorStudio'))
 
 const POS_ROUTES = ['/pos', '/garson', '/pos-masa', '/pos-masalar', '/kiosk', '/kiosk-big', '/kiosk-tablet', '/kiosk-link', '/pos-loyalty-link', '/kds', '/pickup', '/queue', '/sira-ekrani', '/pos-screen', '/garson-screen', '/kds-screen', '/pickup-screen', '/q', '/anket', '/soru-cevap', '/cihaz-ekrani', '/cihazekrani', '/cihazekranı', '/cihaz-ekranı']
 const CHUNK_RELOAD_KEY = 'suitable-rms:chunk-reload'
@@ -465,6 +466,8 @@ function AppShell() {
               <Route path="/supplier-order-panel" element={<SupplierOrderPanel />} />
               <Route path="/einvoice" element={<EInvoiceManager />} />
               <Route path="/e-fatura" element={<Navigate to="/einvoice" replace />} />
+              <Route path="/integrator-studio" element={<IntegratorStudio />} />
+              <Route path="/e-entegrator-paneli" element={<Navigate to="/integrator-studio" replace />} />
               <Route path="/stock-reports" element={<Reports scopeVariant="center" initialTab="inventory" />} />
               <Route path="/personel" element={<Personnel />} />
               <Route path="/musteriler" element={<Musteriler />} />

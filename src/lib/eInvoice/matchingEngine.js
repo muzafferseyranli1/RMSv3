@@ -1,6 +1,7 @@
 import { db } from '../db.js'
 import { EINVOICE_STATUS, getStatusMeta } from './types.js'
 import { eInvoiceService } from './eInvoiceService.js'
+import { findActiveContractForSupplier, validateInvoiceAgainstContract } from './contractPriceValidator.js'
 
 /**
  * Metin normalizasyonu (Türkçe karakterleri ve boşlukları temizler)
@@ -175,6 +176,20 @@ export class MatchingEngine {
       const suppMatch = await this.findMatchingSupplier(invoice.sender_vkn_tckn, invoice.sender_title)
       const matchedSupplier = suppMatch.supplier
 
+      // Aktif sözleşmeyi ve fiyat doğrulamasını kontrol et
+      let activeContract = null
+      let contractValidation = { isValid: true, hasViolation: false, hasContract: false, message: 'Aktif sözleşme yok' }
+      if (matchedSupplier?.id) {
+        activeContract = await findActiveContractForSupplier(matchedSupplier.id, invoice.issue_date, branchId)
+        if (activeContract) {
+          contractValidation = await validateInvoiceAgainstContract(invoice, invoice.lines || [], {
+            supplierId: matchedSupplier.id,
+            contract: activeContract,
+            branchId,
+          })
+        }
+      }
+
       // Mal kabul irsaliyelerini çek
       let receiptsQuery = db.from('purchase_receipts').select('*').is('deleted_at', null)
 
@@ -242,6 +257,8 @@ export class MatchingEngine {
         const comparison = this.compareInvoiceWithReceipt(invoice, fullReceipt, {
           priceTolerancePercent,
           qtyTolerance,
+          contractValidation,
+          activeContract,
         })
 
         candidateReceipts.push({
@@ -252,6 +269,9 @@ export class MatchingEngine {
           score: comparison.matchScore,
           status: comparison.status,
           isExactMatch: comparison.isFullyMatched,
+          hasContractPriceViolation: comparison.hasContractPriceViolation,
+          contractValidation: comparison.contractValidation,
+          activeContract: comparison.activeContract,
         })
       }
 
@@ -269,6 +289,8 @@ export class MatchingEngine {
         confidenceScore: suppMatch.confidenceScore,
         candidateReceipts,
         bestMatch: candidateReceipts.length > 0 ? candidateReceipts[0] : null,
+        contractValidation,
+        activeContract,
       }
     } catch (err) {
       console.error('findPotentialReceiptsForInvoice error:', err)
@@ -289,6 +311,8 @@ export class MatchingEngine {
       priceTolerancePercent = 1.0, // %1 birim fiyat toleransı
       qtyTolerance = 0.01,         // 0.01 miktar toleransı
       checkTaxRates = true,        // KDV oranı kontrolü
+      contractValidation = null,
+      activeContract = null,
     } = options
 
     const invLines = invoice.lines || []
@@ -354,8 +378,34 @@ export class MatchingEngine {
       let statusLabel = 'Tam Uyumlu'
       let statusBadge = { bg: 'rgba(16,185,129,0.12)', color: '#10b981', border: '#10b981', icon: 'fa-circle-check' }
 
+      // Check if this line has a contract price violation
+      const contractLineViolation = contractValidation?.discrepantLines?.find(
+        (dl) =>
+          dl.lineIndex === idx + 1 ||
+          (dl.stockItemId && dl.stockItemId === (matchedRcptLine?.stock_item_id || invLine.matched_stock_item_id)) ||
+          (dl.itemName && invLine.item_name && normalizeString(dl.itemName) === normalizeString(invLine.item_name))
+      )
+
       // Uyuşmazlık Tespiti
-      if (!matchedRcptLine) {
+      if (contractLineViolation) {
+        status = 'CONTRACT_PRICE_VIOLATION'
+        statusLabel = `Sözleşme İhlali (+%${contractLineViolation.priceDiffPercent})`
+        statusBadge = { bg: 'rgba(239,68,68,0.18)', color: '#ef4444', border: '#ef4444', icon: 'fa-ban' }
+        discrepancies.push({
+          lineIndex: idx + 1,
+          itemName: invLine.item_name,
+          type: 'CONTRACT_PRICE_VIOLATION',
+          severity: 'danger',
+          isContractViolation: true,
+          contractNo: contractValidation.contractNo || activeContract?.contract_no,
+          contractId: contractValidation.contractId || activeContract?.id,
+          contractPrice: contractLineViolation.contractPrice,
+          invoicePrice: contractLineViolation.invoicePrice,
+          title: `Sözleşme Fiyat İhlali (#${idx + 1})`,
+          description: `Geçerliliği devam eden #${contractValidation.contractNo || activeContract?.contract_no} numaralı sözleşmeden farklı fiyatla kesilen fatura kabul edilemez! (Sözleşme Fiyatı: ${contractLineViolation.contractPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺, Fatura Fiyatı: ${contractLineViolation.invoicePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺)`,
+          diffAmount: (contractLineViolation.invoicePrice - contractLineViolation.contractPrice) * invQty,
+        })
+      } else if (!matchedRcptLine) {
         status = 'NOT_IN_RECEIPT'
         statusLabel = 'İrsaliyede Yok'
         statusBadge = { bg: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '#ef4444', icon: 'fa-circle-question' }
@@ -450,6 +500,8 @@ export class MatchingEngine {
         status,
         statusLabel,
         statusBadge,
+        isContractPriceViolation: Boolean(contractLineViolation),
+        contractLineViolation: contractLineViolation || null,
       })
     })
 
@@ -492,12 +544,23 @@ export class MatchingEngine {
       score = Math.min(score, 65)
     }
 
-    const isFullyMatched = discrepancies.length === 0 && Math.abs(netDiff) <= 1.0
+    const hasContractPriceViolation = Boolean(
+      contractValidation?.hasViolation || discrepancies.some((d) => d.type === 'CONTRACT_PRICE_VIOLATION')
+    )
+
+    if (hasContractPriceViolation) {
+      score = Math.min(score, 40)
+    }
+
+    const isFullyMatched = discrepancies.length === 0 && Math.abs(netDiff) <= 1.0 && !hasContractPriceViolation
 
     return {
       matchScore: isFullyMatched ? 100 : Math.max(0, Math.min(100, score)),
       isFullyMatched,
-      status: isFullyMatched ? 'EXACT_MATCH' : score >= 75 ? 'PARTIAL_MATCH' : 'DISCREPANCY',
+      hasContractPriceViolation,
+      contractValidation: contractValidation || { isValid: true, hasViolation: false, hasContract: false },
+      activeContract: activeContract || null,
+      status: hasContractPriceViolation ? 'DISCREPANCY' : isFullyMatched ? 'EXACT_MATCH' : score >= 75 ? 'PARTIAL_MATCH' : 'DISCREPANCY',
       totalInvoicedAmount,
       totalReceiptAmount,
       totalNetDiff: Math.round(netDiff * 100) / 100,
@@ -527,6 +590,14 @@ export class MatchingEngine {
       note = arg5 || ''
     }
     try {
+      // 0. Sözleşme Fiyat İhlali Kontrolü (Hard Block)
+      if (matchData.hasContractPriceViolation || matchData.contractValidation?.hasViolation) {
+        const errorMsg =
+          matchData.contractValidation?.violationMessage ||
+          'Geçerliliği devam eden sözleşmeden farklı fiyatla kesilen fatura kabul edilemez! Lütfen tedarikçiye itiraz tutanağı veya red uygulama yanıtı iletin.'
+        throw new Error(errorMsg)
+      }
+
       // 1. Fatura ve İrsaliyeyi Getir
       const { data: invoice } = await eInvoiceService.getInvoiceDetails(invoiceId)
       if (!invoice) throw new Error('Fatura kaydı bulunamadı.')

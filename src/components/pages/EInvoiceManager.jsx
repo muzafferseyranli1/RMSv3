@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
 import { eInvoiceService } from '@/lib/eInvoice/eInvoiceService'
 import { matchingEngine } from '@/lib/eInvoice/matchingEngine'
 import { interCompanyTransferService } from '@/lib/eInvoice/interCompanyTransferService'
+import { findActiveContractForSupplier } from '@/lib/eInvoice/contractPriceValidator'
 import { eAdisyonService, EADISYON_STATUS, EADISYON_STATUS_META } from '@/lib/eInvoice/eAdisyonService'
 import {
   EINVOICE_STATUS,
@@ -70,6 +73,29 @@ export default function EInvoiceManager() {
   const [responseType, setResponseType] = useState('KABUL')
   const [responseReason, setResponseReason] = useState('')
   const [submittingResponse, setSubmittingResponse] = useState(false)
+
+  // Contract Quick View Modal State
+  const [contractModalOpen, setContractModalOpen] = useState(false)
+  const [viewingContract, setViewingContract] = useState(null)
+  const [loadingContract, setLoadingContract] = useState(false)
+
+  const handleOpenContractModal = async (contractOrId) => {
+    if (!contractOrId) return
+    setContractModalOpen(true)
+    if (typeof contractOrId === 'object' && contractOrId !== null) {
+      setViewingContract(contractOrId)
+    } else {
+      setLoadingContract(true)
+      try {
+        const { data } = await db.from('contracts').select('*').eq('id', contractOrId).single()
+        if (data) setViewingContract(data)
+      } catch (err) {
+        console.error('Contract load error:', err)
+      } finally {
+        setLoadingContract(false)
+      }
+    }
+  }
 
   // Settings State
   const [integratorConfig, setIntegratorConfig] = useState({
@@ -667,7 +693,28 @@ export default function EInvoiceManager() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Link
+            to="/integrator-studio"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: '1.5px solid #f5a623',
+              background: 'rgba(245,166,35,0.12)',
+              color: '#f5a623',
+              fontSize: '.85rem',
+              fontWeight: 800,
+              textDecoration: 'none',
+              transition: 'all .2s ease',
+            }}
+          >
+            <i className="fa-solid fa-cloud-bolt" />
+            Özel Entegratör Stüdyosu ➔
+          </Link>
+
           <button
             type="button"
             onClick={loadData}
@@ -3343,8 +3390,98 @@ export default function EInvoiceManager() {
                     </div>
                   </div>
 
+                  {/* Contract Price Violation Banner (Hard Violation Alert) */}
+                  {activeComparison && (activeComparison.hasContractPriceViolation || activeComparison.contractValidation?.hasViolation) && (
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(239,68,68,0.16) 0%, rgba(185,28,28,0.16) 100%)',
+                        border: '2px solid #ef4444',
+                        borderRadius: 12,
+                        padding: '16px 20px',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 16,
+                        boxShadow: '0 4px 16px rgba(239,68,68,0.15)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 10,
+                          background: '#ef4444',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '1.3rem',
+                          flexShrink: 0,
+                          boxShadow: '0 2px 8px rgba(239,68,68,0.4)',
+                        }}
+                      >
+                        <i className="fa-solid fa-ban" />
+                      </div>
+
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                          <span style={{ fontSize: '.95rem', fontWeight: 900, color: '#ef4444', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            ⛔ SÖZLEŞME FİYAT İHLALİ TESPİT EDİLDİ! EŞLEŞTİRME ONAYI KİLİTLENDİ
+                          </span>
+
+                          {activeComparison.contractValidation?.contract && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenContractModal(activeComparison.contractValidation.contract)}
+                              style={{
+                                fontSize: '.78rem',
+                                padding: '4px 12px',
+                                borderRadius: 8,
+                                background: '#ef4444',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                              }}
+                            >
+                              <i className="fa-solid fa-file-contract" />
+                              #{activeComparison.contractValidation.contractNo} Sözleşmesini İncele ➔
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: '.86rem', color: 'var(--text-strong)', marginTop: 6, fontWeight: 700, lineHeight: 1.4 }}>
+                          {activeComparison.contractValidation?.violationMessage ||
+                            'Geçerliliği devam eden sözleşmeden farklı fiyatla kesilen fatura kabul edilemez!'}
+                        </div>
+
+                        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {activeComparison.contractValidation?.discrepantLines?.map((dl, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: '.76rem',
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                background: 'rgba(239,68,68,0.22)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239,68,68,0.5)',
+                                fontWeight: 800,
+                              }}
+                            >
+                              {dl.itemName}: Sözleşme: {Number(dl.contractPrice).toFixed(2)} ₺ ➔ Fatura: {Number(dl.invoicePrice).toFixed(2)} ₺ (+%{dl.priceDiffPercent} Aşım)
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Discrepancy Alert Banner */}
-                  {activeComparison && activeComparison.discrepancies?.length > 0 && (
+                  {activeComparison && activeComparison.discrepancies?.length > 0 && !(activeComparison.hasContractPriceViolation || activeComparison.contractValidation?.hasViolation) && (
                     <div
                       style={{
                         background: 'rgba(245,158,11,0.08)',
@@ -3744,28 +3881,86 @@ export default function EInvoiceManager() {
                   </button>
                 )}
 
+                {/* Contract Price Violation Status Warning & Blocked Button */}
+                {activeComparison && (activeComparison.hasContractPriceViolation || activeComparison.contractValidation?.hasViolation) && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      color: '#ef4444',
+                      fontSize: '.78rem',
+                      fontWeight: 800,
+                      background: 'rgba(239,68,68,0.12)',
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      border: '1px solid rgba(239,68,68,0.3)',
+                    }}
+                  >
+                    <i className="fa-solid fa-ban" />
+                    Sözleşme İhlali Nedeniyle Onay Kilitli
+                  </div>
+                )}
+
                 {/* Approve Match Button */}
                 <button
                   type="button"
-                  disabled={approvingMatch || !activeCandidate}
+                  disabled={
+                    approvingMatch ||
+                    !activeCandidate ||
+                    Boolean(activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                  }
+                  title={
+                    (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                      ? 'Geçerliliği devam eden sözleşmeden farklı fiyatla kesilen fatura kabul edilemez! Onaylamak için fiyat uyuşmazlığı giderilmeli veya tedarikçiye itiraz tutanağı iletilmelidir.'
+                      : 'Eşleştirmeyi onayla ve cari hesaba alacak kaydı işle'
+                  }
                   onClick={handleApproveMatch}
                   style={{
                     padding: '8px 22px',
                     borderRadius: 8,
                     border: 'none',
-                    background: '#f5a623',
-                    color: '#000000',
+                    background:
+                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? '#475569'
+                        : '#f5a623',
+                    color:
+                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? '#94a3b8'
+                        : '#000000',
                     fontWeight: 800,
                     fontSize: '.9rem',
-                    cursor: 'pointer',
+                    cursor:
+                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? 0.65
+                        : 1,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    boxShadow: '0 4px 12px rgba(245,166,35,0.25)',
+                    boxShadow:
+                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? 'none'
+                        : '0 4px 12px rgba(245,166,35,0.25)',
                   }}
                 >
-                  <i className={`fa-solid ${approvingMatch ? 'fa-spinner fa-spin' : 'fa-circle-check'}`} />
-                  {approvingMatch ? 'Cariye İşleniyor...' : 'Eşleştirmeyi Onayla & Cariye İşle'}
+                  <i
+                    className={`fa-solid ${
+                      approvingMatch
+                        ? 'fa-spinner fa-spin'
+                        : (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                        ? 'fa-ban'
+                        : 'fa-circle-check'
+                    }`}
+                  />
+                  {approvingMatch
+                    ? 'Cariye İşleniyor...'
+                    : (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                    ? 'Sözleşme İhlali (Onay Engellendi)'
+                    : 'Eşleştirmeyi Onayla & Cariye İşle'}
                 </button>
               </div>
             </div>
@@ -4550,6 +4745,225 @@ export default function EInvoiceManager() {
                 onClick={() => setEAdisyonDetailsModalOpen(false)}
                 style={{
                   padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-strong)',
+                  fontWeight: 700,
+                  fontSize: '.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 8: Sözleşme Şartları ve Fiyat Listesi Detay Modalı (ContractQuickViewModal) */}
+      {contractModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 820,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: 'rgba(45,212,191,0.15)',
+                    color: '#2dd4bf',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.1rem',
+                  }}
+                >
+                  <i className="fa-solid fa-file-contract" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '1.05rem' }}>
+                    Sözleşme Detayları & Fiyat Listesi
+                  </div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
+                    Sözleşme No: <strong>#{viewingContract?.contract_no || 'Belirtilmemiş'}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setContractModalOpen(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 20, overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {loadingContract ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: '#f5a623', marginBottom: 8 }} />
+                  <div>Sözleşme verileri yükleniyor...</div>
+                </div>
+              ) : viewingContract ? (
+                <>
+                  {/* Contract Summary Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    <div style={{ background: 'var(--app-bg)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Geçerlilik Tarihleri</div>
+                      <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginTop: 2 }}>
+                        {viewingContract.start_date || '—'} ➔ {viewingContract.end_date || '—'}
+                      </div>
+                      <div style={{ fontSize: '.7rem', color: '#10b981', marginTop: 2 }}>
+                        +{viewingContract.end_grace_days ?? 15} Gün Ek Opsiyon
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--app-bg)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Fiyat Toleransı</div>
+                      <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginTop: 2 }}>
+                        %{Number(viewingContract.price_tolerance != null ? (viewingContract.price_tolerance > 1 ? viewingContract.price_tolerance : viewingContract.price_tolerance * 100) : 5)} Tolerans
+                      </div>
+                      <div style={{ fontSize: '.7rem', color: viewingContract.block_on_exceed !== false ? '#ef4444' : '#f59e0b', marginTop: 2 }}>
+                        {viewingContract.block_on_exceed !== false ? 'Aşımda Satınalma Kilitlenir' : 'Yalnızca Uyar'}
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--app-bg)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Şube Kapsamı</div>
+                      <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginTop: 2 }}>
+                        {Array.isArray(viewingContract.branches) && viewingContract.branches.length > 0
+                          ? `${viewingContract.branches.length} Şube/Şablon`
+                          : 'Tüm Şubeler Geçerli'}
+                      </div>
+                      <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Yetkili Lokasyonlar
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contract Items Price List Table */}
+                  <div>
+                    <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fa-solid fa-list-ul" style={{ color: '#f5a623' }} />
+                      Sözleşmeli Stok Malları & Birim Fiyat Tablosu
+                    </div>
+
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Stok Malı</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', width: 100 }}>SKU</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'center', width: 80 }}>Birim</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', width: 120 }}>Sözleşme Fiyatı</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', width: 100 }}>Kota (Miktar)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.isArray(viewingContract.rows) && viewingContract.rows.length > 0 ? (
+                            viewingContract.rows.map((row, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text-strong)' }}>
+                                  {row.name}
+                                </td>
+                                <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                  {row.sku || '—'}
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                  {row.unit || '—'}
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#10b981' }}>
+                                  {Number(row.price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                                  {Number(row.qty || 0).toLocaleString('tr-TR')}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>
+                                Bu sözleşmede kayıtlı kalem bulunamadı.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Sözleşme bilgisi bulunamadı.
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '12px 20px',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setContractModalOpen(false)}
+                style={{
+                  padding: '8px 18px',
                   borderRadius: 8,
                   border: '1px solid var(--border)',
                   background: 'var(--surface)',

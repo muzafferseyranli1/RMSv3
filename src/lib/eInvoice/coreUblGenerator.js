@@ -402,3 +402,124 @@ export function parseUBLXML(xmlString) {
     return null
   }
 }
+
+/**
+ * 16 Haneli Standart GİB e-İrsaliye Numarası Üretici (UBL-TR 2.1 DespatchAdvice)
+ * Örn: IRS2026000000001
+ */
+export function generateDespatchNumber(prefix = 'IRS', year = new Date().getFullYear(), sequence = 1) {
+  const p = (prefix || 'IRS').padEnd(3, 'X').substring(0, 3).toUpperCase()
+  const y = String(year || new Date().getFullYear())
+  const s = String(sequence || 1).padStart(9, '0')
+  return `${p}${y}${s}`
+}
+
+/**
+ * UBL-TR 2.1 Standart E-İrsaliye XML Üretici (UBL-TR DespatchAdvice)
+ */
+export function generateDespatchUBLXML(despatch) {
+  const ettn = despatch.ettn || generateETTN()
+  const despatchNumber = despatch.despatch_number || despatch.invoice_number || generateDespatchNumber()
+  const issueDate = despatch.issue_date || new Date().toISOString().split('T')[0]
+  const issueTime = despatch.issue_time || new Date().toTimeString().split(' ')[0]
+  const notes = despatch.notes || 'SuitableRMS E-İrsaliye Sistemi tarafından düzenlenmiştir.'
+
+  const sender = {
+    vkn: despatch.sender_vkn_tckn || '1234567890',
+    title: despatch.sender_title || 'SuitableRMS Restoran Grubu A.Ş.',
+    taxOffice: despatch.sender_tax_office || 'Merkez',
+    address: despatch.sender_address || 'Merkez Adresi',
+  }
+
+  const receiver = {
+    vkn: despatch.receiver_vkn_tckn || '1234567890',
+    title: despatch.receiver_title || 'Alıcı Şube / Depo',
+    taxOffice: despatch.receiver_tax_office || 'Merkez',
+    address: despatch.receiver_address || 'Teslimat Adresi',
+  }
+
+  const linesXml = (despatch.lines || [])
+    .map((l, idx) => {
+      const lineNum = l.line_number || idx + 1
+      const qty = Number(l.invoiced_quantity || l.quantity || l.delivered_quantity || 1)
+      const unitCode = l.unit_code || l.unit || 'C62'
+      const itemName = l.item_name || 'Transfer Kalemi'
+      const itemCode = l.item_code || l.sku || ''
+
+      return `
+    <cac:DespatchLine>
+      <cbc:ID>${lineNum}</cbc:ID>
+      <cbc:DeliveredQuantity unitCode="${unitCode}">${qty.toFixed(3)}</cbc:DeliveredQuantity>
+      <cac:Item>
+        <cbc:Name>${escapeXml(itemName)}</cbc:Name>
+        ${itemCode ? `<cac:SellersItemIdentification><cbc:ID>${escapeXml(itemCode)}</cbc:ID></cac:SellersItemIdentification>` : ''}
+      </cac:Item>
+    </cac:DespatchLine>`
+    })
+    .join('')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<DespatchAdvice xmlns="urn:oasis:names:specification:ubl:schema:xsd:DespatchAdvice-2"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>TR1.2</cbc:CustomizationID>
+  <cbc:ProfileID>TEMELIRSALIYE</cbc:ProfileID>
+  <cbc:ID>${despatchNumber}</cbc:ID>
+  <cbc:CopyIndicator>false</cbc:CopyIndicator>
+  <cbc:UUID>${ettn}</cbc:UUID>
+  <cbc:IssueDate>${issueDate}</cbc:IssueDate>
+  <cbc:IssueTime>${issueTime}</cbc:IssueTime>
+  <cbc:DespatchAdviceTypeCode>SEVK</cbc:DespatchAdviceTypeCode>
+  <cbc:Note>${escapeXml(notes)}</cbc:Note>
+  <cac:DespatchSupplierParty>
+    <cac:Party>
+      <cac:PartyIdentification>
+        <cbc:ID schemeID="${sender.vkn.length === 11 ? 'TCKN' : 'VKN'}">${sender.vkn}</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>${escapeXml(sender.title)}</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${escapeXml(sender.address)}</cbc:StreetName>
+        <cac:Country><cbc:Name>Türkiye</cbc:Name></cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cac:TaxScheme>
+          <cbc:Name>${escapeXml(sender.taxOffice)}</cbc:Name>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:DespatchSupplierParty>
+  <cac:DeliveryCustomerParty>
+    <cac:Party>
+      <cac:PartyIdentification>
+        <cbc:ID schemeID="${receiver.vkn.length === 11 ? 'TCKN' : 'VKN'}">${receiver.vkn}</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>${escapeXml(receiver.title)}</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>${escapeXml(receiver.address)}</cbc:StreetName>
+        <cac:Country><cbc:Name>Türkiye</cbc:Name></cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cac:TaxScheme>
+          <cbc:Name>${escapeXml(receiver.taxOffice)}</cbc:Name>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:DeliveryCustomerParty>
+  <cac:Shipment>
+    <cbc:ID>1</cbc:ID>
+    <cac:Delivery>
+      <cac:DeliveryAddress>
+        <cbc:StreetName>${escapeXml(receiver.address)}</cbc:StreetName>
+        <cac:Country><cbc:Name>Türkiye</cbc:Name></cac:Country>
+      </cac:DeliveryAddress>
+    </cac:Delivery>
+  </cac:Shipment>
+  ${linesXml}
+</DespatchAdvice>`
+}
