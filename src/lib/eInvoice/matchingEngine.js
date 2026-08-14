@@ -439,7 +439,7 @@ export class MatchingEngine {
       const invQty = Number(invLine.invoiced_quantity || invLine.quantity || 0)
       const invUnitPrice = Number(invLine.unit_price || 0)
       const invTaxRate = Number(invLine.tax_rate ?? 20)
-      const invTotal = Number(invLine.total_line_amount || invLine.subtotal || 0)
+      const invTotal = Number(invLine.total_line_amount != null ? invLine.total_line_amount : (invQty * invUnitPrice) || 0)
 
       let matchedRcptLine = null
       let matchMethod = 'NONE'

@@ -3232,66 +3232,81 @@ export default function EInvoiceManager() {
 
                                     {/* Ürün Adı, Eşleşme Rozeti & RMS Stok Eşleme Butonu */}
                                     <td style={{ padding: '10px 12px' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                        <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>
-                                          {comp.invoiceLine.item_name}
-                                        </div>
+                                      {(() => {
+                                        const isConfident =
+                                          comp.matchMethod === 'EXACT' ||
+                                          comp.matchMethod === 'MAPPED_MEMORY' ||
+                                          comp.matchMethod === 'UNIQUE_QTY_PRICE'
+                                        const showWarningOrAction = !isConfident || !comp.receiptLine
 
-                                        {/* Manuel Eşle / Değiştir Butonu */}
-                                        <button
-                                          type="button"
-                                          title="Bu fatura kalemini farklı bir RMS Stok Kartı veya İrsaliye Satırına bağla"
-                                          onClick={() => handleOpenItemMappingModal(comp)}
-                                          style={{
-                                            padding: '2px 8px',
-                                            borderRadius: 6,
-                                            border: '1px solid var(--border)',
-                                            background: 'var(--surface-2)',
-                                            color: 'var(--text-strong)',
-                                            fontSize: '.7rem',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 4,
-                                            whiteSpace: 'nowrap',
-                                          }}
-                                        >
-                                          <i className="fa-solid fa-link" style={{ color: '#f5a623' }} />
-                                          {comp.receiptLine ? 'Eşlemeyi Değiştir' : 'Stok Eşle'}
-                                        </button>
-                                      </div>
+                                        return (
+                                          <>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                              <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>
+                                                {comp.invoiceLine.item_name}
+                                              </div>
 
-                                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' }}>
-                                        {comp.invoiceLine.item_code && <span>Kod: {comp.invoiceLine.item_code}</span>}
+                                              {/* Manuel Eşle / Değiştir Butonu SADECE şüpheli/fonetik veya eşleşmeyen satırlarda çıkar */}
+                                              {showWarningOrAction && (
+                                                <button
+                                                  type="button"
+                                                  title="Bu fatura kalemini farklı bir RMS Stok Kartına bağla"
+                                                  onClick={() => handleOpenItemMappingModal(comp)}
+                                                  style={{
+                                                    padding: '3px 8px',
+                                                    borderRadius: 6,
+                                                    border: '1px solid #f59e0b',
+                                                    background: 'rgba(245,158,11,0.12)',
+                                                    color: '#d97706',
+                                                    fontSize: '.7rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                    whiteSpace: 'nowrap',
+                                                  }}
+                                                >
+                                                  <i className="fa-solid fa-link" />
+                                                  {comp.receiptLine ? 'Eşlemeyi Değiştir' : 'Stok Eşle'}
+                                                </button>
+                                              )}
+                                            </div>
 
-                                        {/* Eşleştirme Yöntemi Rozeti (5-Stage Pipeline) */}
-                                        {comp.matchMethodLabel && comp.matchMethodBadge && (
-                                          <span
-                                            style={{
-                                              padding: '1px 6px',
-                                              borderRadius: 4,
-                                              background: comp.matchMethodBadge.bg,
-                                              color: comp.matchMethodBadge.color,
-                                              fontWeight: 700,
-                                              fontSize: '.68rem',
-                                              display: 'inline-flex',
-                                              alignItems: 'center',
-                                              gap: 4,
-                                            }}
-                                          >
-                                            <i className={`fa-solid ${comp.matchMethodBadge.icon}`} />
-                                            {comp.matchMethodLabel}
-                                          </span>
-                                        )}
+                                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 3, alignItems: 'center' }}>
+                                              {comp.invoiceLine.item_code && <span>Kod: {comp.invoiceLine.item_code}</span>}
 
-                                        {comp.receiptLine && (
-                                          <span style={{ color: '#10b981', fontWeight: 600 }}>
-                                            <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, opacity: 0.7 }} />
-                                            İrsaliye: {comp.receiptLine.item_name}
-                                          </span>
-                                        )}
-                                      </div>
+                                              {/* Rozet SADECE fonetik öneri veya belirsiz durumlarda görünür */}
+                                              {comp.matchMethod === 'PHONETIC_SUGGESTION' && comp.matchMethodBadge && (
+                                                <span
+                                                  style={{
+                                                    padding: '1px 6px',
+                                                    borderRadius: 4,
+                                                    background: comp.matchMethodBadge.bg,
+                                                    color: comp.matchMethodBadge.color,
+                                                    fontWeight: 700,
+                                                    fontSize: '.68rem',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                  }}
+                                                >
+                                                  <i className={`fa-solid ${comp.matchMethodBadge.icon}`} />
+                                                  {comp.matchMethodLabel}
+                                                </span>
+                                              )}
+
+                                              {/* İrsaliyedeki isim farklıysa küçük gri/yeşil yönlendirme göster */}
+                                              {comp.receiptLine && comp.receiptLine.item_name !== comp.invoiceLine.item_name && (
+                                                <span style={{ color: '#10b981', fontWeight: 600 }}>
+                                                  <i className="fa-solid fa-arrow-right" style={{ marginRight: 3, opacity: 0.7 }} />
+                                                  İrsaliye: {comp.receiptLine.item_name}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </>
+                                        )
+                                      })()}
                                     </td>
 
                                     {/* Fatura Miktarı */}
