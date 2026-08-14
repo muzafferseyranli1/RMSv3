@@ -202,9 +202,6 @@ export default function EInvoiceManager() {
 
       if (invoicesRes.success) {
         setInvoices(invoicesRes.data)
-        if (invoicesRes.data.length > 0 && !simSelectedInvoiceId) {
-          setSimSelectedInvoiceId(invoicesRes.data[0].id)
-        }
       }
       if (statsRes) setStats(statsRes)
       if (configRes) setIntegratorConfig(configRes)
@@ -216,7 +213,7 @@ export default function EInvoiceManager() {
     } finally {
       setLoading(false)
     }
-  }, [activeTab, statusFilter, searchQuery, interCompanyFilter, eadisyonFilter, toast, simSelectedInvoiceId])
+  }, [activeTab, statusFilter, searchQuery, interCompanyFilter, eadisyonFilter, toast])
 
   useEffect(() => {
     loadData()
