@@ -165,11 +165,21 @@ export class MatchingEngine {
       // Fatura ve satırlarını yükle
       let invoice = null
       if (typeof invoiceIdOrObj === 'object' && invoiceIdOrObj !== null && invoiceIdOrObj.id) {
-        invoice = invoiceIdOrObj
+        invoice = { ...invoiceIdOrObj }
       } else {
         const invRes = await eInvoiceService.getInvoiceDetails(invoiceIdOrObj)
         if (!invRes.success) throw new Error(invRes.error || 'Fatura bulunamadı.')
         invoice = invRes.data
+      }
+
+      // ALWAYS ensure invoice.lines is loaded
+      if (!invoice.lines || invoice.lines.length === 0) {
+        const { data: invLines } = await db
+          .from('e_invoice_lines')
+          .select('*')
+          .eq('invoice_id', invoice.id)
+          .order('line_number', { ascending: true })
+        invoice.lines = invLines || []
       }
 
       // Tedarikçiyi eşleştir

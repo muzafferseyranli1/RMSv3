@@ -346,6 +346,7 @@ export default function IntegratorStudio() {
       if (scenarioType === 'TAX_MISMATCH') scenarioNote = 'KDV ve Kalem Uyuşmazlığı Senaryosu Faturası.'
 
       const invoicePayload = {
+        id: invoiceEttn,
         direction: 'INBOUND',
         ettn: invoiceEttn,
         invoice_number: invoiceNumber,
@@ -395,19 +396,23 @@ export default function IntegratorStudio() {
         .select('*')
 
       if (insErr) throw insErr
-      const savedInvoice = savedArr?.[0] || invoicePayload
+      const savedInvoice = Array.isArray(savedArr) ? savedArr[0] : (savedArr || invoicePayload)
+      const targetInvoiceId = savedInvoice?.id || invoiceEttn
 
       // Insert Lines
-      if (savedInvoice.id) {
+      if (targetInvoiceId) {
         const linePayloads = invoiceLines.map((l) => ({
           ...l,
-          invoice_id: savedInvoice.id,
+          invoice_id: targetInvoiceId,
         }))
-        await db.from('e_invoice_lines').insert(linePayloads)
+        const { error: lineInsErr } = await db.from('e_invoice_lines').insert(linePayloads)
+        if (lineInsErr) {
+          console.error('e_invoice_lines insert error:', lineInsErr)
+        }
 
         // Add log
         await db.from('e_invoice_matching_logs').insert({
-          invoice_id: savedInvoice.id,
+          invoice_id: targetInvoiceId,
           receipt_id: receipt.id,
           supplier_id: receipt.supplier_id,
           matching_type: `STUDIO_GENERATED_${scenarioType}`,
@@ -482,6 +487,7 @@ export default function IntegratorStudio() {
             : 'Entegratöre Gönderildi (GİB Kuyruğunda)',
         currency_code: 'TRY',
         currency_rate: 1.0,
+        id: docEttn,
         sender_vkn_tckn: builderSupplierInfo.vkn,
         sender_title: builderSupplierInfo.title,
         sender_tax_office: builderSupplierInfo.taxOffice,
@@ -513,14 +519,18 @@ export default function IntegratorStudio() {
         .select('*')
 
       if (insErr) throw insErr
-      const savedDoc = savedArr?.[0] || docPayload
+      const savedDoc = Array.isArray(savedArr) ? savedArr[0] : (savedArr || docPayload)
+      const targetDocId = savedDoc?.id || docEttn
 
-      if (savedDoc.id) {
+      if (targetDocId) {
         const linesData = formattedLines.map((l) => ({
           ...l,
-          invoice_id: savedDoc.id,
+          invoice_id: targetDocId,
         }))
-        await db.from('e_invoice_lines').insert(linesData)
+        const { error: lineInsErr } = await db.from('e_invoice_lines').insert(linesData)
+        if (lineInsErr) {
+          console.error('e_invoice_lines insert error in freeform:', lineInsErr)
+        }
       }
 
       toast(`✅ ${docNumber} numaralı belge başarıyla üretildi ve entegratör havuzuna yazıldı!`, 'success')

@@ -52,6 +52,11 @@ async function checkSchema() {
   try {
     await pool.query('ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
     await pool.query('ALTER TABLE public.semi_items ADD COLUMN IF NOT EXISTS image_url TEXT;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS despatch_document_reference VARCHAR(100);');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS order_reference VARCHAR(100);');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS contract_reference VARCHAR(100);');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS receipt_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS purchase_order_id UUID;');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS public.qa_questions (
         id UUID DEFAULT gen_random_uuid() NOT NULL,
