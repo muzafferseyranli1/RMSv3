@@ -12624,3 +12624,24 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Handoff Contract`: VPS veritabanina 607 satis ve 1,172 satis kalemi yuklendi. Tum rapor ekranlari aktif durumdadir.
 
 
+
+
+## Entry - 2026-08-14 - Yerel Makine ve Dokümantasyonun Hosting Dünyam VPS Altyapısına Tam Hizalanması
+
+- `Timestamp`: `2026-08-14T08:54:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Yerel çalışma ortamının (X:\RMSv3) ve yönetişim dokümanlarının Hosting Dünyam VPS (188.132.198.144) ve Coolify altyapısına tam olarak hizalanması
+- `Intent`: Railway kullanımının sonlandırılıp Hosting Dünyam VPS altyapısına geçilmesinin ardından, yerel makinedeki .env, server/.env, .antigravityrules.md ve SUITABLERMS_PROJECT_GOVERNANCE.md dosyalarındaki eski Railway referanslarının temizlenerek tüm sistemin ve agent kurallarının güncel VPS mimarisine hizalanması.
+- `Files Changed`:
+  - `.env` (`VITE_API_URL=http://188.132.198.144:3001` olarak güncellendi)
+  - `server/.env` (`DATABASE_URL=postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway` olarak güncellendi)
+  - `.antigravityrules.md` (Tek veri kaynağı VPS PostgreSQL olarak güncellendi, Railway ölü altyapı listesine alındı)
+  - `SUITABLERMS_PROJECT_GOVERNANCE.md` (Tüm üretim, veri yönetimi, deploy ve agent kuralları Hosting Dünyam VPS & Coolify olarak güncellendi)
+  - `OperationSync.md` (Hizalanma kaydı eklendi)
+- `Findings`:
+  - Hosting Dünyam VPS (`188.132.198.144`) üzerindeki API servisi (`:3001/health`) ve Coolify v4 paneli aktif ve çalışır durumdadır.
+  - Eski Railway altyapısı ölü altyapı olarak işaretlendi.
+- `Decisions`:
+  - Projenin tek üretim ve veritabanı ortamı Hosting Dünyam VPS (`188.132.198.144`)'tir.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Yerel makine, ortam değişkenleri ve tüm yönetişim dokümanları Hosting Dünyam VPS altyapısına eksiksiz şekilde hizalanmıştır.

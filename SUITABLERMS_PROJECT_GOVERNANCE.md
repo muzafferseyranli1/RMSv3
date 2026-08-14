@@ -29,6 +29,11 @@ Status: `active — tüm agent'lar için bağlayıcı`
 
 Aşağıdakiler tarihe karışmıştır. Hiçbir agent bu adreslere bağlanmaz, bu kimlik bilgilerini kullanmaz, bu ortamlardan veri okumaz veya yazmaz.
 
+### Railway — KAPALI / PASİF
+- Eski Railway Postgres (`*.rlwy.net`), Railway API (`*.up.railway.app`) ve frontend adresleri kapatılmıştır.
+- Railway CLI (`railway up`) veya Railway deploy akışları kullanılmaz.
+- Üretim ortamı tamamen Hosting Dünyam VPS (`188.132.198.144`) ve Coolify üzerine taşınmıştır.
+
 ### AWS EC2 — KAPALI
 - Host: `52.59.179.17`
 - Instance: `i-082102f6c92aebf41`
@@ -54,13 +59,13 @@ Aşağıdakiler tarihe karışmıştır. Hiçbir agent bu adreslere bağlanmaz, 
 ### Temel Kural
 **Her şey veritabanında yaşar.**
 
-- Müşteri, satış, ödeme, stok, sadakat, personel, muhasebe, sipariş, operasyon verileri yalnızca Railway Postgres tablolarındadır.
+- Müşteri, satış, ödeme, stok, sadakat, personel, muhasebe, sipariş, operasyon verileri yalnızca VPS PostgreSQL tablolarındadır.
 - Hiçbir iş verisi `localStorage`, `sessionStorage`, sabit JSON veya uygulama içi mock ile karşılanamaz.
 - Performans için ara katman cache kullanılabilir (in-memory, Redis vb.) ancak bu cache'ler yalnızca DB'nin kopyasıdır, asla birincil kaynak değildir.
 - Cache'ten okunan veri ile DB verisi çelişirse DB kazanır.
 
 ### Demo Veri Yasağı
-- Demo satış verisi (demoSalesGenerator) Railway Postgres'e yüklenmez.
+- Demo satış verisi (demoSalesGenerator) VPS PostgreSQL üretim tablolarına yüklenmez.
 - Test verisi eklenecekse `metadata.source = 'demo'` alanı zorunludur ve üretim tablolarından ayrı tutulur.
 
 ### Fallback Yasağı
@@ -97,7 +102,7 @@ Bu projede kullanıcı kimlik doğrulaması yoktur.
 ### İsimlendirme
 - DB bağlantısı: `src/lib/db.js` — başka isim kullanılmaz.
 - Import: `import { db } from '@/lib/db'`
-- Kullanım: `db.from('tablo').select()` — Supabase syntax'ı korunmuştur, arkası Railway'e gider.
+- Kullanım: `db.from('tablo').select()` — Supabase syntax'ı korunmuştur, arkası VPS API ve Postgres'e gider.
 
 ### Yasaklı Kelimeler (kod içinde geçemez)
 - `supabase`
@@ -111,58 +116,29 @@ Bu projede kullanıcı kimlik doğrulaması yoktur.
 - Connection pool aktiftir: `max: 10`
 - GET sorguları 30 saniyelik in-memory cache'e alınır.
 - POST/PUT/DELETE cache'i temizler.
-- Railway `rms-api` servisi repo kokunden degil `server` klasorunden deploy edilmelidir.
-- Railway `rms-api` zorunlu ayarlari:
-  - `Root Directory = server`
-  - `Start Command = node index.js`
-  - `Healthcheck Path = /health`
-- `rms-api` domaininde frontend route aciliyorsa servis yanlis hedefi calistiriyor demektir; once Railway service ayarlari duzeltilir.
+- VPS üzerinde API Docker container'ı (`node index.js`, port 3001) çalışmaktadır.
+- Healthcheck endpoint: `http://188.132.198.144:3001/health`
 
 ---
 
 ## 7. Deploy Prosedürü
 
-### API Güncelleme
+### Otomatik Canlıya Alma (Coolify & GitHub)
+- Projedeki tüm güncellemeler GitHub `main` branch'ine push edildiğinde veya `Yayinla.bat` çalıştırıldığında, VPS üzerindeki Coolify v4 webhooks aracılığıyla otomatik olarak canlıya alınır.
+
+### Veritabanı Değişikliği (Migration)
 ```bash
-cd server
-railway up --service rms-api
-```
-
-Railway dashboard tarafinda da su ayarlar korunur:
-- Service: `rms-api`
-- Root Directory: `server`
-- Start Command: `node index.js`
-- Healthcheck Path: `/health`
-
-### Frontend Güncelleme
-```bash
-npm.cmd run build
-railway up --service frontend
-```
-
-Railway dashboard tarafinda frontend icin su ayarlar korunur:
-- Service: `frontend`
-- Root Directory: repo kokü (`bos` / tanimsiz)
-- Build Command: `npm run build`
-- Start Command: `npm run start:web`
-- Healthcheck Path: `/`
-- Frontend service `VITE_API_URL=https://rms-api-production-219d.up.railway.app` ile build alinmalidir.
-- `frontend` service asla `server` klasorunden kalkmaz; API ve frontend root/command ayarlari birbirine karistirilmaz.
-
-### Veritabanı Değişikliği
-```bash
-psql postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway -f migration.sql
+psql "postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway" -f migration.sql
 ```
 
 ### Schema Kaynağı
 - Tek kaynak schema dosyası: `schema-railway-master.sql`
-- 67 tablo, 153 index, 58 fonksiyon, 7 trigger
-- Her tablo değişikliği veya migration sonrası bu dosya güncellenir
-- Yeni bir Railway projesi kurulacaksa bu dosya çalıştırılır:
+- Tablolar, indeksler, fonksiyonlar ve trigger'lar bu dosyada tutulur.
+- Her tablo değişikliği veya migration sonrası bu dosya güncellenir.
+- Yeni bir veritabanı kurulacaksa bu dosya çalıştırılır:
   ```bash
   psql [DATABASE_URL] -f schema-railway-master.sql
   ```
-- Bu dosya olmadan Railway'e tablo eklenmez
 
 ---
 
@@ -170,11 +146,11 @@ psql postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy
 
 Herhangi bir agent bu projeye dokunmadan önce şunu okur ve uygular:
 
-1. **Veri kaynağı nedir?** → Railway Postgres, başka hiçbir şey değil.
-2. **Deploy nereye?** → Railway, başka hiçbir yere değil.
+1. **Veri kaynağı nedir?** → Hosting Dünyam VPS (`188.132.198.144`) PostgreSQL, başka hiçbir şey değil.
+2. **Deploy nereye?** → Hosting Dünyam VPS (Coolify & GitHub pipeline), başka hiçbir yere değil.
 3. **Auth var mı?** → Hayır.
 4. **Supabase var mı?** → Hayır, kodda `db.js` var.
-5. **AWS açık mı?** → Hayır, kapalı.
+5. **AWS ve Railway açık mı?** → Hayır, ikisi de kapalı/pasiftir.
 
 Bir agent bu kurallara aykırı bir değişiklik önerirse, o öneri reddedilir ve bu dosyaya bakılması istenir.
 
@@ -183,28 +159,28 @@ Bir agent bu kurallara aykırı bir değişiklik önerirse, o öneri reddedilir 
 ## 9. Ortam Değişkenleri (.env)
 
 ```
-VITE_API_URL=https://rms-api-production-219d.up.railway.app
+VITE_API_URL=http://188.132.198.144:3001
 VITE_DISABLE_AUTH=true
 TCMB_EVDS_API_KEY=9dcVSyM1Ex
 ```
 
-Server tarafı (`server/.env` veya Railway Variables):
+Server tarafı (`server/.env`):
 ```
-DATABASE_URL=postgresql://postgres:MJCMYcrORctRbKRtxDTwXjReEcxwNVoe@shortline.proxy.rlwy.net:59800/railway
+DATABASE_URL=postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway
 PORT=3001
 ```
 
 Notlar:
-- Root `.env` icine `DATABASE_URL` yazilmaz.
-- Server tarafi baglanti bilgileri yalnizca `server/.env` veya Railway Variables icinde tutulur.
+- Root `.env` içine `DATABASE_URL` yazılmaz.
+- Server tarafı bağlantı bilgileri yalnızca `server/.env` içinde tutulur.
 
 ---
 
 ## 10. Nihai Hüküm
 
-SuitableRMS'in tek üretim ortamı Railway'dir.  
-Tek veri kaynağı Railway Postgres'tir.  
+SuitableRMS'in tek üretim ortamı Hosting Dünyam VPS (`188.132.198.144`) & Coolify'dır.  
+Tek veri kaynağı VPS PostgreSQL'dir.  
 Auth yoktur.  
-AWS ve Supabase tarihe karışmıştır.  
+AWS, Supabase ve Railway tarihe karışmıştır.  
 Bu politika yazılı olarak değiştirilmedikçe tüm agent'lar, deploylar ve geliştirme çalışmaları için geçerlidir.
 
