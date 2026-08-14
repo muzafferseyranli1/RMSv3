@@ -24,12 +24,89 @@ import {
   TAX_RATES,
 } from '@/lib/eInvoice/types'
 
+// Realistic item name distortion helper for supplier alias and phonetic testing
+export function distortItemName(originalName) {
+  if (!originalName || typeof originalName !== 'string') return originalName
+
+  const trimmed = originalName.trim()
+  const lower = trimmed.toLowerCase()
+
+  // 1. Yaygın gıda/restoran stok isimleri için gerçekçi tedarikçi kısaltmaları sözlüğü
+  const DICT = {
+    'cheddar peyniri': 'çedar peynr',
+    'cheddar peynir': 'çedar peynr',
+    'cheddar': 'çedar pynr',
+    'hamburger köftesi': 'Hamb. Koftesi (120gr)',
+    'hamburger kofte': 'hmbrgr kftsi',
+    'tavuk köftesi': 'Tvk Koftesi (Dond)',
+    'tavuk kofte': 'tvk kfte',
+    'patates (dondurulmuş)': 'Donuk Patats 9x9',
+    'patates dondurulmuş': 'Donuk Patats 9x9',
+    'patates': 'ptates donuk',
+    'dana kıyma': 'Dana Kıyma %20 Yağlı (dn-kym)',
+    'dana bonfile (taze vakumlu 1kg)': 'Taze Dna Bnfile 1kg',
+    'dana bonfile': 'Dna Bonfile Vakum',
+    'süt %3.1 yağlı': 'UHT Sut 1Lt (%3.1)',
+    'süt': 'UHT Sut 1Lt',
+    'mozzarella': 'mozarella blok peynr',
+    'mozzarella peyniri': 'mozarella blok',
+    'sızma zeytinyağı 5 lt teneke': 'Szma Zytnyagi 5L Tenk',
+    'sızma zeytinyağı': 'Szma Zytnyagi 5L',
+    'ayçiçek yağı 18 lt': 'Aycick Yagi 18L Teneke',
+    'ayçiçek yağı': 'Aycicek Yag 18L',
+    'domates salçası 28-30 brix': 'Dmt Slcsi 4.5kg Teneke',
+    'domates salçası': 'Dmt Salcasi Tenk',
+    'un (tip 550)': 'Bugday Unu Tip-550 (50kg)',
+    'un': 'Bugday Unu (50kg)',
+    'şeker (toz)': 'Kristal Toz Seker (50kg)',
+    'tuz (iyotlu)': 'Sanayi Tuzu Iyotlu (25kg)',
+  }
+
+  if (DICT[lower]) return DICT[lower]
+
+  for (const [key, val] of Object.entries(DICT)) {
+    if (lower.includes(key)) {
+      return trimmed.replace(new RegExp(key, 'i'), val)
+    }
+  }
+
+  // 2. Kural Tabanlı Kısaltma ve Fonetik Değiştirme (Fallback)
+  let transformed = trimmed
+    .replace(/Peyniri/gi, 'Pynr')
+    .replace(/Peynir/gi, 'Pynr')
+    .replace(/Köftesi/gi, 'Kftesi')
+    .replace(/Köfte/gi, 'Kfte')
+    .replace(/Patates/gi, 'Ptats')
+    .replace(/Dondurulmuş/gi, 'Dond')
+    .replace(/Zeytinyağı/gi, 'Zytnyagi')
+    .replace(/Salçası/gi, 'Slcsi')
+    .replace(/Salça/gi, 'Slca')
+    .replace(/Kıyma/gi, 'Kyma')
+    .replace(/Bonfile/gi, 'Bnfile')
+
+  if (transformed === trimmed) {
+    transformed = trimmed
+      .toLowerCase()
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+  }
+
+  return transformed || originalName
+}
+
 export default function IntegratorStudio() {
   const toast = useToast()
   const navigate = useNavigate()
 
   // Active Main Tab
   const [activeTab, setActiveTab] = useState('shipment-generator') // 'shipment-generator', 'freeform-builder', 'rms-outbound', 'transfer-hub'
+
+  // Global Simulation Options
+  const [simulateDifferentNames, setSimulateDifferentNames] = useState(false)
 
   // Loading States
   const [loading, setLoading] = useState(false)
@@ -299,9 +376,12 @@ export default function IntegratorStudio() {
         const lineSubtotal = Math.round(qty * unitPrice * 100) / 100
         const lineTaxAmount = Math.round(((lineSubtotal * taxRate) / 100) * 100) / 100
 
+        const originalName = rcptLine.item_name || 'Teslim Alınan Ürün'
+        const finalItemName = simulateDifferentNames ? distortItemName(originalName) : originalName
+
         return {
           line_number: idx + 1,
-          item_name: rcptLine.item_name || 'Teslim Alınan Ürün',
+          item_name: finalItemName,
           item_code: rcptLine.item_sku || rcptLine.stock_item_id?.slice(0, 8) || '',
           item_description: `Mal Kabul İrsaliye Kalemi (#${rcptLine.receipt_no || receipt.doc_no || ''})`,
           invoiced_quantity: qty,
@@ -344,6 +424,10 @@ export default function IntegratorStudio() {
       if (scenarioType === 'SURPLUS') scenarioNote = 'Fazla Teslimat Senaryosu Faturası (Faturada Eksik Miktar Kesildi).'
       if (scenarioType === 'PRICE_OVER') scenarioNote = `Sözleşme Fiyat Farkı / Zam Senaryosu Faturası (${activeContract ? `Sözleşme: #${activeContract.contract_no}` : 'Sözleşmesiz'}).`
       if (scenarioType === 'TAX_MISMATCH') scenarioNote = 'KDV ve Kalem Uyuşmazlığı Senaryosu Faturası.'
+
+      if (simulateDifferentNames) {
+        scenarioNote += ' [Farklı / Kısaltılmış Tedarikçi İsimleri Simüle Edildi]'
+      }
 
       const invoicePayload = {
         id: invoiceEttn,
@@ -454,12 +538,13 @@ export default function IntegratorStudio() {
         const subtotal = Math.round(qty * unitPrice * 100) / 100
         const taxRate = Number(l.tax_rate ?? 20)
         const taxAmount = Math.round(((subtotal * taxRate) / 100) * 100) / 100
+        const finalName = simulateDifferentNames ? distortItemName(l.item_name) : l.item_name
 
         return {
           line_number: idx + 1,
-          item_name: l.item_name,
+          item_name: finalName,
           item_code: l.item_code || null,
-          item_description: l.item_description || l.item_name,
+          item_description: l.item_description || finalName,
           invoiced_quantity: qty,
           unit_code: l.unit_code || 'C62',
           unit_price: unitPrice,
@@ -766,6 +851,102 @@ export default function IntegratorStudio() {
               GİB Schematron & XSLT Doğrulamalı
             </div>
           </div>
+        </div>
+
+        {/* Global Simülasyon Ayarları: İsim Yönünde Farklı / Hatalı İsimle Fatura Üretme Modu */}
+        <div
+          style={{
+            background: simulateDifferentNames
+              ? 'linear-gradient(135deg, rgba(147,51,234,0.14) 0%, rgba(245,158,11,0.09) 100%)'
+              : 'var(--surface)',
+            border: simulateDifferentNames ? '1.5px solid #9333ea' : '1px solid var(--border)',
+            borderRadius: 14,
+            padding: '14px 20px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+            boxShadow: simulateDifferentNames ? '0 4px 20px rgba(147,51,234,0.15)' : '0 2px 6px rgba(0,0,0,0.02)',
+            transition: 'all .25s ease',
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', flex: 1, minWidth: 320 }}>
+            <input
+              type="checkbox"
+              checked={simulateDifferentNames}
+              onChange={(e) => setSimulateDifferentNames(e.target.checked)}
+              style={{
+                width: 22,
+                height: 22,
+                accentColor: '#9333ea',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '.92rem', color: simulateDifferentNames ? '#9333ea' : 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#9333ea' }} />
+                İsim Yönünde Farklı / Hatalı İsimle Fatura Üret (Tedarikçi Alias & Fonetisite Simülasyonu)
+                {simulateDifferentNames ? (
+                  <span
+                    style={{
+                      fontSize: '.68rem',
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      background: '#9333ea',
+                      color: '#ffffff',
+                      fontWeight: 900,
+                      letterSpacing: 0.5,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Aktif (Tüm Modellerle Birlikte Çalışır)
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: '.68rem',
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      background: 'var(--surface-2)',
+                      color: 'var(--text-muted)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Pasif (Birebir Standart İsimler)
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                Bu kutu işaretlendiğinde, stüdyodaki <strong>tüm fatura üretme modellerinde</strong> (Birebir, Eksik Teslimat, Fazla Teslimat, Fiyat Artışı/Sözleşme İhlali, KDV Uyuşmazlığı ve Serbest Belge) ürün adları gerçek tedarikçi kısaltmalarına dönüştürülür (Örn: <em>"Cheddar Peyniri"</em> ➔ <strong style={{ color: '#9333ea' }}>"çedar peynr"</strong>, <em>"Hamburger Köftesi"</em> ➔ <strong style={{ color: '#9333ea' }}>"Hamb. Koftesi (120gr)"</strong>, <em>"Patates (dondurulmuş)"</em> ➔ <strong style={{ color: '#9333ea' }}>"Donuk Patats 9x9"</strong>). Böylece <strong>Miktar & Fiyat Tekilliği, Fonetik Analiz ve Tedarikçi Eşleme Hafızası</strong> uçtan uca test edilebilir.
+              </div>
+            </div>
+          </label>
+
+          {simulateDifferentNames && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
+              <span
+                style={{
+                  fontSize: '.75rem',
+                  fontWeight: 700,
+                  color: '#9333ea',
+                  background: 'rgba(147,51,234,0.12)',
+                  border: '1px solid rgba(147,51,234,0.25)',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <i className="fa-solid fa-brain" />
+                Akıllı 3-Way Test Modu Devrede
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Tab Navigation Menu */}
@@ -1415,36 +1596,70 @@ export default function IntegratorStudio() {
                     Fatura & İrsaliye Kalemleri ({builderLines.length})
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuilderLines([
-                        ...builderLines,
-                        {
-                          id: `line-${Date.now()}`,
-                          item_name: 'Yeni Kalem / Malzeme',
-                          item_code: 'KOD-001',
-                          invoiced_quantity: 10,
-                          unit_code: 'C62',
-                          unit_price: 100.0,
-                          tax_rate: 20,
-                        },
-                      ])
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background: '#f5a623',
-                      color: '#000',
-                      fontWeight: 800,
-                      fontSize: '.78rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-                    Kalem Ekle
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuilderLines((prev) =>
+                          prev.map((l) => ({
+                            ...l,
+                            item_name: distortItemName(l.item_name),
+                          }))
+                        )
+                        toast('✨ Kalem isimleri tedarikçi formatına dönüştürüldü!', 'info')
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        border: '1px solid #9333ea',
+                        background: 'rgba(147,51,234,0.12)',
+                        color: '#9333ea',
+                        fontWeight: 800,
+                        fontSize: '.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginRight: 6,
+                      }}
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles" />
+                      İsimleri Fonetik Kısalt
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuilderLines((prev) => [
+                          ...prev,
+                          {
+                            id: `line-${Date.now()}`,
+                            item_name: 'Yeni Kalem / Hizmet',
+                            item_code: '',
+                            invoiced_quantity: 1,
+                            unit_code: 'C62',
+                            unit_price: 100.0,
+                            tax_rate: 20,
+                          },
+                        ])
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: '#f5a623',
+                        color: '#000',
+                        fontWeight: 800,
+                        fontSize: '.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+                      Kalem Ekle
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ overflowX: 'auto' }}>
