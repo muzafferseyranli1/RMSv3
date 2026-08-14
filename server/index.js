@@ -57,6 +57,15 @@ async function checkSchema() {
     await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS contract_reference VARCHAR(100);');
     await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS receipt_id UUID;');
     await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS purchase_order_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_receipt_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_purchase_order_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_at TIMESTAMPTZ;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS response_code VARCHAR(20);');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS response_date TIMESTAMPTZ;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS response_reason TEXT;');
+    await pool.query('ALTER TABLE public.e_invoice_lines ADD COLUMN IF NOT EXISTS matched_stock_item_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoice_lines ADD COLUMN IF NOT EXISTS matched_receipt_line_id UUID;');
+    await pool.query('ALTER TABLE public.cari_hareketler ADD COLUMN IF NOT EXISTS supplier_id UUID;');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS public.qa_questions (
         id UUID DEFAULT gen_random_uuid() NOT NULL,
