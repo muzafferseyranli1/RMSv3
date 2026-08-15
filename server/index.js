@@ -315,6 +315,13 @@ async function checkSchema() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_e_adisyon_items_adisyon_id ON public.e_adisyon_items(adisyon_id);
+
+      -- Bidirectional Matching Columns for Receipts and Documents
+      ALTER TABLE public.purchase_receipts ADD COLUMN IF NOT EXISTS matched_invoice_id VARCHAR(100);
+      ALTER TABLE public.purchase_receipts ADD COLUMN IF NOT EXISTS is_matched BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.expense_documents ADD COLUMN IF NOT EXISTS matched_invoice_id VARCHAR(100);
+      ALTER TABLE public.expense_documents ADD COLUMN IF NOT EXISTS is_matched BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_document_id VARCHAR(100);
     `);
   } catch (err) {
     console.error('Error in database schema auto-check:', err.message);

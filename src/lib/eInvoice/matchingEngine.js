@@ -902,6 +902,8 @@ export class MatchingEngine {
         .update({
           doc_no: receipt.doc_no || invoice.invoice_number,
           doc_kind: 'fatura',
+          matched_invoice_id: invoiceId,
+          is_matched: true,
           meta: updatedMeta,
         })
         .eq('id', receiptId)
@@ -927,6 +929,329 @@ export class MatchingEngine {
       }
     } catch (err) {
       console.error('approveInvoiceReceiptMatch error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * 8. Fiziki İrsaliye İçin Entegratörden Gelen Aday E-Faturaları Bulma (Reverse Matching)
+   */
+  async findPotentialInvoicesForReceipt(receiptIdOrObj, options = {}) {
+    try {
+      let receipt = null
+      if (typeof receiptIdOrObj === 'object' && receiptIdOrObj !== null && receiptIdOrObj.id) {
+        receipt = { ...receiptIdOrObj }
+      } else {
+        const { data: rcptData, error: rcptErr } = await db
+          .from('purchase_receipts')
+          .select('*')
+          .eq('id', receiptIdOrObj)
+          .single()
+        if (rcptErr || !rcptData) throw new Error('İrsaliye bulunamadı.')
+        receipt = rcptData
+      }
+
+      // İrsaliye satırlarını yükle
+      const { data: rcptLines } = await db
+        .from('purchase_receipt_lines')
+        .select('*')
+        .eq('receipt_id', receipt.id)
+        .order('line_number', { ascending: true })
+
+      receipt.lines = rcptLines || []
+
+      // Tedarikçiyi yükle
+      let supplier = null
+      if (receipt.supplier_id) {
+        const { data: sData } = await db.from('suppliers').select('*').eq('id', receipt.supplier_id).single()
+        supplier = sData || null
+      }
+
+      // Tedarikçi Mapping Hafızası
+      let supplierMappings = []
+      if (supplier?.id) {
+        supplierMappings = await this.getSupplierItemMappings(supplier.id)
+      }
+
+      // Gelen faturaları çek (INBOUND ve açık olanlar)
+      const { data: inboundInvoices, error: invErr } = await db
+        .from('e_invoices')
+        .select('*')
+        .eq('direction', 'INBOUND')
+        .order('issue_date', { ascending: false })
+        .limit(100)
+
+      if (invErr) throw invErr
+
+      const invoiceList = inboundInvoices || []
+
+      // Aday faturaları puanla
+      const candidates = []
+      for (const inv of invoiceList) {
+        // İlgili faturanın satırlarını çek
+        const { data: invLines } = await db
+          .from('e_invoice_lines')
+          .select('*')
+          .eq('invoice_id', inv.id)
+          .order('line_number', { ascending: true })
+
+        inv.lines = invLines || []
+
+        // Puanlama hesapla
+        let score = 0
+        const reasons = []
+
+        // 1. İrsaliye Referans No Birebir Tutuyor mu?
+        const docRef = receipt.receipt_no || receipt.doc_no
+        if (
+          docRef &&
+          inv.despatch_document_reference &&
+          normalizeString(inv.despatch_document_reference).includes(normalizeString(docRef))
+        ) {
+          score += 50
+          reasons.push('İrsaliye Numarası Birebir Referanslı')
+        }
+
+        // 2. Tedarikçi VKN veya İsim Uyumu
+        if (supplier) {
+          const cleanVkn = supplier.vergi_no ? String(supplier.vergi_no).trim() : ''
+          const invVkn = inv.sender_vkn_tckn ? String(inv.sender_vkn_tckn).trim() : ''
+          if (cleanVkn && invVkn && cleanVkn === invVkn) {
+            score += 35
+            reasons.push('Tedarikçi VKN Tam Uyumlu')
+          } else if (
+            supplier.name &&
+            inv.sender_title &&
+            calculateTextSimilarity(supplier.name, inv.sender_title) >= 0.5
+          ) {
+            score += 25
+            reasons.push('Tedarikçi Ünvan Benzerliği')
+          }
+        }
+
+        // 3. Tutar Uyumu
+        const rcptTotal = Number(receipt.total_amount || 0)
+        const invTotal = Number(inv.payable_amount || 0)
+        if (rcptTotal > 0 && invTotal > 0) {
+          const diff = Math.abs(rcptTotal - invTotal)
+          const diffRatio = diff / Math.max(rcptTotal, invTotal)
+          if (diffRatio < 0.01) {
+            score += 25
+            reasons.push('Fatura Tutarı İrsaliye ile Birebir Eşit')
+          } else if (diffRatio < 0.05) {
+            score += 15
+            reasons.push(`Tutar Farkı %${(diffRatio * 100).toFixed(1)}`)
+          }
+        }
+
+        // 4. Tarih Yakınlığı (±30 gün)
+        if (receipt.delivered_on && inv.issue_date) {
+          const dRcpt = new Date(receipt.delivered_on).getTime()
+          const dInv = new Date(inv.issue_date).getTime()
+          const daysDiff = Math.abs(dInv - dRcpt) / (1000 * 3600 * 24)
+          if (daysDiff <= 7) {
+            score += 10
+            reasons.push('Tarih 7 Gün İçinde')
+          } else if (daysDiff <= 30) {
+            score += 5
+            reasons.push('Tarih 30 Gün İçinde')
+          }
+        }
+
+        // Karşılaştırma Analizi Yap
+        const comparison = this.compareLines(inv.lines, receipt.lines, supplierMappings)
+
+        candidates.push({
+          invoice: inv,
+          matchScore: Math.min(100, score),
+          reasons,
+          comparison,
+          isExactAmount: Math.abs(rcptTotal - invTotal) < 0.05,
+          totalDiff: invTotal - rcptTotal,
+        })
+      }
+
+      // En yüksek puana göre sırala
+      candidates.sort((a, b) => b.matchScore - a.matchScore)
+
+      return {
+        success: true,
+        receipt,
+        supplier,
+        candidates,
+      }
+    } catch (err) {
+      console.error('findPotentialInvoicesForReceipt error:', err)
+      return { success: false, error: err.message, candidates: [] }
+    }
+  }
+
+  /**
+   * 9. Belge Girişi (expense_documents) İçin Gelen Aday E-Faturaları Bulma
+   */
+  async findPotentialInvoicesForDocument(docIdOrObj, options = {}) {
+    try {
+      let document = null
+      if (typeof docIdOrObj === 'object' && docIdOrObj !== null && docIdOrObj.id) {
+        document = { ...docIdOrObj }
+      } else {
+        const { data: docData, error: docErr } = await db
+          .from('expense_documents')
+          .select('*')
+          .eq('id', docIdOrObj)
+          .single()
+        if (docErr || !docData) throw new Error('Belge bulunamadı.')
+        document = docData
+      }
+
+      // Tedarikçiyi yükle
+      let supplier = null
+      if (document.supplier_id) {
+        const { data: sData } = await db.from('suppliers').select('*').eq('id', document.supplier_id).single()
+        supplier = sData || null
+      }
+
+      // Gelen faturaları çek
+      const { data: inboundInvoices, error: invErr } = await db
+        .from('e_invoices')
+        .select('*')
+        .eq('direction', 'INBOUND')
+        .order('issue_date', { ascending: false })
+        .limit(100)
+
+      if (invErr) throw invErr
+
+      const invoiceList = inboundInvoices || []
+      const candidates = []
+
+      for (const inv of invoiceList) {
+        let score = 0
+        const reasons = []
+
+        // 1. Belge No / Fatura No Uyumu
+        if (
+          document.document_no &&
+          inv.invoice_number &&
+          normalizeString(document.document_no) === normalizeString(inv.invoice_number)
+        ) {
+          score += 60
+          reasons.push('Fatura Numarası Birebir Eşleşti')
+        }
+
+        // 2. Tedarikçi Uyumu
+        if (supplier) {
+          const cleanVkn = supplier.vergi_no ? String(supplier.vergi_no).trim() : ''
+          const invVkn = inv.sender_vkn_tckn ? String(inv.sender_vkn_tckn).trim() : ''
+          if (cleanVkn && invVkn && cleanVkn === invVkn) {
+            score += 30
+            reasons.push('Tedarikçi VKN Tam Uyumlu')
+          } else if (
+            supplier.name &&
+            inv.sender_title &&
+            calculateTextSimilarity(supplier.name, inv.sender_title) >= 0.5
+          ) {
+            score += 20
+            reasons.push('Tedarikçi Ünvan Benzerliği')
+          }
+        }
+
+        // 3. Tutar Uyumu
+        const docAmount = Number(document.amount || document.source_amount || 0)
+        const invAmount = Number(inv.payable_amount || 0)
+        if (docAmount > 0 && invAmount > 0) {
+          const diff = Math.abs(docAmount - invAmount)
+          const diffRatio = diff / Math.max(docAmount, invAmount)
+          if (diffRatio < 0.01) {
+            score += 20
+            reasons.push('Tutar Birebir Eşit')
+          } else if (diffRatio < 0.05) {
+            score += 10
+            reasons.push(`Tutar Farkı %${(diffRatio * 100).toFixed(1)}`)
+          }
+        }
+
+        // 4. Tarih Yakınlığı
+        if (document.document_date && inv.issue_date) {
+          const dDoc = new Date(document.document_date).getTime()
+          const dInv = new Date(inv.issue_date).getTime()
+          const daysDiff = Math.abs(dInv - dDoc) / (1000 * 3600 * 24)
+          if (daysDiff <= 7) {
+            score += 10
+            reasons.push('Tarih 7 Gün İçinde')
+          }
+        }
+
+        candidates.push({
+          invoice: inv,
+          matchScore: Math.min(100, score),
+          reasons,
+          docAmount,
+          invAmount,
+          totalDiff: invAmount - docAmount,
+        })
+      }
+
+      candidates.sort((a, b) => b.matchScore - a.matchScore)
+
+      return {
+        success: true,
+        document,
+        supplier,
+        candidates,
+      }
+    } catch (err) {
+      console.error('findPotentialInvoicesForDocument error:', err)
+      return { success: false, error: err.message, candidates: [] }
+    }
+  }
+
+  /**
+   * 10. Belge ile E-Fatura Eşleştirmesini Onaylama
+   */
+  async approveDocumentInvoiceMatch(documentId, invoiceId, options = {}) {
+    const { userPin = 'SISTEM', note = '' } = options
+    try {
+      const nowIso = new Date().toISOString()
+
+      // Belgeyi güncelle
+      await db
+        .from('expense_documents')
+        .update({
+          matched_invoice_id: invoiceId,
+          is_matched: true,
+        })
+        .eq('id', documentId)
+
+      // E-Faturayı güncelle
+      await db
+        .from('e_invoices')
+        .update({
+          matched_document_id: documentId,
+          is_matched: true,
+          status_code: EINVOICE_STATUS.ACCEPTED,
+          response_code: 'KABUL',
+          response_date: nowIso,
+          response_reason: 'Manuel Belge Girişi ile Eşleştirildi',
+        })
+        .eq('id', invoiceId)
+
+      // Log kaydet
+      await db.from('e_invoice_matching_logs').insert({
+        invoice_id: invoiceId,
+        receipt_id: null,
+        matching_type: 'DOCUMENT_MATCHED',
+        notes: note || `Belge (#${documentId}) e-Fatura ile eşleştirildi.`,
+        performed_by: userPin,
+      })
+
+      return {
+        success: true,
+        message: 'Belge ile e-Fatura başarıyla eşleştirildi.',
+        documentId,
+        invoiceId,
+      }
+    } catch (err) {
+      console.error('approveDocumentInvoiceMatch error:', err)
       return { success: false, error: err.message }
     }
   }

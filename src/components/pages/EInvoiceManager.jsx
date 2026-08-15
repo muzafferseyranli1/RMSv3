@@ -88,6 +88,34 @@ export default function EInvoiceManager() {
   const [saveToMemoryChecked, setSaveToMemoryChecked] = useState(true)
   const [savingMapping, setSavingMapping] = useState(false)
 
+  // Physical Receipts (Mal Kabul İrsaliyeleri) State
+  const [receipts, setReceipts] = useState([])
+  const [loadingReceipts, setLoadingReceipts] = useState(false)
+  const [receiptSearchQuery, setReceiptSearchQuery] = useState('')
+  const [receiptStatusFilter, setReceiptStatusFilter] = useState('ALL') // 'ALL', 'PENDING', 'MATCHED'
+  const [selectedReceiptForMatch, setSelectedReceiptForMatch] = useState(null)
+  const [reverseMatchingModalOpen, setReverseMatchingModalOpen] = useState(false)
+  const [reverseMatchCandidates, setReverseMatchCandidates] = useState([])
+  const [loadingReverseCandidates, setLoadingReverseCandidates] = useState(false)
+  const [selectedCandidateInvoice, setSelectedCandidateInvoice] = useState(null)
+  const [approvingReverseMatch, setApprovingReverseMatch] = useState(false)
+  const [reverseMatchingNote, setReverseMatchingNote] = useState('')
+
+  // Expense Documents (Belgeler - Manuel Girişler) State
+  const [expenseDocuments, setExpenseDocuments] = useState([])
+  const [loadingDocs, setLoadingDocs] = useState(false)
+  const [docSearchQuery, setDocSearchQuery] = useState('')
+  const [docTypeFilter, setDocTypeFilter] = useState('ALL') // 'ALL', 'invoice', 'accrual', 'unregistered'
+  const [docStatusFilter, setDocStatusFilter] = useState('ALL') // 'ALL', 'PENDING', 'MATCHED'
+  const [selectedDocForMatch, setSelectedDocForMatch] = useState(null)
+  const [docMatchingModalOpen, setDocMatchingModalOpen] = useState(false)
+  const [docMatchCandidates, setDocMatchCandidates] = useState([])
+  const [loadingDocCandidates, setLoadingDocCandidates] = useState(false)
+  const [selectedCandidateInvoiceForDoc, setSelectedCandidateInvoiceForDoc] = useState(null)
+  const [approvingDocMatch, setApprovingDocMatch] = useState(false)
+  const [docMatchingNote, setDocMatchingNote] = useState('')
+
+
   const loadStockItemsForMapping = async () => {
     if (stockItemsList.length > 0) return
     const { data } = await db
@@ -258,12 +286,12 @@ export default function EInvoiceManager() {
 
       const statusCode = statusFilter !== 'ALL' ? Number(statusFilter) : null
 
-      const [invoicesRes, statsRes, configRes, adisyonsRes, compRes] = await Promise.all([
+      const [invoicesRes, statsRes, configRes, rcptsRes, docsRes] = await Promise.all([
         eInvoiceService.getInvoices({ direction, statusCode, isInterCompany, search: searchQuery }),
         eInvoiceService.getStatistics(),
         eInvoiceService.getIntegratorConfig(),
-        eAdisyonService.getEAdisyons({ status: eadisyonFilter, search: searchQuery }),
-        eAdisyonService.getEAdisyonComplianceReport(),
+        db.from('purchase_receipts').select('*').is('deleted_at', null).order('delivered_on', { ascending: false }).limit(100),
+        db.from('expense_documents').select('*').order('document_date', { ascending: false }).limit(100),
       ])
 
       if (invoicesRes.success) {
@@ -271,24 +299,129 @@ export default function EInvoiceManager() {
       }
       if (statsRes) setStats(statsRes)
       if (configRes) setIntegratorConfig(configRes)
-      if (adisyonsRes.success) setEadisyons(adisyonsRes.data)
-      if (compRes) setEAdisyonCompliance(compRes)
+      if (rcptsRes?.data) setReceipts(rcptsRes.data)
+      if (docsRes?.data) setExpenseDocuments(docsRes.data)
     } catch (err) {
       console.error('Data load error:', err)
       toast('Veriler yüklenirken hata oluştu', 'error')
     } finally {
       setLoading(false)
     }
-  }, [activeTab, statusFilter, searchQuery, interCompanyFilter, eadisyonFilter, toast])
+  }, [activeTab, statusFilter, searchQuery, interCompanyFilter, toast])
 
   useEffect(() => {
     loadData()
-  }, [activeTab, statusFilter, interCompanyFilter, eadisyonFilter])
+  }, [activeTab, statusFilter, interCompanyFilter])
 
   // Search debounce / trigger
   const handleSearchSubmit = (e) => {
     e.preventDefault()
     loadData()
+  }
+
+  // Open Reverse Matching Modal (İrsaliye ➔ Gelen Fatura)
+  const handleOpenReverseMatchingModal = async (receipt) => {
+    setSelectedReceiptForMatch(receipt)
+    setReverseMatchingModalOpen(true)
+    setLoadingReverseCandidates(true)
+    setSelectedCandidateInvoice(null)
+    setReverseMatchingNote('')
+    try {
+      const res = await matchingEngine.findPotentialInvoicesForReceipt(receipt)
+      if (res.success) {
+        setReverseMatchCandidates(res.candidates || [])
+        if (res.candidates && res.candidates.length > 0) {
+          setSelectedCandidateInvoice(res.candidates[0])
+        }
+      } else {
+        toast('Aday faturalar bulunurken hata: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setLoadingReverseCandidates(false)
+    }
+  }
+
+  const handleApproveReverseMatch = async () => {
+    if (!selectedReceiptForMatch || !selectedCandidateInvoice) {
+      toast('Lütfen eşleştirilecek bir aday e-fatura seçin.', 'error')
+      return
+    }
+    setApprovingReverseMatch(true)
+    try {
+      const res = await matchingEngine.approveInvoiceReceiptMatch(
+        selectedCandidateInvoice.invoice.id,
+        selectedReceiptForMatch.id,
+        {},
+        {
+          note: reverseMatchingNote || 'Fiziki İrsaliye ekranından eşleştirildi.',
+        }
+      )
+      if (res.success) {
+        toast('✅ Fiziki İrsaliye ile e-Fatura başarıyla eşleştirildi!', 'success')
+        setReverseMatchingModalOpen(false)
+        loadData()
+      } else {
+        toast('Eşleştirme onaylanamadı: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setApprovingReverseMatch(false)
+    }
+  }
+
+  // Open Document Matching Modal (Belge ➔ Gelen Fatura)
+  const handleOpenDocMatchingModal = async (doc) => {
+    setSelectedDocForMatch(doc)
+    setDocMatchingModalOpen(true)
+    setLoadingDocCandidates(true)
+    setSelectedCandidateInvoiceForDoc(null)
+    setDocMatchingNote('')
+    try {
+      const res = await matchingEngine.findPotentialInvoicesForDocument(doc)
+      if (res.success) {
+        setDocMatchCandidates(res.candidates || [])
+        if (res.candidates && res.candidates.length > 0) {
+          setSelectedCandidateInvoiceForDoc(res.candidates[0])
+        }
+      } else {
+        toast('Aday faturalar bulunurken hata: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setLoadingDocCandidates(false)
+    }
+  }
+
+  const handleApproveDocMatch = async () => {
+    if (!selectedDocForMatch || !selectedCandidateInvoiceForDoc) {
+      toast('Lütfen eşleştirilecek bir aday e-fatura seçin.', 'error')
+      return
+    }
+    setApprovingDocMatch(true)
+    try {
+      const res = await matchingEngine.approveDocumentInvoiceMatch(
+        selectedDocForMatch.id,
+        selectedCandidateInvoiceForDoc.invoice.id,
+        {
+          note: docMatchingNote || 'Belgeler ekranından eşleştirildi.',
+        }
+      )
+      if (res.success) {
+        toast('✅ Manuel Belge ile e-Fatura başarıyla eşleştirildi!', 'success')
+        setDocMatchingModalOpen(false)
+        loadData()
+      } else {
+        toast('Eşleştirme onaylanamadı: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setApprovingDocMatch(false)
+    }
   }
 
   // Open Details Preview
@@ -946,6 +1079,56 @@ export default function EInvoiceManager() {
             {stats.totalInterCompanyCount || 0}
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('receipts')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'transparent',
+            color: activeTab === 'receipts' ? '#0284c7' : 'var(--text-muted)',
+            borderBottom: activeTab === 'receipts' ? '2px solid #0284c7' : '2px solid transparent',
+            fontWeight: activeTab === 'receipts' ? 700 : 500,
+            fontSize: '.9rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <i className="fa-solid fa-truck-ramp-box" />
+          Fiziki İrsaliyeler (Mal Kabuller)
+          <span style={{ fontSize: '.75rem', padding: '2px 6px', borderRadius: 10, background: activeTab === 'receipts' ? 'rgba(2,132,199,0.2)' : 'var(--surface-2)', color: activeTab === 'receipts' ? '#0284c7' : 'var(--text-muted)' }}>
+            {receipts.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('documents')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'transparent',
+            color: activeTab === 'documents' ? '#8b5cf6' : 'var(--text-muted)',
+            borderBottom: activeTab === 'documents' ? '2px solid #8b5cf6' : '2px solid transparent',
+            fontWeight: activeTab === 'documents' ? 700 : 500,
+            fontSize: '.9rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <i className="fa-solid fa-file-lines" />
+          Belgeler (Manuel Belge Girişleri)
+          <span style={{ fontSize: '.75rem', padding: '2px 6px', borderRadius: 10, background: activeTab === 'documents' ? 'rgba(139,92,246,0.2)' : 'var(--surface-2)', color: activeTab === 'documents' ? '#8b5cf6' : 'var(--text-muted)' }}>
+            {expenseDocuments.length}
+          </span>
+        </button>
       </div>
 
       {/* Tab 1, Tab 2 & Tab 3: INBOX / OUTBOX / INTER-COMPANY List Views */}
@@ -1400,173 +1583,316 @@ export default function EInvoiceManager() {
                                 fontWeight: 600,
                                 fontSize: '.75rem',
                                 cursor: 'pointer',
-                                display: 'flex',
+                        display: 'flex',
                                 alignItems: 'center',
                                 gap: 4,
                               }}
                             >
-                              <i className="fa-solid fa-eye" />
-                              İncele
+                              <i className="fa-solid fa-reply" />
+                              Yanıtla
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                          )}
+
+                          <button
+                            type="button"
+                            title="GİB Formatında Görüntüle"
+                            onClick={() => handleOpenPreview(inv)}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 6,
+                              border: '1px solid var(--border)',
+                              background: 'var(--surface-2)',
+                              color: 'var(--text-strong)',
+                              fontWeight: 600,
+                              fontSize: '.75rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            <i className="fa-solid fa-eye" />
+                            İncele
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+
+    {/* Tab 4: Fiziki İrsaliyeler & Mal Kabuller Tab */}
+    {activeTab === 'receipts' && (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Filter & Search Bar */}
+        <div
+          style={{
+            background: 'var(--surface)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 260, maxWidth: 450, position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="İrsaliye No, Tedarikçi veya Belge No ile ara..."
+              value={receiptSearchQuery}
+              onChange={(e) => setReceiptSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 36px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--app-bg)',
+                color: 'var(--text-strong)',
+                fontSize: '.85rem',
+              }}
+            />
+            <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Eşleşme Durumu:</span>
+            <select
+              value={receiptStatusFilter}
+              onChange={(e) => setReceiptStatusFilter(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--app-bg)',
+                color: 'var(--text-strong)',
+                fontSize: '.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="ALL">Tüm İrsaliyeler</option>
+              <option value="PENDING">🟡 Fatura Bekleyenler (Eşleşmemiş)</option>
+              <option value="MATCHED">🟢 E-Faturası Eşleşenler</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Receipts Table List */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.75rem', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 16px' }}>İrsaliye / Fiş No</th>
+                  <th style={{ padding: '12px 16px' }}>Tedarikçi (Gönderici)</th>
+                  <th style={{ padding: '12px 16px' }}>Şube / Giriş Depo</th>
+                  <th style={{ padding: '12px 16px' }}>Teslimat Tarihi</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Vergisiz Tutar</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Toplam Tutar</th>
+                  <th style={{ padding: '12px 16px' }}>Eşleşme Durumu</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>İşlemler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipts
+                  .filter((r) => {
+                    if (receiptStatusFilter === 'PENDING' && (r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id)) return false
+                    if (receiptStatusFilter === 'MATCHED' && !(r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id)) return false
+                    if (receiptSearchQuery.trim()) {
+                      const q = receiptSearchQuery.toLowerCase()
+                      const no = String(r.receipt_no || r.doc_no || '').toLowerCase()
+                      const supp = String(r.supplier_name || '').toLowerCase()
+                      return no.includes(q) || supp.includes(q)
+                    }
+                    return true
                   })
+                  .length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <i className="fa-solid fa-truck-ramp-box" style={{ fontSize: '2rem', marginBottom: 8, display: 'block', opacity: 0.4 }} />
+                      Kayıtlı fiziki irsaliye / mal kabul bulunamadı.
+                    </td>
+                  </tr>
+                ) : (
+                  receipts
+                    .filter((r) => {
+                      if (receiptStatusFilter === 'PENDING' && (r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id)) return false
+                      if (receiptStatusFilter === 'MATCHED' && !(r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id)) return false
+                      if (receiptSearchQuery.trim()) {
+                        const q = receiptSearchQuery.toLowerCase()
+                        const no = String(r.receipt_no || r.doc_no || '').toLowerCase()
+                        const supp = String(r.supplier_name || '').toLowerCase()
+                        return no.includes(q) || supp.includes(q)
+                      }
+                      return true
+                    })
+                    .map((rcpt) => {
+                      const isMatched = Boolean(rcpt.is_matched || rcpt.matched_invoice_id || rcpt.meta?.matched_invoice_id)
+                      const matchedNo = rcpt.meta?.matched_invoice_no || rcpt.doc_no
+
+                      return (
+                        <tr key={rcpt.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .15s' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 800, color: 'var(--text-strong)' }}>
+                              {rcpt.receipt_no || rcpt.doc_no || `MK-${rcpt.id.slice(0, 8)}`}
+                            </div>
+                            <span style={{ fontSize: '.7rem', padding: '1px 6px', borderRadius: 4, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                              {rcpt.doc_kind || 'İrsaliye'}
+                            </span>
+                          </td>
+
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>{rcpt.supplier_name || 'Tedarikçi Belirtilmedi'}</div>
+                          </td>
+
+                          <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
+                            {rcpt.branch_name || rcpt.branch_id || 'Merkez Depo'}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '.8rem' }}>
+                            {rcpt.delivered_on ? new Date(rcpt.delivered_on).toLocaleDateString('tr-TR') : '-'}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>
+                            {Number(rcpt.subtotal || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                          </td>
+
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-strong)' }}>
+                            {Number(rcpt.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                          </td>
+
+                          <td style={{ padding: '12px 16px' }}>
+                            {isMatched ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  background: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #86efac',
+                                  fontSize: '.75rem',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <i className="fa-solid fa-circle-check" />
+                                E-Fatura Eşleşti {matchedNo ? `(${matchedNo})` : ''}
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  background: '#fef3c7',
+                                  color: '#b45309',
+                                  border: '1px solid #fde68a',
+                                  fontSize: '.75rem',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <i className="fa-solid fa-clock" />
+                                Fatura Eşleşmesi Bekliyor
+                              </span>
+                            )}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              {!isMatched ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenReverseMatchingModal(rcpt)}
+                                  style={{
+                                    padding: '6px 14px',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    background: '#0284c7',
+                                    color: '#fff',
+                                    fontWeight: 800,
+                                    fontSize: '.75rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                  }}
+                                >
+                                  <i className="fa-solid fa-scale-balanced" />
+                                  Gelen e-Fatura Bul & Eşleştir
+                                </button>
+                              ) : (
+                                <span style={{ fontSize: '.75rem', color: '#16a34a', fontWeight: 700 }}>
+                                  <i className="fa-solid fa-check-double" style={{ marginRight: 4 }} />
+                                  Eşleşme Tamam
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
                 )}
               </tbody>
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* Tab 4: E-Adisyon & E-Belge Uyumu (VUK 509/526) Tab */}
-      {activeTab === 'eadisyon' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* VUK 509/526 Compliance & KPI Banner */}
-          <div
-            style={{
-              background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(6,95,70,0.03) 100%)',
-              border: '1px solid #86efac',
-              borderRadius: 14,
-              padding: '20px 24px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 16,
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span
-                  style={{
-                    background: '#10b981',
-                    color: '#fff',
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    fontSize: '.75rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  VUK 509 & 526 MEVZUAT UYUMLU
-                </span>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-strong)', margin: 0 }}>
-                  E-Adisyon & E-Belge Uyumluluk Takibi
-                </h2>
-              </div>
-              <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--text-muted)', maxWidth: 680, lineHeight: 1.5 }}>
-                Masada servis yapan yeme-içme işletmelerinde ilk siparişle birlikte anlık dijital E-Adisyon (ETTN UUID) üretilir. Hesap kapandığında nihai mali faturaya <code style={{ color: '#10b981', fontWeight: 700 }}>&lt;cac:AdditionalDocumentReference&gt;</code> olarak bağlanır.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-              <div style={{ textAlign: 'center', padding: '10px 18px', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>GİB UYUM SKORU</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: eadisyonCompliance.complianceScore >= 95 ? '#10b981' : '#f5a623' }}>
-                  %{eadisyonCompliance.complianceScore}
-                </div>
-                <div style={{ fontSize: '.7rem', color: '#10b981', fontWeight: 600 }}>{eadisyonCompliance.vukStandard}</div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setNewAdisyonModalOpen(true)}
-                style={{
-                  padding: '12px 20px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: '#10b981',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: '.9rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
-                }}
-              >
-                <i className="fa-solid fa-plus-circle" />
-                Yeni E-Adisyon Başlat
-              </button>
-            </div>
+    {/* Tab 5: Belgeler (Manuel Belge Girişleri) Tab */}
+    {activeTab === 'documents' && (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Filter & Search Bar */}
+        <div
+          style={{
+            background: 'var(--surface)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 260, maxWidth: 450, position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Belge No, Tedarikçi veya Gider Hesabı ile ara..."
+              value={docSearchQuery}
+              onChange={(e) => setDocSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 36px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--app-bg)',
+                color: 'var(--text-strong)',
+                fontSize: '.85rem',
+              }}
+            />
+            <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
           </div>
 
-          {/* Metric Cards Row for EAdisyon */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 8, background: 'rgba(56,189,248,0.12)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                <i className="fa-solid fa-table" />
-              </div>
-              <div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>AÇIK ADİSYONLAR</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-strong)' }}>{eadisyonCompliance.openCount}</div>
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 8, background: 'rgba(16,185,129,0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                <i className="fa-solid fa-file-invoice-dollar" />
-              </div>
-              <div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>FATURALANAN & ETTN BAĞLI</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981' }}>{eadisyonCompliance.invoicedCount}</div>
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 8, background: 'rgba(167,139,250,0.12)', color: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                <i className="fa-solid fa-circle-check" />
-              </div>
-              <div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>KAPALI / TAHSİL EDİLEN</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-strong)' }}>{eadisyonCompliance.closedCount}</div>
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 8, background: 'rgba(239,68,68,0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                <i className="fa-solid fa-circle-xmark" />
-              </div>
-              <div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>İPTAL EDİLEN ADİSYON</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ef4444' }}>{eadisyonCompliance.cancelledCount}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Filter & Search Bar */}
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 260 }}>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Adisyon No, ETTN UUID, Masa Adı veya Fatura No ile ara..."
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px 8px 36px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: 'var(--app-bg)',
-                    color: 'var(--text-strong)',
-                    fontSize: '.85rem',
-                  }}
-                />
-                <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
-              </div>
-              <button type="submit" style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#10b981', color: '#fff', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}>
-                Ara
-              </button>
-            </form>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tür:</span>
               <select
-                value={eadisyonFilter}
-                onChange={(e) => setEAdisyonFilter(e.target.value)}
+                value={docTypeFilter}
+                onChange={(e) => setDocTypeFilter(e.target.value)}
                 style={{
                   padding: '8px 12px',
                   borderRadius: 8,
@@ -1575,208 +1901,205 @@ export default function EInvoiceManager() {
                   color: 'var(--text-strong)',
                   fontSize: '.85rem',
                   fontWeight: 600,
+                  cursor: 'pointer',
                 }}
               >
-                <option value="ALL">Tüm Adisyon Durumları</option>
-                <option value="OPEN">Açık Adisyonlar</option>
-                <option value="INVOICED">Faturalanan & ETTN Bağlılar</option>
-                <option value="CLOSED">Kapalı / Tahsil Edilenler</option>
-                <option value="CANCELLED">İptal Edilenler</option>
+                <option value="ALL">Tüm Belge Türleri</option>
+                <option value="invoice">Fatura</option>
+                <option value="accrual">Tahakkuk</option>
+                <option value="unregistered">Belgesiz / Fiş</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Eşleşme:</span>
+              <select
+                value={docStatusFilter}
+                onChange={(e) => setDocStatusFilter(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--app-bg)',
+                  color: 'var(--text-strong)',
+                  fontSize: '.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="ALL">Tüm Belgeler</option>
+                <option value="PENDING">🟡 Eşleşme Bekleyenler</option>
+                <option value="MATCHED">🟢 e-Faturası Eşleşenler</option>
               </select>
             </div>
           </div>
+        </div>
 
-          {/* E-Adisyon Table List */}
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.75rem', textTransform: 'uppercase' }}>
-                    <th style={{ padding: '12px 16px' }}>Masa & Adisyon No</th>
-                    <th style={{ padding: '12px 16px' }}>ETTN (UUID v4)</th>
-                    <th style={{ padding: '12px 16px' }}>Garson & Kişi</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Toplam Tutar</th>
-                    <th style={{ padding: '12px 16px' }}>Açılış Zamanı</th>
-                    <th style={{ padding: '12px 16px' }}>Durum</th>
-                    <th style={{ padding: '12px 16px' }}>Bağlı Fatura / XML ETTN</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>İşlemler</th>
+        {/* Documents Table List */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.75rem', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 16px' }}>Belge No & Tür</th>
+                  <th style={{ padding: '12px 16px' }}>Gider Hesabı / Kategori</th>
+                  <th style={{ padding: '12px 16px' }}>Tedarikçi / Cari</th>
+                  <th style={{ padding: '12px 16px' }}>Şube Dağıtımı</th>
+                  <th style={{ padding: '12px 16px' }}>Belge Tarihi</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Belge Tutarı</th>
+                  <th style={{ padding: '12px 16px' }}>Eşleşme Durumu</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>İşlemler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenseDocuments
+                  .filter((d) => {
+                    if (docTypeFilter !== 'ALL' && d.document_type !== docTypeFilter) return false
+                    if (docStatusFilter === 'PENDING' && (d.is_matched || d.matched_invoice_id)) return false
+                    if (docStatusFilter === 'MATCHED' && !(d.is_matched || d.matched_invoice_id)) return false
+                    if (docSearchQuery.trim()) {
+                      const q = docSearchQuery.toLowerCase()
+                      const no = String(d.document_no || '').toLowerCase()
+                      const supp = String(d.supplier_name || '').toLowerCase()
+                      const exp = String(d.expense_account_name || '').toLowerCase()
+                      return no.includes(q) || supp.includes(q) || exp.includes(q)
+                    }
+                    return true
+                  })
+                  .length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <i className="fa-solid fa-file-lines" style={{ fontSize: '2rem', marginBottom: 8, display: 'block', opacity: 0.4 }} />
+                      Kayıtlı gider / masraf belgesi bulunamadı.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {eadisyons.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <i className="fa-solid fa-receipt" style={{ fontSize: '2rem', marginBottom: 8, display: 'block', opacity: 0.4 }} />
-                        Henüz kayıtlı E-Adisyon bulunamadı. "Yeni E-Adisyon Aç" butonu ile ilk adisyonu başlatabilirsiniz.
-                      </td>
-                    </tr>
-                  ) : (
-                    eadisyons.map((ad) => {
-                      const statusMeta = EADISYON_STATUS_META[ad.status] || { label: ad.status, color: '#888', bg: 'rgba(136,136,136,0.12)' }
-                      const isLinked = Boolean(ad.linked_invoice_id || ad.linked_invoice_ettn || ad.linked_invoice_number)
+                ) : (
+                  expenseDocuments
+                    .filter((d) => {
+                      if (docTypeFilter !== 'ALL' && d.document_type !== docTypeFilter) return false
+                      if (docStatusFilter === 'PENDING' && (d.is_matched || d.matched_invoice_id)) return false
+                      if (docStatusFilter === 'MATCHED' && !(d.is_matched || d.matched_invoice_id)) return false
+                      if (docSearchQuery.trim()) {
+                        const q = docSearchQuery.toLowerCase()
+                        const no = String(d.document_no || '').toLowerCase()
+                        const supp = String(d.supplier_name || '').toLowerCase()
+                        const exp = String(d.expense_account_name || '').toLowerCase()
+                        return no.includes(q) || supp.includes(q) || exp.includes(q)
+                      }
+                      return true
+                    })
+                    .map((doc) => {
+                      const isMatched = Boolean(doc.is_matched || doc.matched_invoice_id)
+                      const docTypeBadge = doc.document_type === 'invoice'
+                        ? { label: 'Fatura', color: '#2563eb', bg: '#dbeafe' }
+                        : doc.document_type === 'accrual'
+                        ? { label: 'Tahakkuk', color: '#d97706', bg: '#fef3c7' }
+                        : { label: 'Belgesiz', color: '#b91c1c', bg: '#fee2e2' }
 
                       return (
-                        <tr key={ad.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .15s' }}>
+                        <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .15s' }}>
                           <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 800, color: 'var(--text-strong)' }}>{ad.table_name || ad.table_key || 'Masa'}</div>
-                            <div style={{ fontSize: '.75rem', fontFamily: 'monospace', color: '#10b981', fontWeight: 700 }}>
-                              #{ad.adisyon_number}
+                            <div style={{ fontWeight: 800, color: 'var(--text-strong)' }}>
+                              {doc.document_no || `#DOC-${doc.id.slice(0, 8)}`}
                             </div>
-                          </td>
-
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontFamily: 'monospace', fontSize: '.78rem', color: 'var(--text-muted)' }}>
-                                {ad.ettn ? `${ad.ettn.substring(0, 13)}...` : '-'}
-                              </span>
-                              {ad.ettn && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyText(ad.ettn, 'ETTN UUID')}
-                                  title="ETTN UUID Kopyala"
-                                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.75rem' }}
-                                >
-                                  <i className="fa-solid fa-copy" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-strong)' }}>{ad.waiter_name || 'Garson'}</div>
-                            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{ad.guest_count || 1} Kişi</div>
-                          </td>
-
-                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ fontWeight: 800, color: '#10b981', fontSize: '.95rem' }}>
-                              {Number(ad.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                            </div>
-                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                              KDV: {Number(ad.tax_total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                            </div>
-                          </td>
-
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontSize: '.8rem', color: 'var(--text-strong)' }}>
-                              {ad.opened_at ? new Date(ad.opened_at).toLocaleDateString('tr-TR') : '-'}
-                            </div>
-                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                              {ad.opened_at ? new Date(ad.opened_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
-                            </div>
-                          </td>
-
-                          <td style={{ padding: '12px 16px' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                padding: '4px 10px',
-                                borderRadius: 6,
-                                fontSize: '.75rem',
-                                fontWeight: 700,
-                                color: statusMeta.color,
-                                background: statusMeta.bg,
-                                border: `1px solid ${statusMeta.color}30`,
-                              }}
-                            >
-                              <i className={`fa-solid ${statusMeta.icon || 'fa-circle'}`} />
-                              {statusMeta.label}
+                            <span style={{ fontSize: '.7rem', padding: '2px 6px', borderRadius: 4, background: docTypeBadge.bg, color: docTypeBadge.color, fontWeight: 700 }}>
+                              {docTypeBadge.label}
                             </span>
                           </td>
 
                           <td style={{ padding: '12px 16px' }}>
-                            {isLinked ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    padding: '2px 8px',
-                                    borderRadius: 6,
-                                    fontSize: '.72rem',
-                                    fontWeight: 700,
-                                    color: '#065f46',
-                                    background: '#ecfdf5',
-                                    border: '1px solid #a7f3d0',
-                                  }}
-                                >
-                                  <i className="fa-solid fa-link" />
-                                  {ad.linked_invoice_number || 'Fatura Bağlandı'}
-                                </span>
-                                <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                                  &lt;cac:AdditionalDocumentReference&gt;
-                                </span>
+                            <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>{doc.expense_account_name || doc.accounting_category || '-'}</div>
+                            {doc.accounting_code && (
+                              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                Kod: {doc.accounting_code}
                               </div>
+                            )}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', color: 'var(--text-strong)' }}>
+                            {doc.supplier_name || '-'}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '.8rem' }}>
+                            {doc.branch_name || 'Tüm Şubeler'}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '.8rem' }}>
+                            {doc.document_date ? new Date(doc.document_date).toLocaleDateString('tr-TR') : '-'}
+                          </td>
+
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-strong)' }}>
+                            {Number(doc.amount || doc.source_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                          </td>
+
+                          <td style={{ padding: '12px 16px' }}>
+                            {isMatched ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  background: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #86efac',
+                                  fontSize: '.75rem',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <i className="fa-solid fa-circle-check" />
+                                e-Fatura Eşleşti
+                              </span>
                             ) : (
-                              <span style={{ fontSize: '.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                                Henüz Faturaya Bağlanmadı
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  background: '#fef3c7',
+                                  color: '#b45309',
+                                  border: '1px solid #fde68a',
+                                  fontSize: '.75rem',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <i className="fa-solid fa-clock" />
+                                Eşleşme Bekleyen
                               </span>
                             )}
                           </td>
 
                           <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleViewEAdisyonDetails(ad)}
-                                title="Detay & Kalemleri Görüntüle"
-                                style={{
-                                  padding: '6px 10px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--surface-2)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.75rem',
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <i className="fa-solid fa-eye" />
-                              </button>
-
-                              {ad.status === 'OPEN' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenConvertModal(ad)}
-                                    style={{
-                                      padding: '6px 12px',
-                                      borderRadius: 6,
-                                      border: 'none',
-                                      background: '#10b981',
-                                      color: '#fff',
-                                      fontSize: '.75rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 6,
-                                    }}
-                                  >
-                                    <i className="fa-solid fa-file-invoice" />
-                                    Faturaya Dönüştür
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCancelEAdisyon(ad.id)}
-                                    title="Adisyonu İptal Et"
-                                    style={{
-                                      padding: '6px 10px',
-                                      borderRadius: 6,
-                                      border: '1px solid #fca5a5',
-                                      background: '#fef2f2',
-                                      color: '#b91c1c',
-                                      fontSize: '.75rem',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    <i className="fa-solid fa-xmark" />
-                                  </button>
-                                </>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              {!isMatched ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDocMatchingModal(doc)}
+                                  style={{
+                                    padding: '6px 14px',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    background: '#8b5cf6',
+                                    color: '#fff',
+                                    fontWeight: 800,
+                                    fontSize: '.75rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                  }}
+                                >
+                                  <i className="fa-solid fa-scale-balanced" />
+                                  Gelen e-Fatura Bul & Eşleştir
+                                </button>
+                              ) : (
+                                <span style={{ fontSize: '.75rem', color: '#16a34a', fontWeight: 700 }}>
+                                  <i className="fa-solid fa-check-double" style={{ marginRight: 4 }} />
+                                  Eşleşme Tamam
+                                </span>
                               )}
                             </div>
                           </td>
@@ -4368,6 +4691,586 @@ export default function EInvoiceManager() {
               >
                 <i className={`fa-solid ${savingMapping ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
                 {savingMapping ? 'Kaydediliyor...' : 'Eşleştirmeyi Kaydet & Uygula'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 7: Fiziki İrsaliye ➔ Gelen e-Fatura Eşleştirme Modalı (Reverse Matching) */}
+      {reverseMatchingModalOpen && selectedReceiptForMatch && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 1050,
+              maxHeight: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'linear-gradient(135deg, rgba(2,132,199,0.08) 0%, rgba(2,132,199,0.02) 100%)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      background: '#0284c7',
+                      color: '#fff',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '.75rem',
+                      fontWeight: 800,
+                    }}
+                  >
+                    TERS EŞLEŞTİRME
+                  </span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                    Fiziki İrsaliye ➔ Gelen e-Fatura Eşleştirme
+                  </h3>
+                </div>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  İrsaliye / Fiş No: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.receipt_no || selectedReceiptForMatch.doc_no || 'Belirtilmedi'}</strong> &nbsp;|&nbsp;
+                  Tedarikçi: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.supplier_name || 'Tedarikçi'}</strong> &nbsp;|&nbsp;
+                  İrsaliye Tutarı: <strong style={{ color: '#0284c7' }}>{Number(selectedReceiptForMatch.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setReverseMatchingModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {loadingReverseCandidates ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '2rem', color: '#0284c7', marginBottom: 12 }} />
+                  <div style={{ fontWeight: 600 }}>Entegratör Gelen Kutusu taranıyor ve eşleştirme adayları puanlanıyor...</div>
+                </div>
+              ) : reverseMatchCandidates.length === 0 ? (
+                <div
+                  style={{
+                    padding: 30,
+                    textAlign: 'center',
+                    background: 'var(--surface-2)',
+                    borderRadius: 10,
+                    border: '1px dashed var(--border)',
+                  }}
+                >
+                  <i className="fa-solid fa-file-circle-xmark" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: 12 }} />
+                  <h4 style={{ margin: '0 0 6px 0', color: 'var(--text-strong)' }}>Uygun e-Fatura Adayı Bulunamadı</h4>
+                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--text-muted)' }}>
+                    Entegratör gelen kutusundaki açık faturalar arasında bu irsaliyenin tedarikçi VKN'si, irsaliye referansı veya tutarı ile eşleşen fatura bulunamadı.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Candidate List Selection */}
+                  <div>
+                    <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>
+                      Entegratörden Bulunan Aday e-Faturalar ({reverseMatchCandidates.length} Adet):
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+                      {reverseMatchCandidates.map((cand) => {
+                        const isSelected = selectedCandidateInvoice?.invoice?.id === cand.invoice.id
+                        const scoreColor = cand.matchScore >= 80 ? '#10b981' : cand.matchScore >= 50 ? '#f59e0b' : '#6b7280'
+
+                        return (
+                          <div
+                            key={cand.invoice.id}
+                            onClick={() => setSelectedCandidateInvoice(cand)}
+                            style={{
+                              padding: '12px 16px',
+                              borderRadius: 10,
+                              border: isSelected ? '2px solid #0284c7' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(2,132,199,0.06)' : 'var(--surface-2)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 6,
+                              transition: 'all .15s ease',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '.9rem' }}>
+                                #{cand.invoice.invoice_number}
+                              </div>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  background: `${scoreColor}20`,
+                                  color: scoreColor,
+                                  fontWeight: 800,
+                                  fontSize: '.72rem',
+                                }}
+                              >
+                                %{cand.matchScore} Uyum
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
+                              {cand.invoice.sender_title} (VKN: {cand.invoice.sender_vkn_tckn})
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                              <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                                {Number(cand.invoice.payable_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                              </div>
+                              <div style={{ fontSize: '.75rem', color: Math.abs(cand.totalDiff) < 0.05 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>
+                                Fark: {Number(cand.totalDiff).toFixed(2)} ₺
+                              </div>
+                            </div>
+
+                            {/* Reasons */}
+                            {cand.reasons && cand.reasons.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                {cand.reasons.map((r, i) => (
+                                  <span
+                                    key={i}
+                                    style={{
+                                      fontSize: '.68rem',
+                                      padding: '1px 6px',
+                                      borderRadius: 4,
+                                      background: 'rgba(2,132,199,0.12)',
+                                      color: '#0284c7',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    ✓ {r}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selected Candidate Line Comparison */}
+                  {selectedCandidateInvoice && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>
+                          Seçilen Fatura ({selectedCandidateInvoice.invoice.invoice_number}) ile Kalem Karşılaştırması:
+                        </span>
+                        <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                          {selectedCandidateInvoice.lineComparisons?.length || 0} Kalem Karşılaştırıldı
+                        </span>
+                      </div>
+
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.72rem', textTransform: 'uppercase' }}>
+                              <th style={{ padding: '8px 12px' }}>Fatura Kalemi</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Fatura Miktar</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Fatura Fiyat</th>
+                              <th style={{ padding: '8px 12px' }}>İrsaliye Kalemi</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>İrsaliye Miktar</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>İrsaliye Fiyat</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center' }}>Durum</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedCandidateInvoice.lineComparisons && selectedCandidateInvoice.lineComparisons.length > 0 ? (
+                              selectedCandidateInvoice.lineComparisons.map((lc, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '8px 12px', fontWeight: 600 }}>{lc.invoiceLine?.item_name || '-'}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>{lc.invoiceLine?.quantity} {lc.invoiceLine?.unit_code}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>{Number(lc.invoiceLine?.unit_price || 0).toFixed(2)} ₺</td>
+                                  <td style={{ padding: '8px 12px', color: lc.receiptLine ? 'var(--text-strong)' : 'var(--text-muted)' }}>
+                                    {lc.receiptLine?.item_name || 'Eşleşen Kalem Yok'}
+                                  </td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>{lc.receiptLine ? `${lc.receiptLine.quantity} ${lc.receiptLine.unit || ''}` : '-'}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>{lc.receiptLine ? `${Number(lc.receiptLine.unit_price || 0).toFixed(2)} ₺` : '-'}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                    {lc.hasQtyDiscrepancy || lc.hasPriceDiscrepancy ? (
+                                      <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '.72rem' }}>⚠️ Fark Var</span>
+                                    ) : (
+                                      <span style={{ color: '#10b981', fontWeight: 700, fontSize: '.72rem' }}>✓ Uyumlu</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={7} style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>
+                                  Kalem detayı bulunamadı.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Matching Note */}
+                  <div>
+                    <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                      Eşleştirme ve Mutabakat Notu (Opsiyonel):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Örn: 15.08 mal kabul irsaliyesi ile e-fatura eşleştirildi."
+                      value={reverseMatchingNote}
+                      onChange={(e) => setReverseMatchingNote(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '14px 24px',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setReverseMatchingModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-strong)',
+                  fontWeight: 600,
+                  fontSize: '.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={!selectedCandidateInvoice || approvingReverseMatch}
+                onClick={handleApproveReverseMatch}
+                style={{
+                  padding: '9px 24px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: selectedCandidateInvoice ? '#0284c7' : 'var(--border)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: selectedCandidateInvoice && !approvingReverseMatch ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: selectedCandidateInvoice ? '0 2px 8px rgba(2,132,199,0.35)' : 'none',
+                }}
+              >
+                <i className={`fa-solid ${approvingReverseMatch ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
+                {approvingReverseMatch ? 'Onaylanıyor...' : 'Eşleştirmeyi Onayla & Cariyi Güncelle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 8: Manuel Belge Girişi ➔ Gelen e-Fatura Eşleştirme Modalı */}
+      {docMatchingModalOpen && selectedDocForMatch && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 950,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(139,92,246,0.02) 100%)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      background: '#8b5cf6',
+                      color: '#fff',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '.75rem',
+                      fontWeight: 800,
+                    }}
+                  >
+                    BELGE EŞLEŞTİRME
+                  </span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                    Manuel Belge Girişi ➔ Gelen e-Fatura Eşleştirme
+                  </h3>
+                </div>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Belge No: <strong style={{ color: 'var(--text-strong)' }}>{selectedDocForMatch.document_no || `#DOC-${selectedDocForMatch.id.slice(0, 8)}`}</strong> &nbsp;|&nbsp;
+                  Gider Hesabı: <strong style={{ color: 'var(--text-strong)' }}>{selectedDocForMatch.expense_account_name || 'Masraf Hesabı'}</strong> &nbsp;|&nbsp;
+                  Belge Tutarı: <strong style={{ color: '#8b5cf6' }}>{Number(selectedDocForMatch.amount || selectedDocForMatch.source_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDocMatchingModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {loadingDocCandidates ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '2rem', color: '#8b5cf6', marginBottom: 12 }} />
+                  <div style={{ fontWeight: 600 }}>Entegratör Gelen Kutusu taranıyor ve aday faturalar bulunuyor...</div>
+                </div>
+              ) : docMatchCandidates.length === 0 ? (
+                <div
+                  style={{
+                    padding: 30,
+                    textAlign: 'center',
+                    background: 'var(--surface-2)',
+                    borderRadius: 10,
+                    border: '1px dashed var(--border)',
+                  }}
+                >
+                  <i className="fa-solid fa-file-circle-xmark" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: 12 }} />
+                  <h4 style={{ margin: '0 0 6px 0', color: 'var(--text-strong)' }}>Uygun e-Fatura Adayı Bulunamadı</h4>
+                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--text-muted)' }}>
+                    Entegratör gelen kutusundaki açık faturalar arasında bu belge ile eşleşen fatura bulunamadı.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Candidate List */}
+                  <div>
+                    <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>
+                      Eşleştirilebilecek Aday e-Faturalar ({docMatchCandidates.length} Adet):
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+                      {docMatchCandidates.map((cand) => {
+                        const isSelected = selectedCandidateInvoiceForDoc?.invoice?.id === cand.invoice.id
+                        const scoreColor = cand.matchScore >= 80 ? '#10b981' : cand.matchScore >= 50 ? '#f59e0b' : '#6b7280'
+
+                        return (
+                          <div
+                            key={cand.invoice.id}
+                            onClick={() => setSelectedCandidateInvoiceForDoc(cand)}
+                            style={{
+                              padding: '12px 16px',
+                              borderRadius: 10,
+                              border: isSelected ? '2px solid #8b5cf6' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(139,92,246,0.06)' : 'var(--surface-2)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 6,
+                              transition: 'all .15s ease',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '.9rem' }}>
+                                #{cand.invoice.invoice_number}
+                              </div>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  background: `${scoreColor}20`,
+                                  color: scoreColor,
+                                  fontWeight: 800,
+                                  fontSize: '.72rem',
+                                }}
+                              >
+                                %{cand.matchScore} Uyum
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
+                              {cand.invoice.sender_title} (VKN: {cand.invoice.sender_vkn_tckn})
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                              <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                                {Number(cand.invoice.payable_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                              </div>
+                              <div style={{ fontSize: '.75rem', color: Math.abs(cand.totalDiff) < 0.05 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>
+                                Fark: {Number(cand.totalDiff).toFixed(2)} ₺
+                              </div>
+                            </div>
+
+                            {cand.reasons && cand.reasons.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                {cand.reasons.map((r, i) => (
+                                  <span
+                                    key={i}
+                                    style={{
+                                      fontSize: '.68rem',
+                                      padding: '1px 6px',
+                                      borderRadius: 4,
+                                      background: 'rgba(139,92,246,0.12)',
+                                      color: '#8b5cf6',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    ✓ {r}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Note input */}
+                  <div>
+                    <label style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                      Eşleştirme Açıklaması (Opsiyonel):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Örn: Manuel girilen masraf fişi gelen e-fatura ile eşleştirildi."
+                      value={docMatchingNote}
+                      onChange={(e) => setDocMatchingNote(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '14px 24px',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setDocMatchingModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-strong)',
+                  fontWeight: 600,
+                  fontSize: '.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={!selectedCandidateInvoiceForDoc || approvingDocMatch}
+                onClick={handleApproveDocMatch}
+                style={{
+                  padding: '9px 24px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: selectedCandidateInvoiceForDoc ? '#8b5cf6' : 'var(--border)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: selectedCandidateInvoiceForDoc && !approvingDocMatch ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: selectedCandidateInvoiceForDoc ? '0 2px 8px rgba(139,92,246,0.35)' : 'none',
+                }}
+              >
+                <i className={`fa-solid ${approvingDocMatch ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
+                {approvingDocMatch ? 'Eşleştiriliyor...' : 'Belgeyi e-Fatura ile Eşleştir'}
               </button>
             </div>
           </div>
