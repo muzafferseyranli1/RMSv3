@@ -1583,34 +1583,14 @@ export default function EInvoiceManager() {
                                 fontWeight: 600,
                                 fontSize: '.75rem',
                                 cursor: 'pointer',
-                        display: 'flex',
+                                display: 'flex',
                                 alignItems: 'center',
                                 gap: 4,
                               }}
                             >
-                              <i className="fa-solid fa-reply" />
-                              Yanıtla
+                              <i className="fa-solid fa-eye" />
+                              İncele
                             </button>
-                          )}
-
-                          <button
-                            type="button"
-                            title="GİB Formatında Görüntüle"
-                            onClick={() => handleOpenPreview(inv)}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: 6,
-                              border: '1px solid var(--border)',
-                              background: 'var(--surface-2)',
-                              color: 'var(--text-strong)',
-                              fontWeight: 600,
-                              fontSize: '.75rem',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 4,
-                            }}
-                          >
                             <i className="fa-solid fa-eye" />
                             İncele
                           </button>
