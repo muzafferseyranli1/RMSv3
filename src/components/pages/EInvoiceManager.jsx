@@ -767,7 +767,10 @@ export default function EInvoiceManager() {
 
           <button
             type="button"
-            onClick={() => setNewAdisyonModalOpen(true)}
+            onClick={() => {
+              setNewAdisyonModalOpen(true)
+              toast('ℹ️ e-adisyon POS tarafında geliştirilmeli ve e-dönüşüm entegratörü ile entegre olarak tamamlanmalıdır, şirket kuruluşunda e-adisyon kullanılacak seçimiyle aktif ve deaktif edilebilmelidir', 'info')
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -782,7 +785,7 @@ export default function EInvoiceManager() {
               cursor: 'pointer',
             }}
           >
-            <i className="fa-solid fa-plus-circle" />
+            <i className="fa-solid fa-circle-info" />
             Yeni E-Adisyon Aç
           </button>
         </div>
@@ -941,31 +944,6 @@ export default function EInvoiceManager() {
           Şirketler Arası (Inter-Company)
           <span style={{ fontSize: '.75rem', padding: '2px 6px', borderRadius: 10, background: activeTab === 'intercompany' ? 'rgba(234,88,12,0.2)' : 'var(--surface-2)', color: activeTab === 'intercompany' ? '#ea580c' : 'var(--text-muted)' }}>
             {stats.totalInterCompanyCount || 0}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('eadisyon')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'transparent',
-            color: activeTab === 'eadisyon' ? '#10b981' : 'var(--text-muted)',
-            borderBottom: activeTab === 'eadisyon' ? '2px solid #10b981' : '2px solid transparent',
-            fontWeight: activeTab === 'eadisyon' ? 700 : 500,
-            fontSize: '.9rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <i className="fa-solid fa-receipt" />
-          E-Adisyon & E-Belge Uyumu
-          <span style={{ fontSize: '.75rem', padding: '2px 6px', borderRadius: 10, background: activeTab === 'eadisyon' ? 'rgba(16,185,129,0.2)' : 'var(--surface-2)', color: activeTab === 'eadisyon' ? '#10b981' : 'var(--text-muted)' }}>
-            {eadisyons.length || 0}
           </span>
         </button>
 
@@ -3943,13 +3921,14 @@ export default function EInvoiceManager() {
         </div>
       )}
 
-      {/* Modal 6: Yeni E-Adisyon Açma Modalı */}
+      {/* Modal 6: E-Adisyon POS & Şirket Bilgilendirme Modalı */}
       {newAdisyonModalOpen && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
             background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(4px)',
             zIndex: 1200,
             display: 'flex',
             alignItems: 'center',
@@ -3962,141 +3941,87 @@ export default function EInvoiceManager() {
               background: 'var(--surface)',
               borderRadius: 14,
               width: '100%',
-              maxWidth: 640,
+              maxWidth: 560,
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
               overflow: 'hidden',
               border: '1px solid var(--border)',
             }}
           >
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
               <div style={{ fontWeight: 800, color: '#10b981', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="fa-solid fa-receipt" />
-                Yeni E-Adisyon Başlat (VUK 509/526)
+                <i className="fa-solid fa-circle-info" />
+                E-Adisyon Entegrasyon Bilgilendirmesi
               </div>
               <button
                 type="button"
                 onClick={() => setNewAdisyonModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
               >
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateEAdisyon} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4 }}>Masa / Alan:</label>
-                  <input
-                    type="text"
-                    value={newAdisyonForm.table_name}
-                    onChange={(e) => setNewAdisyonForm({ ...newAdisyonForm, table_name: e.target.value, table_key: e.target.value.replace(/\s+/g, '_').toUpperCase() })}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--app-bg)',
-                      color: 'var(--text-strong)',
-                      fontSize: '.85rem',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4 }}>Garson:</label>
-                  <input
-                    type="text"
-                    value={newAdisyonForm.waiter_name}
-                    onChange={(e) => setNewAdisyonForm({ ...newAdisyonForm, waiter_name: e.target.value })}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--app-bg)',
-                      color: 'var(--text-strong)',
-                      fontSize: '.85rem',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6 }}>Sipariş Kalemleri:</label>
-                <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--app-bg)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                        <th style={{ padding: '6px 10px' }}>Ürün</th>
-                        <th style={{ padding: '6px 10px', width: 60 }}>Adet</th>
-                        <th style={{ padding: '6px 10px', width: 90, textAlign: 'right' }}>Fiyat</th>
-                        <th style={{ padding: '6px 10px', width: 90, textAlign: 'right' }}>Toplam</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {newAdisyonForm.items.map((item, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-strong)' }}>{item.item_name}</td>
-                          <td style={{ padding: '8px 10px' }}>{item.quantity}</td>
-                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(item.unit_price).toFixed(2)} ₺</td>
-                          <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
-                            {(item.quantity * item.unit_price).toFixed(2)} ₺
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 8 }}>
-                <span style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)' }}>Hesaplanacak Toplam:</span>
-                <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#10b981' }}>
-                  {newAdisyonForm.items.reduce((s, it) => s + it.quantity * it.unit_price * (1 + (it.tax_rate || 10) / 100), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => setNewAdisyonModalOpen(false)}
+            <div style={{ padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div
+                style={{
+                  background: 'rgba(16,185,129,0.08)',
+                  border: '1px solid rgba(16,185,129,0.25)',
+                  borderRadius: 12,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 14,
+                }}
+              >
+                <div
                   style={{
-                    padding: '8px 14px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface)',
-                    color: 'var(--text-strong)',
-                    fontWeight: 600,
-                    fontSize: '.85rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingAdisyon}
-                  style={{
-                    padding: '8px 18px',
-                    borderRadius: 8,
-                    border: 'none',
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
                     background: '#10b981',
                     color: '#fff',
-                    fontWeight: 800,
-                    fontSize: '.85rem',
-                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    justifyContent: 'center',
+                    fontSize: '1.15rem',
+                    flexShrink: 0,
                   }}
                 >
-                  <i className={`fa-solid ${creatingAdisyon ? 'fa-spinner fa-spin' : 'fa-check'}`} />
-                  {creatingAdisyon ? 'Oluşturuluyor...' : 'E-Adisyonu Başlat & ETTN Üret'}
-                </button>
+                  <i className="fa-solid fa-receipt" />
+                </div>
+                <div style={{ fontSize: '.92rem', color: 'var(--text-strong)', lineHeight: 1.55, fontWeight: 600 }}>
+                  e-adisyon POS tarafında geliştirilmeli ve e-dönüşüm entegratörü ile entegre olarak tamamlanmalıdır, şirket kuruluşunda e-adisyon kullanılacak seçimiyle aktif ve deaktif edilebilmelidir.
+                </div>
               </div>
-            </form>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setNewAdisyonModalOpen(false)}
+                style={{
+                  padding: '8px 22px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#10b981',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Anladım / Kapat
+              </button>
+            </div>
           </div>
         </div>
       )}
