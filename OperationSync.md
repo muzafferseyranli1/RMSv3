@@ -12719,3 +12719,25 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - ERP Portalı ve Özel Entegratör Portalı 2 bağımsız ekran olarak konumlandırıldı.
 - `Open Risks`: Yok.
 - `Handoff Contract`: 2 Portallı E-Dönüşüm mimarisi, Sözleşme Fiyat Denetimi ve E-İrsaliye otomasyonu tam fonksiyonel ve yayına hazırdır.
+
+
+## Entry - 2026-08-15 - Otomatik Canlıya Alma (Coolify & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-15T09:40:03.925Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin Hosting Dünyam VPS ve Coolify üzerine uçtan uca otomatik canlıya alınması
+- `Commit Hash`: `4afc2e3`
+- `Commit Message`: "feat(deploy): implement automated end-to-end deployment pipeline with Coolify API & live healthcheck"
+- `Status`: Pre-flight build OK, DB Migration OK, Git Push OK, Coolify Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144:3000) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-15 - Otomatik Canlıya Alma (Coolify & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-15T09:41:22.730Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin Hosting Dünyam VPS ve Coolify üzerine uçtan uca otomatik canlıya alınması
+- `Commit Hash`: `5ffb841`
+- `Commit Message`: "feat(deploy): implement automated deployment pipeline with Coolify API & live healthcheck"
+- `Status`: Pre-flight build OK, DB Migration OK, Git Push OK, Coolify Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144:3000) ve Node API (http://188.132.198.144:3001/health) yayındadır.

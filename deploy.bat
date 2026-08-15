@@ -1,50 +1,56 @@
 @echo off
-setlocal EnableDelayedExpansion
 chcp 65001 >nul
+setlocal EnableDelayedExpansion
+
+:: Proje ana dizinine gecis
+cd /d "%~dp0"
 
 echo ===================================================
-echo     SuitableRMS Otomatik Canliya Alma & Senkronizasyon
-echo     (Hosting Dunyam VPS & Coolify Integration)
+echo     SuitableRMS Otomatik Canliya Alma ve Senkronizasyon
+echo     VPS Hosting Dunyam ve Coolify Entegrasyonu
 echo ===================================================
 echo.
-echo    1) Full Canliya Al (Web & API - Hizli, Kontrollu & Otomatik)
-echo    2) Yalnizca Veritabani Sema Kontrolu & Migration
+echo    1) Full Canliya Al (Web, API ve DB - Hizli ve Otomatik)
+echo    2) Yalnizca Veritabani Sema Kontrolu ve Migration
 echo    3) Canli Sunucu Durumunu Kontrol Et (Healthcheck)
-echo    4) Masaustu Setup (.exe) Derle & GitHub'a Yukle
+echo    4) Masaustu Setup (.exe) Derle ve GitHub'a Yukle
 echo.
+
+set "modeChoice=1"
 set /p modeChoice="[?] Seciminiz nedir? (1/2/3/4) [Varsayilan: 1]: "
 
-if "%modeChoice%"=="" set modeChoice=1
+if "%modeChoice%"=="2" goto opt_db
+if "%modeChoice%"=="3" goto opt_verify
+if "%modeChoice%"=="4" goto opt_desktop
+goto opt_full
 
-if "%modeChoice%"=="2" (
-    echo.
-    node scripts/deploy-live.mjs --db-only
-    goto bitis
-)
-
-if "%modeChoice%"=="3" (
-    echo.
-    node scripts/deploy-live.mjs --verify-only
-    goto bitis
-)
-
-if "%modeChoice%"=="4" (
-    echo.
-    echo ===================================================
-    echo Masaustu Program (.exe) Derleniyor ve Yukleniyor...
-    echo ===================================================
-    call npm run publish:desktop
-    goto bitis
-)
-
-:: Option 1: Full Deploy
+:opt_db
 echo.
+node scripts/deploy-live.mjs --db-only
+goto bitis
+
+:opt_verify
+echo.
+node scripts/deploy-live.mjs --verify-only
+goto bitis
+
+:opt_desktop
+echo.
+echo ===================================================
+echo Masaustu Program (.exe) Derleniyor ve Yukleniyor...
+echo ===================================================
+call npm run publish:desktop
+goto bitis
+
+:opt_full
+echo.
+set "userCommitMsg="
 set /p userCommitMsg="[?] Yaptiginiz degisikliklerin ozeti nedir? (Enter = Otomatik): "
 
-if "!userCommitMsg!"=="" (
+if "%userCommitMsg%"=="" (
     node scripts/deploy-live.mjs
 ) else (
-    node scripts/deploy-live.mjs --commit-msg "!userCommitMsg!"
+    node scripts/deploy-live.mjs --commit-msg "%userCommitMsg%"
 )
 
 :bitis
