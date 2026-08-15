@@ -1591,10 +1591,7 @@ export default function EInvoiceManager() {
                               <i className="fa-solid fa-eye" />
                               İncele
                             </button>
-                            <i className="fa-solid fa-eye" />
-                            İncele
-                          </button>
-                        </div>
+                          </div>
                       </td>
                     </tr>
                   )
