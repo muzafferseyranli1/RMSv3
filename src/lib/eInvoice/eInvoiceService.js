@@ -88,9 +88,9 @@ class EInvoiceService {
   }
 
   /**
-   * Faturaları Listeleme
+   * Faturaları Listeleme (RMS E-Fatura Ekranı İçin)
    */
-  async getInvoices({ direction = 'INBOUND', statusCode = null, search = '', isInterCompany = null, limit = 100 } = {}) {
+  async getInvoices({ direction = 'INBOUND', statusCode = null, search = '', isInterCompany = null, limit = 100, onlySyncedToRms = false } = {}) {
     try {
       let query = db.from('e_invoices').select('*')
       
@@ -102,6 +102,9 @@ class EInvoiceService {
       }
       if (isInterCompany !== null && isInterCompany !== undefined) {
         query = query.eq('is_inter_company', Boolean(isInterCompany))
+      }
+      if (onlySyncedToRms) {
+        query = query.or('is_synced_to_rms.is.null,is_synced_to_rms.eq.true')
       }
 
       query = query.order('issue_date', { ascending: false }).limit(limit)
@@ -131,6 +134,152 @@ class EInvoiceService {
     } catch (err) {
       console.error('getInvoices error:', err)
       return { success: false, data: [], error: err.message }
+    }
+  }
+
+  /**
+   * Entegratör Portalındaki Tüm Gelen/Giden Belgeleri Getirir
+   */
+  async getIntegratorPortalInvoices({ direction = 'ALL', provider = null, search = '', limit = 150 } = {}) {
+    try {
+      let query = db.from('e_invoices').select('*')
+      if (direction && direction !== 'ALL') {
+        query = query.eq('direction', direction)
+      }
+      if (provider && provider !== 'ALL') {
+        query = query.eq('integrator_provider', provider)
+      }
+      query = query.order('created_at', { ascending: false }).limit(limit)
+
+      const { data, error } = await query
+      if (error) throw error
+
+      let filtered = data || []
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase()
+        filtered = filtered.filter(
+          (inv) =>
+            (inv.invoice_number && inv.invoice_number.toLowerCase().includes(q)) ||
+            (inv.sender_title && inv.sender_title.toLowerCase().includes(q)) ||
+            (inv.receiver_title && inv.receiver_title.toLowerCase().includes(q)) ||
+            (inv.sender_vkn_tckn && inv.sender_vkn_tckn.includes(q)) ||
+            (inv.receiver_vkn_tckn && inv.receiver_vkn_tckn.includes(q)) ||
+            (inv.ettn && inv.ettn.toLowerCase().includes(q))
+        )
+      }
+      return { success: true, data: filtered }
+    } catch (err) {
+      console.error('getIntegratorPortalInvoices error:', err)
+      return { success: false, data: [], error: err.message }
+    }
+  }
+
+  /**
+   * Entegratör Portalı / Havuzundaki Faturaları RMS'e Senkronize Eder
+   */
+  async syncInvoicesFromIntegratorToRms() {
+    try {
+      const adapter = await this.resolveAdapter()
+      
+      // 1. Canlı adaptör varsa (Uyumsoft / EDM) API'den çek
+      let liveInvoices = []
+      try {
+        liveInvoices = await adapter.fetchInboundInvoices()
+      } catch (liveErr) {
+        console.warn('Live adapter fetch warning:', liveErr)
+      }
+
+      // 2. Veritabanında entegratör havuzunda olup henüz RMS'e aktarılmamış olanları işaretle
+      const { data: pendingInvoices, error: pErr } = await db
+        .from('e_invoices')
+        .select('id, invoice_number, sender_title, payable_amount')
+        .eq('direction', 'INBOUND')
+        .eq('is_synced_to_rms', false)
+
+      if (pErr) throw pErr
+
+      if (pendingInvoices && pendingInvoices.length > 0) {
+        const ids = pendingInvoices.map((inv) => inv.id)
+        await db
+          .from('e_invoices')
+          .update({
+            is_synced_to_rms: true,
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', ids)
+
+        for (const inv of pendingInvoices) {
+          await db.from('e_invoice_matching_logs').insert({
+            invoice_id: inv.id,
+            matching_type: 'INTEGRATOR_SYNC',
+            notes: `Fatura Entegratör Portalından (${adapter.providerName.toUpperCase()}) RMS Gelen Kutusuna aktarıldı.`,
+            performed_by: 'INTEGRATOR_SYNC_SERVICE',
+          })
+        }
+      }
+
+      const totalCount = (pendingInvoices?.length || 0) + (liveInvoices?.length || 0)
+      return {
+        success: true,
+        count: totalCount,
+        message: totalCount > 0
+          ? `${totalCount} adet yeni fatura ${adapter.providerName.toUpperCase()} entegratöründen RMS'e başarıyla aktarıldı.`
+          : `Entegratör havuzundaki tüm belgeler zaten RMS ile güncel ve senkronize.`,
+        provider: adapter.providerName,
+      }
+    } catch (err) {
+      console.error('syncInvoicesFromIntegratorToRms error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Simülatörün Ürettiği Faturayı Doğrudan Entegratör Portalı Gelen Kutusuna Yazar
+   */
+  async pushInvoiceToIntegratorInbound(invoicePayload, linesPayload = []) {
+    try {
+      const config = await this.getIntegratorConfig()
+      const provider = config?.provider || 'sandbox'
+
+      const fullPayload = {
+        ...invoicePayload,
+        direction: 'INBOUND',
+        is_synced_to_rms: false, // Sadece entegratör portalında gözüksün, RMS senkronize edene kadar
+        integrator_provider: provider,
+        status_code: invoicePayload.status_code || EINVOICE_STATUS.DELIVERED_TO_RECEIVER, // 1200
+        status_description: invoicePayload.status_description || 'Alıcıya Ulaştı (Entegratör Havuzunda)',
+      }
+
+      const { data: savedArr, error: insErr } = await db
+        .from('e_invoices')
+        .insert(fullPayload)
+        .select('*')
+
+      if (insErr) throw insErr
+      const savedDoc = Array.isArray(savedArr) ? savedArr[0] : (savedArr || fullPayload)
+      const docId = savedDoc?.id || fullPayload.id
+
+      if (docId && linesPayload.length > 0) {
+        const formattedLines = linesPayload.map((l, idx) => ({
+          ...l,
+          invoice_id: docId,
+          line_number: l.line_number || idx + 1,
+        }))
+        await db.from('e_invoice_lines').insert(formattedLines)
+      }
+
+      // Log
+      await db.from('e_invoice_matching_logs').insert({
+        invoice_id: docId,
+        matching_type: 'SIMULATOR_GENERATED',
+        notes: `Simülatör tarafından Özel Entegratör Gelen Kutusuna (${provider.toUpperCase()}) fatura üretildi.`,
+        performed_by: 'INTEGRATOR_SIMULATOR',
+      })
+
+      return { success: true, data: savedDoc }
+    } catch (err) {
+      console.error('pushInvoiceToIntegratorInbound error:', err)
+      return { success: false, error: err.message }
     }
   }
 

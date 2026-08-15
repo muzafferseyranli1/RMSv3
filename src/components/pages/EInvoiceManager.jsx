@@ -563,12 +563,12 @@ export default function EInvoiceManager() {
   const handleSyncInboundInvoices = async () => {
     setSyncingInbounds(true)
     try {
-      const res = await eInvoiceService.fetchInboundInvoices({ limit: 3 })
+      const res = await eInvoiceService.syncInvoicesFromIntegratorToRms()
       if (res.success) {
-        toast(`Entegratörden ${res.count} adet yeni gelen fatura başarıyla senkronize edildi.`, 'success')
+        toast(`✅ ${res.message}`, 'success')
         await loadData()
       } else {
-        toast(res.error || 'Faturalar çekilemedi', 'error')
+        toast(res.error || 'Faturalar senkronize edilemedi.', 'error')
       }
     } catch (err) {
       toast('Senkronizasyon hatası: ' + err.message, 'error')
@@ -749,19 +749,20 @@ export default function EInvoiceManager() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '8px 14px',
+              gap: 8,
+              padding: '8px 16px',
               borderRadius: 8,
-              border: '1px solid #7dd3fc',
-              background: '#f0f9ff',
-              color: '#0369a1',
+              border: '1.5px solid #0284c7',
+              background: 'linear-gradient(135deg, rgba(2,132,199,0.15) 0%, rgba(56,189,248,0.1) 100%)',
+              color: '#0284c7',
               fontSize: '.85rem',
-              fontWeight: 700,
-              cursor: 'pointer',
+              fontWeight: 800,
+              cursor: syncingInbounds ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 8px rgba(2,132,199,0.15)',
             }}
           >
-            <i className={`fa-solid fa-cloud-arrow-down ${syncingInbounds ? 'fa-bounce' : ''}`} />
-            {syncingInbounds ? 'Faturalar Çekiliyor...' : 'Entegratörden Çek (Sync)'}
+            <i className={`fa-solid fa-arrows-rotate ${syncingInbounds ? 'fa-spin' : ''}`} />
+            {syncingInbounds ? 'Entegratörden Alınıyor...' : `Entegratörden Faturaları Getir (${(integratorConfig?.provider || 'sandbox').toUpperCase()})`}
           </button>
 
           <button

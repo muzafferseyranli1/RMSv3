@@ -66,6 +66,10 @@ async function checkSchema() {
     await pool.query('ALTER TABLE public.e_invoice_lines ADD COLUMN IF NOT EXISTS matched_stock_item_id UUID;');
     await pool.query('ALTER TABLE public.e_invoice_lines ADD COLUMN IF NOT EXISTS matched_receipt_line_id UUID;');
     await pool.query('ALTER TABLE public.cari_hareketler ADD COLUMN IF NOT EXISTS supplier_id UUID;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS is_synced_to_rms BOOLEAN DEFAULT true;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS integrator_provider VARCHAR(50) DEFAULT \'sandbox\';');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS envelope_uuid UUID DEFAULT gen_random_uuid();');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS gib_status_detail TEXT;');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS public.qa_questions (
         id UUID DEFAULT gen_random_uuid() NOT NULL,

@@ -31,7 +31,6 @@ export function distortItemName(originalName) {
   const trimmed = originalName.trim()
   const lower = trimmed.toLowerCase()
 
-  // 1. Yaygın gıda/restoran stok isimleri için gerçekçi tedarikçi kısaltmaları sözlüğü
   const DICT = {
     'cheddar peyniri': 'çedar peynr',
     'cheddar peynir': 'çedar peynr',
@@ -70,7 +69,6 @@ export function distortItemName(originalName) {
     }
   }
 
-  // 2. Kural Tabanlı Kısaltma ve Fonetik Değiştirme (Fallback)
   let transformed = trimmed
     .replace(/Peyniri/gi, 'Pynr')
     .replace(/Peynir/gi, 'Pynr')
@@ -102,17 +100,39 @@ export default function IntegratorStudio() {
   const toast = useToast()
   const navigate = useNavigate()
 
-  // Active Main Tab
-  const [activeTab, setActiveTab] = useState('shipment-generator') // 'shipment-generator', 'freeform-builder', 'rms-outbound', 'transfer-hub'
+  // -------------------------------------------------------------
+  // 2 MAIN SECTIONS: 'PORTAL' (Gerçek Entegratör Portalı) vs 'SIMULATOR' (Simülatör)
+  // -------------------------------------------------------------
+  const [mainSection, setMainSection] = useState('PORTAL') // 'PORTAL', 'SIMULATOR'
 
-  // Global Simulation Options
+  // Section 1: Integrator Portal Sub-Tabs
+  const [portalTab, setPortalTab] = useState('portal-inbox') // 'portal-inbox', 'portal-outbox', 'portal-status-sim', 'portal-config'
+  const [portalDirectionFilter, setPortalDirectionFilter] = useState('INBOUND')
+  const [portalSearchQuery, setPortalSearchQuery] = useState('')
+  const [portalInvoices, setPortalInvoices] = useState([])
+
+  // Section 2: Simulator Sub-Tabs
+  const [simTab, setSimTab] = useState('shipment-generator') // 'shipment-generator', 'freeform-builder', 'transfer-hub'
   const [simulateDifferentNames, setSimulateDifferentNames] = useState(false)
 
   // Loading States
   const [loading, setLoading] = useState(false)
   const [actionLoadingId, setActionLoadingId] = useState(null)
+  const [syncingToRms, setSyncingToRms] = useState(false)
 
-  // Tab 1: Purchase Receipts Data
+  // Integrator Configuration State
+  const [integratorConfig, setIntegratorConfig] = useState({
+    provider: 'sandbox',
+    sender_vkn_tckn: '1234567890',
+    sender_title: 'SuitableRMS Restoran Grubu A.Ş.',
+    username: '',
+    password: '',
+    api_key: '',
+    is_test_mode: true,
+  })
+  const [testingConnection, setTestingConnection] = useState(false)
+
+  // Purchase Receipts Data (for Simulator)
   const [receipts, setReceipts] = useState([])
   const [receiptLinesMap, setReceiptLinesMap] = useState({})
   const [receiptContractsMap, setReceiptContractsMap] = useState({})
@@ -120,11 +140,11 @@ export default function IntegratorStudio() {
   const [selectedBranchFilter, setSelectedBranchFilter] = useState('ALL')
   const [branches, setBranches] = useState([])
 
-  // Tab 2: Freeform Invoice / Despatch Builder
-  const [builderDocType, setBuilderDocType] = useState('INVOICE') // 'INVOICE', 'DESPATCH'
-  const [builderProfileId, setBuilderProfileId] = useState('TICARIFATURA') // 'TICARIFATURA', 'TEMELFATURA', 'EARSIVFATURA', 'TEMELIRSALIYE'
-  const [builderInvoiceType, setBuilderInvoiceType] = useState('SATIS') // 'SATIS', 'IADE', 'TEVKIFAT'
-  const [builderDirection, setBuilderDirection] = useState('INBOUND') // 'INBOUND', 'OUTBOUND'
+  // Freeform Builder State (for Simulator)
+  const [builderDocType, setBuilderDocType] = useState('INVOICE')
+  const [builderProfileId, setBuilderProfileId] = useState('TICARIFATURA')
+  const [builderInvoiceType, setBuilderInvoiceType] = useState('SATIS')
+  const [builderDirection, setBuilderDirection] = useState('INBOUND')
   const [suppliers, setSuppliers] = useState([])
   const [selectedSupplierId, setSelectedSupplierId] = useState('')
   const [builderSupplierInfo, setBuilderSupplierInfo] = useState({
@@ -159,165 +179,152 @@ export default function IntegratorStudio() {
       tax_rate: 1,
     },
   ])
-  const [builderNotes, setBuilderNotes] = useState('Özel Entegratör Stüdyosu Test Faturası')
+  const [builderNotes, setBuilderNotes] = useState('Özel Entegratör Portalı Test Faturası')
 
-  // Tab 3: Outbound Invoices & GİB Status Controller
-  const [outboundInvoices, setOutboundInvoices] = useState([])
-  const [selectedOutboundId, setSelectedOutboundId] = useState('')
-  const [updatingStatus, setUpdatingStatus] = useState(false)
+  // GİB Status Controller & Simulation
+  const [selectedInvoiceForStatus, setSelectedInvoiceForStatus] = useState(null)
+  const [targetStatusCode, setTargetStatusCode] = useState(1300)
   const [simReasonNote, setSimReasonNote] = useState('')
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
-  // XML / Detail Preview Modal
+  // Document Preview Modal
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
-  const [previewData, setPreviewData] = useState(null)
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   // 1. Initial Data Fetching
   const loadInitialData = useCallback(async () => {
     setLoading(true)
     try {
-      // 1. Fetch Receipts with Lines
+      // 1. Integrator Config
+      const conf = await eInvoiceService.getIntegratorConfig()
+      if (conf) setIntegratorConfig(conf)
+
+      // 2. All Invoices in Integrator Portal
+      const portalRes = await eInvoiceService.getIntegratorPortalInvoices({ direction: 'ALL', limit: 200 })
+      if (portalRes.success) {
+        setPortalInvoices(portalRes.data || [])
+      }
+
+      // 3. Purchase Receipts
       const { data: rcptData } = await db
         .from('purchase_receipts')
         .select('*')
         .is('deleted_at', null)
         .order('delivered_on', { ascending: false })
-        .limit(40)
+        .limit(100)
 
-      const fetchedReceipts = rcptData || []
-      setReceipts(fetchedReceipts)
+      setReceipts(rcptData || [])
 
-      // Fetch Lines for all receipts
-      const rcptIds = fetchedReceipts.map((r) => r.id)
-      if (rcptIds.length > 0) {
+      // 4. Receipt Lines
+      if (rcptData && rcptData.length > 0) {
+        const rcptIds = rcptData.map((r) => r.id)
         const { data: linesData } = await db
           .from('purchase_receipt_lines')
           .select('*')
-          .is('deleted_at', null)
           .in('receipt_id', rcptIds)
-          .order('line_no', { ascending: true })
 
-        const lMap = {}
-        ;(linesData || []).forEach((l) => {
-          if (!lMap[l.receipt_id]) lMap[l.receipt_id] = []
-          lMap[l.receipt_id].push(l)
+        const linesMap = {}
+        ;(linesData || []).forEach((line) => {
+          if (!linesMap[line.receipt_id]) linesMap[line.receipt_id] = []
+          linesMap[line.receipt_id].push(line)
         })
-        setReceiptLinesMap(lMap)
+        setReceiptLinesMap(linesMap)
       }
 
-      // 2. Fetch Suppliers
+      // 5. Suppliers
       const { data: suppData } = await db
         .from('suppliers')
-        .select('id, name, vergi_no, tc_no, vergi_dairesi, adres, cari_kodu, active')
+        .select('*')
         .is('deleted_at', null)
         .order('name', { ascending: true })
 
       setSuppliers(suppData || [])
 
-      // 3. Fetch Contracts for receipts
-      const supplierIds = [...new Set(fetchedReceipts.map((r) => r.supplier_id).filter(Boolean))]
-      if (supplierIds.length > 0) {
-        const { data: contractsData } = await db
-          .from('contracts')
-          .select('*')
-          .in('supplier_id', supplierIds)
-          .is('deleted_at', null)
-
-        const cMap = {}
-        ;(contractsData || []).forEach((c) => {
-          cMap[c.supplier_id] = c
-        })
-        setReceiptContractsMap(cMap)
-      }
-
-      // 4. Fetch Outbound Invoices
-      const { data: outData } = await db
-        .from('e_invoices')
+      // 6. Contracts Map for Suppliers
+      const { data: contractsData } = await db
+        .from('contracts')
         .select('*')
-        .eq('direction', 'OUTBOUND')
-        .order('created_at', { ascending: false })
-        .limit(50)
+        .eq('status', 'active')
+        .is('deleted_at', null)
 
-      setOutboundInvoices(outData || [])
-      if (outData && outData.length > 0 && !selectedOutboundId) {
-        setSelectedOutboundId(outData[0].id)
-      }
+      const cMap = {}
+      ;(contractsData || []).forEach((c) => {
+        if (c.supplier_id) cMap[c.supplier_id] = c
+      })
+      setReceiptContractsMap(cMap)
 
-      // 5. Fetch Branches
-      const { data: settingsRow } = await db
-        .from('settings')
-        .select('value')
-        .eq('key', 'company_tree')
-        .single()
+      // 7. Branches / Nodes
+      const { data: nodeData } = await db
+        .from('company_nodes')
+        .select('id, name, kind')
+        .is('deleted_at', null)
+        .order('name', { ascending: true })
 
-      if (settingsRow?.value) {
-        const bList = []
-        const walk = (nodes) => {
-          for (const n of nodes || []) {
-            if (n.type === 'sube' || n.type === 'anadepo' || n.type === 'mutfak') {
-              bList.push({ id: n.id, name: n.name, type: n.type })
-            }
-            if (n.children) walk(n.children)
-          }
-        }
-        walk(Array.isArray(settingsRow.value) ? settingsRow.value : [settingsRow.value])
-        setBranches(bList)
-      }
+      setBranches(nodeData || [])
     } catch (err) {
-      console.error('IntegratorStudio load error:', err)
-      toast('Entegratör verileri yüklenirken hata oluştu', 'error')
+      console.error('IntegratorStudio loadInitialData error:', err)
+      toast('Entegratör verileri yüklenirken hata: ' + err.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [toast, selectedOutboundId])
+  }, [toast])
 
   useEffect(() => {
     loadInitialData()
-  }, [])
+  }, [loadInitialData])
 
-  // Filtered Receipts
-  const filteredReceipts = useMemo(() => {
-    return receipts.filter((r) => {
-      if (selectedBranchFilter !== 'ALL' && r.branch_id !== selectedBranchFilter) {
-        return false
+  // Change Active Integrator Provider (Sandbox / Uyumsoft / EDM)
+  const handleChangeProvider = async (newProvider) => {
+    try {
+      const updated = { ...integratorConfig, provider: newProvider }
+      setIntegratorConfig(updated)
+      await eInvoiceService.saveIntegratorConfig(updated)
+      toast(`✅ Aktif entegratör "${newProvider.toUpperCase()}" olarak ayarlandı.`, 'success')
+      loadInitialData()
+    } catch (err) {
+      toast('Entegratör değiştirilemedi: ' + err.message, 'error')
+    }
+  }
+
+  // Test Integrator Connection
+  const handleTestConnection = async () => {
+    setTestingConnection(true)
+    try {
+      const res = await eInvoiceService.testConnection(integratorConfig)
+      if (res.success) {
+        toast(`✅ ${res.message}`, 'success')
+      } else {
+        toast(`❌ Bağlantı hatası: ${res.error}`, 'error')
       }
-      if (!receiptSearchQuery) return true
-      const q = receiptSearchQuery.toLowerCase()
-      return (
-        (r.supplier_name && r.supplier_name.toLowerCase().includes(q)) ||
-        (r.receipt_no && r.receipt_no.toLowerCase().includes(q)) ||
-        (r.doc_no && r.doc_no.toLowerCase().includes(q)) ||
-        (r.branch_name && r.branch_name.toLowerCase().includes(q))
-      )
-    })
-  }, [receipts, selectedBranchFilter, receiptSearchQuery])
+    } catch (err) {
+      toast(`Bağlantı testi başarısız: ${err.message}`, 'error')
+    } finally {
+      setTestingConnection(false)
+    }
+  }
 
-  // Selected Outbound Invoice
-  const activeOutboundInvoice = useMemo(() => {
-    return outboundInvoices.find((inv) => inv.id === selectedOutboundId) || outboundInvoices[0] || null
-  }, [outboundInvoices, selectedOutboundId])
-
-  // Builder Totals Calculation
-  const builderCalculatedTotals = useMemo(() => {
-    return calculateInvoiceTotals(builderLines, 0, 0)
-  }, [builderLines])
-
-  // Handle Supplier Selection in Builder
-  const handleSelectSupplierForBuilder = (suppId) => {
-    setSelectedSupplierId(suppId)
-    const supp = suppliers.find((s) => s.id === suppId)
-    if (supp) {
-      setBuilderSupplierInfo({
-        title: supp.name || 'Tedarikçi Ünvanı',
-        vkn: supp.vergi_no || supp.tc_no || '1111111111',
-        taxOffice: supp.vergi_dairesi || 'Merkez',
-        address: supp.adres || 'Tedarikçi Adresi',
-      })
+  // Sync Invoices from Integrator to RMS
+  const handleSyncToRms = async () => {
+    setSyncingToRms(true)
+    try {
+      const res = await eInvoiceService.syncInvoicesFromIntegratorToRms()
+      if (res.success) {
+        toast(`🔄 ${res.message}`, 'success')
+        loadInitialData()
+      } else {
+        toast(`Senkronizasyon hatası: ${res.error}`, 'error')
+      }
+    } catch (err) {
+      toast(`Senkronizasyon başarısız: ${err.message}`, 'error')
+    } finally {
+      setSyncingToRms(false)
     }
   }
 
   // -------------------------------------------------------------
   // ACTION: Generate Invoices From Shipment / Purchase Receipt
   // Scenario Types: 'EXACT', 'SHORTAGE', 'SURPLUS', 'PRICE_OVER', 'TAX_MISMATCH'
+  // NOTE: Invoices are written to INTEGRATOR INBOUND POOL (not directly to RMS!)
   // -------------------------------------------------------------
   const handleGenerateInvoiceFromReceipt = async (receipt, scenarioType) => {
     setActionLoadingId(`${receipt.id}-${scenarioType}`)
@@ -360,16 +367,12 @@ export default function IntegratorStudio() {
 
         // Apply Scenario Modifications
         if (scenarioType === 'SHORTAGE') {
-          // Invoiced quantity is higher than received (-25% shortage in physical receipt)
           qty = Math.round(qty * 1.333 * 100) / 100
         } else if (scenarioType === 'SURPLUS') {
-          // Invoiced quantity is less than received (+30% surplus in physical receipt)
           qty = Math.max(1, Math.round(qty * 0.7 * 100) / 100)
         } else if (scenarioType === 'PRICE_OVER') {
-          // Supplier increased unit price by +25% (Contract & PO price violation!)
           unitPrice = Math.round(unitPrice * 1.25 * 100) / 100
         } else if (scenarioType === 'TAX_MISMATCH' && idx === 0) {
-          // Change KDV rate on first line
           taxRate = taxRate === 20 ? 10 : 20
         }
 
@@ -438,8 +441,8 @@ export default function IntegratorStudio() {
         profile_id: 'TICARIFATURA',
         issue_date: issueDate,
         issue_time: issueTime,
-        status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER, // 1200 - Gelen Kutusunda bekliyor
-        status_description: 'Alıcıya Ulaştı (3-Way Matching Bekliyor)',
+        status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER, // 1200
+        status_description: 'Alıcıya Ulaştı (Entegratör Havuzunda)',
         currency_code: 'TRY',
         currency_rate: 1.0,
         sender_vkn_tckn: senderVkn,
@@ -460,57 +463,31 @@ export default function IntegratorStudio() {
         notes: `${scenarioNote} İrsaliye No: ${docReference}. Özel Entegratör Portalı Simülasyonu.`.trim(),
         despatch_document_reference: docReference,
         source_transfer_doc_no: docReference,
+        receipt_id: receipt.id,
+        purchase_order_id: receipt.order_id || null,
         is_matched: false,
+        is_synced_to_rms: false, // Entegratör havuzunda bekliyor!
+        integrator_provider: integratorConfig.provider || 'sandbox',
         raw_json: {
-          generatedByStudio: true,
           scenarioType,
-          sourceReceiptId: receipt.id,
-          sourceReceiptNo: docReference,
-          contractNo: activeContract?.contract_no || null,
+          receiptId: receipt.id,
+          supplierId: receipt.supplier_id,
+          contractId: activeContract?.id || null,
+          hasPriceViolation: scenarioType === 'PRICE_OVER',
+          simulatedAlias: simulateDifferentNames,
         },
       }
 
-      // Generate UBL XML
       invoicePayload.ubl_xml = generateUBLXML({ ...invoicePayload, lines: invoiceLines })
 
-      // Insert into e_invoices
-      const { data: savedArr, error: insErr } = await db
-        .from('e_invoices')
-        .insert(invoicePayload)
-        .select('*')
+      // PUSH TO INTEGRATOR INBOUND
+      const pushRes = await eInvoiceService.pushInvoiceToIntegratorInbound(invoicePayload, invoiceLines)
+      if (!pushRes.success) throw new Error(pushRes.error)
 
-      if (insErr) throw insErr
-      const savedInvoice = Array.isArray(savedArr) ? savedArr[0] : (savedArr || invoicePayload)
-      const targetInvoiceId = savedInvoice?.id || invoiceEttn
-
-      // Insert Lines
-      if (targetInvoiceId) {
-        const linePayloads = invoiceLines.map((l) => ({
-          ...l,
-          invoice_id: targetInvoiceId,
-        }))
-        const { error: lineInsErr } = await db.from('e_invoice_lines').insert(linePayloads)
-        if (lineInsErr) {
-          console.error('e_invoice_lines insert error:', lineInsErr)
-        }
-
-        // Add log
-        await db.from('e_invoice_matching_logs').insert({
-          invoice_id: targetInvoiceId,
-          receipt_id: receipt.id,
-          supplier_id: receipt.supplier_id,
-          matching_type: `STUDIO_GENERATED_${scenarioType}`,
-          notes: `Entegratör Stüdyosu tarafından ${scenarioType} senaryosu ile fatura (${invoiceNumber}) kesildi.`,
-          performed_by: 'INTEGRATOR_STUDIO',
-        })
-      }
-
-      toast(
-        `✅ ${invoiceNumber} numaralı e-Fatura (${scenarioType}) üretildi ve SuitableRMS Gelen Kutusuna aktarıldı!`,
-        'success'
-      )
+      toast(`✅ "${invoiceNumber}" faturası Özel Entegratör Gelen Kutusuna başarıyla üretildi!`, 'success')
+      loadInitialData()
     } catch (err) {
-      console.error('Invoice generation error:', err)
+      console.error('handleGenerateInvoiceFromReceipt error:', err)
       toast(`Fatura üretilemedi: ${err.message}`, 'error')
     } finally {
       setActionLoadingId(null)
@@ -518,12 +495,16 @@ export default function IntegratorStudio() {
   }
 
   // -------------------------------------------------------------
-  // ACTION: Freeform Invoice / Despatch Submission
+  // ACTION: Generate Freeform Invoices
   // -------------------------------------------------------------
-  const handleSendFreeformDocument = async () => {
+  const handleGenerateFreeform = async () => {
+    if (builderLines.length === 0) {
+      toast('Lütfen en az bir fatura kalemi ekleyin.', 'error')
+      return
+    }
     setLoading(true)
     try {
-      const ettn = generateETTN()
+      const docEttn = generateETTN()
       const isDespatch = builderDocType === 'DESPATCH'
       const docNumber = isDespatch
         ? generateDespatchNumber('IRS', new Date().getFullYear(), Math.floor(100000 + Math.random() * 899999))
@@ -559,7 +540,7 @@ export default function IntegratorStudio() {
 
       const docPayload = {
         direction: builderDirection,
-        ettn,
+        ettn: docEttn,
         invoice_number: docNumber,
         invoice_type: isDespatch ? 'SEVK_IRSALIYESI' : builderInvoiceType,
         profile_id: isDespatch ? 'TEMELIRSALIYE' : builderProfileId,
@@ -568,7 +549,7 @@ export default function IntegratorStudio() {
         status_code: builderDirection === 'INBOUND' ? 1200 : 1100,
         status_description:
           builderDirection === 'INBOUND'
-            ? 'Alıcıya Ulaştı (Serbest Giriş)'
+            ? 'Alıcıya Ulaştı (Entegratör Serbest Havuz)'
             : 'Entegratöre Gönderildi (GİB Kuyruğunda)',
         currency_code: 'TRY',
         currency_rate: 1.0,
@@ -588,9 +569,12 @@ export default function IntegratorStudio() {
         payable_amount: totals.payableAmount,
         notes: builderNotes,
         is_matched: false,
+        is_synced_to_rms: false,
+        integrator_provider: integratorConfig.provider || 'sandbox',
         raw_json: {
           freeformBuilder: true,
           docType: builderDocType,
+          simulatedAlias: simulateDifferentNames,
         },
       }
 
@@ -598,27 +582,10 @@ export default function IntegratorStudio() {
         ? generateDespatchUBLXML({ ...docPayload, lines: formattedLines })
         : generateUBLXML({ ...docPayload, lines: formattedLines })
 
-      const { data: savedArr, error: insErr } = await db
-        .from('e_invoices')
-        .insert(docPayload)
-        .select('*')
+      const pushRes = await eInvoiceService.pushInvoiceToIntegratorInbound(docPayload, formattedLines)
+      if (!pushRes.success) throw new Error(pushRes.error)
 
-      if (insErr) throw insErr
-      const savedDoc = Array.isArray(savedArr) ? savedArr[0] : (savedArr || docPayload)
-      const targetDocId = savedDoc?.id || docEttn
-
-      if (targetDocId) {
-        const linesData = formattedLines.map((l) => ({
-          ...l,
-          invoice_id: targetDocId,
-        }))
-        const { error: lineInsErr } = await db.from('e_invoice_lines').insert(linesData)
-        if (lineInsErr) {
-          console.error('e_invoice_lines insert error in freeform:', lineInsErr)
-        }
-      }
-
-      toast(`✅ ${docNumber} numaralı belge başarıyla üretildi ve entegratör havuzuna yazıldı!`, 'success')
+      toast(`✅ "${docNumber}" numaralı belge Entegratör Havuzuna başarıyla yazıldı!`, 'success')
       loadInitialData()
     } catch (err) {
       console.error('Freeform build error:', err)
@@ -629,10 +596,13 @@ export default function IntegratorStudio() {
   }
 
   // -------------------------------------------------------------
-  // ACTION: Update Outbound Invoice GİB Status (Simulator)
+  // ACTION: Update GİB Status Simulation
   // -------------------------------------------------------------
-  const handleUpdateOutboundStatus = async (targetStatusCode, responseCode = null) => {
-    if (!activeOutboundInvoice) return
+  const handleUpdateStatus = async () => {
+    if (!selectedInvoiceForStatus) {
+      toast('Lütfen durumu değiştirilecek bir belge seçin.', 'error')
+      return
+    }
     setUpdatingStatus(true)
     try {
       const meta = getStatusMeta(targetStatusCode)
@@ -644,36 +614,70 @@ export default function IntegratorStudio() {
         updated_at: nowIso,
       }
 
-      if (responseCode) {
-        updateData.response_code = responseCode
+      if (targetStatusCode === 1300) {
+        updateData.response_code = 'KABUL'
         updateData.response_date = nowIso
-        updateData.response_reason = simReasonNote || `${responseCode} uygulama yanıtı simüle edildi.`
+      } else if (targetStatusCode === 1220) {
+        updateData.response_code = 'RED'
+        updateData.response_date = nowIso
+        updateData.response_reason = simReasonNote || 'Ticari Red Yanıtı Simüle Edildi'
       }
 
-      const { error: updErr } = await db
-        .from('e_invoices')
-        .update(updateData)
-        .eq('id', activeOutboundInvoice.id)
-
-      if (updErr) throw updErr
+      const { error } = await db.from('e_invoices').update(updateData).eq('id', selectedInvoiceForStatus.id)
+      if (error) throw error
 
       await db.from('e_invoice_matching_logs').insert({
-        invoice_id: activeOutboundInvoice.id,
+        invoice_id: selectedInvoiceForStatus.id,
         matching_type: 'GIB_STATUS_SIMULATION',
-        notes: `Entegratör Konsolundan GİB durum kodu ${targetStatusCode} (${meta.label}) olarak güncellendi. ${responseCode ? `Yanıt: ${responseCode}` : ''}`,
-        performed_by: 'INTEGRATOR_STUDIO',
+        notes: `Entegratör Konsolundan GİB durum kodu ${targetStatusCode} (${meta.label}) olarak güncellendi.`,
+        performed_by: 'INTEGRATOR_STUDIO_ADMIN',
       })
 
       toast(`✅ Belge durumu "${meta.label}" (${targetStatusCode}) olarak güncellendi.`, 'success')
-      setSimReasonNote('')
       loadInitialData()
     } catch (err) {
-      console.error('Status update error:', err)
       toast(`Durum güncellenemedi: ${err.message}`, 'error')
     } finally {
       setUpdatingStatus(false)
     }
   }
+
+  // Filtered Portal Invoices
+  const filteredPortalInvoices = useMemo(() => {
+    return portalInvoices.filter((inv) => {
+      if (portalDirectionFilter !== 'ALL' && inv.direction !== portalDirectionFilter) {
+        return false
+      }
+      if (portalSearchQuery) {
+        const q = portalSearchQuery.toLowerCase()
+        return (
+          (inv.invoice_number && inv.invoice_number.toLowerCase().includes(q)) ||
+          (inv.sender_title && inv.sender_title.toLowerCase().includes(q)) ||
+          (inv.receiver_title && inv.receiver_title.toLowerCase().includes(q)) ||
+          (inv.ettn && inv.ettn.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+  }, [portalInvoices, portalDirectionFilter, portalSearchQuery])
+
+  // Filtered Receipts for Simulator
+  const filteredReceipts = useMemo(() => {
+    return receipts.filter((r) => {
+      if (selectedBranchFilter !== 'ALL' && r.branch_id && r.branch_id !== selectedBranchFilter) {
+        return false
+      }
+      if (receiptSearchQuery) {
+        const q = receiptSearchQuery.toLowerCase()
+        return (
+          (r.receipt_no && r.receipt_no.toLowerCase().includes(q)) ||
+          (r.doc_no && r.doc_no.toLowerCase().includes(q)) ||
+          (r.supplier_name && r.supplier_name.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+  }, [receipts, selectedBranchFilter, receiptSearchQuery])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--app-bg)', color: 'var(--text-strong)', paddingBottom: 60 }}>
@@ -694,8 +698,8 @@ export default function IntegratorStudio() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div
             style={{
-              width: 46,
-              height: 46,
+              width: 48,
+              height: 48,
               borderRadius: 12,
               background: 'linear-gradient(135deg, #f5a623 0%, #d97706 100%)',
               color: '#000000',
@@ -711,7 +715,7 @@ export default function IntegratorStudio() {
           </div>
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ffffff', letterSpacing: -0.3 }}>
                 Özel Entegratör Bulut Yönetim Portalı
               </span>
@@ -730,17 +734,66 @@ export default function IntegratorStudio() {
                 }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
-                GİB BTRANS Çevrimiçi (Sandbox)
+                GİB BTRANS Çevrimiçi (200 OK)
+              </span>
+
+              {/* Active Provider Badge */}
+              <span
+                style={{
+                  fontSize: '.72rem',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  background:
+                    integratorConfig.provider === 'uyumsoft'
+                      ? 'rgba(59,130,246,0.25)'
+                      : integratorConfig.provider === 'edm'
+                      ? 'rgba(16,185,129,0.25)'
+                      : 'rgba(239,68,68,0.25)',
+                  color:
+                    integratorConfig.provider === 'uyumsoft'
+                      ? '#60a5fa'
+                      : integratorConfig.provider === 'edm'
+                      ? '#34d399'
+                      : '#f87171',
+                  border: '1px solid currentColor',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                }}
+              >
+                Sağlayıcı: {integratorConfig.provider}
               </span>
             </div>
             <div style={{ fontSize: '.82rem', color: '#8b949e', marginTop: 2 }}>
-              SuitableRMS Restoran Grubu UBL-TR 2.1 E-Dönüşüm, İrsaliye ve Tedarikçi Fatura Simülasyon Merkezi
+              UBL-TR 2.1 E-Dönüşüm Merkezi (Uyumsoft, EDM Bilişim & Sandbox Simülasyonu)
             </div>
           </div>
         </div>
 
-        {/* Quick Nav Button to SuitableRMS Invoices */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Header Right Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleSyncToRms}
+            disabled={syncingToRms}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '9px 16px',
+              borderRadius: 10,
+              background: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '.85rem',
+              cursor: syncingToRms ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 8px rgba(16,185,129,0.3)',
+            }}
+          >
+            <i className={`fa-solid ${syncingToRms ? 'fa-spinner fa-spin' : 'fa-arrows-rotate'}`} />
+            {syncingToRms ? 'RMS Senkronize Ediliyor...' : 'RMS ile Senkronize Et'}
+          </button>
+
           <Link
             to="/einvoice"
             style={{
@@ -755,354 +808,342 @@ export default function IntegratorStudio() {
               fontWeight: 800,
               fontSize: '.85rem',
               textDecoration: 'none',
-              transition: 'all .2s ease',
             }}
           >
             <i className="fa-solid fa-arrow-left" />
-            SuitableRMS E-Fatura Ekranına Dön
+            SuitableRMS E-Fatura Sayfasına Git
           </Link>
         </div>
       </div>
 
-      {/* Main Content Container */}
+      {/* Main Container */}
       <div style={{ maxWidth: 1440, margin: '0 auto', padding: '24px 24px 0' }}>
-        {/* Top Summary Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-          <div
-            style={{
-              background: 'var(--surface)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              border: '1px solid var(--border)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Açık Mal Kabul Sevkiyatları
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-strong)', marginTop: 4 }}>
-              {receipts.length}
-            </div>
-            <div style={{ fontSize: '.75rem', color: '#10b981', marginTop: 2 }}>
-              <i className="fa-solid fa-truck-ramp-box" style={{ marginRight: 4 }} />
-              Fatura üretimine hazır teslimat fişleri
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: 'var(--surface)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              border: '1px solid var(--border)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Giden RMS Belgeleri (GİB)
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#f5a623', marginTop: 4 }}>
-              {outboundInvoices.length}
-            </div>
-            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-              <i className="fa-solid fa-paper-plane" style={{ marginRight: 4 }} />
-              E-Fatura, Sevk İrsaliyesi ve İadeler
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: 'var(--surface)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              border: '1px solid var(--border)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Kayıtlı Tedarikçiler
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-strong)', marginTop: 4 }}>
-              {suppliers.length}
-            </div>
-            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-              <i className="fa-solid fa-users" style={{ marginRight: 4 }} />
-              Sözleşmeli & Cari Hesaplar
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: 'var(--surface)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              border: '1px solid var(--border)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Entegratör UBL Şeması
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#38bdf8', marginTop: 4 }}>
-              UBL-TR 2.1 Standardı
-            </div>
-            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-              <i className="fa-solid fa-shield-halved" style={{ marginRight: 4 }} />
-              GİB Schematron & XSLT Doğrulamalı
-            </div>
-          </div>
-        </div>
-
-        {/* Global Simülasyon Ayarları: İsim Yönünde Farklı / Hatalı İsimle Fatura Üretme Modu */}
+        {/* ============================================================= */}
+        {/* BÜYÜK 2-BÖLÜM GEÇİŞ BUTONLARI (SECTION SWITCHER) */}
+        {/* ============================================================= */}
         <div
           style={{
-            background: simulateDifferentNames
-              ? 'linear-gradient(135deg, rgba(147,51,234,0.14) 0%, rgba(245,158,11,0.09) 100%)'
-              : 'var(--surface)',
-            border: simulateDifferentNames ? '1.5px solid #9333ea' : '1px solid var(--border)',
-            borderRadius: 14,
-            padding: '14px 20px',
-            marginBottom: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
             gap: 16,
-            boxShadow: simulateDifferentNames ? '0 4px 20px rgba(147,51,234,0.15)' : '0 2px 6px rgba(0,0,0,0.02)',
-            transition: 'all .25s ease',
+            marginBottom: 24,
           }}
         >
-          <label style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', flex: 1, minWidth: 320 }}>
-            <input
-              type="checkbox"
-              checked={simulateDifferentNames}
-              onChange={(e) => setSimulateDifferentNames(e.target.checked)}
-              style={{
-                width: 22,
-                height: 22,
-                accentColor: '#9333ea',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '.92rem', color: simulateDifferentNames ? '#9333ea' : 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#9333ea' }} />
-                İsim Yönünde Farklı / Hatalı İsimle Fatura Üret (Tedarikçi Alias & Fonetisite Simülasyonu)
-                {simulateDifferentNames ? (
-                  <span
-                    style={{
-                      fontSize: '.68rem',
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      background: '#9333ea',
-                      color: '#ffffff',
-                      fontWeight: 900,
-                      letterSpacing: 0.5,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Aktif (Tüm Modellerle Birlikte Çalışır)
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: '.68rem',
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      background: 'var(--surface-2)',
-                      color: 'var(--text-muted)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    Pasif (Birebir Standart İsimler)
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
-                Bu kutu işaretlendiğinde, stüdyodaki <strong>tüm fatura üretme modellerinde</strong> (Birebir, Eksik Teslimat, Fazla Teslimat, Fiyat Artışı/Sözleşme İhlali, KDV Uyuşmazlığı ve Serbest Belge) ürün adları gerçek tedarikçi kısaltmalarına dönüştürülür (Örn: <em>"Cheddar Peyniri"</em> ➔ <strong style={{ color: '#9333ea' }}>"çedar peynr"</strong>, <em>"Hamburger Köftesi"</em> ➔ <strong style={{ color: '#9333ea' }}>"Hamb. Koftesi (120gr)"</strong>, <em>"Patates (dondurulmuş)"</em> ➔ <strong style={{ color: '#9333ea' }}>"Donuk Patats 9x9"</strong>). Böylece <strong>Miktar & Fiyat Tekilliği, Fonetik Analiz ve Tedarikçi Eşleme Hafızası</strong> uçtan uca test edilebilir.
-              </div>
-            </div>
-          </label>
-
-          {simulateDifferentNames && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
-              <span
+          {/* 1. BÖLÜM BUTONU: GERÇEK ENTEGRATÖR PORTALI */}
+          <button
+            type="button"
+            onClick={() => setMainSection('PORTAL')}
+            style={{
+              padding: '18px 22px',
+              borderRadius: 14,
+              border: mainSection === 'PORTAL' ? '2.5px solid #38bdf8' : '1px solid var(--border)',
+              background: mainSection === 'PORTAL' ? 'linear-gradient(135deg, rgba(56,189,248,0.12), rgba(59,130,246,0.06))' : 'var(--surface)',
+              color: 'var(--text-strong)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              textAlign: 'left',
+              boxShadow: mainSection === 'PORTAL' ? '0 8px 24px rgba(56,189,248,0.15)' : '0 2px 6px rgba(0,0,0,0.02)',
+              transition: 'all .2s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div
                 style={{
-                  fontSize: '.75rem',
-                  fontWeight: 700,
-                  color: '#9333ea',
-                  background: 'rgba(147,51,234,0.12)',
-                  border: '1px solid rgba(147,51,234,0.25)',
-                  padding: '6px 12px',
-                  borderRadius: 8,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: mainSection === 'PORTAL' ? '#38bdf8' : 'var(--surface-2)',
+                  color: mainSection === 'PORTAL' ? '#000' : 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  whiteSpace: 'nowrap',
+                  justifyContent: 'center',
+                  fontSize: '1.3rem',
+                  fontWeight: 900,
                 }}
               >
-                <i className="fa-solid fa-brain" />
-                Akıllı 3-Way Test Modu Devrede
-              </span>
+                <i className="fa-solid fa-globe" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: '1.05rem', color: mainSection === 'PORTAL' ? '#38bdf8' : 'var(--text-strong)' }}>
+                  1. GERÇEK ENTEGRATÖR PORTALI & BULUT KONSOLU
+                </div>
+                <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                  Entegratörün gelen/giden kutusu, GİB zarfları, 1200/1300 durumları & canlı ayarları
+                </div>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Tab Navigation Menu */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            borderBottom: '2px solid var(--border)',
-            marginBottom: 24,
-            overflowX: 'auto',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setActiveTab('shipment-generator')}
-            style={{
-              padding: '12px 20px',
-              border: 'none',
-              background: 'transparent',
-              borderBottom: activeTab === 'shipment-generator' ? '3px solid #f5a623' : '3px solid transparent',
-              color: activeTab === 'shipment-generator' ? '#f5a623' : 'var(--text-muted)',
-              fontWeight: 800,
-              fontSize: '.92rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: -2,
-            }}
-          >
-            <i className="fa-solid fa-truck-ramp-box" />
-            1. Mal Kabul Sevkiyatlarından Fatura Üretici
             <span
               style={{
-                fontSize: '.72rem',
-                padding: '2px 7px',
-                borderRadius: 10,
-                background: activeTab === 'shipment-generator' ? '#f5a623' : 'var(--surface-2)',
-                color: activeTab === 'shipment-generator' ? '#000' : 'var(--text-muted)',
+                fontSize: '.75rem',
                 fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: mainSection === 'PORTAL' ? '#38bdf8' : 'var(--surface-2)',
+                color: mainSection === 'PORTAL' ? '#000' : 'var(--text-muted)',
               }}
             >
-              {receipts.length}
+              {portalInvoices.length} Belge
             </span>
           </button>
 
+          {/* 2. BÖLÜM BUTONU: ENTEGRATÖR SİMÜLATÖRÜ (KIRMIZI KUTU) */}
           <button
             type="button"
-            onClick={() => setActiveTab('freeform-builder')}
+            onClick={() => setMainSection('SIMULATOR')}
             style={{
-              padding: '12px 20px',
-              border: 'none',
-              background: 'transparent',
-              borderBottom: activeTab === 'freeform-builder' ? '3px solid #f5a623' : '3px solid transparent',
-              color: activeTab === 'freeform-builder' ? '#f5a623' : 'var(--text-muted)',
-              fontWeight: 800,
-              fontSize: '.92rem',
+              padding: '18px 22px',
+              borderRadius: 14,
+              border: mainSection === 'SIMULATOR' ? '2.5px solid #ef4444' : '1px solid var(--border)',
+              background: mainSection === 'SIMULATOR' ? 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(220,38,38,0.06))' : 'var(--surface)',
+              color: 'var(--text-strong)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              marginBottom: -2,
+              justifyContent: 'space-between',
+              textAlign: 'left',
+              boxShadow: mainSection === 'SIMULATOR' ? '0 8px 24px rgba(239,68,68,0.15)' : '0 2px 6px rgba(0,0,0,0.02)',
+              transition: 'all .2s ease',
             }}
           >
-            <i className="fa-solid fa-pen-ruler" />
-            2. Serbest E-Fatura & E-İrsaliye Tasarımcısı
-          </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: mainSection === 'SIMULATOR' ? '#ef4444' : 'var(--surface-2)',
+                  color: mainSection === 'SIMULATOR' ? '#fff' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.3rem',
+                  fontWeight: 900,
+                }}
+              >
+                <i className="fa-solid fa-flask" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: '1.05rem', color: mainSection === 'SIMULATOR' ? '#ef4444' : 'var(--text-strong)' }}>
+                  2. ENTEGRATÖR SİMÜLATÖRÜ (Fatura Üretici)
+                </div>
+                <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                  Faturayı doğrudan RMS'e değil, Özel Entegratör Havuzuna üretir (Alias & İsim Bozma)
+                </div>
+              </div>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('rms-outbound')}
-            style={{
-              padding: '12px 20px',
-              border: 'none',
-              background: 'transparent',
-              borderBottom: activeTab === 'rms-outbound' ? '3px solid #f5a623' : '3px solid transparent',
-              color: activeTab === 'rms-outbound' ? '#f5a623' : 'var(--text-muted)',
-              fontWeight: 800,
-              fontSize: '.92rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: -2,
-            }}
-          >
-            <i className="fa-solid fa-tower-broadcast" />
-            3. RMS Giden İstekler & GİB Durum Yöneticisi
             <span
               style={{
-                fontSize: '.72rem',
-                padding: '2px 7px',
-                borderRadius: 10,
-                background: activeTab === 'rms-outbound' ? '#f5a623' : 'var(--surface-2)',
-                color: activeTab === 'rms-outbound' ? '#000' : 'var(--text-muted)',
+                fontSize: '.75rem',
                 fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: mainSection === 'SIMULATOR' ? '#ef4444' : 'var(--surface-2)',
+                color: mainSection === 'SIMULATOR' ? '#fff' : 'var(--text-muted)',
               }}
             >
-              {outboundInvoices.length}
+              Simülatör
             </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('transfer-hub')}
-            style={{
-              padding: '12px 20px',
-              border: 'none',
-              background: 'transparent',
-              borderBottom: activeTab === 'transfer-hub' ? '3px solid #f5a623' : '3px solid transparent',
-              color: activeTab === 'transfer-hub' ? '#f5a623' : 'var(--text-muted)',
-              fontWeight: 800,
-              fontSize: '.92rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: -2,
-            }}
-          >
-            <i className="fa-solid fa-arrow-right-arrow-left" />
-            4. Şirketler Arası & Dahili Transfer Hub
           </button>
         </div>
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 1: Mal Kabul Sevkiyatlarından Fatura Üretici */}
-        {/* ------------------------------------------------------------- */}
-        {activeTab === 'shipment-generator' && (
+        {/* ============================================================= */}
+        {/* BÖLÜM 1: GERÇEK ENTEGRATÖR PORTALI & BULUT KONSOLU */}
+        {/* ============================================================= */}
+        {mainSection === 'PORTAL' && (
           <div>
-            {/* Filter Bar */}
+            {/* Integrator Provider Selector Bar */}
             <div
               style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
-                padding: '14px 18px',
+                borderRadius: 14,
+                padding: '14px 20px',
                 border: '1px solid var(--border)',
                 marginBottom: 20,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: 14,
+                gap: 16,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 280 }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <i
-                    className="fa-solid fa-magnifying-glass"
-                    style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
-                  />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: '.82rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                  Aktif Entegratör Sağlayıcısı:
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { id: 'sandbox', label: 'Sandbox (Simülatör)', icon: 'fa-box', color: '#f5a623' },
+                    { id: 'uyumsoft', label: 'Uyumsoft E-Fatura', icon: 'fa-building', color: '#3b82f6' },
+                    { id: 'edm', label: 'EDM Bilişim', icon: 'fa-shield-halved', color: '#10b981' },
+                  ].map((p) => {
+                    const isSelected = (integratorConfig.provider || 'sandbox') === p.id
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleChangeProvider(p.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          border: isSelected ? `2px solid ${p.color}` : '1px solid var(--border)',
+                          background: isSelected ? `${p.color}22` : 'var(--surface-2)',
+                          color: isSelected ? p.color : 'var(--text-muted)',
+                          fontWeight: 800,
+                          fontSize: '.8rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <i className={`fa-solid ${p.icon}`} />
+                        {p.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-strong)',
+                    fontSize: '.8rem',
+                    fontWeight: 700,
+                    cursor: testingConnection ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <i className={`fa-solid ${testingConnection ? 'fa-spinner fa-spin' : 'fa-network-wired'}`} />
+                  {testingConnection ? 'Test Ediliyor...' : 'API Bağlantısını Sına'}
+                </button>
+              </div>
+            </div>
+
+            {/* Portal Sub-Tab Menu */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                borderBottom: '2px solid var(--border)',
+                marginBottom: 20,
+                overflowX: 'auto',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setPortalTab('portal-inbox')
+                  setPortalDirectionFilter('INBOUND')
+                }}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: portalTab === 'portal-inbox' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: portalTab === 'portal-inbox' ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-inbox" />
+                Entegratör Gelen Kutusu (Inbound)
+                <span style={{ fontSize: '.72rem', padding: '2px 6px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                  {portalInvoices.filter((i) => i.direction === 'INBOUND').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPortalTab('portal-outbox')
+                  setPortalDirectionFilter('OUTBOUND')
+                }}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: portalTab === 'portal-outbox' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: portalTab === 'portal-outbox' ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-paper-plane" />
+                Entegratör Giden Kutusu & GİB Kuyruğu (Outbound)
+                <span style={{ fontSize: '.72rem', padding: '2px 6px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                  {portalInvoices.filter((i) => i.direction === 'OUTBOUND').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPortalTab('portal-status-sim')}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: portalTab === 'portal-status-sim' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: portalTab === 'portal-status-sim' ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-code-compare" />
+                GİB Durum Kodu & Webhook Simülatörü
+              </button>
+            </div>
+
+            {/* Portal Table Search / Filter Bar */}
+            {(portalTab === 'portal-inbox' || portalTab === 'portal-outbox') && (
+              <div
+                style={{
+                  background: 'var(--surface)',
+                  borderRadius: 12,
+                  padding: '12px 16px',
+                  border: '1px solid var(--border)',
+                  marginBottom: 16,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+                  <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: 11, color: 'var(--text-muted)' }} />
                   <input
                     type="text"
-                    placeholder="Tedarikçi adı, irsaliye no veya şube ara..."
-                    value={receiptSearchQuery}
-                    onChange={(e) => setReceiptSearchQuery(e.target.value)}
+                    value={portalSearchQuery}
+                    onChange={(e) => setPortalSearchQuery(e.target.value)}
+                    placeholder="Belge no, ETTN veya VKN ile ara..."
                     style={{
                       width: '100%',
                       padding: '8px 12px 8px 36px',
@@ -1110,239 +1151,702 @@ export default function IntegratorStudio() {
                       border: '1px solid var(--border)',
                       background: 'var(--app-bg)',
                       color: 'var(--text-strong)',
-                      fontSize: '.85rem',
+                      fontSize: '.82rem',
                     }}
                   />
                 </div>
 
-                <select
-                  value={selectedBranchFilter}
-                  onChange={(e) => setSelectedBranchFilter(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    background: 'var(--app-bg)',
-                    color: 'var(--text-strong)',
-                    fontSize: '.85rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  <option value="ALL">Tüm Teslimat Şubeleri</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
+                  Toplam <strong>{filteredPortalInvoices.length}</strong> entegratör kaydı listeleniyor
+                </div>
               </div>
+            )}
 
-              <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
-                Toplam <strong>{filteredReceipts.length}</strong> teslimat irsaliyesi listeleniyor
-              </div>
-            </div>
-
-            {/* List of Receipts */}
-            {loading ? (
-              <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <i className="fa-solid fa-spinner fa-spin fa-2x" style={{ marginBottom: 12, color: '#f5a623' }} />
-                <div>Sevkiyat irsaliyeleri yükleniyor...</div>
-              </div>
-            ) : filteredReceipts.length === 0 ? (
+            {/* Portal Invoices Table */}
+            {(portalTab === 'portal-inbox' || portalTab === 'portal-outbox') && (
               <div
                 style={{
                   background: 'var(--surface)',
                   borderRadius: 12,
-                  padding: 40,
-                  textAlign: 'center',
                   border: '1px solid var(--border)',
-                  color: 'var(--text-muted)',
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                 }}
               >
-                <i className="fa-solid fa-box-open fa-2x" style={{ marginBottom: 12 }} />
-                <div style={{ fontWeight: 700, fontSize: '.95rem' }}>Eşleşen Mal Kabul İrsaliyesi Bulunamadı</div>
-                <div style={{ fontSize: '.8rem', marginTop: 4 }}>
-                  Filtreleri temizleyebilir veya Satınalma / Mal Kabul modülünden yeni teslimat fişi oluşturabilirsiniz.
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '10px 12px', textAlign: 'left' }}>Belge No & ETTN</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left' }}>Profil / Tür</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left' }}>
+                          {portalTab === 'portal-inbox' ? 'Gönderici Tedarikçi' : 'Alıcı Müşteri / Şube'}
+                        </th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left' }}>Tarih</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Ödenecek Tutar</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>GİB Durum Kodu</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>RMS Senkronizasyonu</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPortalInvoices.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                            Entegratör havuzunda kayıtlı belge bulunamadı. Simülatör sekmesinden yeni fatura üretebilirsiniz.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPortalInvoices.map((inv) => {
+                          const statusMeta = getStatusMeta(inv.status_code)
+                          const isSynced = inv.is_synced_to_rms !== false
+
+                          return (
+                            <tr key={inv.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td style={{ padding: '10px 12px' }}>
+                                <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'monospace' }}>
+                                  {inv.invoice_number}
+                                </div>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                  {inv.ettn?.slice(0, 18)}...
+                                </div>
+                              </td>
+
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontWeight: 700, color: 'var(--text-strong)' }}>{inv.profile_id}</span>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{inv.invoice_type}</div>
+                              </td>
+
+                              <td style={{ padding: '10px 12px' }}>
+                                <div style={{ fontWeight: 700, color: 'var(--text-strong)' }}>
+                                  {portalTab === 'portal-inbox' ? inv.sender_title : inv.receiver_title}
+                                </div>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>
+                                  VKN: {portalTab === 'portal-inbox' ? inv.sender_vkn_tckn : inv.receiver_vkn_tckn}
+                                </div>
+                              </td>
+
+                              <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: '.78rem' }}>
+                                {inv.issue_date}
+                              </td>
+
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: 'var(--text-strong)' }}>
+                                {Number(inv.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                              </td>
+
+                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                <span
+                                  style={{
+                                    padding: '3px 8px',
+                                    borderRadius: 6,
+                                    fontSize: '.72rem',
+                                    fontWeight: 700,
+                                    background: statusMeta.bg,
+                                    color: statusMeta.color,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                  }}
+                                >
+                                  <i className={`fa-solid ${statusMeta.icon}`} />
+                                  {inv.status_code} - {statusMeta.label}
+                                </span>
+                              </td>
+
+                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                {isSynced ? (
+                                  <span
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: 6,
+                                      background: 'rgba(16,185,129,0.12)',
+                                      color: '#10b981',
+                                      fontSize: '.7rem',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-check" style={{ marginRight: 4 }} />
+                                    RMS'e Aktarıldı
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: 6,
+                                      background: 'rgba(245,158,11,0.15)',
+                                      color: '#d97706',
+                                      fontSize: '.7rem',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-clock" style={{ marginRight: 4 }} />
+                                    Havuzda Bekliyor
+                                  </span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                                  <button
+                                    type="button"
+                                    title="GİB Formatında Görüntüle"
+                                    onClick={() => {
+                                      setPreviewDoc(inv)
+                                      setPreviewModalOpen(true)
+                                    }}
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: 6,
+                                      border: '1px solid var(--border)',
+                                      background: 'var(--surface-2)',
+                                      color: 'var(--text-strong)',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-eye" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    title="Durumunu Simüle Et"
+                                    onClick={() => {
+                                      setSelectedInvoiceForStatus(inv)
+                                      setTargetStatusCode(inv.status_code || 1200)
+                                      setPortalTab('portal-status-sim')
+                                    }}
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: 6,
+                                      border: '1px solid #38bdf8',
+                                      background: 'rgba(56,189,248,0.12)',
+                                      color: '#0284c7',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-sliders" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {filteredReceipts.map((receipt) => {
-                  const lines = receiptLinesMap[receipt.id] || []
-                  const activeContract = receiptContractsMap[receipt.supplier_id] || null
-                  const totalAmount = Number(receipt.total_amount_vat_inc || receipt.total_amount || 0)
+            )}
 
-                  return (
-                    <div
-                      key={receipt.id}
+            {/* Portal Tab 3: GİB Durum Simülatörü */}
+            {portalTab === 'portal-status-sim' && (
+              <div
+                style={{
+                  background: 'var(--surface)',
+                  borderRadius: 14,
+                  padding: 24,
+                  border: '1px solid var(--border)',
+                  maxWidth: 800,
+                }}
+              >
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-strong)', marginBottom: 8 }}>
+                  <i className="fa-solid fa-code-compare" style={{ color: '#38bdf8', marginRight: 8 }} />
+                  GİB Durum Kodu & Webhook Yanıt Simülatörü
+                </div>
+                <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+                  Entegratör havuzundaki bir belgenin GİB akış durumunu (1100 Gönderildi ➔ 1200 Alıcıya Ulaştı ➔ 1210 Kabul / 1220 Red / 1300 Başarılı) anında güncelleyebilirsiniz.
+                </div>
+
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6 }}>
+                      İşlem Yapılacak Belgeyi Seçin:
+                    </label>
+                    <select
+                      value={selectedInvoiceForStatus?.id || ''}
+                      onChange={(e) => {
+                        const found = portalInvoices.find((i) => i.id === e.target.value)
+                        setSelectedInvoiceForStatus(found || null)
+                      }}
                       style={{
-                        background: 'var(--surface)',
-                        borderRadius: 12,
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: 8,
                         border: '1px solid var(--border)',
-                        padding: 18,
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 14,
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                        fontWeight: 700,
                       }}
                     >
-                      {/* Top Header Row */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                              {receipt.supplier_name || 'Tedarikçi'}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: '.75rem',
-                                padding: '2px 8px',
-                                borderRadius: 6,
-                                background: 'rgba(56,189,248,0.12)',
-                                color: '#38bdf8',
-                                fontWeight: 700,
-                                fontFamily: 'monospace',
-                              }}
-                            >
-                              İrsaliye: {receipt.receipt_no || receipt.doc_no || 'No Yok'}
-                            </span>
+                      <option value="">-- Belge Seçin --</option>
+                      {portalInvoices.map((inv) => (
+                        <option key={inv.id} value={inv.id}>
+                          {inv.invoice_number} | {inv.sender_title} ({Number(inv.payable_amount).toFixed(2)} ₺) - Mevcut: {inv.status_code}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                            {activeContract ? (
-                              <span
-                                style={{
-                                  fontSize: '.72rem',
-                                  padding: '2px 8px',
-                                  borderRadius: 6,
-                                  background: 'rgba(16,185,129,0.12)',
-                                  color: '#10b981',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                <i className="fa-solid fa-file-contract" style={{ marginRight: 4 }} />
-                                Sözleşme: #{activeContract.contract_no}
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: '.72rem',
-                                  padding: '2px 8px',
-                                  borderRadius: 6,
-                                  background: 'rgba(239,68,68,0.08)',
-                                  color: '#ef4444',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Sözleşmesiz
-                              </span>
-                            )}
-                          </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6 }}>
+                      Yeni GİB Durum Kodu:
+                    </label>
+                    <select
+                      value={targetStatusCode}
+                      onChange={(e) => setTargetStatusCode(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <option value={1100}>1100 - GİB Kuyruğunda / Gönderiliyor (Outbound)</option>
+                      <option value={1200}>1200 - Alıcıya Başarıyla Ulaştı (Teslim Edildi)</option>
+                      <option value={1210}>1210 - Alıcı Faturayı KABUL Etti (Ticari Yanıt)</option>
+                      <option value={1220}>1220 - Alıcı Faturayı REDDETTİ (Ticari Yanıt)</option>
+                      <option value={1300}>1300 - Süreç Başarıyla Tamamlandı (Başarılı Sonuç)</option>
+                      <option value={1160}>1160 - GİB Schematron / İmza Hatası (Hata Aldı)</option>
+                    </select>
+                  </div>
 
-                          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 16 }}>
-                            <span>
-                              <i className="fa-solid fa-calendar-day" style={{ marginRight: 4 }} />
-                              Kabul Tarihi: <strong>{receipt.delivered_on || '-'}</strong>
-                            </span>
-                            <span>
-                              <i className="fa-solid fa-store" style={{ marginRight: 4 }} />
-                              Şube: <strong>{receipt.branch_name || 'Ana Depo'}</strong>
-                            </span>
-                            <span>
-                              <i className="fa-solid fa-boxes-stacked" style={{ marginRight: 4 }} />
-                              Kalem Sayısı: <strong>{lines.length}</strong>
-                            </span>
-                          </div>
-                        </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6 }}>
+                      Durum / Yanıt Açıklaması (Opsiyonel):
+                    </label>
+                    <input
+                      type="text"
+                      value={simReasonNote}
+                      onChange={(e) => setSimReasonNote(e.target.value)}
+                      placeholder="Örn: GİB BTRANS Onaylandı, Ticari Kabul Yanıtı Alındı"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                      }}
+                    />
+                  </div>
 
-                        {/* Total Amount Badge */}
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>İrsaliye Tutar Değeri</div>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#10b981' }}>
-                            {totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                          </div>
-                        </div>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={handleUpdateStatus}
+                    disabled={!selectedInvoiceForStatus || updatingStatus}
+                    style={{
+                      padding: '12px 20px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: selectedInvoiceForStatus ? 'linear-gradient(135deg, #38bdf8, #0284c7)' : 'var(--border)',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '.9rem',
+                      cursor: selectedInvoiceForStatus && !updatingStatus ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <i className={`fa-solid ${updatingStatus ? 'fa-spinner fa-spin' : 'fa-check'}`} />
+                    {updatingStatus ? 'Güncelleniyor...' : 'GİB Durumunu Güncelle & Simüle Et'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                      {/* Items Preview Chips */}
-                      {lines.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {lines.slice(0, 5).map((l, i) => (
-                            <span
-                              key={l.id || i}
-                              style={{
-                                fontSize: '.72rem',
-                                padding: '3px 8px',
-                                borderRadius: 6,
-                                background: 'var(--surface-2)',
-                                color: 'var(--text-strong)',
-                                border: '1px solid var(--border)',
-                              }}
-                            >
-                              {l.item_name} ({l.received_qty} {l.unit || 'Birim'})
-                            </span>
-                          ))}
-                          {lines.length > 5 && (
-                            <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
-                              +{lines.length - 5} diğer kalem
-                            </span>
-                          )}
-                        </div>
-                      )}
+        {/* ============================================================= */}
+        {/* BÖLÜM 2: ENTEGRATÖR SİMÜLATÖRÜ (KIRMIZI KUTU) */}
+        {/* ============================================================= */}
+        {mainSection === 'SIMULATOR' && (
+          <div>
+            {/* Simulator Red Header Banner */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(185,28,28,0.06) 100%)',
+                border: '1.5px solid rgba(239,68,68,0.4)',
+                borderRadius: 14,
+                padding: '16px 20px',
+                marginBottom: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: '#ef4444',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.2rem',
+                    fontWeight: 900,
+                  }}
+                >
+                  <i className="fa-solid fa-flask" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: '1rem', color: '#ef4444' }}>
+                    Entegratör Fatura & İrsaliye Simülatörü
+                  </div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    ⚠️ Simülatör faturayı doğrudan RMS'e yazmaz; <strong>Özel Entegratör Havuzuna</strong> üretir. RMS faturayı Entegratörden senkronize eder.
+                  </div>
+                </div>
+              </div>
 
-                      {/* Action Buttons Toolbar for 5 Test Scenarios */}
-                      <div
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '4px 10px', borderRadius: 8 }}>
+                  Hedef: {integratorConfig.provider.toUpperCase()} Entegratör Gelen Kutusu
+                </span>
+              </div>
+            </div>
+
+            {/* Global Simülasyon Ayarları: İsim Yönünde Farklı / Hatalı İsimle Fatura Üretme Modu */}
+            <div
+              style={{
+                background: simulateDifferentNames
+                  ? 'linear-gradient(135deg, rgba(147,51,234,0.14) 0%, rgba(245,158,11,0.09) 100%)'
+                  : 'var(--surface)',
+                border: simulateDifferentNames ? '1.5px solid #9333ea' : '1px solid var(--border)',
+                borderRadius: 14,
+                padding: '14px 20px',
+                marginBottom: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+                boxShadow: simulateDifferentNames ? '0 4px 20px rgba(147,51,234,0.15)' : '0 2px 6px rgba(0,0,0,0.02)',
+                transition: 'all .25s ease',
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', flex: 1, minWidth: 320 }}>
+                <input
+                  type="checkbox"
+                  checked={simulateDifferentNames}
+                  onChange={(e) => setSimulateDifferentNames(e.target.checked)}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    accentColor: '#9333ea',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '.92rem', color: simulateDifferentNames ? '#9333ea' : 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#9333ea' }} />
+                    İsim Yönünde Farklı / Hatalı İsimle Fatura Üret (Tedarikçi Alias & Fonetisite Simülasyonu)
+                    {simulateDifferentNames ? (
+                      <span
                         style={{
-                          borderTop: '1px solid var(--border)',
-                          paddingTop: 12,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flexWrap: 'wrap',
-                          gap: 10,
+                          fontSize: '.68rem',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          background: '#9333ea',
+                          color: '#ffffff',
+                          fontWeight: 900,
+                          letterSpacing: 0.5,
+                          textTransform: 'uppercase',
                         }}
                       >
-                        <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                          Entegratör Fatura Üretim Senaryoları:
+                        Aktif (Tüm Modellerle Birlikte Çalışır)
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '.68rem',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          background: 'var(--surface-2)',
+                          color: 'var(--text-muted)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        Pasif (Birebir Standart İsimler)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                    Bu kutu işaretlendiğinde, simülatördeki <strong>tüm fatura üretme modellerinde</strong> (Birebir, Eksik Teslimat, Fazla Teslimat, Fiyat Artışı/Sözleşme İhlali, KDV Uyuşmazlığı ve Serbest Belge) ürün adları gerçek tedarikçi kısaltmalarına dönüştürülür (Örn: <em>"Cheddar Peyniri"</em> ➔ <strong style={{ color: '#9333ea' }}>"çedar peynr"</strong>, <em>"Hamburger Köftesi"</em> ➔ <strong style={{ color: '#9333ea' }}>"Hamb. Koftesi (120gr)"</strong>, <em>"Patates (dondurulmuş)"</em> ➔ <strong style={{ color: '#9333ea' }}>"Donuk Patats 9x9"</strong>).
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {/* Simulator Sub-Tab Navigation */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                borderBottom: '2px solid var(--border)',
+                marginBottom: 20,
+                overflowX: 'auto',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSimTab('shipment-generator')}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: simTab === 'shipment-generator' ? '3px solid #ef4444' : '3px solid transparent',
+                  color: simTab === 'shipment-generator' ? '#ef4444' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-truck-ramp-box" />
+                1. Mal Kabul Sevkiyatından Fatura Üretici
+                <span style={{ fontSize: '.72rem', padding: '2px 6px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                  {receipts.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSimTab('freeform-builder')}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: simTab === 'freeform-builder' ? '3px solid #ef4444' : '3px solid transparent',
+                  color: simTab === 'freeform-builder' ? '#ef4444' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-pen-ruler" />
+                2. Serbest E-Fatura & E-İrsaliye Tasarımcısı
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSimTab('transfer-hub')}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: simTab === 'transfer-hub' ? '3px solid #ef4444' : '3px solid transparent',
+                  color: simTab === 'transfer-hub' ? '#ef4444' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-arrow-right-arrow-left" />
+                3. Şirketler Arası & Dahili Transfer Hub
+              </button>
+            </div>
+
+            {/* Sim Tab 1: Mal Kabul Sevkiyatından Fatura Üretici */}
+            {simTab === 'shipment-generator' && (
+              <div>
+                {/* Search Bar */}
+                <div
+                  style={{
+                    background: 'var(--surface)',
+                    borderRadius: 12,
+                    padding: '12px 16px',
+                    border: '1px solid var(--border)',
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 280 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: 11, color: 'var(--text-muted)' }} />
+                      <input
+                        type="text"
+                        placeholder="Tedarikçi adı veya irsaliye no ara..."
+                        value={receiptSearchQuery}
+                        onChange={(e) => setReceiptSearchQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px 8px 36px',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          background: 'var(--app-bg)',
+                          color: 'var(--text-strong)',
+                          fontSize: '.85rem',
+                        }}
+                      />
+                    </div>
+
+                    <select
+                      value={selectedBranchFilter}
+                      onChange={(e) => setSelectedBranchFilter(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <option value="ALL">Tüm Teslimat Şubeleri</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
+                    Toplam <strong>{filteredReceipts.length}</strong> teslimat irsaliyesi listeleniyor
+                  </div>
+                </div>
+
+                {/* List of Receipts for Generator */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {filteredReceipts.map((receipt) => {
+                    const lines = receiptLinesMap[receipt.id] || []
+                    const activeContract = receiptContractsMap[receipt.supplier_id] || null
+                    const totalAmount = Number(receipt.total_amount_vat_inc || receipt.total_amount || 0)
+
+                    return (
+                      <div
+                        key={receipt.id}
+                        style={{
+                          background: 'var(--surface)',
+                          borderRadius: 12,
+                          border: '1px solid var(--border)',
+                          padding: 16,
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        {/* Top Info Row */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                                {receipt.supplier_name || 'Tedarikçi'}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '.75rem',
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  background: 'rgba(56,189,248,0.12)',
+                                  color: '#38bdf8',
+                                  fontWeight: 700,
+                                  fontFamily: 'monospace',
+                                }}
+                              >
+                                İrsaliye: {receipt.receipt_no || receipt.doc_no || 'No Yok'}
+                              </span>
+
+                              {activeContract && (
+                                <span
+                                  style={{
+                                    fontSize: '.72rem',
+                                    padding: '2px 8px',
+                                    borderRadius: 6,
+                                    background: 'rgba(16,185,129,0.12)',
+                                    color: '#10b981',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <i className="fa-solid fa-file-contract" style={{ marginRight: 4 }} />
+                                  Sözleşme: #{activeContract.contract_no}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 3 }}>
+                              Teslimat: {receipt.delivered_on || 'Tarih Belirtilmemiş'} | Kalem Sayısı: <strong>{lines.length} Kalem</strong>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Mal Kabul Tutarı</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#10b981' }}>
+                              {totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </div>
+                          </div>
                         </div>
 
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                          {/* 1. Tam Uyumlu Fatura */}
+                        {/* Scenario Generation Buttons */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                            paddingTop: 10,
+                            borderTop: '1px solid var(--border)',
+                          }}
+                        >
                           <button
                             type="button"
-                            title="İrsaliye ve sözleşme ile birebir tam uyumlu fatura üretir (%100 3-Way Eşleşir)"
                             disabled={actionLoadingId === `${receipt.id}-EXACT`}
                             onClick={() => handleGenerateInvoiceFromReceipt(receipt, 'EXACT')}
                             style={{
-                              padding: '6px 12px',
+                              padding: '7px 12px',
                               borderRadius: 8,
-                              border: '1px solid #10b981',
                               background: 'rgba(16,185,129,0.12)',
+                              border: '1px solid #10b981',
                               color: '#10b981',
-                              fontWeight: 800,
-                              fontSize: '.75rem',
+                              fontWeight: 700,
+                              fontSize: '.76rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
                               gap: 6,
                             }}
                           >
-                            <i className="fa-solid fa-circle-check" />
-                            {actionLoadingId === `${receipt.id}-EXACT` ? 'Kesiliyor...' : '🟢 Tam Uyumlu Fatura Kes'}
+                            <i className="fa-solid fa-check" />
+                            🟢 Birebir Uyumlu Fatura Üret
                           </button>
 
-                          {/* 2. Eksik Miktar Faturası */}
                           <button
                             type="button"
-                            title="Faturada teslim alınandan %25 fazla miktar yazılır (Mal kabulde eksik teslimat tespit edilir)"
                             disabled={actionLoadingId === `${receipt.id}-SHORTAGE`}
                             onClick={() => handleGenerateInvoiceFromReceipt(receipt, 'SHORTAGE')}
                             style={{
-                              padding: '6px 12px',
+                              padding: '7px 12px',
                               borderRadius: 8,
-                              border: '1px solid #f59e0b',
-                              background: 'rgba(245,158,11,0.12)',
-                              color: '#f59e0b',
-                              fontWeight: 800,
-                              fontSize: '.75rem',
+                              background: 'rgba(239,68,68,0.1)',
+                              border: '1px solid #ef4444',
+                              color: '#ef4444',
+                              fontWeight: 700,
+                              fontSize: '.76rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1350,23 +1854,21 @@ export default function IntegratorStudio() {
                             }}
                           >
                             <i className="fa-solid fa-box-open" />
-                            {actionLoadingId === `${receipt.id}-SHORTAGE` ? 'Kesiliyor...' : '🟡 Eksik Miktar Faturası Kes'}
+                            🔴 Eksik Teslimat Faturası Üret
                           </button>
 
-                          {/* 3. Fazla Miktar Faturası */}
                           <button
                             type="button"
-                            title="Faturada teslim alınandan %30 daha az miktar yazılır (Fazla teslimat)"
                             disabled={actionLoadingId === `${receipt.id}-SURPLUS`}
                             onClick={() => handleGenerateInvoiceFromReceipt(receipt, 'SURPLUS')}
                             style={{
-                              padding: '6px 12px',
+                              padding: '7px 12px',
                               borderRadius: 8,
-                              border: '1px solid #38bdf8',
-                              background: 'rgba(56,189,248,0.12)',
-                              color: '#38bdf8',
-                              fontWeight: 800,
-                              fontSize: '.75rem',
+                              background: 'rgba(34,211,238,0.1)',
+                              border: '1px solid #22d3ee',
+                              color: '#0891b2',
+                              fontWeight: 700,
+                              fontSize: '.76rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1374,23 +1876,21 @@ export default function IntegratorStudio() {
                             }}
                           >
                             <i className="fa-solid fa-dolly" />
-                            {actionLoadingId === `${receipt.id}-SURPLUS` ? 'Kesiliyor...' : '🔵 Fazla Miktar Faturası Kes'}
+                            🔵 Fazla Teslimat Faturası Üret
                           </button>
 
-                          {/* 4. Fiyat Farklı / Zamlı Fatura Kes (Sözleşme İhlali) */}
                           <button
                             type="button"
-                            title="Sözleşme ve sipariş birim fiyatına +%25 zam ekler (Sözleşme fiyat ihlali tetikler ve onay kilitlenir)"
                             disabled={actionLoadingId === `${receipt.id}-PRICE_OVER`}
                             onClick={() => handleGenerateInvoiceFromReceipt(receipt, 'PRICE_OVER')}
                             style={{
-                              padding: '6px 12px',
+                              padding: '7px 12px',
                               borderRadius: 8,
-                              border: '1px solid #ef4444',
-                              background: 'rgba(239,68,68,0.12)',
-                              color: '#ef4444',
-                              fontWeight: 800,
-                              fontSize: '.75rem',
+                              background: 'rgba(245,158,11,0.1)',
+                              border: '1px solid #f59e0b',
+                              color: '#d97706',
+                              fontWeight: 700,
+                              fontSize: '.76rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1398,23 +1898,21 @@ export default function IntegratorStudio() {
                             }}
                           >
                             <i className="fa-solid fa-arrow-trend-up" />
-                            {actionLoadingId === `${receipt.id}-PRICE_OVER` ? 'Kesiliyor...' : '🔴 Fiyat Farklı / Zamlı Fatura Kes'}
+                            🟡 Fiyat Artışı / Sözleşme İhlali Üret
                           </button>
 
-                          {/* 5. KDV / Kalem Uyuşmazlığı */}
                           <button
                             type="button"
-                            title="KDV oranını değiştirir ve fazladan sahte kalem ekler"
                             disabled={actionLoadingId === `${receipt.id}-TAX_MISMATCH`}
                             onClick={() => handleGenerateInvoiceFromReceipt(receipt, 'TAX_MISMATCH')}
                             style={{
-                              padding: '6px 12px',
+                              padding: '7px 12px',
                               borderRadius: 8,
-                              border: '1px solid #a78bfa',
-                              background: 'rgba(167,139,250,0.12)',
-                              color: '#a78bfa',
-                              fontWeight: 800,
-                              fontSize: '.75rem',
+                              background: 'rgba(168,85,247,0.1)',
+                              border: '1px solid #a855f7',
+                              color: '#9333ea',
+                              fontWeight: 700,
+                              fontSize: '.76rem',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1422,181 +1920,37 @@ export default function IntegratorStudio() {
                             }}
                           >
                             <i className="fa-solid fa-percent" />
-                            {actionLoadingId === `${receipt.id}-TAX_MISMATCH` ? 'Kesiliyor...' : '🟣 KDV & Kalem Uyuşmazlığı Kes'}
+                            🟣 KDV & Ekstra Kalem Uyuşmazlığı Üret
                           </button>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 2: Serbest E-Fatura & E-İrsaliye Tasarımcısı */}
-        {/* ------------------------------------------------------------- */}
-        {activeTab === 'freeform-builder' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20 }}>
-            {/* Left Column: Form & Line Builder */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Document Header Settings Card */}
+            {/* Sim Tab 2: Serbest Fatura Tasarımcısı */}
+            {simTab === 'freeform-builder' && (
               <div
                 style={{
                   background: 'var(--surface)',
-                  borderRadius: 12,
-                  padding: 20,
+                  borderRadius: 14,
+                  padding: 24,
                   border: '1px solid var(--border)',
                 }}
               >
-                <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 14 }}>
-                  <i className="fa-solid fa-sliders" style={{ color: '#f5a623', marginRight: 8 }} />
-                  Belge Türü ve İletim Yönü
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Belge Tipi
-                    </label>
-                    <select
-                      value={builderDocType}
-                      onChange={(e) => setBuilderDocType(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--app-bg)',
-                        color: 'var(--text-strong)',
-                        fontSize: '.85rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      <option value="INVOICE">e-Fatura (Satış / İade)</option>
-                      <option value="DESPATCH">e-İrsaliye (Sevk İrsaliyesi)</option>
-                    </select>
+                    <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-strong)' }}>
+                      Serbest E-Fatura & E-İrsaliye Tasarımcısı
+                    </div>
+                    <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>
+                      İstediğiniz tedarikçi ve kalem bilgilerini girerek Özel Entegratör Havuzuna serbest UBL belgesi oluşturun.
+                    </div>
                   </div>
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Senaryo / Profil
-                    </label>
-                    <select
-                      value={builderProfileId}
-                      onChange={(e) => setBuilderProfileId(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--app-bg)',
-                        color: 'var(--text-strong)',
-                        fontSize: '.85rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      <option value="TICARIFATURA">TICARIFATURA (Kabul/Red)</option>
-                      <option value="TEMELFATURA">TEMELFATURA</option>
-                      <option value="EARSIVFATURA">EARSIVFATURA (B2C)</option>
-                      <option value="TEMELIRSALIYE">TEMELIRSALIYE</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Fatura Türü
-                    </label>
-                    <select
-                      value={builderInvoiceType}
-                      onChange={(e) => setBuilderInvoiceType(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--app-bg)',
-                        color: 'var(--text-strong)',
-                        fontSize: '.85rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      <option value="SATIS">SATIS (Satış)</option>
-                      <option value="IADE">IADE (İade)</option>
-                      <option value="TEVKIFAT">TEVKIFAT</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Hedef Yön
-                    </label>
-                    <select
-                      value={builderDirection}
-                      onChange={(e) => setBuilderDirection(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--app-bg)',
-                        color: 'var(--text-strong)',
-                        fontSize: '.85rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      <option value="INBOUND">GELEN KUTUSU (INBOUND)</option>
-                      <option value="OUTBOUND">GİDEN KUTUSU (OUTBOUND)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Sender Supplier Selector */}
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                    Kayıtlı Tedarikçiden Bilgileri Doldur:
-                  </label>
-                  <select
-                    value={selectedSupplierId}
-                    onChange={(e) => handleSelectSupplierForBuilder(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--app-bg)',
-                      color: 'var(--text-strong)',
-                      fontSize: '.85rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="">-- Özel Tedarikçi Bilgisi Gir --</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} (VKN: {s.vergi_no || s.tc_no || '-'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Line Items Table Builder */}
-              <div
-                style={{
-                  background: 'var(--surface)',
-                  borderRadius: 12,
-                  padding: 20,
-                  border: '1px solid var(--border)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                    <i className="fa-solid fa-list-check" style={{ color: '#f5a623', marginRight: 8 }} />
-                    Fatura & İrsaliye Kalemleri ({builderLines.length})
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1609,7 +1963,7 @@ export default function IntegratorStudio() {
                         toast('✨ Kalem isimleri tedarikçi formatına dönüştürüldü!', 'info')
                       }}
                       style={{
-                        padding: '6px 12px',
+                        padding: '7px 12px',
                         borderRadius: 8,
                         border: '1px solid #9333ea',
                         background: 'rgba(147,51,234,0.12)',
@@ -1620,7 +1974,6 @@ export default function IntegratorStudio() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        marginRight: 6,
                       }}
                     >
                       <i className="fa-solid fa-wand-magic-sparkles" />
@@ -1634,9 +1987,9 @@ export default function IntegratorStudio() {
                           ...prev,
                           {
                             id: `line-${Date.now()}`,
-                            item_name: 'Yeni Kalem / Hizmet',
-                            item_code: '',
-                            invoiced_quantity: 1,
+                            item_name: 'Yeni Kalem / Malzeme',
+                            item_code: 'KOD-001',
+                            invoiced_quantity: 10,
                             unit_code: 'C62',
                             unit_price: 100.0,
                             tax_rate: 20,
@@ -1644,7 +1997,7 @@ export default function IntegratorStudio() {
                         ])
                       }}
                       style={{
-                        padding: '6px 14px',
+                        padding: '7px 14px',
                         borderRadius: 8,
                         border: 'none',
                         background: '#f5a623',
@@ -1652,8 +2005,6 @@ export default function IntegratorStudio() {
                         fontWeight: 800,
                         fontSize: '.78rem',
                         cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
                       }}
                     >
                       <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
@@ -1662,17 +2013,18 @@ export default function IntegratorStudio() {
                   </div>
                 </div>
 
-                <div style={{ overflowX: 'auto' }}>
+                {/* Freeform Lines Table */}
+                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                         <th style={{ padding: '8px 10px', textAlign: 'left' }}>Ürün / Kalem Adı</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'left', width: 90 }}>SKU</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 80 }}>Miktar</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'center', width: 80 }}>Birim</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 100 }}>Birim Fiyat</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', width: 120 }}>SKU</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Miktar</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', width: 90 }}>Birim</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>Birim Fiyat</th>
                         <th style={{ padding: '8px 10px', textAlign: 'center', width: 80 }}>KDV %</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Toplam</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>Toplam</th>
                         <th style={{ padding: '8px 6px', textAlign: 'center', width: 40 }}></th>
                       </tr>
                     </thead>
@@ -1689,15 +2041,7 @@ export default function IntegratorStudio() {
                                   const val = e.target.value
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, item_name: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 8px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                }}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
                               />
                             </td>
                             <td style={{ padding: 6 }}>
@@ -1708,15 +2052,7 @@ export default function IntegratorStudio() {
                                   const val = e.target.value
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, item_code: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 8px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                }}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
                               />
                             </td>
                             <td style={{ padding: 6 }}>
@@ -1729,16 +2065,7 @@ export default function IntegratorStudio() {
                                   const val = parseFloat(e.target.value) || 0
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, invoiced_quantity: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 8px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                  textAlign: 'right',
-                                }}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem', textAlign: 'right' }}
                               />
                             </td>
                             <td style={{ padding: 6 }}>
@@ -1748,19 +2075,11 @@ export default function IntegratorStudio() {
                                   const val = e.target.value
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, unit_code: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 4px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                }}
+                                style={{ width: '100%', padding: '6px 4px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
                               >
                                 {UNIT_CODES.map((u) => (
                                   <option key={u.code} value={u.code}>
-                                    {u.label}
+                                    {u.name}
                                   </option>
                                 ))}
                               </select>
@@ -1775,34 +2094,17 @@ export default function IntegratorStudio() {
                                   const val = parseFloat(e.target.value) || 0
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, unit_price: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 8px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                  textAlign: 'right',
-                                }}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem', textAlign: 'right' }}
                               />
                             </td>
                             <td style={{ padding: 6 }}>
                               <select
                                 value={line.tax_rate}
                                 onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0
+                                  const val = parseInt(e.target.value) || 0
                                   setBuilderLines((prev) => prev.map((l, i) => (i === idx ? { ...l, tax_rate: val } : l)))
                                 }}
-                                style={{
-                                  width: '100%',
-                                  padding: '5px 4px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--app-bg)',
-                                  color: 'var(--text-strong)',
-                                  fontSize: '.82rem',
-                                }}
+                                style={{ width: '100%', padding: '6px 4px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
                               >
                                 {TAX_RATES.map((t) => (
                                   <option key={t.rate} value={t.rate}>
@@ -1814,19 +2116,13 @@ export default function IntegratorStudio() {
                             <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>
                               {sub.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
                             </td>
-                            <td style={{ padding: 6, textAlign: 'center' }}>
+                            <td style={{ padding: '6px 4px', textAlign: 'center' }}>
                               <button
                                 type="button"
                                 onClick={() => setBuilderLines((prev) => prev.filter((_, i) => i !== idx))}
-                                style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  color: '#ef4444',
-                                  cursor: 'pointer',
-                                  padding: 4,
-                                }}
+                                style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer' }}
                               >
-                                <i className="fa-solid fa-trash-can" />
+                                <i className="fa-solid fa-trash" />
                               </button>
                             </td>
                           </tr>
@@ -1835,586 +2131,134 @@ export default function IntegratorStudio() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
 
-            {/* Right Column: Live Calculations & Send Card */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleGenerateFreeform}
+                    disabled={loading}
+                    style={{
+                      padding: '10px 24px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
+                    }}
+                  >
+                    <i className="fa-solid fa-cloud-arrow-up" />
+                    Entegratör Gelen Kutusuna Üret & Gönder
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Sim Tab 3: Transfer Hub */}
+            {simTab === 'transfer-hub' && (
               <div
                 style={{
                   background: 'var(--surface)',
-                  borderRadius: 12,
-                  padding: 20,
+                  borderRadius: 14,
+                  padding: 24,
                   border: '1px solid var(--border)',
                 }}
               >
-                <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 14 }}>
-                  <i className="fa-solid fa-receipt" style={{ color: '#10b981', marginRight: 8 }} />
-                  Belge Toplam Özeti
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-strong)', marginBottom: 8 }}>
+                  Şirketler Arası & Dahili Transfer Faturalaşması (Inter-Company Hub)
                 </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Mal / Hizmet Toplamı:</span>
-                    <strong style={{ color: 'var(--text-strong)' }}>
-                      {builderCalculatedTotals.lineExtensionAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                    </strong>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Hesaplanan KDV Toplamı:</span>
-                    <strong style={{ color: '#f5a623' }}>
-                      {builderCalculatedTotals.taxTotalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                    </strong>
-                  </div>
-
-                  {builderCalculatedTotals.taxSubtotals.map((ts) => (
-                    <div
-                      key={ts.rate}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontSize: '.75rem',
-                        color: 'var(--text-muted)',
-                        paddingLeft: 12,
-                      }}
-                    >
-                      <span>Matrah (%{ts.rate}): {ts.taxableAmount.toLocaleString('tr-TR')} ₺</span>
-                      <span>KDV: {ts.taxAmount.toLocaleString('tr-TR')} ₺</span>
-                    </div>
-                  ))}
-
-                  <div
-                    style={{
-                      borderTop: '1.5px dashed var(--border)',
-                      paddingTop: 10,
-                      marginTop: 4,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                      Ödenecek Toplam:
-                    </span>
-                    <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10b981' }}>
-                      {builderCalculatedTotals.payableAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                    </span>
+                <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+                  Farklı tüzel kişiliklere sahip şubeler arasındaki dahili transferlerin otomatik e-irsaliye ve e-fatura akışlarını yönetin.
+                </div>
+                <div style={{ background: 'var(--app-bg)', padding: 18, borderRadius: 10, border: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <i className="fa-solid fa-network-wired fa-2x" style={{ color: '#ef4444', marginBottom: 10 }} />
+                  <div style={{ fontWeight: 700 }}>Şirketler Arası Transfer Otomasyonu Devrede</div>
+                  <div style={{ fontSize: '.78rem', marginTop: 4 }}>
+                    Stok Transferi ekranından yapılan tüzel kişilikler arası transferler otomatik olarak buradaki Entegratör Giden Kutusuna aktarılır.
                   </div>
                 </div>
-
-                {/* Notes Input */}
-                <div style={{ marginTop: 16 }}>
-                  <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                    Belge Notu / GİB Açıklaması:
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={builderNotes}
-                    onChange={(e) => setBuilderNotes(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--app-bg)',
-                      color: 'var(--text-strong)',
-                      fontSize: '.82rem',
-                    }}
-                  />
-                </div>
-
-                {/* Send Button */}
-                <button
-                  type="button"
-                  disabled={loading || builderLines.length === 0}
-                  onClick={handleSendFreeformDocument}
-                  style={{
-                    width: '100%',
-                    marginTop: 18,
-                    padding: '12px 20px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #f5a623 0%, #d97706 100%)',
-                    color: '#000000',
-                    fontWeight: 900,
-                    fontSize: '.95rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    boxShadow: '0 4px 14px rgba(245,166,35,0.3)',
-                  }}
-                >
-                  <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} />
-                  {loading ? 'Belge İletiliyor...' : 'Entegratörden Üret & Havuza Yaz'}
-                </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 3: RMS Giden İstekler & GİB Durum Yöneticisi */}
-        {/* ------------------------------------------------------------- */}
-        {activeTab === 'rms-outbound' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {/* Left: Outbound Invoices List */}
-            <div
-              style={{
-                background: 'var(--surface)',
-                borderRadius: 12,
-                padding: 20,
-                border: '1px solid var(--border)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                  <i className="fa-solid fa-arrow-up-right-from-square" style={{ color: '#f5a623', marginRight: 8 }} />
-                  SuitableRMS Tarafından Kesilen Giden Faturalar
-                </div>
-                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
-                  {outboundInvoices.length} Belge
-                </span>
-              </div>
-
-              {outboundInvoices.length === 0 ? (
-                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  Henüz giden fatura veya transfer faturası bulunmuyor.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 600, overflowY: 'auto' }}>
-                  {outboundInvoices.map((inv) => {
-                    const isSelected = inv.id === selectedOutboundId
-                    const meta = getStatusMeta(inv.status_code)
-
-                    return (
-                      <div
-                        key={inv.id}
-                        onClick={() => setSelectedOutboundId(inv.id)}
-                        style={{
-                          padding: '12px 14px',
-                          borderRadius: 10,
-                          border: `1.5px solid ${isSelected ? '#f5a623' : 'var(--border)'}`,
-                          background: isSelected ? 'rgba(245,166,35,0.06)' : 'var(--app-bg)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          transition: 'all .15s ease',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '.88rem' }}>
-                              {inv.invoice_number}
-                            </span>
-                            <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>
-                              {inv.issue_date}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                            Alıcı: <strong>{inv.receiver_title}</strong> (VKN: {inv.receiver_vkn_tckn})
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: 'right' }}>
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: '.72rem',
-                              padding: '3px 8px',
-                              borderRadius: 12,
-                              background: meta.bg,
-                              color: meta.color,
-                              border: `1px solid ${meta.border || meta.color}`,
-                              fontWeight: 700,
-                            }}
-                          >
-                            <i className={`fa-solid ${meta.icon}`} />
-                            {meta.label}
-                          </span>
-                          <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)', marginTop: 4 }}>
-                            {Number(inv.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Right: GİB & Entegratör Status State Simulator */}
-            <div
-              style={{
-                background: 'var(--surface)',
-                borderRadius: 12,
-                padding: 20,
-                border: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 16,
-              }}
-            >
-              <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                <i className="fa-solid fa-gamepad" style={{ color: '#38bdf8', marginRight: 8 }} />
-                GİB Zarf & Uygulama Yanıtı Simülatörü
-              </div>
-
-              {activeOutboundInvoice ? (
-                <>
-                  <div
-                    style={{
-                      background: 'var(--app-bg)',
-                      borderRadius: 10,
-                      padding: 14,
-                      border: '1px solid var(--border)',
-                    }}
-                  >
-                    <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Seçili Belge:</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-strong)', marginTop: 2 }}>
-                      {activeOutboundInvoice.invoice_number} ({activeOutboundInvoice.profile_id})
-                    </div>
-                    <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      Mevcut Durum: <strong>{activeOutboundInvoice.status_description}</strong> ({activeOutboundInvoice.status_code})
-                    </div>
-                  </div>
-
-                  {/* Quick GİB Status Buttons */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>
-                      GİB Durum Kodunu Simüle Et:
-                    </label>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1100)}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #38bdf8',
-                          background: 'rgba(56,189,248,0.12)',
-                          color: '#38bdf8',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />
-                        1100: Entegratöre Gönderildi
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1120)}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #fb923c',
-                          background: 'rgba(251,146,60,0.12)',
-                          color: '#fb923c',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-building-columns" style={{ marginRight: 6 }} />
-                        1120: GİB'e İletildi
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1163)}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #a78bfa',
-                          background: 'rgba(167,139,250,0.12)',
-                          color: '#a78bfa',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-check-double" style={{ marginRight: 6 }} />
-                        1163: GİB'de İşlendi (Zarf Başarılı)
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1200)}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #22d3ee',
-                          background: 'rgba(34,211,238,0.12)',
-                          color: '#22d3ee',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-inbox" style={{ marginRight: 6 }} />
-                        1200: Alıcıya Ulaştı
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1300, 'KABUL')}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #10b981',
-                          background: 'rgba(16,185,129,0.12)',
-                          color: '#10b981',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }} />
-                        1300: Alıcı KABUL Yanıtı Verdi
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={updatingStatus}
-                        onClick={() => handleUpdateOutboundStatus(1301, 'RED')}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #ef4444',
-                          background: 'rgba(239,68,68,0.12)',
-                          color: '#ef4444',
-                          fontWeight: 700,
-                          fontSize: '.78rem',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <i className="fa-solid fa-circle-xmark" style={{ marginRight: 6 }} />
-                        1301: Alıcı RED Yanıtı Verdi
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Custom Response Note */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Ticari Uygulama Yanıtı Açıklaması / Red Gerekçesi (İsteğe Bağlı):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Mal kabulde tespit edilen eksik teslimat nedeniyle reddedilmiştir..."
-                      value={simReasonNote}
-                      onChange={(e) => setSimReasonNote(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--app-bg)',
-                        color: 'var(--text-strong)',
-                        fontSize: '.82rem',
-                      }}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  Lütfen sol listeden durumunu değiştirmek istediğiniz giden faturayı seçin.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ------------------------------------------------------------- */}
-        {/* TAB 4: Şirketler Arası & Dahili Transfer Hub */}
-        {/* ------------------------------------------------------------- */}
-        {activeTab === 'transfer-hub' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {/* Card 1: Intra-Company (Same VKN) -> e-Despatch Only */}
-            <div
-              style={{
-                background: 'var(--surface)',
-                borderRadius: 12,
-                padding: 24,
-                border: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: 16,
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 8,
-                      background: 'rgba(56,189,248,0.15)',
-                      color: '#38bdf8',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.1rem',
-                    }}
-                  >
-                    <i className="fa-solid fa-truck" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                      Aynı Şirket İçi Transfer (Aynı VKN)
-                    </div>
-                    <div style={{ fontSize: '.78rem', color: '#38bdf8', fontWeight: 700 }}>
-                      Yalnızca e-İrsaliye (Sevk İrsaliyesi) Üretilir
-                    </div>
-                  </div>
-                </div>
-
-                <p style={{ fontSize: '.83rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Merkez Ana Depo ile Beşiktaş Şubesi gibi aynı Vergi Kimlik Numarasına (VKN) sahip düğümler arası transferlerde vergi mevzuatı gereği fatura kesilmez. Yalnızca UBL-TR 2.1 standardında <strong>e-İrsaliye (Sevk İrsaliyesi)</strong> oluşturulur.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={async () => {
-                  setLoading(true)
-                  try {
-                    const res = await interCompanyTransferService.simulateIntraCompanyTransferDespatch()
-                    if (res.success) {
-                      toast(`✅ ${res.message}`, 'success')
-                      loadInitialData()
-                    } else {
-                      toast(`Hata: ${res.error}`, 'error')
-                    }
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                style={{
-                  padding: '12px 18px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: '#38bdf8',
-                  color: '#000000',
-                  fontWeight: 900,
-                  fontSize: '.88rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                <i className="fa-solid fa-play" />
-                Dahili Transfer e-İrsaliyesi Simüle Et (Aynı VKN)
-              </button>
-            </div>
-
-            {/* Card 2: Inter-Company (Different VKN) -> e-Invoice + e-Despatch */}
-            <div
-              style={{
-                background: 'var(--surface)',
-                borderRadius: 12,
-                padding: 24,
-                border: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: 16,
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 8,
-                      background: 'rgba(245,166,35,0.15)',
-                      color: '#f5a623',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.1rem',
-                    }}
-                  >
-                    <i className="fa-solid fa-file-invoice-dollar" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)' }}>
-                      Şirketler Arası Transfer (Farklı VKN)
-                    </div>
-                    <div style={{ fontSize: '.78rem', color: '#f5a623', fontWeight: 700 }}>
-                      Hem e-Fatura Hem e-İrsaliye Otomatik Üretilir
-                    </div>
-                  </div>
-                </div>
-
-                <p style={{ fontSize: '.83rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Lojistik A.Ş. (VKN: 1234567890) ile Kadıköy Restorancılık Ltd. (VKN: 9876543210) gibi farklı tüzel kişilikler arasındaki transferlerde maliyet bedeli üzerinden hem <strong>e-Fatura</strong> hem de <strong>e-İrsaliye</strong> üretilerek alıcı tüzel kişiliğin gelen kutusuna ayna fatura olarak işlenir.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={async () => {
-                  setLoading(true)
-                  try {
-                    const res = await interCompanyTransferService.simulateInterCompanyTransferInvoice()
-                    if (res.success) {
-                      toast(`✅ ${res.message}`, 'success')
-                      loadInitialData()
-                    } else {
-                      toast(`Hata: ${res.error}`, 'error')
-                    }
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                style={{
-                  padding: '12px 18px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #f5a623 0%, #d97706 100%)',
-                  color: '#000000',
-                  fontWeight: 900,
-                  fontSize: '.88rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                <i className="fa-solid fa-wand-magic-sparkles" />
-                Şirketler Arası e-Fatura & İrsaliye Simüle Et (Farklı VKN)
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Document HTML / XML Preview Modal */}
+      {previewModalOpen && previewDoc && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 820,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ fontWeight: 800, color: 'var(--text-strong)' }}>
+                Belge Detayı & GİB Formatı: {previewDoc.invoice_number}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewModalOpen(false)}
+                style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: eInvoiceService.generateGibHtmlPreview(previewDoc),
+                }}
+              />
+            </div>
+
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setPreviewModalOpen(false)}
+                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
