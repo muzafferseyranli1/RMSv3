@@ -997,9 +997,16 @@ export class MatchingEngine {
 
         inv.lines = invLines || []
 
+        // Karşılaştırma Analizi Yap (3-Way Line Matching Engine)
+        const comparison = this.compareInvoiceWithReceipt(inv, receipt, { supplierMappings })
+
         // Puanlama hesapla
-        let score = 0
+        let score = comparison.matchScore || 0
         const reasons = []
+
+        if (comparison.matchedLinesCount > 0) {
+          reasons.push(`${comparison.matchedLinesCount} Kalem Birebir Eşleşti`)
+        }
 
         // 1. İrsaliye Referans No Birebir Tutuyor mu?
         const docRef = receipt.receipt_no || receipt.doc_no
@@ -1013,34 +1020,42 @@ export class MatchingEngine {
         }
 
         // 2. Tedarikçi VKN veya İsim Uyumu
-        if (supplier) {
-          const cleanVkn = supplier.vergi_no ? String(supplier.vergi_no).trim() : ''
-          const invVkn = inv.sender_vkn_tckn ? String(inv.sender_vkn_tckn).trim() : ''
-          if (cleanVkn && invVkn && cleanVkn === invVkn) {
-            score += 35
-            reasons.push('Tedarikçi VKN Tam Uyumlu')
-          } else if (
-            supplier.name &&
-            inv.sender_title &&
-            calculateTextSimilarity(supplier.name, inv.sender_title) >= 0.5
-          ) {
-            score += 25
-            reasons.push('Tedarikçi Ünvan Benzerliği')
-          }
+        const cleanRcptVkn = supplier?.vergi_no ? String(supplier.vergi_no).trim() : ''
+        const invVkn = inv.sender_vkn_tckn ? String(inv.sender_vkn_tckn).trim() : ''
+        const suppName = supplier?.name || receipt.supplier_name
+        if (cleanRcptVkn && invVkn && cleanRcptVkn === invVkn) {
+          score += 35
+          reasons.push('Tedarikçi VKN Tam Uyumlu')
+        } else if (
+          suppName &&
+          inv.sender_title &&
+          (normalizeString(suppName) === normalizeString(inv.sender_title) ||
+           calculateTextSimilarity(suppName, inv.sender_title) >= 0.4)
+        ) {
+          score += 25
+          reasons.push('Tedarikçi Ünvan Uyumu')
         }
 
-        // 3. Tutar Uyumu
+        // 3. Tutar Uyumu (KDV Dahil & KDV Hariç Toleransı)
         const rcptTotal = Number(receipt.total_amount || 0)
-        const invTotal = Number(inv.payable_amount || 0)
-        if (rcptTotal > 0 && invTotal > 0) {
-          const diff = Math.abs(rcptTotal - invTotal)
-          const diffRatio = diff / Math.max(rcptTotal, invTotal)
-          if (diffRatio < 0.01) {
-            score += 25
-            reasons.push('Fatura Tutarı İrsaliye ile Birebir Eşit')
-          } else if (diffRatio < 0.05) {
+        const rcptSubtotal = Number(receipt.subtotal || 0)
+        const invTotal = Number(inv.payable_amount || inv.tax_inclusive_amount || 0)
+        const invSubtotal = Number(inv.line_extension_amount || 0)
+
+        const diffTotal = Math.abs(rcptTotal - invTotal)
+        const diffSubtotal = Math.abs(rcptSubtotal - invSubtotal)
+        const diffCross = Math.abs(rcptSubtotal - invTotal)
+
+        if (diffTotal < 1.0 || diffSubtotal < 1.0 || diffCross < 1.0) {
+          score += 25
+          reasons.push('Fatura Tutarı İrsaliye ile Birebir Eşit')
+        } else {
+          const minDiff = Math.min(diffTotal, diffSubtotal, diffCross)
+          const maxVal = Math.max(rcptTotal, invTotal)
+          const ratio = maxVal > 0 ? minDiff / maxVal : 1
+          if (ratio < 0.15) {
             score += 15
-            reasons.push(`Tutar Farkı %${(diffRatio * 100).toFixed(1)}`)
+            reasons.push(`Tutar Farkı %${(ratio * 100).toFixed(1)}`)
           }
         }
 
@@ -1058,15 +1073,15 @@ export class MatchingEngine {
           }
         }
 
-        // Karşılaştırma Analizi Yap
-        const comparison = this.compareLines(inv.lines, receipt.lines, supplierMappings)
+        const finalScore = Math.min(100, Math.max(score, comparison.matchScore || 0))
 
         candidates.push({
           invoice: inv,
-          matchScore: Math.min(100, score),
+          matchScore: finalScore,
           reasons,
           comparison,
-          isExactAmount: Math.abs(rcptTotal - invTotal) < 0.05,
+          lineComparisons: comparison.lineComparisons,
+          isExactAmount: diffTotal < 0.5 || diffSubtotal < 0.5 || diffCross < 0.5,
           totalDiff: invTotal - rcptTotal,
         })
       }
