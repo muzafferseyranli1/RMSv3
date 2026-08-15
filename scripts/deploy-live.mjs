@@ -103,7 +103,7 @@ async function verifyAndMigrateDb() {
 async function triggerCoolifyDeploy() {
   console.log(`Coolify API üzerinden deploy tetikleniyor (${COOLIFY_HOST})...`);
   
-  const deployUrl = `${COOLIFY_HOST}/api/v1/deploy?uuid=${COOLIFY_APP_UUID}`;
+  const deployUrl = `${COOLIFY_HOST}/api/v1/deploy?uuid=${COOLIFY_APP_UUID}&force=true`;
   const res = await fetch(deployUrl, {
     method: 'POST',
     headers: {
