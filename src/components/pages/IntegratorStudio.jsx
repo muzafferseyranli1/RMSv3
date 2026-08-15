@@ -125,11 +125,21 @@ export default function IntegratorStudio() {
     provider: 'sandbox',
     sender_vkn_tckn: '1234567890',
     sender_title: 'SuitableRMS Restoran Grubu A.Ş.',
+    sender_tax_office: 'Beşiktaş',
+    sender_address: 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
+    alias_pk: 'urn:mail:defaultpk@gib.gov.tr',
+    alias_gb: 'urn:mail:defaultgb@gib.gov.tr',
     username: '',
     password: '',
     api_key: '',
+    api_secret: '',
     is_test_mode: true,
+    is_active: true,
   })
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [taxPayerQueryVkn, setTaxPayerQueryVkn] = useState('3248921839')
+  const [taxPayerQueryResult, setTaxPayerQueryResult] = useState(null)
+  const [queryingTaxPayer, setQueryingTaxPayer] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
 
   // Purchase Receipts Data (for Simulator)
@@ -318,6 +328,48 @@ export default function IntegratorStudio() {
       toast(`Senkronizasyon başarısız: ${err.message}`, 'error')
     } finally {
       setSyncingToRms(false)
+    }
+  }
+
+  // Save Integrator Config
+  const handleSaveConfig = async (e) => {
+    if (e) e.preventDefault()
+    setSavingConfig(true)
+    try {
+      const res = await eInvoiceService.saveIntegratorConfig(integratorConfig)
+      if (res.success) {
+        toast('✅ Entegratör ayarları ve API parametreleri başarıyla kaydedildi.', 'success')
+      } else {
+        toast(res.error || 'Ayarlar kaydedilemedi.', 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
+  // Tax Payer Query
+  const handleQueryTaxPayer = async (e) => {
+    if (e) e.preventDefault()
+    if (!taxPayerQueryVkn || taxPayerQueryVkn.trim().length < 10) {
+      toast('Lütfen geçerli bir 10 haneli VKN veya 11 haneli TCKN girin.', 'error')
+      return
+    }
+    setQueryingTaxPayer(true)
+    setTaxPayerQueryResult(null)
+    try {
+      const res = await eInvoiceService.checkTaxPayer(taxPayerQueryVkn.trim())
+      setTaxPayerQueryResult(res)
+      if (res.isEInvoiceUser) {
+        toast(`Mükellef Bulundu: ${res.title}`, 'success')
+      } else {
+        toast('Mükellef e-Fatura kullanıcısı değil (e-Arşiv kapsamındadır).', 'info')
+      }
+    } catch (err) {
+      toast('Sorgulama hatası: ' + err.message, 'error')
+    } finally {
+      setQueryingTaxPayer(false)
     }
   }
 
@@ -1120,6 +1172,28 @@ export default function IntegratorStudio() {
                 <i className="fa-solid fa-code-compare" />
                 GİB Durum Kodu & Webhook Simülatörü
               </button>
+
+              <button
+                type="button"
+                onClick={() => setPortalTab('portal-config')}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: portalTab === 'portal-config' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: portalTab === 'portal-config' ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: -2,
+                }}
+              >
+                <i className="fa-solid fa-sliders" />
+                Entegratör Bağlantı & API Parametreleri
+              </button>
             </div>
 
             {/* Portal Table Search / Filter Bar */}
@@ -1457,6 +1531,272 @@ export default function IntegratorStudio() {
                     <i className={`fa-solid ${updatingStatus ? 'fa-spinner fa-spin' : 'fa-check'}`} />
                     {updatingStatus ? 'Güncelleniyor...' : 'GİB Durumunu Güncelle & Simüle Et'}
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Portal Tab 4: Entegratör Bağlantı & API Parametreleri Formu */}
+            {portalTab === 'portal-config' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, alignItems: 'start' }}>
+                {/* Sol Kolon: Entegratör Konfigürasyon Formu */}
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+                  <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <i className="fa-solid fa-sliders" style={{ color: '#38bdf8' }} />
+                    Entegratör Bağlantı & API Parametreleri
+                  </h2>
+                  <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', margin: '0 0 20px 0' }}>
+                    Uyumsoft Cloud (SOAP/REST), EDM Bilişim (WCF/Session) ve Sandbox Simülatör yapılandırma ayarları.
+                  </p>
+
+                  <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Mode & Active Switches */}
+                    <div style={{ display: 'flex', gap: 20, alignItems: 'center', padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(integratorConfig.is_test_mode)}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, is_test_mode: e.target.checked })}
+                          style={{ width: 18, height: 18, accentColor: '#38bdf8' }}
+                        />
+                        Test / Sandbox Ortamı Aktif
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(integratorConfig.is_active)}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, is_active: e.target.checked })}
+                          style={{ width: 18, height: 18, accentColor: '#10b981' }}
+                        />
+                        Entegratör Servisi Aktif
+                      </label>
+                    </div>
+
+                    {/* Provider Credentials Inputs */}
+                    {(integratorConfig.provider === 'uyumsoft' || integratorConfig.provider === 'edm') && (
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--app-bg)' }}>
+                        <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
+                          {integratorConfig.provider.toUpperCase()} API / Web Servis Kimlik Bilgileri
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Web Servis Kullanıcı Adı:</label>
+                            <input
+                              type="text"
+                              value={integratorConfig.username || ''}
+                              placeholder={integratorConfig.provider === 'uyumsoft' ? 'Uyumsoft' : 'EDM_TEST_USER'}
+                              onChange={(e) => setIntegratorConfig({ ...integratorConfig, username: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Web Servis Şifresi:</label>
+                            <input
+                              type="password"
+                              value={integratorConfig.password || ''}
+                              placeholder="••••••••"
+                              onChange={(e) => setIntegratorConfig({ ...integratorConfig, password: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                            />
+                          </div>
+                        </div>
+
+                        {integratorConfig.provider === 'uyumsoft' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>API Key / Client ID (Opsiyonel):</label>
+                              <input
+                                type="text"
+                                value={integratorConfig.api_key || ''}
+                                onChange={(e) => setIntegratorConfig({ ...integratorConfig, api_key: e.target.value })}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>API Secret (Opsiyonel):</label>
+                              <input
+                                type="password"
+                                value={integratorConfig.api_secret || ''}
+                                onChange={(e) => setIntegratorConfig({ ...integratorConfig, api_secret: e.target.value })}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tax Payer / Company Info */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Gönderici VKN / TCKN:</label>
+                        <input
+                          type="text"
+                          value={integratorConfig.sender_vkn_tckn || ''}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, sender_vkn_tckn: e.target.value })}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.9rem', fontFamily: 'monospace' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Vergi Dairesi:</label>
+                        <input
+                          type="text"
+                          value={integratorConfig.sender_tax_office || ''}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, sender_tax_office: e.target.value })}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.9rem' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Firma Resmi Ünvanı:</label>
+                      <input
+                        type="text"
+                        value={integratorConfig.sender_title || ''}
+                        onChange={(e) => setIntegratorConfig({ ...integratorConfig, sender_title: e.target.value })}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.9rem' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Posta Kutusu Etiketi (PK):</label>
+                        <input
+                          type="text"
+                          value={integratorConfig.alias_pk || ''}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, alias_pk: e.target.value })}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontFamily: 'monospace' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Gönderici Birim Etiketi (GB):</label>
+                        <input
+                          type="text"
+                          value={integratorConfig.alias_gb || ''}
+                          onChange={(e) => setIntegratorConfig({ ...integratorConfig, alias_gb: e.target.value })}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontFamily: 'monospace' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, paddingTop: 10 }}>
+                      <button
+                        type="submit"
+                        disabled={savingConfig}
+                        style={{
+                          padding: '12px 24px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: '#38bdf8',
+                          color: '#000',
+                          fontWeight: 800,
+                          fontSize: '.95rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <i className={`fa-solid ${savingConfig ? 'fa-spinner fa-spin' : 'fa-check'}`} />
+                        {savingConfig ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testingConnection}
+                        style={{
+                          padding: '12px 20px',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface-2)',
+                          color: 'var(--text-strong)',
+                          fontWeight: 700,
+                          fontSize: '.9rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <i className={`fa-solid ${testingConnection ? 'fa-spinner fa-spin' : 'fa-network-wired'}`} />
+                        {testingConnection ? 'Sınanıyor...' : 'Bağlantıyı Test Et'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Sağ Kolon: Mükellef Sorgulama Kartı */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 20 }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-strong)', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="fa-solid fa-address-card" style={{ color: '#38bdf8' }} />
+                      GİB / Entegratör Mükellef Sorgulama
+                    </h3>
+                    <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '0 0 14px 0' }}>
+                      VKN veya TCKN girerek müşterinin veya tedarikçinin e-Fatura mükellefiyeti ve posta kutusu adresini anlık sorgulayın:
+                    </p>
+
+                    <form onSubmit={handleQueryTaxPayer} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                      <input
+                        type="text"
+                        value={taxPayerQueryVkn}
+                        onChange={(e) => setTaxPayerQueryVkn(e.target.value)}
+                        placeholder="VKN veya TCKN girin..."
+                        style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontFamily: 'monospace' }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={queryingTaxPayer}
+                        style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#38bdf8', color: '#000', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <i className={`fa-solid ${queryingTaxPayer ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'}`} />
+                        Sorgula
+                      </button>
+                    </form>
+
+                    {taxPayerQueryResult && (
+                      <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>MÜKELLEFİYET DURUMU:</span>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: '.72rem',
+                              fontWeight: 800,
+                              background: taxPayerQueryResult.isEInvoiceUser ? '#ecfdf5' : '#fffbeb',
+                              color: taxPayerQueryResult.isEInvoiceUser ? '#065f46' : '#b45309',
+                              border: `1px solid ${taxPayerQueryResult.isEInvoiceUser ? '#a7f3d0' : '#fde68a'}`,
+                            }}
+                          >
+                            {taxPayerQueryResult.isEInvoiceUser ? 'E-FATURA MÜKELLEFİ (B2B)' : 'E-ARŞİV KAPSAMINDA (B2C)'}
+                          </span>
+                        </div>
+
+                        <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '.9rem', marginBottom: 4 }}>
+                          {taxPayerQueryResult.title || '-'}
+                        </div>
+
+                        {taxPayerQueryResult.aliasPk && (
+                          <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: 4 }}>
+                            PK: {taxPayerQueryResult.aliasPk}
+                          </div>
+                        )}
+
+                        {taxPayerQueryResult.taxOffice && (
+                          <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            Vergi Dairesi: {taxPayerQueryResult.taxOffice}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
