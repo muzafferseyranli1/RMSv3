@@ -197,6 +197,17 @@ async function main() {
   }
 
   logHeader('SUITABLERMS OTOMATİK UÇTAN UCA CANLIYA ALMA PROSESİ');
+
+  // STEP 0: Git Pull (Sync remote code from GitHub)
+  console.log('📌 Adım 0: Diğer Makinelerden Gelen Güncellemeler İndiriliyor (`git pull`)...');
+  console.log('---------------------------------------------------');
+  try {
+    const pullOut = execSync('git pull origin main', { encoding: 'utf-8' }).trim();
+    logSuccess(`Git Pull Tamamlandı: ${pullOut.split('\n')[0]}`);
+  } catch (err) {
+    logWarning(`Git pull esnasında uyarı/çatışma: ${err.message}`);
+  }
+
   const totalSteps = skipBuild ? 4 : 5;
   let currentStep = 1;
 
