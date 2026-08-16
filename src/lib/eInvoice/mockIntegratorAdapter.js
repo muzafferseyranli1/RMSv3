@@ -3,104 +3,44 @@ import { EINVOICE_STATUS, EINVOICE_STATUS_META } from './types.js'
 import { generateETTN, generateInvoiceNumber, calculateInvoiceTotals, generateUBLXML } from './coreUblGenerator.js'
 import { db } from '../db.js'
 
-// Restoran & Yeme-İçme Sektörüne Özel Gerçekçi Tedarikçi Listesi
-export const MOCK_SUPPLIERS = [
-  {
-    vkn: '3248921839',
-    title: 'Öztürkler Et & Entegre Tesisleri San. Tic. Ltd. Şti.',
-    taxOffice: 'Marmara Kurumlar',
-    address: 'Hadımköy Sanayi Bölgesi 4. Cad. No:18 Arnavutköy / İstanbul',
-    aliasPk: 'urn:mail:ozturkleretpk@gib.gov.tr',
-    aliasGb: 'urn:mail:ozturkleretgb@gib.gov.tr',
-    category: 'Et & Şarküteri',
-    items: [
-      { name: 'Dana Antrikot Özel Kesim (KG)', code: 'ET-DAN-001', unit: 'KGM', price: 620.0, taxRate: 1 },
-      { name: 'Dana Kıyma %20 Yağlı (KG)', code: 'ET-DAN-002', unit: 'KGM', price: 440.0, taxRate: 1 },
-      { name: 'Kuzu Gerdan & Kol (KG)', code: 'ET-KUZ-003', unit: 'KGM', price: 540.0, taxRate: 1 },
-      { name: 'Burger Köftesi Özel Reçete 140g (Adet)', code: 'ET-KOF-004', unit: 'C62', price: 78.0, taxRate: 1 },
-      { name: 'Dana İlikli Kemik Suyu 1L (Adet)', code: 'ET-KMK-005', unit: 'C62', price: 95.0, taxRate: 1 },
-    ],
-  },
-  {
-    vkn: '7829104820',
-    title: 'Sütaş Süt & Süt Ürünleri A.Ş.',
-    taxOffice: 'Bursa Kurumlar',
-    address: 'Karacabey Tesisleri No:44 Karacabey / Bursa',
-    aliasPk: 'urn:mail:sutaspk@gib.gov.tr',
-    aliasGb: 'urn:mail:sutasgb@gib.gov.tr',
-    category: 'Süt & Süt Ürünleri',
-    items: [
-      { name: 'Taze Burger Kaşar Peyniri Dilimli 1KG', code: 'SUT-KSR-001', unit: 'KGM', price: 340.0, taxRate: 1 },
-      { name: 'Tuzsuz Blok Tereyağı 1KG (%82 Yağ)', code: 'SUT-TRY-002', unit: 'KGM', price: 390.0, taxRate: 1 },
-      { name: 'Yemeklik Sıvı Krema %35 Yağ 1L', code: 'SUT-KRM-003', unit: 'LTR', price: 145.0, taxRate: 1 },
-      { name: 'Süzme Yoğurt 5KG Kova', code: 'SUT-YGT-004', unit: 'PK', price: 290.0, taxRate: 1 },
-      { name: 'Mozzarella Peyniri Blok 2KG', code: 'SUT-MOZ-005', unit: 'PK', price: 680.0, taxRate: 1 },
-    ],
-  },
-  {
-    vkn: '5120938471',
-    title: 'Marmara Meşrubat & İçecek Dağıtım San. Tic. A.Ş.',
-    taxOffice: 'Kadıköy',
-    address: 'Dudullu OSB İmes Sanayi Sitesi E Blok No:12 Ümraniye / İstanbul',
-    aliasPk: 'urn:mail:marmaraicecekpk@gib.gov.tr',
-    aliasGb: 'urn:mail:marmaraicecekgb@gib.gov.tr',
-    category: 'İçecek & Meşrubat',
-    items: [
-      { name: 'Kutu Kola 330ml (24 lü Koli)', code: 'IC-KOL-024', unit: 'BX', price: 480.0, taxRate: 10 },
-      { name: 'Doğal Kaynak Maden Suyu 200ml (24 lü Koli)', code: 'IC-MDS-024', unit: 'BX', price: 210.0, taxRate: 10 },
-      { name: 'Geleneksel Cam Şişe Ayran 300ml (20 li Kasa)', code: 'IC-AYR-020', unit: 'BX', price: 300.0, taxRate: 1 },
-      { name: 'Şeftali Soğuk Çay 330ml (24 lü Koli)', code: 'IC-CAY-024', unit: 'BX', price: 460.0, taxRate: 10 },
-      { name: 'Doğal Kaynak Suyu 0.5L (24 lü Paket)', code: 'IC-SU-024', unit: 'PK', price: 120.0, taxRate: 10 },
-    ],
-  },
-  {
-    vkn: '9018274619',
-    title: 'Başak Un & Ekmekçilik Fırın Ürünleri Gıda San. A.Ş.',
-    taxOffice: 'Güneşli',
-    address: 'İkitelli OSB Atatürk Cad. No:94 Başakşehir / İstanbul',
-    aliasPk: 'urn:mail:basakbreadpk@gib.gov.tr',
-    aliasGb: 'urn:mail:basakbreadgb@gib.gov.tr',
-    category: 'Unlu Mamuller',
-    items: [
-      { name: 'Brioche Gurme Hamburger Ekmeği 85g (50 li Koli)', code: 'EKM-BRC-050', unit: 'BX', price: 550.0, taxRate: 1 },
-      { name: 'Susamlı Klasik Burger Ekmeği 80g (60 lı Koli)', code: 'EKM-KLK-060', unit: 'BX', price: 480.0, taxRate: 1 },
-      { name: 'Ekşi Mayalı Sandviç Baget Ekmeği 120g (30 lu Koli)', code: 'EKM-EKS-030', unit: 'BX', price: 420.0, taxRate: 1 },
-      { name: 'Altın Galeta Unu & Pane Harcı 10KG', code: 'EKM-PNE-010', unit: 'PK', price: 360.0, taxRate: 1 },
-    ],
-  },
-  {
-    vkn: '4459102837',
-    title: 'Antalya Fresh Halil Toptan Sebze Meyve Ticaret',
-    taxOffice: 'Kepez',
-    address: 'Büyükşehir Toptancı Hali 12. Blok No:8 Antalya',
-    aliasPk: 'urn:mail:antalyahalilpk@gib.gov.tr',
-    aliasGb: 'urn:mail:antalyahalilgb@gib.gov.tr',
-    category: 'Taze Sebze & Meyve',
-    items: [
-      { name: 'Salkım Domates 1. Sınıf (KG)', code: 'SEB-DOM-001', unit: 'KGM', price: 42.0, taxRate: 1 },
-      { name: 'Kıvırcık Marul Gurme (Kasa - 20 Adet)', code: 'SEB-MRL-020', unit: 'BX', price: 320.0, taxRate: 1 },
-      { name: 'Yerli Kırmızı Soğan (KG)', code: 'SEB-SGN-001', unit: 'KGM', price: 24.0, taxRate: 1 },
-      { name: 'Kızartmalık Agria Patates (KG)', code: 'SEB-PAT-001', unit: 'KGM', price: 28.0, taxRate: 1 },
-      { name: 'Kornişon Turşuluk Salatalık (KG)', code: 'SEB-SLT-001', unit: 'KGM', price: 38.0, taxRate: 1 },
-    ],
-  },
-  {
-    vkn: '6678291041',
-    title: 'Eko Ambalaj & Restoran Hijyen San. ve Tic. Ltd. Şti.',
-    taxOffice: 'İkitelli',
-    address: 'Turgut Özal Cad. No:31 İkitelli OSB Başakşehir / İstanbul',
-    aliasPk: 'urn:mail:ekoambalajpk@gib.gov.tr',
-    aliasGb: 'urn:mail:ekoambalajgb@gib.gov.tr',
-    category: 'Ambalaj & Hijyen',
-    items: [
-      { name: 'Kraft Burger Paketleme Kutusu Logolu (500 Adet Koli)', code: 'AMB-KRF-500', unit: 'BX', price: 1150.0, taxRate: 20 },
-      { name: 'Islak Mendil Özel Baskılı 6x12 (1000 Adet)', code: 'AMB-MND-1000', unit: 'BX', price: 650.0, taxRate: 20 },
-      { name: 'Siyah Kağıt Pipet Biyobozunur (500 Adet)', code: 'AMB-PPT-500', unit: 'PK', price: 220.0, taxRate: 20 },
-      { name: 'Endüstriyel Bulaşık Makinesi Deterjanı 20L', code: 'HIJ-DTJ-020', unit: 'PK', price: 1450.0, taxRate: 20 },
-      { name: 'Yüzey Dezenfektanı Gıda Temasına Uygun 5L', code: 'HIJ-DZF-005', unit: 'PK', price: 420.0, taxRate: 20 },
-    ],
-  },
-]
+// RMS Gerçek Veritabanından Dinamik Tedarikçi Çekme Yardımcısı
+export async function getRealRmsSuppliers() {
+  try {
+    const { data } = await db
+      .from('suppliers')
+      .select('*')
+      .eq('active', true)
+      .is('deleted_at', null)
+    if (data && data.length > 0) return data
+  } catch (e) {
+    console.warn('Tedarikçi tablosu çekilemedi:', e)
+  }
+  return []
+}
+
+// RMS Gerçek Veritabanından Tüzel Kişilik / Şirket Ağacı Düğümlerini Çekme Yardımcısı
+export async function getRealRmsCompanyEntities() {
+  try {
+    const { data } = await db.from('company_nodes').select('*')
+    if (data && data.length > 0) return data
+  } catch (e) {
+    console.warn('Şirket düğümleri çekilemedi:', e)
+  }
+  return []
+}
+
+// RMS Gerçek Veritabanından Stok Kalemlerini Çekme Yardımcısı
+export async function getRealRmsStockItems() {
+  try {
+    const { data } = await db.from('stock_items').select('*').limit(20)
+    if (data && data.length > 0) return data
+  } catch (e) {
+    console.warn('Stok kalemleri çekilemedi:', e)
+  }
+  return []
+}
+
+export const MOCK_SUPPLIERS = []
 
 export class MockIntegratorAdapter extends IntegratorAdapter {
   constructor(config = {}) {
@@ -196,13 +136,14 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
    */
   async checkTaxPayer(vknTckn) {
     await new Promise((resolve) => setTimeout(resolve, 150))
-    const supplier = MOCK_SUPPLIERS.find((s) => s.vkn === vknTckn)
+    const suppliers = await getRealRmsSuppliers()
+    const supplier = suppliers.find((s) => (s.vergi_no && String(s.vergi_no).trim() === String(vknTckn).trim()))
     if (supplier) {
       return {
         isEInvoiceUser: true,
-        title: supplier.title,
-        aliasPk: supplier.aliasPk,
-        aliasGb: supplier.aliasGb,
+        title: supplier.name,
+        aliasPk: 'urn:mail:defaultpk@gib.gov.tr',
+        aliasGb: 'urn:mail:defaultgb@gib.gov.tr',
         registeredAt: '2019-01-01',
       }
     }
@@ -217,26 +158,38 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
   }
 
   /**
-   * 1-Click Sandbox Test Faturası Oluşturucu (Senaryo Bazlı)
-   * @param {'MATCHED' | 'PRICE_DIFF' | 'SHORTAGE' | 'NEW_SUPPLIER' | 'REJECTABLE' | 'EARSIV'} scenario
+   * Gerçek RMS Tedarikçileri ve Tüzel Kişiliklerinden Simülasyon Faturası Oluşturucu
    */
   async generateSimulatedInboundInvoice(scenario = 'MATCHED') {
-    const supplierIdx = Math.floor(Math.random() * MOCK_SUPPLIERS.length)
-    const supplier = scenario === 'NEW_SUPPLIER' 
-      ? {
-          vkn: '9988776655',
-          title: 'Anadolu Organik Çiftlik Ürünleri Ltd. Şti.',
-          taxOffice: 'Seyhan',
-          address: 'Barajyolu Mah. No:88 Seyhan / Adana',
-          aliasPk: 'urn:mail:anadoluorganikpk@gib.gov.tr',
-          aliasGb: 'urn:mail:anadoluorganikgb@gib.gov.tr',
-          category: 'Organik Ürünler',
-          items: [
-            { name: 'Köy Tipi Gezen Tavuk Yumurtası (30 lu Viyol)', code: 'YUM-ORG-030', unit: 'PK', price: 185.0, taxRate: 1 },
-            { name: 'Taş Baskı Soğuk Sıkım Zeytinyağı 5L', code: 'ZTN-YAG-005', unit: 'PK', price: 1650.0, taxRate: 1 },
-          ],
-        }
-      : MOCK_SUPPLIERS[supplierIdx]
+    const realSuppliers = await getRealRmsSuppliers()
+    const realCompanies = await getRealRmsCompanyEntities()
+    const realStockItems = await getRealRmsStockItems()
+
+    let supplierTitle = 'RMS Kayıtlı Tedarikçi'
+    let supplierVkn = '1111111111'
+    let supplierTaxOffice = 'Merkez'
+    let supplierAddress = 'Tedarikçi Adresi'
+
+    if (realSuppliers.length > 0) {
+      const selected = realSuppliers[Math.floor(Math.random() * realSuppliers.length)]
+      supplierTitle = selected.name || supplierTitle
+      supplierVkn = selected.vergi_no || selected.tc_no || '1111111111'
+      supplierTaxOffice = selected.vergi_dairesi || supplierTaxOffice
+      supplierAddress = selected.address || supplierAddress
+    }
+
+    let receiverTitle = 'RMS Restoran Grubu A.Ş.'
+    let receiverVkn = '1234567890'
+    let receiverTaxOffice = 'Beşiktaş'
+    let receiverAddress = 'Restoran Genel Merkez Adresi'
+
+    const tuzelNode = realCompanies.find(c => c.type === 'tuzel' || c.is_legal_entity) || realCompanies[0]
+    if (tuzelNode) {
+      receiverTitle = tuzelNode.legal_title || tuzelNode.title || tuzelNode.name || receiverTitle
+      receiverVkn = tuzelNode.tax_number || tuzelNode.vkn_tckn || receiverVkn
+      receiverTaxOffice = tuzelNode.tax_office || receiverTaxOffice
+      receiverAddress = tuzelNode.legal_address || receiverAddress
+    }
 
     const ettn = generateETTN()
     const invoiceNumber = generateInvoiceNumber('GIB', new Date().getFullYear(), Math.floor(Math.random() * 900000) + 100000)
@@ -244,38 +197,50 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
     const issueTime = new Date().toTimeString().split(' ')[0]
 
     let profileId = 'TICARIFATURA'
-    let statusCode = EINVOICE_STATUS.DELIVERED_TO_RECEIVER // 1200
+    let statusCode = EINVOICE_STATUS.DELIVERED_TO_RECEIVER
     let statusDescription = 'Alıcıya Ulaştı (Kabul/Red Bekliyor - 1200)'
 
     if (scenario === 'EARSIV') {
       profileId = 'EARSIVFATURA'
-      statusCode = EINVOICE_STATUS.ACCEPTED // 1300
+      statusCode = EINVOICE_STATUS.ACCEPTED
       statusDescription = 'e-Arşiv Fatura Düzenlendi (1300)'
     }
 
-    // Pick 2-4 items
-    const selectedItems = supplier.items.slice(0, Math.min(supplier.items.length, Math.floor(Math.random() * 3) + 2))
-    const lines = selectedItems.map((item, idx) => {
-      let qty = Math.floor(Math.random() * 8) + 2
-      let unitPrice = item.price
+    // Generate lines based on real stock items or generic RMS items
+    const lineCount = Math.floor(Math.random() * 3) + 2
+    const lines = []
 
-      // Senaryolara göre varyasyonlar ekle
+    for (let idx = 0; idx < lineCount; idx++) {
+      let itemName = `Stok Kalemi ${idx + 1}`
+      let itemCode = `STK-00${idx + 1}`
+      let unitPrice = 150.0 + idx * 50
+      let taxRate = 20
+
+      if (realStockItems.length > idx) {
+        const item = realStockItems[idx]
+        itemName = item.name || itemName
+        itemCode = item.code || item.sku || itemCode
+        unitPrice = Number(item.cost_price || item.price || unitPrice)
+        taxRate = Number(item.vat_rate ?? 20)
+      }
+
+      let qty = Math.floor(Math.random() * 8) + 2
+
       if (scenario === 'PRICE_DIFF' && idx === 0) {
-        unitPrice = Math.round(unitPrice * 1.25) // %25 zamlı faturalandırılmış
+        unitPrice = Math.round(unitPrice * 1.25)
       } else if (scenario === 'SHORTAGE' && idx === 0) {
-        qty = qty + 10 // Faturada 10 birim fazla kesilmiş (Eksik teslimat)
+        qty = qty + 10
       }
 
       const subtotal = Math.round(qty * unitPrice * 100) / 100
-      const taxRate = item.taxRate
       const taxAmount = Math.round((subtotal * taxRate) / 100 * 100) / 100
 
-      return {
+      lines.push({
         line_number: idx + 1,
-        item_name: item.name,
-        item_code: item.code,
+        item_name: itemName,
+        item_code: itemCode,
         invoiced_quantity: qty,
-        unit_code: item.unit,
+        unit_code: 'KGM',
         unit_price: unitPrice,
         subtotal,
         discount_rate: 0,
@@ -283,8 +248,8 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
         tax_rate: taxRate,
         tax_amount: taxAmount,
         total_line_amount: subtotal + taxAmount,
-      }
-    })
+      })
+    }
 
     const totals = calculateInvoiceTotals(lines)
 
@@ -309,15 +274,15 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
       status_description: statusDescription,
       currency_code: 'TRY',
       currency_rate: 1.0,
-      sender_vkn_tckn: supplier.vkn,
-      sender_title: supplier.title,
-      sender_tax_office: supplier.taxOffice,
-      sender_address: supplier.address,
-      sender_alias: supplier.aliasGb,
-      receiver_vkn_tckn: '1234567890',
-      receiver_title: 'SuitableRMS Restoran Grubu A.Ş.',
-      receiver_tax_office: 'Beşiktaş',
-      receiver_address: 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
+      sender_vkn_tckn: supplierVkn,
+      sender_title: supplierTitle,
+      sender_tax_office: supplierTaxOffice,
+      sender_address: supplierAddress,
+      sender_alias: 'urn:mail:defaultgb@gib.gov.tr',
+      receiver_vkn_tckn: receiverVkn,
+      receiver_title: receiverTitle,
+      receiver_tax_office: receiverTaxOffice,
+      receiver_address: receiverAddress,
       receiver_alias: 'urn:mail:defaultpk@gib.gov.tr',
       line_extension_amount: totals.lineExtensionAmount,
       tax_exclusive_amount: totals.taxExclusiveAmount,
@@ -355,42 +320,46 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
   }
 
   /**
-   * Giden Fatura Simülasyonu Oluşturucu (Restoranımızın Kestiği Fatura)
+   * Giden Fatura Simülasyonu Oluşturucu (Gerçek Şirket Düğümlerimizden)
    */
   async generateSimulatedOutboundInvoice(params = {}) {
+    const realCompanies = await getRealRmsCompanyEntities()
+    const realStockItems = await getRealRmsStockItems()
+
+    let senderTitle = 'SuitableRMS Restoran Grubu A.Ş.'
+    let senderVkn = '1234567890'
+    let senderTaxOffice = 'Beşiktaş'
+    let senderAddress = 'Beşiktaş / İstanbul'
+
+    const tuzelNode = realCompanies.find(c => c.type === 'tuzel' || c.is_legal_entity) || realCompanies[0]
+    if (tuzelNode) {
+      senderTitle = tuzelNode.legal_title || tuzelNode.title || tuzelNode.name || senderTitle
+      senderVkn = tuzelNode.tax_number || tuzelNode.vkn_tckn || senderVkn
+      senderTaxOffice = tuzelNode.tax_office || senderTaxOffice
+      senderAddress = tuzelNode.legal_address || senderAddress
+    }
+
     const ettn = generateETTN()
     const invoiceNumber = generateInvoiceNumber('RMS', new Date().getFullYear(), Math.floor(Math.random() * 900000) + 100000)
     const issueDate = new Date().toISOString().split('T')[0]
     const issueTime = new Date().toTimeString().split(' ')[0]
 
-    const receiverTitle = params.receiverTitle || 'Büyükdere Kurumsal Catering & Organizasyon Ltd. Şti.'
-    const receiverVkn = params.receiverVkn || '8839201948'
+    const receiverTitle = params.receiverTitle || 'Müşteri (Perakende / B2B)'
+    const receiverVkn = params.receiverVkn || '11111111111'
     const profileId = params.profileId || 'TICARIFATURA'
 
     const lines = [
       {
         line_number: 1,
-        item_name: 'Kurumsal Şirket Yemeği & Catering Hizmeti (Kişi Başı)',
-        item_code: 'SRV-CAT-001',
-        invoiced_quantity: 45,
+        item_name: realStockItems[0]?.name || 'Kurumsal Yeme-İçme Hizmeti',
+        item_code: realStockItems[0]?.code || 'SRV-001',
+        invoiced_quantity: 10,
         unit_code: 'PR',
         unit_price: 320.0,
-        subtotal: 14400.0,
+        subtotal: 3200.0,
         tax_rate: 10,
-        tax_amount: 1440.0,
-        total_line_amount: 15840.0,
-      },
-      {
-        line_number: 2,
-        item_name: 'Özel Karşılama İçecek & Tatlı Büfesi Hizmeti',
-        item_code: 'SRV-BUF-002',
-        invoiced_quantity: 1,
-        unit_code: 'SET',
-        unit_price: 4500.0,
-        subtotal: 4500.0,
-        tax_rate: 10,
-        tax_amount: 450.0,
-        total_line_amount: 4950.0,
+        tax_amount: 320.0,
+        total_line_amount: 3520.0,
       },
     ]
 
@@ -404,20 +373,20 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
       profile_id: profileId,
       issue_date: issueDate,
       issue_time: issueTime,
-      status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER, // 1200
+      status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER,
       status_description: 'Alıcı Posta Kutusuna Başarıyla İletildi (1200)',
       currency_code: 'TRY',
       currency_rate: 1.0,
-      sender_vkn_tckn: '1234567890',
-      sender_title: 'SuitableRMS Restoran Grubu A.Ş.',
-      sender_tax_office: 'Beşiktaş',
-      sender_address: 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
+      sender_vkn_tckn: senderVkn,
+      sender_title: senderTitle,
+      sender_tax_office: senderTaxOffice,
+      sender_address: senderAddress,
       sender_alias: 'urn:mail:defaultgb@gib.gov.tr',
       receiver_vkn_tckn: receiverVkn,
       receiver_title: receiverTitle,
-      receiver_tax_office: 'Büyükdere',
-      receiver_address: 'Büyükdere Cad. No:102 Maslak / İstanbul',
-      receiver_alias: 'urn:mail:kurumsalcateringpk@gib.gov.tr',
+      receiver_tax_office: 'Merkez',
+      receiver_address: 'Alıcı Adresi',
+      receiver_alias: 'urn:mail:defaultpk@gib.gov.tr',
       line_extension_amount: totals.lineExtensionAmount,
       tax_exclusive_amount: totals.taxExclusiveAmount,
       tax_inclusive_amount: totals.taxInclusiveAmount,

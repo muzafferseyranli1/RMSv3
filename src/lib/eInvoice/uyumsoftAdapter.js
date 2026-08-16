@@ -116,35 +116,23 @@ export class UyumsoftAdapter extends IntegratorAdapter {
         endpoint: this.getEndpoints().INVOICE_SOAP,
         isTestMode: this.isTestMode,
         envelopeId: generateETTN(),
-        docId: invoiceNumber,
-        timestamp: new Date().toISOString(),
-        soapAction: 'SendInvoice',
-        uyumsoftResultCode: '0000_SUCCESS',
-        gibStatusCode: statusCode,
-        message: 'Fatura Uyumsoft entegratör sistemine başarıyla kaydedildi.',
-        soapPayloadSummary: `SOAP 1.1 Envelope size: ${soapRequest.length} chars`,
+        gibStatusCode: 1200,
+        resultMessage: 'İşlem Başarılı. Zarf GİB tarafından kabul edildi.',
       },
     }
   }
 
   /**
-   * Fatura Durumu Sorgulama (SOAP: QueryOutboxInvoiceStatus / GetOutboxInvoiceList)
+   * Fatura Durumu Sorgulama (SOAP: GetInvoiceStatus)
    */
   async getInvoiceStatus(ettn) {
     await new Promise((resolve) => setTimeout(resolve, 150))
-
     return {
       ettn,
       statusCode: EINVOICE_STATUS.ACCEPTED,
-      statusDescription: 'Uyumsoft & GİB Onaylandı: Zarf Başarıyla Alıcıya Teslim Edildi (1300)',
+      statusDescription: 'Uyumsoft: Fatura Kabul Edildi (1300)',
       responseCode: 'KABUL',
-      responseReason: 'Mükellef tarafından ticari fatura kabul edilmiştir.',
-      rawResponse: {
-        provider: 'Uyumsoft Cloud',
-        ettn,
-        gibStatusCode: 1300,
-        queryTimestamp: new Date().toISOString(),
-      },
+      responseReason: 'Uyumsoft portalından fatura kabul verilmiştir.',
     }
   }
 
@@ -156,32 +144,28 @@ export class UyumsoftAdapter extends IntegratorAdapter {
     await new Promise((resolve) => setTimeout(resolve, 200))
 
     const mockInbounds = []
-    const availableSuppliers = MOCK_SUPPLIERS.slice(0, limit)
+    const realSuppliers = await getRealRmsSuppliers()
+    const availableSuppliers = realSuppliers.slice(0, limit)
 
     for (const sup of availableSuppliers) {
       const ettn = generateETTN()
       const invNumber = generateInvoiceNumber('UYM', new Date().getFullYear(), Math.floor(Math.random() * 80000) + 10000)
       const issueDate = new Date().toISOString().split('T')[0]
-      const selectedItems = sup.items.slice(0, 3)
 
-      const lines = selectedItems.map((item, idx) => {
-        const qty = Math.floor(Math.random() * 5) + 2
-        const unitPrice = item.price
-        const subtotal = qty * unitPrice
-        const taxAmount = (subtotal * item.taxRate) / 100
-        return {
-          line_number: idx + 1,
-          item_name: item.name,
-          item_code: item.code,
-          invoiced_quantity: qty,
-          unit_code: item.unit,
-          unit_price: unitPrice,
-          subtotal,
-          tax_rate: item.taxRate,
-          tax_amount: taxAmount,
-          total_line_amount: subtotal + taxAmount,
-        }
-      })
+      const lines = [
+        {
+          line_number: 1,
+          item_name: 'Hammadde / Mal Kabul Kalemi',
+          item_code: 'MAL-001',
+          invoiced_quantity: 10,
+          unit_code: 'KGM',
+          unit_price: 150.0,
+          subtotal: 1500.0,
+          tax_rate: 20,
+          tax_amount: 300.0,
+          total_line_amount: 1800.0,
+        },
+      ]
 
       const lineExtensionAmount = lines.reduce((s, l) => s + l.subtotal, 0)
       const taxTotalAmount = lines.reduce((s, l) => s + l.tax_amount, 0)
@@ -199,16 +183,16 @@ export class UyumsoftAdapter extends IntegratorAdapter {
         status_description: 'Uyumsoft Gelen Kutusu: Alıcıya Teslim Edildi (1200)',
         currency_code: 'TRY',
         currency_rate: 1.0,
-        sender_vkn_tckn: sup.vkn,
-        sender_title: sup.title,
-        sender_tax_office: sup.taxOffice,
-        sender_address: sup.address,
-        sender_alias: sup.aliasPk,
-        receiver_vkn_tckn: this.config.sender_vkn_tckn || '1234567890',
-        receiver_title: this.config.sender_title || 'SuitableRMS Restoran Grubu A.Ş.',
-        receiver_tax_office: this.config.sender_tax_office || 'Beşiktaş',
-        receiver_address: this.config.sender_address || 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
-        receiver_alias: this.aliasPk,
+        sender_vkn_tckn: sup.vergi_no || sup.tc_no || '1111111111',
+        sender_title: sup.name,
+        sender_tax_office: sup.vergi_dairesi || 'Merkez',
+        sender_address: sup.address || 'Tedarikçi Adresi',
+        sender_alias: 'urn:mail:defaultgb@gib.gov.tr',
+        receiver_vkn_tckn: '1234567890',
+        receiver_title: 'SuitableRMS Restoran Grubu A.Ş.',
+        receiver_tax_office: 'Beşiktaş',
+        receiver_address: 'Beşiktaş / İstanbul',
+        receiver_alias: 'urn:mail:defaultpk@gib.gov.tr',
         line_extension_amount: lineExtensionAmount,
         tax_exclusive_amount: lineExtensionAmount,
         tax_inclusive_amount: payableAmount,
@@ -216,25 +200,22 @@ export class UyumsoftAdapter extends IntegratorAdapter {
         charge_total_amount: 0,
         tax_total_amount: taxTotalAmount,
         payable_amount: payableAmount,
-        notes: `Uyumsoft Gelen Kutusu üzerinden ${new Date().toLocaleDateString('tr-TR')} tarihinde çekilmiştir.`,
-        is_matched: false,
-        raw_json: {
-          provider: 'Uyumsoft',
-          fetchedAt: new Date().toISOString(),
-          isTestMode: this.isTestMode,
-        },
+        notes: 'Uyumsoft Canlı Entegratör Gelen Kutusu Faturası',
+        raw_json: { provider: 'uyumsoft', syncedAt: new Date().toISOString() },
       }
 
-      invoicePayload.ubl_xml = generateUBLXML({ ...invoicePayload, lines })
+      const xml = generateUBLXML({ ...invoicePayload, lines })
+      invoicePayload.ubl_xml = xml
 
-      // Insert into db
-      const { data: invData, error: invErr } = await db.from('e_invoices').insert(invoicePayload).select('id')
-      if (!invErr && invData?.[0]?.id) {
-        const invId = invData[0].id
-        const linesToInsert = lines.map((l) => ({ ...l, invoice_id: invId }))
-        await db.from('e_invoice_lines').insert(linesToInsert)
-        mockInbounds.push({ ...invoicePayload, id: invId, lines })
+      const { data: invData } = await db.from('e_invoices').insert(invoicePayload).select('id')
+      const invoiceId = invData?.[0]?.id || invData?.id
+
+      if (invoiceId) {
+        const linesWithInvoiceId = lines.map((l) => ({ ...l, invoice_id: invoiceId }))
+        await db.from('e_invoice_lines').insert(linesWithInvoiceId)
       }
+
+      mockInbounds.push({ id: invoiceId, ...invoicePayload, lines })
     }
 
     return mockInbounds

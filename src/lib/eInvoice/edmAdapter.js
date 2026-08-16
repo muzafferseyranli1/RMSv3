@@ -4,7 +4,7 @@
 import { IntegratorAdapter } from './integratorAdapter.js'
 import { EINVOICE_STATUS } from './types.js'
 import { generateETTN, generateInvoiceNumber, generateUBLXML } from './coreUblGenerator.js'
-import { MOCK_SUPPLIERS } from './mockIntegratorAdapter.js'
+import { getRealRmsSuppliers } from './mockIntegratorAdapter.js'
 import { db } from '../db.js'
 
 export const EDM_ENDPOINTS = {
@@ -24,15 +24,6 @@ export class EdmAdapter extends IntegratorAdapter {
   constructor(config = {}) {
     super(config)
     this.providerName = 'edm'
-    this.isTestMode = config.is_test_mode !== false
-    this.username = config.username || (this.isTestMode ? EDM_ENDPOINTS.TEST.DEFAULT_USER : '')
-    this.password = config.password || (this.isTestMode ? EDM_ENDPOINTS.TEST.DEFAULT_PASS : '')
-    this.apiKey = config.api_key || ''
-    this.apiSecret = config.api_secret || ''
-    this.aliasPk = config.alias_pk || 'urn:mail:defaultpk@gib.gov.tr'
-    this.aliasGb = config.alias_gb || 'urn:mail:defaultgb@gib.gov.tr'
-    this.sessionId = null
-    this.sessionExpiresAt = null
   }
 
   getEndpoints() {
