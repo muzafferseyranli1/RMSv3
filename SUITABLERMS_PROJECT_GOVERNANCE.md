@@ -13,15 +13,15 @@ Status: `active — tüm agent'lar için bağlayıcı`
 
 ---
 
-## 2. Üretim Altyapısı
+## 2. Üretim Altyapısı & Otomatik Bulut Yedekleme
 
-| Servis | Platform / Sunucu | URL / Adres |
-|--------|------------------|-------------|
-| Web Uygulaması (Frontend) | Hosting Dünyam VPS (Nginx) | `http://188.132.198.144:3000` |
-| API Servisi (Node Backend) | Hosting Dünyam VPS (Node.js) | `http://188.132.198.144:3001` |
-| Veritabanı | Hosting Dünyam VPS (PostgreSQL 15) | `postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway` |
-| Yönetim Paneli | Coolify v4 | `http://188.132.198.144:8000` |
-| Git & Release Deposu | GitHub | `https://github.com` (Yayinla.bat ve git push akışları aynen geçerlidir) |
+| Servis | Platform / Sunucu | URL / Adres | Özellik |
+|--------|------------------|-------------|---------|
+| Web Uygulaması (Frontend) | Hosting Dünyam VPS (Docker Nginx) | `http://188.132.198.144` (Port 80) | Pure Docker Compose (Coolify/Port 3000 baypas edildi) |
+| API Servisi (Node Backend) | Hosting Dünyam VPS (Docker Express API) | `http://188.132.198.144:3001` | Express + PostgreSQL Connection Pool |
+| Veritabanı | Hosting Dünyam VPS (PostgreSQL 16) | `postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway` | 133 Tablo, Kalıcı Disk (`/data/postgres`) |
+| Bulut & Offsite Yedekleme | Google Drive | `X:\RMSdrive` | Her deploy'da `scripts/backup-engine.mjs` ile otomatik SQL dump kopyalanır. |
+| Git & Launch Engine | GitHub & Windows Launcher | `deploy.bat` / `node scripts/deploy-live.mjs` | Tek tıkla pre-flight build, DB backup, push ve container reload |
 
 ---
 

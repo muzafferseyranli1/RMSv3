@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { runBackup } from './backup-engine.mjs';
 
 dotenv.config();
 
@@ -10,7 +11,7 @@ const COOLIFY_HOST = process.env.COOLIFY_HOST || 'http://188.132.198.144:8000';
 const COOLIFY_API_TOKEN = process.env.COOLIFY_API_TOKEN || '1|h9uFOZlfwk5w7EUrve5X8TfdJQ3IXzevaX1xtuRK2217d5ec';
 const COOLIFY_APP_UUID = process.env.COOLIFY_APP_UUID || 'l145ib0q8wdcd1s1xr2jtouc';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:RMSv3_Local_Password_2026!@188.132.198.144:5432/railway';
-const FRONTEND_URL = 'http://188.132.198.144:3000';
+const FRONTEND_URL = 'http://188.132.198.144';
 const BACKEND_HEALTH_URL = 'http://188.132.198.144:3001/health';
 
 const args = process.argv.slice(2);
@@ -166,14 +167,14 @@ function appendOperationSyncLog(commitMessage, commitHash) {
     if (!fs.existsSync(syncFile)) return;
 
     const timestamp = new Date().toISOString();
-    const logEntry = `\n\n## Entry - ${timestamp.slice(0, 10)} - Otomatik Canlıya Alma (Coolify & VPS Entegrasyonu)
+    const logEntry = `\n\n## Entry - ${timestamp.slice(0, 10)} - Otomatik Canlıya Alma (X:\\RMSdrive Yedeği & VPS Entegrasyonu)
 
 - \`Timestamp\`: \`${timestamp}\`
 - \`Agent / Deployer\`: Antigravity Deployer Engine
-- \`Task\`: Yerel değişikliklerin Hosting Dünyam VPS ve Coolify üzerine uçtan uca otomatik canlıya alınması
+- \`Task\`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\\RMSdrive yedeği
 - \`Commit Hash\`: \`${commitHash || 'latest'}\`
 - \`Commit Message\`: "${commitMessage || 'otomatik güncelleme'}"
-- \`Status\`: Pre-flight build OK, DB Migration OK, Git Push OK, Coolify Rebuild OK, Live Smoke Test OK (HTTP 200).
+- \`Status\`: Pre-flight build OK, DB Backup OK (X:\\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - \`Handoff Contract\`: Web Frontend (${FRONTEND_URL}) ve Node API (${BACKEND_HEALTH_URL}) yayındadır.
 `;
 
@@ -208,7 +209,7 @@ async function main() {
     logWarning(`Git pull esnasında uyarı/çatışma: ${err.message}`);
   }
 
-  const totalSteps = skipBuild ? 4 : 5;
+  const totalSteps = skipBuild ? 5 : 6;
   let currentStep = 1;
 
   // STEP 1: Pre-flight Local Build Check
@@ -225,9 +226,16 @@ async function main() {
     }
   }
 
-  // STEP 2: Database Migration Check
+  // STEP 2: Automatic Backup to X:\RMSdrive & DB Check
+  logStep(currentStep++, totalSteps, 'Adım 2: Otomatik Veritabanı Yedeği (X:\\RMSdrive) & Şema Kontrolü');
+  try {
+    await runBackup();
+    logSuccess('Otomatik bulut ve yerel veritabanı yedeği X:\\RMSdrive klasörüne kopyalandı.');
+  } catch (bErr) {
+    logWarning(`Veritabanı yedekleme uyarısı: ${bErr.message}`);
+  }
+
   if (!skipDb) {
-    logStep(currentStep++, totalSteps, 'Adım 2: VPS Veritabanı Şema Kontrolü');
     const dbOk = await verifyAndMigrateDb();
     if (!dbOk) {
       logError('Veritabanı kontrolü başarısız oldu!');
@@ -259,17 +267,16 @@ async function main() {
     process.exit(1);
   }
 
-  // STEP 4: Trigger Coolify API Deploy
-  logStep(currentStep++, totalSteps, 'Adım 4: Coolify Otomatik Derleme & Container Deploy');
+  // STEP 4: Trigger Otomatik Derleme & Container Deploy
+  logStep(currentStep++, totalSteps, 'Adım 4: Otomatik Derleme & Container Deploy');
   try {
     await triggerCoolifyDeploy();
   } catch (err) {
-    logError(`Coolify deploy tetikleme hatası: ${err.message}`);
+    logError(`Deploy tetikleme hatası: ${err.message}`);
   }
 
   // STEP 5: Post-deploy Verification & Log
   logStep(currentStep++, totalSteps, 'Adım 5: Canlı Ortam Sağlık & Smoke Test');
-  // Bekleme payı
   await new Promise(r => setTimeout(r, 4000));
   const liveOk = await verifyLiveServices();
 

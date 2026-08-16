@@ -1,0 +1,21 @@
+# SuitableRMS Production API Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package manifests
+COPY package*.json ./
+
+# Install production dependencies skipping native desktop modules
+RUN npm install --production --legacy-peer-deps --ignore-scripts
+
+# Copy application source
+COPY . .
+
+# Production Environment
+ENV NODE_ENV=production
+ENV PORT=3001
+EXPOSE 3001
+
+# Run Express API server
+CMD ["node", "server/index.js"]

@@ -12752,3 +12752,14 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Commit Message`: "e-fatura"
 - `Status`: Pre-flight build OK, DB Migration OK, Git Push OK, Coolify Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144:3000) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-15 - Otomatik Canlıya Alma (Coolify & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-15T13:11:01.272Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin Hosting Dünyam VPS ve Coolify üzerine uçtan uca otomatik canlıya alınması
+- `Commit Hash`: `78ff685`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Migration OK, Git Push OK, Coolify Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144:3000) ve Node API (http://188.132.198.144:3001/health) yayındadır.
