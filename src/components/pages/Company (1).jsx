@@ -23,7 +23,7 @@ const CT = {
     };
   },
   sirket:  { label:'Şirket',              icon:'fa-building',        bg:'#e2e8f0', color:'#0f172a', children:['tuzel','org'] },
-  tuzel:   { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['org','sube','uretim','anadepo','gm'] },
+  tuzel:   { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['sube','uretim','anadepo','gm','org','depo'] },
   org:     { label:'Organizasyon Dept.',  icon:'fa-sitemap',         bg:'#ede9fe', color:'#5b21b6', children:['org','sube','uretim','anadepo','gm'] },
   sube:    { label:'Şube',                icon:'fa-store',           bg:'#e0f2fe', color:'#0369a1', children:['depo'] },
   anadepo: { label:'Ana Depo',            icon:'fa-warehouse',       bg:'#d1fae5', color:'#065f46', children:['depo','org'] },
@@ -99,6 +99,7 @@ function createEmptyForm(type = 'sirket') {
     legalAddress: '',
     isLegalEntity: type === 'tuzel' || type === 'sirket',
     parentLegalEntityId: '',
+    centerKind: 'franchise_center',
   }
 }
 
@@ -344,6 +345,7 @@ export default function Company() {
       legalAddress: node.legalAddress || node.legal_address || '',
       isLegalEntity: Boolean(node.isLegalEntity ?? node.is_legal_entity ?? (node.type === 'tuzel' || node.type === 'sirket')),
       parentLegalEntityId: node.parentLegalEntityId || node.parent_legal_entity_id || '',
+      centerKind: node.centerKind || node.center_kind || (node.name?.includes('Muzaffer') ? 'headquarters' : 'franchise_center'),
     })
     setEditId(node.id); setParentNode(null)
     setAllowedTypes([node.type])
@@ -384,6 +386,7 @@ export default function Company() {
       legalAddress: form.legalAddress?.trim() || '',
       isLegalEntity: Boolean(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket'),
       parentLegalEntityId: form.parentLegalEntityId || null,
+      centerKind: form.centerKind || 'franchise_center',
     }
     if (form.type === 'sirket') {
       Object.assign(extra, {
@@ -406,32 +409,44 @@ export default function Company() {
     }
 
     const newTree = JSON.parse(JSON.stringify(tree))
+    let activeTargetId = editId
 
     if (editId) {
       const node = findNode(newTree, editId)
       if (node) { node.name = form.name.trim(); Object.assign(node, extra) }
-      await saveTree(newTree)
-      setSelectedNodeId(editId)
-      toast('Düğüm güncellendi', 'success')
     } else if (!parentNode) {
       const newId = uid()
+      activeTargetId = newId
       newTree.push({ id: newId, type: form.type, name: form.name.trim(), children: [], ...extra })
-      await saveTree(newTree)
-      setSelectedNodeId(newId)
-      toast(`"${form.name}" eklendi`, 'success')
     } else {
       const parent = findNode(newTree, parentNode.id)
       if (parent) {
         if (!parent.children) parent.children = []
         const newId = uid()
+        activeTargetId = newId
         parent.children.push({ id: newId, type: form.type, name: form.name.trim(), children: [], ...extra })
-        await saveTree(newTree)
         setCollapsed(s => ({ ...s, [parent.id]: false }))
-        setSelectedNodeId(newId)
-        setActivePanelTab('children')
-        toast(`"${form.name}" eklendi`, 'success')
       }
     }
+
+    // Enforce single headquarters constraint across the tree
+    if (extra.centerKind === 'headquarters') {
+      function clearOtherHeadquarters(nodes, targetId) {
+        for (const n of nodes) {
+          if (n.id !== targetId && (n.type === 'tuzel' || n.type === 'sirket' || n.isLegalEntity)) {
+            n.centerKind = 'franchise_center'
+          }
+          if (n.children && n.children.length) {
+            clearOtherHeadquarters(n.children, targetId)
+          }
+        }
+      }
+      clearOtherHeadquarters(newTree, activeTargetId)
+    }
+
+    await saveTree(newTree)
+    if (activeTargetId) setSelectedNodeId(activeTargetId)
+    toast(editId ? 'Düğüm güncellendi' : `"${form.name}" eklendi`, 'success')
     closeModal()
   }
 
@@ -578,6 +593,20 @@ export default function Company() {
                   </span>
                 </div>
                 <div style={{ display:'grid', gap:8, fontSize:'.8rem' }}>
+                  {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') && (
+                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:6 }}>
+                      <span style={{ color:'#64748b', fontWeight:600 }}>Merkez Statüsü:</span>
+                      {(selectedNode.centerKind === 'headquarters' || (!selectedNode.centerKind && selectedNode.name?.includes('Muzaffer'))) ? (
+                        <span className="badge" style={{ background:'#0284c7', color:'#ffffff', fontWeight:800, padding:'3px 10px', fontSize:'.72rem' }}>
+                          <i className="fa-solid fa-building-columns" style={{ marginRight:4 }} /> Genel Merkez
+                        </span>
+                      ) : (
+                        <span className="badge" style={{ background:'#ffedd5', color:'#c2410c', fontWeight:800, padding:'3px 10px', fontSize:'.72rem' }}>
+                          <i className="fa-solid fa-store" style={{ marginRight:4 }} /> Franchise Merkez
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
                     <span style={{ color:'#64748b' }}>VKN / TCKN:</span>
                     <strong style={{ fontFamily:'monospace', color:'#0f172a' }}>{selectedNode.taxNumber || selectedNode.tax_number || '-'}</strong>
@@ -785,6 +814,69 @@ export default function Company() {
 
             {form.isLegalEntity ? (
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4 }}>
+                {/* Genel Merkez / Franchise Merkez Toggle */}
+                <div style={{ gridColumn: 'span 2', background: '#ffffff', padding: 12, borderRadius: 10, border: '1px solid #cbd5e1' }}>
+                  <label className="f-label" style={{ fontWeight: 800, color: '#0f172a', marginBottom: 6, display: 'block' }}>
+                    Merkez Statüsü Seçimi <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => set('centerKind', 'headquarters')}
+                      style={{
+                        flex: 1,
+                        padding: '9px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: form.centerKind === 'headquarters' ? '#0284c7' : 'transparent',
+                        color: form.centerKind === 'headquarters' ? '#ffffff' : '#64748b',
+                        fontWeight: 800,
+                        fontSize: '.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        boxShadow: form.centerKind === 'headquarters' ? '0 2px 8px rgba(2,132,199,0.3)' : 'none',
+                        transition: 'all .15s',
+                      }}
+                    >
+                      <i className="fa-solid fa-building-columns" />
+                      Genel Merkez
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set('centerKind', 'franchise_center')}
+                      style={{
+                        flex: 1,
+                        padding: '9px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: form.centerKind === 'franchise_center' ? '#ea580c' : 'transparent',
+                        color: form.centerKind === 'franchise_center' ? '#ffffff' : '#64748b',
+                        fontWeight: 800,
+                        fontSize: '.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        boxShadow: form.centerKind === 'franchise_center' ? '0 2px 8px rgba(234,88,12,0.3)' : 'none',
+                        transition: 'all .15s',
+                      }}
+                    >
+                      <i className="fa-solid fa-store" />
+                      Franchise Merkez
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="fa-solid fa-circle-info" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
+                    {form.centerKind === 'headquarters'
+                      ? '⭐ Genel Merkez tek bir tüzel kişilikte seçili olabilir. Başka bir tüzel kişilikte Genel Merkez seçilirse bu otomatik Genel Merkez olur.'
+                      : '🏪 Franchise işletmelerinin bağlı olduğu merkez tüzel kişiliğidir. Yeni eklenen tüzel kişilikler varsayılan olarak bu statüdedir.'}
+                  </div>
+                </div>
+
                 <div>
                   <label className="f-label">VKN / TCKN <span style={{ color:'#ef4444' }}>*</span></label>
                   <input
