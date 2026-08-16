@@ -7,13 +7,13 @@ cd /d "%~dp0"
 
 echo ===================================================
 echo     SuitableRMS Otomatik Canliya Alma ve Senkronizasyon
-echo     VPS Hosting Dunyam ve Coolify Entegrasyonu
+echo     VPS Hosting Dunyam Entegrasyonu (X:\RMSdrive Yedeği)
 echo ===================================================
 echo.
 echo    1) Full Canliya Al (Web, API ve DB - Hizli ve Otomatik)
 echo    2) Yalnizca Veritabani Sema Kontrolu ve Migration
 echo    3) Canli Sunucu Durumunu Kontrol Et (Healthcheck)
-echo    4) Masaustu Setup (.exe) Derle ve GitHub'a Yukle
+echo    4) Yalnizca Masaustu Setup (.exe) Derle ve Yukle
 echo.
 
 set "modeChoice=1"
@@ -47,10 +47,18 @@ echo.
 set "userCommitMsg="
 set /p userCommitMsg="[?] Yaptiginiz degisikliklerin ozeti nedir? (Enter = Otomatik): "
 
+echo.
+set "buildDesktopChoice=H"
+set /p buildDesktopChoice="[?] Masaustu Electron (.exe) uygulamasi da derlensin mi? (E/H) [Varsayilan: H]: "
+
+set "desktopFlag="
+if /i "%buildDesktopChoice%"=="E" set "desktopFlag=--build-desktop"
+
+echo.
 if "%userCommitMsg%"=="" (
-    node scripts/deploy-live.mjs
+    node scripts/deploy-live.mjs !desktopFlag!
 ) else (
-    node scripts/deploy-live.mjs --commit-msg "%userCommitMsg%"
+    node scripts/deploy-live.mjs --commit-msg "%userCommitMsg%" !desktopFlag!
 )
 
 :bitis

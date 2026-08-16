@@ -19,6 +19,7 @@ const isVerifyOnly = args.includes('--verify-only');
 const isDbOnly = args.includes('--db-only');
 const skipBuild = args.includes('--skip-build');
 const skipDb = args.includes('--skip-db');
+const buildDesktop = args.includes('--build-desktop');
 const msgArgIdx = args.indexOf('--commit-msg');
 const customCommitMsg = msgArgIdx !== -1 ? args[msgArgIdx + 1] : null;
 
@@ -209,7 +210,8 @@ async function main() {
     logWarning(`Git pull esnasında uyarı/çatışma: ${err.message}`);
   }
 
-  const totalSteps = skipBuild ? 5 : 6;
+  let totalSteps = skipBuild ? 5 : 6;
+  if (buildDesktop) totalSteps++;
   let currentStep = 1;
 
   // STEP 1: Pre-flight Local Build Check
@@ -265,6 +267,18 @@ async function main() {
   } catch (err) {
     logError(`Git push işlemi sırasında hata: ${err.message}`);
     process.exit(1);
+  }
+
+  // OPTIONAL STEP: Electron Desktop (.exe) Build & Publish
+  if (buildDesktop) {
+    logStep(currentStep++, totalSteps, 'Masaüstü Electron (.exe) Derlemesi & GitHub Release');
+    console.log('Masaüstü uygulaması derleniyor (`npm run publish:desktop`)...');
+    try {
+      execSync('npm run publish:desktop', { stdio: 'inherit' });
+      logSuccess('Masaüstü Electron (.exe) derlemesi hatasız tamamlandı!');
+    } catch (err) {
+      logWarning(`Masaüstü derleme uyarısı: ${err.message}`);
+    }
   }
 
   // STEP 4: Trigger Otomatik Derleme & Container Deploy
