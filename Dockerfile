@@ -3,14 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build tools for native modules (better-sqlite3)
-RUN apk add --no-cache python3 make g++
-
 # Copy package manifests
 COPY package*.json ./
 
-# Install dependencies (ignoring optional desktop/native modules)
-RUN npm install --legacy-peer-deps
+# Install dependencies ignoring native build scripts (better-sqlite3 is desktop-only)
+RUN npm install --legacy-peer-deps --ignore-scripts
 
 # Copy application source
 COPY . .
