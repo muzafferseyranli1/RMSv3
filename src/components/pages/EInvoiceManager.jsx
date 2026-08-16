@@ -1255,28 +1255,6 @@ export default function EInvoiceManager() {
                 </button>
               </div>
 
-              {activeTab === 'inbox' && (
-                <button
-                  type="button"
-                  onClick={() => handleRunScenario('MATCHED')}
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: 8,
-                    border: '1px solid #f5a623',
-                    background: 'rgba(245,166,35,0.12)',
-                    color: '#f5a623',
-                    fontSize: '.85rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <i className="fa-solid fa-plus" />
-                  Test Faturası İndir
-                </button>
-              )}
 
               {activeTab === 'outbox' && (
                 <button
