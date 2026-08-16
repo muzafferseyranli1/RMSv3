@@ -992,7 +992,7 @@ export default function EInvoiceManager() {
             <i className="fa-solid fa-building-circle-arrow-right" />
           </div>
           <div>
-            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Şirketler Arası Transfer</div>
+            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Grup İçi Transfer</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-strong)' }}>
               {stats.totalInterCompanyCount || 0} <span style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Fatura</span>
             </div>
@@ -1074,7 +1074,7 @@ export default function EInvoiceManager() {
           }}
         >
           <i className="fa-solid fa-building-circle-arrow-right" />
-          Şirketler Arası (Inter-Company)
+          Grup İçi (Inter-Company)
           <span style={{ fontSize: '.75rem', padding: '2px 6px', borderRadius: 10, background: activeTab === 'intercompany' ? 'rgba(234,88,12,0.2)' : 'var(--surface-2)', color: activeTab === 'intercompany' ? '#ea580c' : 'var(--text-muted)' }}>
             {stats.totalInterCompanyCount || 0}
           </span>
@@ -1251,7 +1251,7 @@ export default function EInvoiceManager() {
                   }}
                 >
                   <i className="fa-solid fa-building-circle-arrow-right" />
-                  Şirketler Arası
+                  Grup İçi
                 </button>
               </div>
 
@@ -1391,7 +1391,7 @@ export default function EInvoiceManager() {
                             </span>
                             {inv.is_inter_company && (
                               <span style={{ fontSize: '.7rem', padding: '1px 6px', borderRadius: 4, background: '#ffedd5', color: '#c2410c', fontWeight: 800 }}>
-                                🏢 Şirketler Arası
+                                🏢 Grup İçi
                               </span>
                             )}
                           </div>

@@ -1815,7 +1815,7 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
                       {entry.documentNo}
                       {entry.originLegalEntityId && entry.destinationLegalEntityId && String(entry.originLegalEntityId) !== String(entry.destinationLegalEntityId) && (
                         <span className="badge" style={{ background: '#ffedd5', color: '#9a3412', fontSize: '.66rem', padding: '2px 6px' }}>
-                          <i className="fa-solid fa-building" style={{ marginRight: 4 }} /> Şirketler Arası
+                          <i className="fa-solid fa-building" style={{ marginRight: 4 }} /> Grup İçi
                         </span>
                       )}
                     </div>
@@ -1959,7 +1959,7 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 800, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    🏢 Şirketler Arası Transfer (Otomatik e-Fatura/e-İrsaliye Düzenlenir)
+                    🏢 Grup İçi Transfer (Otomatik e-Fatura/e-İrsaliye Düzenlenir)
                     <span
                       className="badge"
                       style={{

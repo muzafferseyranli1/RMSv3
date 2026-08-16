@@ -2006,7 +2006,7 @@ export default function IntegratorStudio() {
                 }}
               >
                 <i className="fa-solid fa-arrow-right-arrow-left" />
-                3. Şirketler Arası & Dahili Transfer Hub
+                3. Grup İçi & Dahili Transfer Hub
               </button>
             </div>
 
@@ -2510,14 +2510,14 @@ export default function IntegratorStudio() {
                 }}
               >
                 <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-strong)', marginBottom: 8 }}>
-                  Şirketler Arası & Dahili Transfer Faturalaşması (Inter-Company Hub)
+                  Grup İçi & Dahili Transfer Faturalaşması (Inter-Company Hub)
                 </div>
                 <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
                   Farklı tüzel kişiliklere sahip şubeler arasındaki dahili transferlerin otomatik e-irsaliye ve e-fatura akışlarını yönetin.
                 </div>
                 <div style={{ background: 'var(--app-bg)', padding: 18, borderRadius: 10, border: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <i className="fa-solid fa-network-wired fa-2x" style={{ color: '#ef4444', marginBottom: 10 }} />
-                  <div style={{ fontWeight: 700 }}>Şirketler Arası Transfer Otomasyonu Devrede</div>
+                  <div style={{ fontWeight: 700 }}>Grup İçi Transfer Otomasyonu Devrede</div>
                   <div style={{ fontSize: '.78rem', marginTop: 4 }}>
                     Stok Transferi ekranından yapılan tüzel kişilikler arası transferler otomatik olarak buradaki Entegratör Giden Kutusuna aktarılır.
                   </div>
