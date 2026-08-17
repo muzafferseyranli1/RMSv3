@@ -23,7 +23,7 @@ const CT = {
     };
   },
   sirket:  { label:'Şirket',              icon:'fa-building',        bg:'#e2e8f0', color:'#0f172a', children:['tuzel','org'] },
-  tuzel:   { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['sube','uretim','anadepo','gm','org','depo'] },
+  tuzel:   { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['sube','uretim','anadepo','gm','org'] },
   org:     { label:'Organizasyon Dept.',  icon:'fa-sitemap',         bg:'#ede9fe', color:'#5b21b6', children:['org','sube','uretim','anadepo','gm'] },
   sube:    { label:'Şube',                icon:'fa-store',           bg:'#e0f2fe', color:'#0369a1', children:['depo'] },
   anadepo: { label:'Ana Depo',            icon:'fa-warehouse',       bg:'#d1fae5', color:'#065f46', children:['depo','org'] },
@@ -410,6 +410,7 @@ export default function Company() {
 
     const newTree = JSON.parse(JSON.stringify(tree))
     let activeTargetId = editId
+    const unitTypesAutoWarehouse = ['sube', 'uretim', 'anadepo', 'gm', 'org']
 
     if (editId) {
       const node = findNode(newTree, editId)
@@ -417,14 +418,30 @@ export default function Company() {
     } else if (!parentNode) {
       const newId = uid()
       activeTargetId = newId
-      newTree.push({ id: newId, type: form.type, name: form.name.trim(), children: [], ...extra })
+      const autoChildren = unitTypesAutoWarehouse.includes(form.type) ? [
+        {
+          id: uid(),
+          type: 'depo',
+          name: `${form.name.trim()} Ana Deposu`,
+          children: []
+        }
+      ] : []
+      newTree.push({ id: newId, type: form.type, name: form.name.trim(), children: autoChildren, ...extra })
     } else {
       const parent = findNode(newTree, parentNode.id)
       if (parent) {
         if (!parent.children) parent.children = []
         const newId = uid()
         activeTargetId = newId
-        parent.children.push({ id: newId, type: form.type, name: form.name.trim(), children: [], ...extra })
+        const autoChildren = unitTypesAutoWarehouse.includes(form.type) ? [
+          {
+            id: uid(),
+            type: 'depo',
+            name: `${form.name.trim()} Ana Deposu`,
+            children: []
+          }
+        ] : []
+        parent.children.push({ id: newId, type: form.type, name: form.name.trim(), children: autoChildren, ...extra })
         setCollapsed(s => ({ ...s, [parent.id]: false }))
       }
     }
