@@ -799,9 +799,8 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
     [destinationOptions, form.destinationBranchId, form.destinationScope],
   )
 
-  const invoiceRequired = useMemo(() => !sameEntity(actorMeta, destinationMeta), [actorMeta, destinationMeta])
-
   const [interCompanyInfo, setInterCompanyInfo] = useState(null)
+  const [isInterCompanyInvoiceEnabled, setIsInterCompanyInvoiceEnabled] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -1061,6 +1060,7 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
 
   function handleNewDocument() {
     setForm(createInitialForm(actorMeta, destinationOptions))
+    setIsInterCompanyInvoiceEnabled(true)
     setFormMode('edit')
     setEditorOpen(true)
   }
@@ -1665,7 +1665,7 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
       // 🏢 Otomatik Şirketler Arası (Inter-Company) E-Fatura & E-İrsaliye Düzenleme
       try {
         const icCheck = interCompanyInfo || await interCompanyTransferService.checkIfInterCompanyTransfer(originSnapshot, destinationMeta)
-        if (icCheck?.isInterCompany) {
+        if (icCheck?.isInterCompany && isInterCompanyInvoiceEnabled) {
           const interCompanyRes = await interCompanyTransferService.generateInterCompanyInvoice(
             {
               documentNo: form.documentNo,
@@ -1927,55 +1927,44 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
             {(interCompanyInfo?.isInterCompany || invoiceRequired) && (
               <div
                 style={{
-                  marginTop: 12,
-                  padding: '12px 14px',
-                  borderRadius: 12,
+                  marginTop: 10,
+                  padding: '8px 14px',
+                  borderRadius: 10,
                   border: '1px solid #fed7aa',
                   background: 'linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%)',
                   color: '#9a3412',
-                  fontSize: '.82rem',
-                  lineHeight: 1.5,
+                  fontSize: '.81rem',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
                   gap: 12,
-                  boxShadow: '0 4px 12px rgba(234, 88, 12, 0.06)',
+                  flexWrap: 'wrap',
                 }}
               >
-                <div
+                <label
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: '#ffedd5',
-                    color: '#c2410c',
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1.1rem',
-                    flexShrink: 0,
+                    gap: 8,
+                    fontWeight: 700,
+                    color: '#9a3412',
+                    cursor: formMode === 'view' ? 'default' : 'pointer',
+                    userSelect: 'none',
                   }}
                 >
-                  <i className="fa-solid fa-building-circle-arrow-right" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    🏢 Grup İçi Transfer (Otomatik e-Fatura/e-İrsaliye Düzenlenir)
-                    <span
-                      className="badge"
-                      style={{
-                        background: '#ea580c',
-                        color: '#fff',
-                        fontSize: '.68rem',
-                        padding: '2px 8px',
-                        borderRadius: 6,
-                      }}
-                    >
-                      UBL-TR 2.1 E-Dönüşüm
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '.76rem', color: '#7c2d12', marginTop: 2 }}>
-                    {interCompanyInfo?.reason || 'Farklı tüzel kişilikler arası transfer.'} Belge kaydedildiğinde kaynak tüzel kişilik adına GİB e-fatura kesilecek ve hedef tüzel kişiliğin gelen kutusuna 3-way eşleşme için otomatik yansıtılacaktır.
-                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isInterCompanyInvoiceEnabled}
+                    onChange={e => setIsInterCompanyInvoiceEnabled(e.target.checked)}
+                    disabled={formMode === 'view'}
+                    style={{ width: 16, height: 16, accentColor: '#ea580c', cursor: 'pointer' }}
+                  />
+                  <span>🏢 Transfer farklı bir şirkete yapılmaktadır</span>
+                </label>
+
+                <div style={{ fontSize: '.76rem', color: '#7c2d12', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-circle-info" style={{ color: '#ea580c' }} />
+                  <span>işaretlerseniz karşı taraf transferi onayladığında otomatik olarak e-fatura düzenlenir.</span>
                 </div>
               </div>
             )}

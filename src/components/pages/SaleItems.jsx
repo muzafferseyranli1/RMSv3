@@ -325,6 +325,219 @@ function LocationPicker({ value, onChange, branches, branchTemplates }) {
   )
 }
 
+// ── Cloud brand picker ─────────────────────────────────────────
+function CloudBrandPicker({ value, onChange, cloudBrands }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const wrapRef = useRef()
+
+  useEffect(() => {
+    function handler(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [])
+
+  const selected = Array.isArray(value) ? value : []
+
+  function toggleBrand(brandName) {
+    const idx = selected.indexOf(brandName)
+    const next = idx > -1 ? selected.filter(b => b !== brandName) : [...selected, brandName]
+    onChange(next)
+  }
+
+  function selectAll() {
+    const allNames = cloudBrands.map(b => b.name)
+    if (selected.length === allNames.length) {
+      onChange([])
+    } else {
+      onChange(allNames)
+    }
+  }
+
+  const filtered = cloudBrands.filter(b => !search || b.name.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          border: `1.5px solid ${open ? '#8b5cf6' : '#c4cdd9'}`,
+          borderRadius: 10,
+          padding: '9px 36px 9px 12px',
+          cursor: 'pointer',
+          fontSize: '.855rem',
+          background: '#fff',
+          minHeight: 40,
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 5,
+          userSelect: 'none',
+          boxShadow: 'inset 0 2px 4px rgba(0,0,0,.06)',
+        }}
+      >
+        {selected.length === 0 ? (
+          <span style={{ color: '#94a3b8' }}>Sanal marka seçin…</span>
+        ) : selected.length === cloudBrands.length && cloudBrands.length > 0 ? (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 10px',
+              borderRadius: 99,
+              fontSize: '.74rem',
+              fontWeight: 700,
+              background: '#f3e8ff',
+              color: '#7e22ce',
+            }}
+          >
+            <i className="fa-solid fa-cloud-meatball" style={{ fontSize: '.65rem' }} />
+            Tüm Markalar ({selected.length})
+            <span
+              onClick={e => {
+                e.stopPropagation()
+                onChange([])
+              }}
+              style={{ cursor: 'pointer', opacity: 0.6 }}
+            >
+              ×
+            </span>
+          </span>
+        ) : (
+          selected.map(brandName => (
+            <span
+              key={brandName}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                borderRadius: 99,
+                fontSize: '.74rem',
+                fontWeight: 700,
+                background: '#f3e8ff',
+                color: '#7e22ce',
+              }}
+            >
+              <i className="fa-solid fa-cloud-meatball" style={{ fontSize: '.65rem' }} />
+              {brandName}
+              <span
+                onClick={e => {
+                  e.stopPropagation()
+                  toggleBrand(brandName)
+                }}
+                style={{ cursor: 'pointer', opacity: 0.6 }}
+              >
+                ×
+              </span>
+            </span>
+          ))
+        )}
+      </div>
+      <i
+        className="fa-solid fa-chevron-down"
+        style={{
+          position: 'absolute',
+          right: 12,
+          top: 14,
+          color: '#94a3b8',
+          fontSize: '.65rem',
+          pointerEvents: 'none',
+        }}
+      />
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 'calc(100% + 4px)',
+            background: '#fff',
+            border: '1.5px solid #e2e8f0',
+            borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(0,0,0,.12)',
+            zIndex: 299,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <i className="fa-solid fa-search" style={{ color: '#94a3b8', fontSize: '.75rem' }} />
+            <input
+              className="f-input"
+              placeholder="Marka ara…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              style={{ padding: '6px 10px', fontSize: '.83rem', border: 'none', outline: 'none', boxShadow: 'none', flex: 1 }}
+            />
+            {cloudBrands.length > 0 && (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  selectAll()
+                }}
+                style={{ fontSize: '.72rem', color: '#7e22ce', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+              >
+                {selected.length === cloudBrands.length ? 'Temizle' : 'Tümünü Seç'}
+              </button>
+            )}
+          </div>
+
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: '4px 0' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', fontSize: '.82rem', color: '#94a3b8' }}>
+                Sanal marka bulunamadı
+              </div>
+            ) : (
+              filtered.map(brand => {
+                const isSel = selected.includes(brand.name)
+                return (
+                  <div
+                    key={brand.id || brand.name}
+                    onClick={e => {
+                      e.stopPropagation()
+                      toggleBrand(brand.name)
+                    }}
+                    style={{
+                      padding: '8px 14px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: '.84rem',
+                      background: isSel ? '#f3e8ff' : 'transparent',
+                      borderLeft: `3px solid ${isSel ? '#8b5cf6' : 'transparent'}`,
+                    }}
+                  >
+                    <i
+                      className={`fa-solid ${isSel ? 'fa-square-check' : 'fa-square'}`}
+                      style={{ color: isSel ? '#8b5cf6' : '#cbd5e1', fontSize: '.9rem', flexShrink: 0 }}
+                    />
+                    {brand.logo_url ? (
+                      <img
+                        src={brand.logo_url}
+                        alt=""
+                        style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'contain' }}
+                      />
+                    ) : (
+                      <i className="fa-solid fa-cloud-meatball" style={{ color: '#8b5cf6', fontSize: '.75rem' }} />
+                    )}
+                    <span style={{ flex: 1, color: isSel ? '#6b21a8' : '#334155', fontWeight: isSel ? 700 : 500 }}>
+                      {brand.name}
+                    </span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Category tree picker ─────────────────────────────────────
 function CatPicker({ cats, value, onChange }) {
   const [open, setOpen] = useState(false)
@@ -417,7 +630,7 @@ function CatPicker({ cats, value, onChange }) {
 // ── EMPTY FORM ───────────────────────────────────────────────
 const EMPTY = {
   sku:'', auto_sku:false, name:'', short_name:'',
-  location:[], cat_id:null, acc_cat:'', acc_code:'',
+  location:[], cloud_brands:[], cat_id:null, acc_cat:'', acc_code:'',
   channel_prices: [],
   // Tab 2 - Seçenekler
   portions: [],
@@ -463,6 +676,8 @@ export default function SaleItems() {
   const [defaultSalesTax, setDefaultSalesTax] = useState('')
   const [branches, setBranches] = useState([])
   const [branchTpls, setBranchTpls] = useState([])
+  const [cloudBrands, setCloudBrands] = useState([])
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState('ALL')
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [showDeleted, setShowDeleted] = useState(false)
@@ -474,7 +689,7 @@ export default function SaleItems() {
   const [skuStatus, setSkuStatus] = useState({ type:'idle', msg:'' })
   const [existingSkus, setExistingSkus] = useState(new Set())
   const locationDefaultAppliedRef = useRef(false)
-  const LIST_FIELDS = 'id,sku,name,short_name,deleted_at,active,auto_sku,sale_status,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5'
+  const LIST_FIELDS = 'id,sku,name,short_name,deleted_at,active,auto_sku,sale_status,sale_cat_l1,sale_cat_l2,sale_cat_l3,sale_cat_l4,sale_cat_l5,cloud_brands'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -491,6 +706,7 @@ export default function SaleItems() {
         { data: bt, error: btError },
         { data: so, error: soError },
         { data: ogd, error: ogdError },
+        { data: ckb, error: ckbError },
       ] = await Promise.all([
         db.from('sale_items').select(LIST_FIELDS).order('name'),
         db.from('sale_categories').select('*').order('name'),
@@ -503,11 +719,12 @@ export default function SaleItems() {
         db.from('branch_templates').select('*').order('name'),
         db.from('sale_options').select('id,name,channel_prices').is('deleted_at',null).order('name'),
         db.from('option_groups').select('*').is('deleted_at',null).order('name'),
+        db.from('cloud_kitchen_brands').select('*').order('created_at', { ascending: true }),
       ])
 
       const firstError = [
         siError, caError, unError, chError, txError,
-        skError, smiError, ctError, btError, soError, ogdError,
+        skError, smiError, ctError, btError, soError, ogdError, ckbError,
       ].find(Boolean)
       if (firstError) toast(`Satış malı ekranı eksik yüklendi: ${firstError.message}`, 'error')
 
@@ -518,6 +735,7 @@ export default function SaleItems() {
       setChannels(ch||[])
       setTaxes(tx||[])
       setStockItems(sk||[])
+      setCloudBrands((ckb || []).filter(b => b.active !== false))
       setSemiItems((smi||[]).map(item => ({ ...item, unit: item.recipe_output_unit || '' })))
       setBranches(getAllBranches(ct?.value||[]))
       setBranchTpls(bt||[])
@@ -585,8 +803,15 @@ export default function SaleItems() {
 
   const filtered = items.filter(i => {
     if (!showDeleted && i.deleted_at) return false
-    const q = search.toLowerCase()
-    return !q || i.name?.toLowerCase().includes(q) || i.sku?.toLowerCase().includes(q)
+
+    // Sanal Marka Filtresi
+    if (selectedBrandFilter !== 'ALL') {
+      const itemBrands = Array.isArray(i.cloud_brands) ? i.cloud_brands : []
+      if (!itemBrands.includes(selectedBrandFilter)) return false
+    }
+
+    const q = search.toLowerCase().trim()
+    return !q || i.name?.toLowerCase().includes(q) || i.sku?.toLowerCase().includes(q) || i.short_name?.toLowerCase().includes(q)
   })
 
   // ── SKU ───────────────────────────────────────────────────
@@ -690,6 +915,7 @@ export default function SaleItems() {
       sku: fullItem.sku||'', auto_sku: fullItem.auto_sku||false,
       name: fullItem.name||'', short_name: fullItem.short_name||'',
       location: ensureDefaultLocationSelection(parseLocationValue(fullItem.location), branchTpls),
+      cloud_brands: parseArrayValue(fullItem.cloud_brands),
       cat_id: comboOnlyAssigned ? null : resolvedCategoryId,
       acc_cat: fullItem.acc_cat||'', acc_code: fullItem.acc_code||'',
       channel_prices: channelPrices,
@@ -771,6 +997,7 @@ export default function SaleItems() {
       sku: form.sku, auto_sku: form.auto_sku,
       name: form.name.trim(), short_name: form.short_name.trim()||null,
       location: form.location || [],
+      cloud_brands: JSON.stringify(form.cloud_brands || []),
       acc_cat: form.acc_cat||null, acc_code: form.acc_code||null,
       sale_cat_l1: chain[0]?.id||null, sale_cat_l2: chain[1]?.id||null,
       sale_cat_l3: chain[2]?.id||null, sale_cat_l4: chain[3]?.id||null, sale_cat_l5: chain[4]?.id||null,
@@ -875,12 +1102,33 @@ export default function SaleItems() {
         </>}
       />
 
-      {/* Search */}
-      <div className="card" style={{padding:14,marginBottom:14}}>
-        <div style={{position:'relative'}}>
+      {/* Search & Filter Bar */}
+      <div className="card" style={{padding:14,marginBottom:14,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{position:'relative',flex:1,minWidth:240}}>
           <i className="fa-solid fa-search" style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'#94a3b8',fontSize:'.75rem'}}/>
           <input className="f-input" placeholder="Satış malı ara…" style={{paddingLeft:30}}
             value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+
+        {/* Sanal Marka Filtresi */}
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <label style={{fontSize:'.83rem',fontWeight:700,color:'#475569',display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>
+            <i className="fa-solid fa-cloud-meatball" style={{color:'#8b5cf6'}}/>
+            Sanal Marka:
+          </label>
+          <select
+            className="f-input"
+            value={selectedBrandFilter}
+            onChange={e=>setSelectedBrandFilter(e.target.value)}
+            style={{width:'auto',padding:'7px 12px',fontSize:'.83rem',fontWeight:700,background:'#fff',borderRadius:10,borderColor:'#cbd5e1'}}
+          >
+            <option value="ALL">Tüm Markalar ({items.length})</option>
+            {cloudBrands.map(b=>(
+              <option key={b.id||b.name} value={b.name}>
+                {b.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -891,22 +1139,53 @@ export default function SaleItems() {
         ) : (
           <table className="tbl">
             <thead><tr>
-              <th>SKU</th><th>Satış Malı</th><th>Kategori</th><th>Durum</th><th>İşlem</th>
+              <th style={{width:'130px'}}>SKU</th>
+              <th style={{minWidth:'200px'}}>SATIŞ MALI</th>
+              <th style={{width:'160px'}}>KATEGORİ</th>
+              <th style={{width:'220px'}}>SANAL MARKA</th>
+              <th style={{width:'100px',textAlign:'center'}}>DURUM</th>
+              <th style={{width:'100px',textAlign:'right'}}>İŞLEM</th>
             </tr></thead>
             <tbody>
               {filtered.length===0 ? (
-                <tr><td colSpan={5}><div className="empty"><i className="fa-solid fa-utensils"/><p>Satış malı bulunamadı</p></div></td></tr>
+                <tr><td colSpan={6}><div className="empty"><i className="fa-solid fa-utensils"/><p>Satış malı bulunamadı</p></div></td></tr>
               ) : filtered.map(item=>{
                   const cat = itemCat(item)
+                  const itemBrands = Array.isArray(item.cloud_brands) ? item.cloud_brands : []
                   return <tr key={item.id} className={item.deleted_at?'deleted':''}>
-                    <td><span style={{fontFamily:'monospace',fontSize:'.8rem',fontWeight:700,color:'#475569'}}>{item.sku||'—'}</span></td>
-                    <td style={{fontWeight:600,color:'#0f172a'}}>
+                    <td style={{width:'130px'}}><span style={{fontFamily:'monospace',fontSize:'.8rem',fontWeight:700,color:'#475569'}}>{item.sku||'—'}</span></td>
+                    <td style={{minWidth:'200px',fontWeight:600,color:'#0f172a'}}>
                       <span className={item.deleted_at?'row-deleted':''}>{item.name}</span>
                       {item.short_name&&<div style={{fontSize:'.74rem',color:'#94a3b8'}}>{item.short_name}</div>}
                     </td>
-                    <td>{cat?<span className="badge" style={{background:cat.bg,color:cat.text_color}}>{cat.name}</span>:<span style={{color:'#cbd5e1'}}>—</span>}</td>
-                    <td><span className={`badge ${item.active!==false?'bg':'br'}`}>{item.active!==false?'Aktif':'Pasif'}</span></td>
-                    <td><div style={{display:'flex',gap:3}}>
+                    <td style={{width:'160px'}}>{cat?<span className="badge" style={{background:cat.bg,color:cat.text_color}}>{cat.name}</span>:<span style={{color:'#cbd5e1'}}>—</span>}</td>
+                    <td style={{width:'220px'}}>
+                      {itemBrands.length > 0 ? (
+                        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                          {itemBrands.map(b => (
+                            <span key={b} style={{
+                              background:'#f3e8ff',
+                              color:'#7e22ce',
+                              border:'1px solid #e9d5ff',
+                              padding:'2px 8px',
+                              borderRadius:6,
+                              fontSize:'.74rem',
+                              fontWeight:700,
+                              display:'inline-flex',
+                              alignItems:'center',
+                              gap:4
+                            }}>
+                              <i className="fa-solid fa-cloud-meatball" style={{fontSize:'.6rem'}}/>
+                              {b}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{color:'#cbd5e1',fontSize:'.8rem'}}>—</span>
+                      )}
+                    </td>
+                    <td style={{width:'100px',textAlign:'center'}}><span className={`badge ${item.active!==false?'bg':'br'}`}>{item.active!==false?'Aktif':'Pasif'}</span></td>
+                    <td style={{width:'100px',textAlign:'right'}}><div style={{display:'flex',gap:3,justifyContent:'flex-end'}}>
                       {item.deleted_at ? (
                         <button className="ico-btn" title="Geri Al" onClick={()=>restoreItem(item)}
                           style={{color:'#16a34a',background:'#d1fae5'}}>
@@ -1022,12 +1301,23 @@ export default function SaleItems() {
                   <p className="f-hint">Boş bırakılırsa tam isim kullanılır.</p>
                 </div>
 
-                {/* Location */}
-                <div>
-                  <label className="f-label">Lokasyon <span style={{color:'#ef4444'}}>*</span></label>
-                  <LocationPicker value={form.location} onChange={v=>set('location',v)}
-                    branches={branches} branchTemplates={branchTpls}/>
-                  <p className="f-hint">Birden fazla şube veya hazır grup seçebilirsiniz.</p>
+                {/* Location & Cloud Brands (2 Columns) */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div>
+                    <label className="f-label">Lokasyon <span style={{color:'#ef4444'}}>*</span></label>
+                    <LocationPicker value={form.location} onChange={v=>set('location',v)}
+                      branches={branches} branchTemplates={branchTpls}/>
+                    <p className="f-hint">Birden fazla şube veya hazır grup seçebilirsiniz.</p>
+                  </div>
+                  <div>
+                    <label className="f-label">
+                      <i className="fa-solid fa-cloud-meatball" style={{color:'#8b5cf6',marginRight:4}}/>
+                      Bulut Mutfak Markaları <span style={{fontSize:'.7rem',color:'#94a3b8',fontWeight:400}}>(opsiyonel)</span>
+                    </label>
+                    <CloudBrandPicker value={form.cloud_brands} onChange={v=>set('cloud_brands',v)}
+                      cloudBrands={cloudBrands}/>
+                    <p className="f-hint">Satış malının çalışabileceği sanal markaları seçin.</p>
+                  </div>
                 </div>
 
                 {/* Category — sale_categories */}

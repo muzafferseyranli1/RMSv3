@@ -12975,6 +12975,43 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - `OperationSync.md` (Log güncellendi)
 - `Handoff Contract`: Bulut Mutfak ekranında artık yalnızca "Sanal Markalar" ve "Ayarlar" sekmeleri yer almaktadır.
 
+## Entry - 2026-08-17 - Şirket Ağacı Şube Düğümüne Bulut Mutfak Sanal Markaları Entegrasyonu
+
+- `Timestamp`: `2026-08-17T21:51:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Şirket Ağacı ekleme/düzenleme modalında Şube düğümleri için Bulut Mutfak sanal markaları seçim alanı eklenmesi ve Bulut Mutfak depo ayarına göre otomatik hiyerarşi oluşturulması.
+- `Intent`: Kullanıcının bir şube düğümü tanımlarken VPS Postgres `cloud_kitchen_brands` tablosundaki aktif sanal markalardan 1 veya daha fazlasını seçebilmesini sağlamak. `cloud_kitchen_settings` tablosundaki `separate_warehouses` tercihine göre; "Ortak Depo" modunda markaların şubenin altına doğrudan alt alta dizilmesi, "Ayrı Depolar" modunda ise her markanın altında `[Düğüm Adı] [Marka Adı] Deposu` formülüyle otomatik özel depo oluşturulması.
+- `Files Changed`:
+  - `src/components/pages/Company (1).jsx` (Sanal marka seçimi UI, `buildSubeChildren` otomatik hiyerarşi motoru ve `cloud_brand` düğüm türü entegrasyonu eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Şirket Ağacı şube düğümlerinde Bulut Mutfak markaları ve otomatik depolar ayar durumuna göre kusursuz olarak hiyerarşide yapılandırılmaktadır.
+
+## Entry - 2026-08-17 - Şirket Ağacı "object is not iterable" Hatası Düzeltmesi
+
+- `Timestamp`: `2026-08-17T21:58:00+03:00`
+- `Agent`: Antigravity
+- `Task`: `/company` sayfasında alınan `object is not iterable (cannot read property Symbol(Symbol.iterator))` hatasının kök neden teşhisi ve düzeltilmesi.
+- `Intent`: `TreeExplorer` bileşeninde `expandedIds` prop'una geçirilen `collapsed` nesnesi (`{ [id]: boolean }`) düz JavaScript nesnesi olduğu için `new Set(expandedIds)` çağrısının patlamasını önlemek ve bileşeni hem `Set`, hem `Array`, hem de `Object` haritalarına karşı %100 dayanıklı hale getirmek.
+- `Files Changed`:
+  - `src/components/ui/TreeExplorer/TreeExplorer.jsx` (`expandedSet` dönüşümüne nesne filtreleme desteği eklendi, `nodes` ve `tree` prop desteği sağlandı)
+  - `src/components/pages/Company (1).jsx` (`nodes={tree}` prop'u eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Şirket Ağacı (`/company`) sayfası hatasız bir şekilde açılmakta ve ağaç hiyerarşisi sorunsuz görüntülenmektedir.
+
+## Entry - 2026-08-17 - Satış Malı Tablosu Sütun Hizalaması, Sanal Marka Sütunu ve Filtre Entegrasyonu
+
+- `Timestamp`: `2026-08-17T22:13:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Satış Malı (`/products`) sayfasında kaymış olan tablo başlıklarının düzeltilmesi, "SANAL MARKA" sütununun eklenmesi ve markaya göre filtreleme özelliğinin entegrasyonu.
+- `Intent`: Kullanıcının `/products` listesinde satış mallarına atanmış Bulut Mutfak sanal markalarını mor etiketler halinde listeleyebilmesini sağlamak, arama barının yanında "Sanal Marka" açılır seçeneği ile markaya göre anlık filtreleme yapabilmesini sağlamak ve tablo sütun genişliklerini sabitleyerek kaymayı tamamen gidermek.
+- `Files Changed`:
+  - `src/components/pages/SaleItems.jsx` (`LIST_FIELDS`'a `cloud_brands` eklendi, `selectedBrandFilter` state & filtresi eklendi, `SANAL MARKA` tablo başlığı ve hücreleri hizalama genişlikleriyle eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Satış Malı listesi sütun başlıkları tam hizalı, sanal markalar sütunu görünür ve sanal marka filtresi tam çalışır durumdadır.
+
+
+
+
 
 
 
@@ -12992,6 +13029,17 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Agent / Deployer`: Antigravity Deployer Engine
 - `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
 - `Commit Hash`: `ef5db7c`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-17 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-17T18:19:59.898Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `8fc4b3b`
 - `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
 - `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.

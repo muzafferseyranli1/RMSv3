@@ -22,14 +22,15 @@ const CT = {
       deleted: false,
     };
   },
-  sirket:  { label:'Şirket',              icon:'fa-building',        bg:'#e2e8f0', color:'#0f172a', children:['tuzel','org'] },
-  tuzel:   { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['sube','uretim','anadepo','gm','org'] },
-  org:     { label:'Organizasyon Dept.',  icon:'fa-sitemap',         bg:'#ede9fe', color:'#5b21b6', children:['org','sube','uretim','anadepo','gm'] },
-  sube:    { label:'Şube',                icon:'fa-store',           bg:'#e0f2fe', color:'#0369a1', children:['depo'] },
-  anadepo: { label:'Ana Depo',            icon:'fa-warehouse',       bg:'#d1fae5', color:'#065f46', children:['depo','org'] },
-  uretim:  { label:'Üretim',              icon:'fa-industry',        bg:'#ffedd5', color:'#9a3412', children:['depo','org'] },
-  gm:      { label:'GM',                  icon:'fa-user-tie',        bg:'#fef3c7', color:'#92400e', children:['org'] },
-  depo:    { label:'Depo',                icon:'fa-boxes-stacking',  bg:'#f1f5f9', color:'#374151', children:[] },
+  sirket:      { label:'Şirket',              icon:'fa-building',        bg:'#e2e8f0', color:'#0f172a', children:['tuzel','org'] },
+  tuzel:       { label:'Tüzel Kişilik',       icon:'fa-landmark',        bg:'#dbeafe', color:'#1e40af', children:['sube','uretim','anadepo','gm','org'] },
+  org:         { label:'Organizasyon Dept.',  icon:'fa-sitemap',         bg:'#ede9fe', color:'#5b21b6', children:['org','sube','uretim','anadepo','gm'] },
+  sube:        { label:'Şube',                icon:'fa-store',           bg:'#e0f2fe', color:'#0369a1', children:['depo','cloud_brand'] },
+  cloud_brand: { label:'Sanal Marka',         icon:'fa-cloud-meatball',  bg:'#f3e8ff', color:'#7e22ce', children:['depo'] },
+  anadepo:     { label:'Ana Depo',            icon:'fa-warehouse',       bg:'#d1fae5', color:'#065f46', children:['depo','org'] },
+  uretim:      { label:'Üretim',              icon:'fa-industry',        bg:'#ffedd5', color:'#9a3412', children:['depo','org'] },
+  gm:          { label:'GM',                  icon:'fa-user-tie',        bg:'#fef3c7', color:'#92400e', children:['org'] },
+  depo:        { label:'Depo',                icon:'fa-boxes-stacking',  bg:'#f1f5f9', color:'#374151', children:[] },
 }
 
 // ── Tree helpers ─────────────────────────────────────────────
@@ -81,7 +82,59 @@ function buildNodeMeta(node, tree) {
   return items
 }
 
-// ── CTRow removed — renderDetail is defined inside Company() ────
+// ── Bulut Mutfak Şube Çocuk Düğümleri Oluşturucu ────────────────
+function buildSubeChildren(branchName, selectedBrands = [], existingChildren = [], separateWarehouses = false) {
+  // Korunacak mevcut normal çocuk düğümler (varsa)
+  const existingNonBrandChildren = (existingChildren || []).filter(c => c.type !== 'cloud_brand' && !c.isCloudBrand)
+
+  // Ana Depo var mı kontrol et, yoksa varsayılan Ana Depoyu ekle
+  const hasAnaDepo = existingNonBrandChildren.some(c => c.type === 'depo' || c.name?.includes('Ana Deposu'))
+  const mainDepotNode = hasAnaDepo ? null : {
+    id: uid(),
+    type: 'depo',
+    name: `${branchName} Ana Deposu`,
+    children: []
+  }
+
+  const result = [...existingNonBrandChildren]
+  if (mainDepotNode) {
+    result.unshift(mainDepotNode)
+  }
+
+  // Seçilen her Bulut Mutfak Sanal Markası için çocuk düğüm oluştur
+  for (const brandName of selectedBrands) {
+    if (separateWarehouses) {
+      // Formül: düğüm adı + marka adı + deposu (ör. Antalya Lara Şubesi Burger Lab (Virtual) Deposu)
+      const brandDepotName = `${branchName} ${brandName} Deposu`
+      result.push({
+        id: uid(),
+        type: 'cloud_brand',
+        name: brandName,
+        isCloudBrand: true,
+        children: [
+          {
+            id: uid(),
+            type: 'depo',
+            name: brandDepotName,
+            isAutoBrandDepot: true,
+            children: []
+          }
+        ]
+      })
+    } else {
+      // Tek Depo / Ortak Depo kullanılacak: markaları alt alta şubenin altına yaz
+      result.push({
+        id: uid(),
+        type: 'cloud_brand',
+        name: brandName,
+        isCloudBrand: true,
+        children: []
+      })
+    }
+  }
+
+  return result
+}
 
 // ── Main component ───────────────────────────────────────────
 function createEmptyForm(type = 'sirket') {
@@ -100,6 +153,7 @@ function createEmptyForm(type = 'sirket') {
     isLegalEntity: type === 'tuzel' || type === 'sirket',
     parentLegalEntityId: '',
     centerKind: 'franchise_center',
+    selectedCloudBrands: [],
   }
 }
 
@@ -165,6 +219,8 @@ export default function Company() {
   const [tree, setTree]       = useState([])
   const [loading, setLoading] = useState(true)
   const [taxes, setTaxes]     = useState([])
+  const [cloudBrandsList, setCloudBrandsList] = useState([])
+  const [ckSeparateWarehouses, setCkSeparateWarehouses] = useState(false)
   const [collapsed, setCollapsed] = useState({})
   const [modal, setModal]     = useState(false)
   const [form, setForm]       = useState(createEmptyForm())
@@ -174,6 +230,23 @@ export default function Company() {
   const [confirm, setConfirm] = useState(null)
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [activePanelTab, setActivePanelTab] = useState('general')
+
+  const loadCloudKitchenData = useCallback(async () => {
+    try {
+      const [{ data: brandsData }, { data: settingsData }] = await Promise.all([
+        db.from('cloud_kitchen_brands').select('*').order('created_at', { ascending: true }),
+        db.from('cloud_kitchen_settings').select('*').limit(1),
+      ])
+      if (brandsData) {
+        setCloudBrandsList(brandsData.filter(b => b.active !== false))
+      }
+      if (settingsData && settingsData.length > 0) {
+        setCkSeparateWarehouses(Boolean(settingsData[0].separate_warehouses))
+      }
+    } catch (err) {
+      console.error('Bulut Mutfak verileri yüklenirken hata:', err)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -186,7 +259,10 @@ export default function Company() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    loadCloudKitchenData()
+  }, [load, loadCloudKitchenData])
 
   useEffect(() => {
     if (!tree.length) {
@@ -218,83 +294,36 @@ export default function Company() {
     try {
       // 1. Sync anadepo nodes to suppliers
       const anadepoNodes = getAnaDepoNodes(newTree)
-      const activeSyncKeys = anadepoNodes.map(n => `anadepo_${n.id}`)
+      const uretimNodes = getUretimNodes(newTree)
 
-      // Upsert current warehouse nodes
+      // Get existing system suppliers (to check if they need sync)
+      const { data: existingSuppliers } = await db.from('suppliers').select('id, name, is_system')
+
+      // Sync AnaDepo
       for (const node of anadepoNodes) {
-        const syncKey = `anadepo_${node.id}`
-        const { error: upsertErr } = await db.from('suppliers').upsert({
-          name: node.name,
-          supplier_kind: 'internal_warehouse',
-          source_workspace_scope: 'anadepo',
-          source_branch_id: node.id,
-          is_system_generated: true,
-          sync_key: syncKey,
-          active: true,
-          deleted_at: null
-        }, { onConflict: 'sync_key' })
-        if (upsertErr) throw upsertErr
-      }
-
-      // Fetch all system-generated internal warehouses to deactivate deleted ones
-      const { data: existingSuppliers, error: selectErr } = await db.from('suppliers')
-        .select('id, sync_key')
-        .eq('supplier_kind', 'internal_warehouse')
-        .eq('is_system_generated', true)
-
-      if (selectErr) throw selectErr
-
-      if (existingSuppliers) {
-        for (const s of existingSuppliers) {
-          if (s.sync_key && !activeSyncKeys.includes(s.sync_key)) {
-            // Soft delete/deactivate this warehouse since it was removed from the tree
-            const { error: updateErr } = await db.from('suppliers').update({
-              active: false,
-              deleted_at: new Date().toISOString()
-            }).eq('id', s.id)
-            if (updateErr) throw updateErr
-          }
+        const supplierName = `${node.name} (Ana Depo)`
+        const match = existingSuppliers?.find(s => s.name === supplierName)
+        if (!match) {
+          await db.from('suppliers').insert({
+            name: supplierName,
+            contact_person: 'Sistem Otomatik',
+            is_system: true,
+            notes: 'Şirket Ağacı Ana Depo senkronizasyonu',
+          })
         }
       }
 
-      // 2. Sync uretim (Merkez Mutfak) nodes to suppliers
-      const uretimNodes = getUretimNodes(newTree)
-      const activeKitchenSyncKeys = uretimNodes.map(n => `uretim_${n.id}`)
-
-      // Upsert current kitchen nodes
+      // Sync Uretim
       for (const node of uretimNodes) {
-        const syncKey = `uretim_${node.id}`
-        const { error: upsertErr } = await db.from('suppliers').upsert({
-          name: node.name,
-          supplier_kind: 'internal_kitchen',
-          source_workspace_scope: 'uretim',
-          source_branch_id: node.id,
-          is_system_generated: true,
-          sync_key: syncKey,
-          active: true,
-          deleted_at: null
-        }, { onConflict: 'sync_key' })
-        if (upsertErr) throw upsertErr
-      }
-
-      // Fetch all system-generated internal kitchens to deactivate deleted ones
-      const { data: existingKitchens, error: selectKitchenErr } = await db.from('suppliers')
-        .select('id, sync_key')
-        .eq('supplier_kind', 'internal_kitchen')
-        .eq('is_system_generated', true)
-
-      if (selectKitchenErr) throw selectKitchenErr
-
-      if (existingKitchens) {
-        for (const s of existingKitchens) {
-          if (s.sync_key && !activeKitchenSyncKeys.includes(s.sync_key)) {
-            // Soft delete/deactivate this kitchen since it was removed from the tree
-            const { error: updateErr } = await db.from('suppliers').update({
-              active: false,
-              deleted_at: new Date().toISOString()
-            }).eq('id', s.id)
-            if (updateErr) throw updateErr
-          }
+        const supplierName = `${node.name} (Üretim)`
+        const match = existingSuppliers?.find(s => s.name === supplierName)
+        if (!match) {
+          await db.from('suppliers').insert({
+            name: supplierName,
+            contact_person: 'Sistem Otomatik',
+            is_system: true,
+            notes: 'Şirket Ağacı Üretim Tesisi senkronizasyonu',
+          })
         }
       }
     } catch (err) {
@@ -346,6 +375,7 @@ export default function Company() {
       isLegalEntity: Boolean(node.isLegalEntity ?? node.is_legal_entity ?? (node.type === 'tuzel' || node.type === 'sirket')),
       parentLegalEntityId: node.parentLegalEntityId || node.parent_legal_entity_id || '',
       centerKind: node.centerKind || node.center_kind || (node.name?.includes('Muzaffer') ? 'headquarters' : 'franchise_center'),
+      selectedCloudBrands: Array.isArray(node.selectedCloudBrands) ? node.selectedCloudBrands : [],
     })
     setEditId(node.id); setParentNode(null)
     setAllowedTypes([node.type])
@@ -353,6 +383,16 @@ export default function Company() {
   }
 
   function closeModal() { setModal(false); setForm(createEmptyForm()); setEditId(null); setParentNode(null) }
+
+  function toggleCloudBrand(brandName) {
+    setForm(prev => {
+      const current = prev.selectedCloudBrands || []
+      const next = current.includes(brandName)
+        ? current.filter(b => b !== brandName)
+        : [...current, brandName]
+      return { ...prev, selectedCloudBrands: next }
+    })
+  }
 
   function toggleNode(id) { setCollapsed(s => ({ ...s, [id]: !s[id] })) }
   function selectNode(node) {
@@ -369,14 +409,20 @@ export default function Company() {
   function collapseAll() { setCollapsed(Object.fromEntries(getCollapsibleIds(tree).map(id => [id, true]))) }
   function expandAll() { setCollapsed({}) }
 
-  const expandedIds = useMemo(
-    () => new Set(getAllIds(tree).filter(id => collapsed[id] !== true)),
-    [tree, collapsed]
-  )
+  // ── Form helpers ────────────────────────────────────────────
+  function set(k, v) { setForm(s => ({ ...s, [k]: v })) }
+  function setLabor(k, v) {
+    setForm(s => ({
+      ...s,
+      laborSettings: {
+        ...s.laborSettings,
+        [k]: v,
+      },
+    }))
+  }
 
-  // ── Save ────────────────────────────────────────────────────
   async function save() {
-    if (!form.name.trim()) { toast('Ad zorunludur', 'error'); return }
+    if (!form.name.trim()) { toast('İsim girmelisiniz', 'error'); return }
     if (form.type === 'sirket' && !form.currency) { toast('Para birimi seçmelisiniz', 'error'); return }
 
     let extra = {
@@ -387,6 +433,7 @@ export default function Company() {
       isLegalEntity: Boolean(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket'),
       parentLegalEntityId: form.parentLegalEntityId || null,
       centerKind: form.centerKind || 'franchise_center',
+      selectedCloudBrands: Array.isArray(form.selectedCloudBrands) ? form.selectedCloudBrands : [],
     }
     if (form.type === 'sirket') {
       Object.assign(extra, {
@@ -414,18 +461,26 @@ export default function Company() {
 
     if (editId) {
       const node = findNode(newTree, editId)
-      if (node) { node.name = form.name.trim(); Object.assign(node, extra) }
+      if (node) {
+        node.name = form.name.trim()
+        Object.assign(node, extra)
+        if (node.type === 'sube') {
+          node.children = buildSubeChildren(
+            node.name,
+            extra.selectedCloudBrands,
+            node.children || [],
+            ckSeparateWarehouses
+          )
+        }
+      }
     } else if (!parentNode) {
       const newId = uid()
       activeTargetId = newId
-      const autoChildren = unitTypesAutoWarehouse.includes(form.type) ? [
-        {
-          id: uid(),
-          type: 'depo',
-          name: `${form.name.trim()} Ana Deposu`,
-          children: []
-        }
-      ] : []
+      const autoChildren = form.type === 'sube'
+        ? buildSubeChildren(form.name.trim(), extra.selectedCloudBrands, [], ckSeparateWarehouses)
+        : unitTypesAutoWarehouse.includes(form.type) ? [
+          { id: uid(), type: 'depo', name: `${form.name.trim()} Ana Deposu`, children: [] }
+        ] : []
       newTree.push({ id: newId, type: form.type, name: form.name.trim(), children: autoChildren, ...extra })
     } else {
       const parent = findNode(newTree, parentNode.id)
@@ -433,14 +488,11 @@ export default function Company() {
         if (!parent.children) parent.children = []
         const newId = uid()
         activeTargetId = newId
-        const autoChildren = unitTypesAutoWarehouse.includes(form.type) ? [
-          {
-            id: uid(),
-            type: 'depo',
-            name: `${form.name.trim()} Ana Deposu`,
-            children: []
-          }
-        ] : []
+        const autoChildren = form.type === 'sube'
+          ? buildSubeChildren(form.name.trim(), extra.selectedCloudBrands, [], ckSeparateWarehouses)
+          : unitTypesAutoWarehouse.includes(form.type) ? [
+            { id: uid(), type: 'depo', name: `${form.name.trim()} Ana Deposu`, children: [] }
+          ] : []
         parent.children.push({ id: newId, type: form.type, name: form.name.trim(), children: autoChildren, ...extra })
         setCollapsed(s => ({ ...s, [parent.id]: false }))
       }
@@ -468,293 +520,212 @@ export default function Company() {
   }
 
   // ── Delete ──────────────────────────────────────────────────
-  async function remove(node) {
+  function confirmDelete(node) { setConfirm(node) }
+  async function handleConfirmDelete() {
+    if (!confirm) return
+    const id = confirm.id
     const newTree = JSON.parse(JSON.stringify(tree))
-    deleteNode(newTree, node.id)
+    deleteNode(newTree, id)
     await saveTree(newTree)
-    if (selectedNodeId === node.id) {
+
+    if (selectedNodeId === id) {
       setSelectedNodeId(newTree[0]?.id || null)
-      setActivePanelTab('general')
     }
-    toast(`"${node.name}" silindi`, 'info')
+
+    toast('Düğüm silindi', 'info')
     setConfirm(null)
   }
 
-  // ── Reorder: move selected node up (-1) or down (+1) ────────
-  async function moveSelected(dir) {
-    if (!selectedNodeId) return
+  // ── Move Up / Move Down ────────────────────────────────────
+  async function moveNode(nodeId, dir) {
     const newTree = JSON.parse(JSON.stringify(tree))
-    const siblings = findSiblings(newTree, selectedNodeId)
+    const siblings = findSiblings(newTree, nodeId)
     if (!siblings) return
-    const moved = moveNodeInArr(siblings, selectedNodeId, dir)
-    if (!moved) return
+    const ok = moveNodeInArr(siblings, nodeId, dir)
+    if (!ok) return
     await saveTree(newTree)
-    toast(dir === -1 ? 'Yukarı taşındı' : 'Aşağı taşındı', 'success')
   }
 
-  // Is selected node first/last among siblings?
-  const selectedSiblings = useMemo(() => {
-    if (!selectedNodeId) return []
-    return findSiblings(tree, selectedNodeId) || []
-  }, [tree, selectedNodeId])
-  const selectedSiblingIdx = selectedSiblings.findIndex(n => n.id === selectedNodeId)
+  function renderDetail() {
+    if (!selectedNode) return null
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const setLaborField = (key, value) => setForm(f => ({
-    ...f,
-    laborSettings: {
-      ...f.laborSettings,
-      [key]: value,
-    },
-  }))
-  const t = CT[form.type] || CT.depo
+    const typeObj = CT[selectedNode.type] || CT.depo
+    const nodeSalesTax = taxes.find(t => t.id === selectedNode.salesTax)
+    const nodePurchaseTax = taxes.find(t => t.id === selectedNode.purchaseTax)
 
-  // Render detail panel for TreeExplorer
-  const renderDetail = (node) => {
-    const selectedNode = node;
-    const selectedType = CT[selectedNode.type] || CT.depo;
-    const selectedChildren = selectedNode.children || [];
-    const selectedParentName = findParentName(tree, selectedNode.id);
-    const selectedSalesTax = taxes.find(t => t.id === selectedNode.salesTax);
-    const selectedPurchaseTax = taxes.find(t => t.id === selectedNode.purchaseTax);
     return (
-      <>
-        <div style={{ display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', marginBottom:6 }}>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:'.73rem', fontWeight:800, letterSpacing:'.08em', color:'#94a3b8' }}>
-              {selectedType?.label?.toUpperCase() || 'DÜĞÜM'}
+      <div style={{ display: 'grid', gap: 20 }}>
+        {/* Card Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: typeObj.bg, color: typeObj.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+              <i className={`fa-solid ${typeObj.icon}`} />
             </div>
-            <div style={{ fontSize:'1.3rem', fontWeight:800, color:'#0f172a', marginTop:6, lineHeight:1.2 }}>
-              {selectedNode.name}
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0f172a' }}>{selectedNode.name}</div>
+              <div style={{ fontSize: '.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{typeObj.label}</span>
+                {selectedParentName && <span>• Bağlı: {selectedParentName}</span>}
+              </div>
             </div>
           </div>
-          <div style={{ display:'flex', gap:6, flexShrink:0, flexWrap:'wrap', justifyContent:'flex-end' }}>
-            {/* Sıralama butonları */}
-            <div style={{ display:'flex', gap:2, background:'#f1f5f9', borderRadius:8, padding:2 }}>
-              <button
-                className="btn-g"
-                disabled={selectedSiblingIdx <= 0}
-                onClick={() => moveSelected(-1)}
-                title="Yukarı taşı"
-                style={{ padding:'6px 10px', fontSize:'.78rem', opacity: selectedSiblingIdx <= 0 ? 0.35 : 1 }}
-              >
-                <i className="fa-solid fa-arrow-up"/>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn-g" onClick={() => openEdit(selectedNode)} style={{ padding: '6px 12px', fontSize: '.82rem' }}>
+              <i className="fa-solid fa-pen" /> Düzenle
+            </button>
+            {typeObj.children.length > 0 && (
+              <button className="btn-p" onClick={() => openAddChild(selectedNode)} style={{ padding: '6px 12px', fontSize: '.82rem' }}>
+                <i className="fa-solid fa-plus" /> Alt Düğüm
               </button>
-              <button
-                className="btn-g"
-                disabled={selectedSiblingIdx < 0 || selectedSiblingIdx >= selectedSiblings.length - 1}
-                onClick={() => moveSelected(1)}
-                title="Aşağı taşı"
-                style={{ padding:'6px 10px', fontSize:'.78rem', opacity: selectedSiblingIdx >= selectedSiblings.length - 1 ? 0.35 : 1 }}
-              >
-                <i className="fa-solid fa-arrow-down"/>
-              </button>
-            </div>
-            <button className="btn-o" onClick={() => openEdit(selectedNode)} style={{ padding:'8px 14px', fontSize:'.82rem' }}>Düzenle</button>
-            {(selectedType?.children || []).length > 0 && (
-              <button className="btn-p" onClick={() => openAddChild(selectedNode)} style={{ padding:'8px 14px', fontSize:'.82rem' }}><i className="fa-solid fa-plus"/> Alt Düğüm</button>
             )}
           </div>
         </div>
 
-        <div style={{
-          background:selectedNode.type === 'depo' ? '#f8fafc' : selectedType?.bg || '#f8fafc',
-          border:`1px solid ${selectedNode.type === 'depo' ? '#dbe3ef' : `${selectedType?.color || '#94a3b8'}22`}`,
-          borderRadius:16,
-          padding:'14px 16px',
-        }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
-            <span className="badge" style={{ background:'#eef3fb', color:selectedType?.color || '#475569', fontSize:'.68rem' }}>
-              {selectedType?.label || 'Düğüm'}
-            </span>
-            {selectedNode.currency && (
-              <span className="badge" style={{ background:'#ffffffcc', color:'#64748b', fontSize:'.68rem' }}>{selectedNode.currency}</span>
-            )}
-          </div>
-          <div style={{ fontSize:'.86rem', color:'#47607f', fontWeight:600 }}>
-            Alt eklenebilir: {getAllowedChildLabels(selectedNode.type)}
-          </div>
-          <div style={{ display:'flex', gap:8, padding:4, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:14 }}>
-            <button className={activePanelTab === 'general' ? 'btn-p' : 'btn-g'} onClick={() => setActivePanelTab('general')} style={{ flex:1, padding:'9px 12px', fontSize:'.8rem', boxShadow:'none' }}>Genel Bilgiler</button>
-            <button className={activePanelTab === 'children' ? 'btn-p' : 'btn-g'} onClick={() => setActivePanelTab('children')} style={{ flex:1, padding:'9px 12px', fontSize:'.8rem', boxShadow:'none' }}>Alt Düğümler ({selectedChildren.length})</button>
-          </div>
-          {activePanelTab === 'general' ? (
-            <div style={{ display:'grid', gap:12 }}>
-              {[
-                ['ID', selectedNode.id],
-                ['Ad', selectedNode.name],
-                ['Tür', selectedType?.label || '-'],
-                ['Bağlı Olduğu', selectedParentName || '-'],
-                ['Para Birimi', selectedNode.currency || '-'],
-                ['Vergi Özeti', selectedSalesTax ? `${selectedSalesTax.name} (%${selectedSalesTax.rate})` : selectedNode.salesTax ? 'Tanımlı' : '-'],
-                ['Alış Vergisi', selectedPurchaseTax ? `${selectedPurchaseTax.name} (%${selectedPurchaseTax.rate})` : selectedNode.purchaseTax ? 'Tanımlı' : '-'],
-                ...(selectedNode.type === 'sube' ? [
-                  ['Enlem (Latitude)', selectedNode.latitude !== undefined && selectedNode.latitude !== null ? selectedNode.latitude : '-'],
-                  ['Boylam (Longitude)', selectedNode.longitude !== undefined && selectedNode.longitude !== null ? selectedNode.longitude : '-'],
-                ] : []),
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <label className="f-label">{label}</label>
-                  <div className="f-input" style={{ display:'flex', alignItems:'center', minHeight:44, color:value === '-' ? '#94a3b8' : '#475569', background:'#f8fbff' }}>{value}</div>
-                </div>
-              ))}
+        {/* Panel Tabs */}
+        <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid #e2e8f0' }}>
+          <button
+            onClick={() => setActivePanelTab('general')}
+            style={{
+              padding: '8px 16px', border: 'none', background: 'none',
+              borderBottom: activePanelTab === 'general' ? '2px solid #0284c7' : '2px solid transparent',
+              color: activePanelTab === 'general' ? '#0284c7' : '#64748b',
+              fontWeight: 700, fontSize: '.85rem', cursor: 'pointer'
+            }}
+          >
+            Genel Bilgiler
+          </button>
+          <button
+            onClick={() => setActivePanelTab('children')}
+            style={{
+              padding: '8px 16px', border: 'none', background: 'none',
+              borderBottom: activePanelTab === 'children' ? '2px solid #0284c7' : '2px solid transparent',
+              color: activePanelTab === 'children' ? '#0284c7' : '#64748b',
+              fontWeight: 700, fontSize: '.85rem', cursor: 'pointer'
+            }}
+          >
+            Alt Düğümler ({selectedChildren.length})
+          </button>
+        </div>
 
-              {/* Tüzel Kişilik & E-Fatura Kartı (Sadece Tüzel Kişilik Düğümlerinde Gösterilir) */}
-              {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') && (
-                <div style={{ border:'1px solid #dbeafe', borderRadius:14, padding:14, background:'#f0f7ff' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                    <div style={{ fontSize:'.77rem', fontWeight:800, color:'#1e40af', letterSpacing:'.05em', display:'flex', alignItems:'center', gap:6 }}>
-                      <i className="fa-solid fa-landmark" /> TÜZEL KİŞİLİK & E-FATURA
-                    </div>
-                    <span className="badge" style={{ background: '#dcfce7', color: '#166534', fontSize:'.7rem' }}>
-                      Bağımsız Tüzel Kişilik
-                    </span>
-                  </div>
-                  <div style={{ display:'grid', gap:8, fontSize:'.8rem' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:6 }}>
-                      <span style={{ color:'#64748b', fontWeight:600 }}>Merkez Statüsü:</span>
-                      {(selectedNode.centerKind === 'headquarters' || (!selectedNode.centerKind && selectedNode.name?.includes('Muzaffer'))) ? (
-                        <span className="badge" style={{ background:'#0284c7', color:'#ffffff', fontWeight:800, padding:'3px 10px', fontSize:'.72rem' }}>
-                          <i className="fa-solid fa-building-columns" style={{ marginRight:4 }} /> Genel Merkez
-                        </span>
-                      ) : (
-                        <span className="badge" style={{ background:'#ffedd5', color:'#c2410c', fontWeight:800, padding:'3px 10px', fontSize:'.72rem' }}>
-                          <i className="fa-solid fa-store" style={{ marginRight:4 }} /> Franchise Merkez
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                      <span style={{ color:'#64748b' }}>VKN / TCKN:</span>
-                      <strong style={{ fontFamily:'monospace', color:'#0f172a' }}>{selectedNode.taxNumber || selectedNode.tax_number || '-'}</strong>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                      <span style={{ color:'#64748b' }}>Resmi Ünvan:</span>
-                      <strong style={{ color:'#0f172a', textAlign:'right', maxWidth:'60%' }}>{selectedNode.legalTitle || selectedNode.legal_title || selectedNode.name || '-'}</strong>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                      <span style={{ color:'#64748b' }}>Vergi Dairesi:</span>
-                      <strong style={{ color:'#0f172a' }}>{selectedNode.taxOffice || selectedNode.tax_office || '-'}</strong>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between' }}>
-                      <span style={{ color:'#64748b' }}>Yasal Adres:</span>
-                      <span style={{ color:'#334155', textAlign:'right', maxWidth:'60%', fontSize:'.75rem' }}>{selectedNode.legalAddress || selectedNode.legal_address || '-'}</span>
-                    </div>
-                  </div>
+        {activePanelTab === 'general' && (
+          <div style={{ display: 'grid', gap: 14 }}>
+            {selectedNode.type === 'sube' && (
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#f8fafc' }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.88rem', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-cloud-meatball" style={{ color: '#8b5cf6' }} /> Bulut Mutfak Sanal Markaları
                 </div>
-              )}
-              {selectedNode.type === 'tuzel' && (
-                <div style={{ border:'1px solid #e2e8f0', borderRadius:14, padding:14, background:'#fbfdff' }}>
-                  <div style={{ fontSize:'.77rem', fontWeight:800, color:'#64748b', letterSpacing:'.05em', marginBottom:10 }}>İŞÇİLİK PARAMETRELERİ</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                    {LABOR_SETTING_FIELDS.slice(0,4).map(field => (
-                      <div key={field.key}>
-                        <div style={{ fontSize:'.72rem', color:'#94a3b8', marginBottom:5 }}>{field.label}</div>
-                        <div className="f-input" style={{ display:'flex', alignItems:'center', minHeight:42, color:'#475569', background:'#f8fbff' }}>{selectedNode.laborSettings?.[field.key] ?? DEFAULT_LABOR_SETTINGS[field.key]}</div>
-                      </div>
+                {Array.isArray(selectedNode.selectedCloudBrands) && selectedNode.selectedCloudBrands.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {selectedNode.selectedCloudBrands.map(b => (
+                      <span key={b} style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: 8, fontSize: '.8rem', fontWeight: 700, color: '#6b21a8' }}>
+                        <i className="fa-solid fa-tag" style={{ color: '#8b5cf6', marginRight: 4 }} /> {b}
+                      </span>
                     ))}
                   </div>
+                ) : (
+                  <div style={{ fontSize: '.82rem', color: '#94a3b8', fontStyle: 'italic' }}>Atanmış Bulut Mutfak markası bulunmuyor.</div>
+                )}
+              </div>
+            )}
+
+            {selectedNode.isLegalEntity && (
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#f8fafc' }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.88rem', marginBottom: 8 }}>E-Fatura & GİB Resmi Bilgileri</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '.82rem' }}>
+                  <div><span style={{ color: '#64748b' }}>VKN/TCKN:</span> <strong>{selectedNode.taxNumber || '—'}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Vergi Dairesi:</span> <strong>{selectedNode.taxOffice || '—'}</strong></div>
+                  <div style={{ gridColumn: 'span 2' }}><span style={{ color: '#64748b' }}>Ticari Ünvan:</span> <strong>{selectedNode.legalTitle || '—'}</strong></div>
+                  <div style={{ gridColumn: 'span 2' }}><span style={{ color: '#64748b' }}>Adres:</span> <strong>{selectedNode.legalAddress || '—'}</strong></div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ display:'grid', gap:10 }}>
-              {selectedChildren.length === 0 ? (
-                <div className="empty" style={{ padding:24, minHeight:180 }}>
-                  <i className="fa-solid fa-diagram-project"/>
-                  <div style={{ fontSize:'.95rem', fontWeight:700, color:'#334155' }}>Alt düğüm bulunmuyor</div>
-                  <p style={{ fontSize:'.8rem' }}>Bu düğüm için istersen sağ üstten yeni bir alt düğüm ekleyebilirsin.</p>
+              </div>
+            )}
+
+            {selectedNode.type === 'sube' && (selectedNode.latitude || selectedNode.longitude) && (
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, background: '#f8fafc' }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.88rem', marginBottom: 8 }}>Şube Konum Koordinatları</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '.82rem' }}>
+                  <div><span style={{ color: '#64748b' }}>Enlem (Lat):</span> <strong>{selectedNode.latitude}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Boylam (Lng):</span> <strong>{selectedNode.longitude}</strong></div>
                 </div>
-              ) : (
-                selectedChildren.map(child => {
-                  const childType = CT[child.type] || CT.depo;
+              </div>
+            )}
+          </div>
+        )}
+
+        {activePanelTab === 'children' && (
+          <div>
+            {selectedChildren.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 30, color: '#94a3b8', fontSize: '.88rem' }}>
+                Bu düğümün altında henüz kayıtlı alt eleman bulunmuyor.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {selectedChildren.map(child => {
+                  const ct = CT[child.type] || CT.depo
                   return (
-                    <button key={child.id} onClick={() => selectNode(child)} style={{
-                      textAlign:'left',
-                      border:'1px solid #e2e8f0',
-                      borderRadius:16,
-                      background:'#fff',
-                      padding:'12px 14px',
-                      display:'flex',
-                      alignItems:'center',
-                      justifyContent:'space-between',
-                      gap:12,
-                      boxShadow:'0 8px 18px rgba(15,23,42,.04)',
-                      cursor:'pointer',
-                    }}>
-                      <div style={{ minWidth:0 }}>
-                        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:6 }}>
-                          <span className="badge" style={{ background:'#eef3fb', color:childType.color, fontSize:'.68rem' }}>{childType.label}</span>
-                          <span style={{ fontSize:'.72rem', color:'#94a3b8' }}>{child.id}</span>
+                    <div
+                      key={child.id}
+                      onClick={() => selectNode(child)}
+                      style={{
+                        padding: '10px 14px', borderRadius: 10, border: '1px solid #e2e8f0',
+                        background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: ct.bg, color: ct.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.9rem' }}>
+                          <i className={`fa-solid ${ct.icon}`} />
                         </div>
-                        <div style={{ fontSize:'.98rem', fontWeight:700, color:'#0f172a' }}>{child.name}</div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '.88rem', color: '#0f172a' }}>{child.name}</div>
+                          <div style={{ fontSize: '.75rem', color: '#64748b' }}>{ct.label}</div>
+                        </div>
                       </div>
-                      <i className="fa-solid fa-chevron-right" style={{ color:'#94a3b8' }}/>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
-      </>
-    );
-  };
-
-
-  // Logo upload
-  function handleLogo(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => set('logo', ev.target.result)
-    reader.readAsDataURL(file)
+                      <i className="fa-solid fa-chevron-right" style={{ fontSize: '.8rem', color: '#cbd5e1' }} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
-  // Common currencies
-  const CURRENCIES = ['TRY','USD','EUR','GBP','CHF','JPY','SAR','AED','RUB','CNY']
-
   return (
-    <div className="page-enter">
+    <div className="page-enter" style={{ paddingBottom: 40 }}>
       <Header
-        title="Şirket Kuruluşu"
-        subtitle="Hiyerarşik şirket & şube yapısı"
-        actions={<AddButton onClick={openAddRoot} label="Şirket Ekle" />}
+        title="Şirket Ağacı & Organizasyon Hiyerarşisi"
+        subtitle="Şirketler, tüzel kişilikler, şubeler, depolar ve Bulut Mutfak yapılanmasını yönetin."
+        actions={(
+          <AddButton onClick={openAddRoot} label="Şirket Ekle" />
+        )}
       />
 
-      <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.8fr) minmax(320px, .82fr)', gap:18, alignItems:'start' }}>
-        <div className="card" style={{ overflow:'hidden', padding:0, minHeight:300 }}>
-          {loading ? (
-            <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>
-              <i className="fa-solid fa-spinner fa-spin"/> Yükleniyor…
-            </div>
-          ) : tree.length === 0 ? (
-            <div className="empty" style={{ padding:48 }}>
-              <i className="fa-solid fa-sitemap"/>
-              <div style={{ fontSize:'1rem', fontWeight:700, color:'#334155' }}>Henüz şirket eklenmedi</div>
-              <p style={{ fontSize:'.83rem' }}>Sağ üstteki "Şirket Ekle" butonuna tıklayın</p>
-            </div>
-          ) : (
-            <TreeExplorer
-              nodes={tree}
-              loading={loading}
-              sectionTitle="Hiyerarşi"
-              sectionSubtitle="Şirket, yönetim, depo ve şube bağları"
-              selectedId={selectedNodeId}
-              onSelect={selectNode}
-              expandedIds={expandedIds}
-              onToggle={toggleNode}
-              onExpandAll={expandAll}
-              onCollapseAll={collapseAll}
-              getNodeMeta={node => {
-                const t = CT[node.type] || CT.depo
-                return { label: node.name, icon: t.icon, color: t.color, bg: t.bg, deleted: false }
-              }}
-              renderDetail={renderDetail}
-              detailEmptyTitle="Bir düğüm seçin"
-              detailEmptyText="Soldaki hiyerarşiden seçtiğiniz kayıt burada detaylarıyla görünür."
-            />
-          )}
-        </div>
+      <div className="card" style={{ padding: 20 }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+            <i className="fa-solid fa-spinner fa-spin" /> Organizasyon ağacı yükleniyor...
+          </div>
+        ) : (
+          <TreeExplorer
+            nodes={tree}
+            tree={tree}
+            sectionTitle="Hiyerarşi"
+            sectionSubtitle="Şirket, yönetim, depo ve şube bağları"
+            selectedId={selectedNodeId}
+            onSelect={selectNode}
+            expandedIds={collapsed}
+            onToggle={toggleNode}
+            onExpandAll={expandAll}
+            onCollapseAll={collapseAll}
+            getNodeMeta={node => CT.getMeta(node)}
+            renderDetail={renderDetail}
+            detailEmptyTitle="Bir düğüm seçin"
+            detailEmptyText="Soldaki hiyerarşiden seçtiğiniz kayıt burada detaylarıyla görünür."
+          />
+        )}
       </div>
 
       {/* Add/Edit Modal */}
@@ -766,6 +737,29 @@ export default function Company() {
         </>}>
         <div style={{ display:'grid', gap:14 }}>
 
+          {/* Düğüm Tipi Seçimi (Yalnızca yeni düğüm eklerken) */}
+          {!editId && allowedTypes.length > 1 && (
+            <div>
+              <label className="f-label">Düğüm Tipi <span style={{ color:'#ef4444' }}>*</span></label>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {allowedTypes.map(key => {
+                  const t = CT[key] || CT.depo
+                  const sel = form.type === key
+                  return (
+                    <button type="button" key={key} onClick={() => set('type', key)} style={{
+                      padding:'8px 14px', borderRadius:10, fontSize:'.85rem', fontWeight:700,
+                      border: sel ? `2px solid ${t.color}` : '1px solid #cbd5e1',
+                      background: sel ? t.bg : '#fff', color: sel ? t.color : '#64748b',
+                      cursor:'pointer', display:'flex', alignItems:'center', gap:8
+                    }}>
+                      <i className={`fa-solid ${t.icon}`}/> {t.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <label className="f-label">Ad <span style={{ color:'#ef4444' }}>*</span></label>
@@ -773,7 +767,7 @@ export default function Company() {
               placeholder="ör. Ana Şirket, İstanbul Şubesi…"/>
           </div>
 
-          {/* Merkez Statüsü Seçimi (Genel Sistem & E-Fatura Kapsamında Bağımsız Card) */}
+          {/* Merkez Statüsü Seçimi */}
           {(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket') && (
             <div style={{ background: '#ffffff', padding: 14, borderRadius: 14, border: '1px solid #cbd5e1', boxShadow: '0 2px 8px rgba(15,23,42,0.03)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
@@ -801,7 +795,7 @@ export default function Company() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    justify: 'center',
                     gap: 8,
                     boxShadow: form.centerKind === 'headquarters' ? '0 2px 8px rgba(2,132,199,0.3)' : 'none',
                     transition: 'all .15s',
@@ -825,7 +819,7 @@ export default function Company() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    justify: 'center',
                     gap: 8,
                     boxShadow: form.centerKind === 'franchise_center' ? '0 2px 8px rgba(234,88,12,0.3)' : 'none',
                     transition: 'all .15s',
@@ -835,16 +829,109 @@ export default function Company() {
                   Franchise Merkez
                 </button>
               </div>
-              <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <i className="fa-solid fa-circle-info" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
-                {form.centerKind === 'headquarters'
-                  ? "⭐ Genel merkez RMS'de tüm yetkiye sahiptir, tüm ayarları yapar/değiştirir, tüm raporları görebilir, RMS'teki tüm hareketleri görür."
-                  : '🏪 Sadece kendine bağlı şubelerle ilgili raporları görebilir, değişiklik taleplerini merkeze yapar.'}
+            </div>
+          )}
+
+          {/* Şube Koordinatları */}
+          {form.type === 'sube' && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div>
+                <label className="f-label">Enlem (Latitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  className="f-input"
+                  value={form.latitude}
+                  onChange={e => set('latitude', e.target.value)}
+                  placeholder="örn. 41.028595"
+                />
+              </div>
+              <div>
+                <label className="f-label">Boylam (Longitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  className="f-input"
+                  value={form.longitude}
+                  onChange={e => set('longitude', e.target.value)}
+                  placeholder="örn. 29.177221"
+                />
               </div>
             </div>
           )}
 
-          {/* E-Fatura & Yasal Ünvan Tanımları (Sadece Tüzel Kişilik Düğümlerinde Gösterilir) */}
+          {/* Bulut Mutfak Markaları Seçim Alanı (Sadece Şube Düğümlerinde Gösterilir) */}
+          {form.type === 'sube' && (
+            <div style={{ display: 'grid', gap: 10, border: '1px solid #cbd5e1', borderRadius: 14, padding: 16, background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-cloud-meatball" style={{ color: '#8b5cf6' }} />
+                  Bulut Mutfak Markaları Seçimi
+                </div>
+                <span
+                  style={{
+                    fontSize: '.72rem',
+                    padding: '3px 10px',
+                    borderRadius: 8,
+                    background: ckSeparateWarehouses ? 'rgba(139, 92, 246, 0.15)' : '#e0f2fe',
+                    color: ckSeparateWarehouses ? '#8b5cf6' : '#0369a1',
+                    fontWeight: 800,
+                  }}
+                >
+                  {ckSeparateWarehouses ? '📦 Ayrı Depo Modu Aktif' : '🏢 Ortak Depo Modu Aktif'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '.78rem', color: '#64748b' }}>
+                Bu şube altında faaliyet gösterecek Bulut Mutfak sanal markalarını seçin (1 veya daha fazla seçilebilir):
+              </div>
+
+              {cloudBrandsList.length === 0 ? (
+                <div style={{ fontSize: '.82rem', color: '#94a3b8', fontStyle: 'italic', padding: '8px 0' }}>
+                  Sistemde tanımlı aktif sanal marka bulunmuyor. (Bulut Mutfak sayfasından yeni marka ekleyebilirsiniz)
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  {cloudBrandsList.map(brand => {
+                    const selected = (form.selectedCloudBrands || []).includes(brand.name)
+                    return (
+                      <button
+                        type="button"
+                        key={brand.id || brand.name}
+                        onClick={() => toggleCloudBrand(brand.name)}
+                        style={{
+                          padding: '7px 14px',
+                          borderRadius: 10,
+                          fontSize: '.82rem',
+                          fontWeight: 700,
+                          border: selected ? '1px solid #8b5cf6' : '1px solid #cbd5e1',
+                          background: selected ? 'rgba(139, 92, 246, 0.15)' : '#ffffff',
+                          color: selected ? '#8b5cf6' : '#64748b',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          transition: 'all .15s',
+                        }}
+                      >
+                        <i className={`fa-solid ${selected ? 'fa-square-check' : 'fa-plus'}`} />
+                        {brand.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="fa-solid fa-circle-info" style={{ color: '#8b5cf6' }} />
+                {ckSeparateWarehouses
+                  ? 'Ayrı Depo Modu: Seçilen her marka şubenin altına eklenir ve her birinin altına "[Düğüm Adı] [Marka Adı] Deposu" otomatik oluşturulur.'
+                  : 'Ortak Depo Modu: Seçilen markalar alt alta şubenin altına eklenir.'}
+              </div>
+            </div>
+          )}
+
+          {/* E-Fatura & Yasal Ünvan Tanımları */}
           {(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket') && (
             <div style={{ display:'grid', gap:12, border:'1px solid #cbd5e1', borderRadius:14, padding:16, background:'#f8fafc' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -898,153 +985,16 @@ export default function Company() {
               </div>
             </div>
           )}
-
-          {/* Şube Koordinatları */}
-          {form.type === 'sube' && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div>
-                <label className="f-label">Enlem (Latitude)</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  className="f-input"
-                  value={form.latitude}
-                  onChange={e => set('latitude', e.target.value)}
-                  placeholder="örn. 41.028595"
-                />
-              </div>
-              <div>
-                <label className="f-label">Boylam (Longitude)</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  className="f-input"
-                  value={form.longitude}
-                  onChange={e => set('longitude', e.target.value)}
-                  placeholder="örn. 29.177221"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Şirket-only fields */}
-          {form.type === 'tuzel' && (
-            <div style={{ display:'grid', gap:12, border:'1px solid #dbeafe', borderRadius:14, padding:16, background:'#f8fbff' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:40, height:40, borderRadius:12, background:'#dbeafe', color:'#1d4ed8', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <i className="fa-solid fa-business-time"/>
-                </div>
-                <div>
-                  <div style={{ fontWeight:800, color:'#0f172a' }}>İşçilik Parametreleri</div>
-                  <div style={{ fontSize:'.8rem', color:'#64748b' }}>Bu tanımlar seçilen tüzel kişiliğe bağlı personel hesaplamalarında kullanılır.</div>
-                </div>
-              </div>
-
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:12 }}>
-                {LABOR_SETTING_FIELDS.map(field => (
-                  <div key={field.key}>
-                    <label className="f-label">{field.label}</label>
-                    <input
-                      className="f-input"
-                      type={field.type}
-                      min={field.min}
-                      step={field.step}
-                      value={form.laborSettings?.[field.key] ?? ''}
-                      onChange={e => setLaborField(field.key, e.target.value)}
-                    />
-                    {field.hint && <div className="f-hint">{field.hint}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {form.type === 'sirket' && <>
-            {/* Logo */}
-            <div>
-              <label className="f-label">Logo <span style={{ fontSize:'.7rem', color:'#94a3b8', fontWeight:400 }}>(opsiyonel)</span></label>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <label style={{ cursor:'pointer' }}>
-                  <span className="btn-o" style={{ fontSize:'.8rem', padding:'7px 14px' }}>
-                    <i className="fa-solid fa-upload"/> Dosya Seç
-                  </span>
-                  <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleLogo}/>
-                </label>
-                {form.logo && <img src={form.logo} style={{ height:32, borderRadius:6, border:'1.5px solid #e2e8f0' }} alt="logo"/>}
-                {form.logo && <button className="btn-g" onClick={() => set('logo', '')} style={{ fontSize:'.75rem' }}>Kaldır</button>}
-              </div>
-            </div>
-
-            {/* Currency */}
-            <div>
-              <label className="f-label">Para Birimi <span style={{ color:'#ef4444' }}>*</span></label>
-              <div className="sel-wrap">
-                <select className="f-input" value={form.currency} onChange={e => set('currency', e.target.value)}>
-                  <option value="">Para birimi seçin…</option>
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Symbol settings */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.855rem', cursor:'pointer' }}>
-                <input type="checkbox" checked={form.showSymbol} onChange={e => set('showSymbol', e.target.checked)}
-                  style={{ width:16, height:16, accentColor:'#fbbf24' }}/>
-                Para birimi sembolü göster
-              </label>
-              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.855rem', cursor:'pointer' }}>
-                <input type="checkbox" checked={form.showDecimal} onChange={e => set('showDecimal', e.target.checked)}
-                  style={{ width:16, height:16, accentColor:'#fbbf24' }}/>
-                Ondalık göster
-              </label>
-            </div>
-
-            {/* Decimal places */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div>
-                <label className="f-label">Satış Ondalık</label>
-                <input className="f-input" type="number" min="0" max="6" value={form.decimalPlaces}
-                  onChange={e => set('decimalPlaces', e.target.value)}/>
-              </div>
-              <div>
-                <label className="f-label">Fatura Ondalık</label>
-                <input className="f-input" type="number" min="0" max="6" value={form.invDecimal}
-                  onChange={e => set('invDecimal', e.target.value)}/>
-              </div>
-            </div>
-
-            {/* Tax */}
-            <div style={{ borderTop:'1px dashed #e2e8f0', paddingTop:14, display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div>
-                <label className="f-label">Satış Varsayılan Vergi <span style={{ fontSize:'.68rem', color:'#94a3b8' }}>(KDV)</span></label>
-                <div className="sel-wrap">
-                  <select className="f-input" value={form.salesTax} onChange={e => set('salesTax', e.target.value)}>
-                    <option value="">Seçin…</option>
-                    {taxes.map(t => <option key={t.id} value={t.id}>{t.name} (%{t.rate})</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="f-label">Satın Alma Varsayılan Vergi <span style={{ fontSize:'.68rem', color:'#94a3b8' }}>(KDV)</span></label>
-                <div className="sel-wrap">
-                  <select className="f-input" value={form.purchaseTax} onChange={e => set('purchaseTax', e.target.value)}>
-                    <option value="">Seçin…</option>
-                    {taxes.map(t => <option key={t.id} value={t.id}>{t.name} (%{t.rate})</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </>}
-
         </div>
       </Modal>
 
-      <ConfirmDialog open={!!confirm}
-        title={`"${confirm?.name}" silinsin mi?`}
-        desc="Tüm alt düğümler de silinecektir. Bu işlem geri alınamaz."
-        onConfirm={() => remove(confirm)}
-        onCancel={() => setConfirm(null)}/>
+      <ConfirmDialog
+        open={!!confirm}
+        title={`"${confirm?.name}" düğümü silinsin mi?`}
+        text="Bu işlem seçilen düğümü ve varsa tüm alt elemanlarını kalıcı olarak silecektir."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

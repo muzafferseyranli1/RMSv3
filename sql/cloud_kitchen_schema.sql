@@ -24,3 +24,7 @@ CREATE TABLE IF NOT EXISTS public.cloud_kitchen_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Satış Malı Bulut Mutfak Markaları İlişkisi
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS cloud_brands jsonb DEFAULT '[]'::jsonb;
+
+

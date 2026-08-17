@@ -114,7 +114,7 @@ function TreeRow({
             padding: 0,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justify: 'center',
             color: 'var(--text-muted)',
             opacity: expandable ? 1 : 0.2,
             cursor: expandable ? 'pointer' : 'default',
@@ -133,7 +133,7 @@ function TreeRow({
             background: selected ? 'rgba(245,166,35,.2)' : (meta.bg || 'var(--surface-2)'),
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justify: 'center',
           }}
         >
           <i className={`fa-solid ${meta.icon}`} style={{ fontSize: '.65rem', color: selected ? 'var(--accent-primary)' : meta.color }} />
@@ -209,7 +209,6 @@ function TreeRow({
   );
 }
 
-
 export function getTreeExpandableIds(nodes) {
   return collectExpandableIds(nodes);
 }
@@ -220,6 +219,7 @@ export function findTreeNode(nodes, id) {
 
 export default function TreeExplorer({
   nodes = [],
+  tree = [],
   loading = false,
   emptyText = 'Kayit bulunamadi',
   loadingText = 'Yukleniyor...',
@@ -237,12 +237,22 @@ export default function TreeExplorer({
   detailEmptyText = 'Soldaki agactan sectiginiz kayit burada detaylariyla gorunur.',
   detailMinWidth = 320,
 }) {
+  const listNodes = useMemo(() => {
+    if (Array.isArray(nodes) && nodes.length > 0) return nodes;
+    if (Array.isArray(tree) && tree.length > 0) return tree;
+    return [];
+  }, [nodes, tree]);
+
   const expandedSet = useMemo(() => {
     if (expandedIds instanceof Set) return expandedIds;
-    return new Set(expandedIds || []);
+    if (Array.isArray(expandedIds)) return new Set(expandedIds);
+    if (expandedIds && typeof expandedIds === 'object') {
+      return new Set(Object.keys(expandedIds).filter(k => Boolean(expandedIds[k])));
+    }
+    return new Set();
   }, [expandedIds]);
 
-  const selectedNode = useMemo(() => findNode(nodes, selectedId), [nodes, selectedId]);
+  const selectedNode = useMemo(() => findNode(listNodes, selectedId), [listNodes, selectedId]);
   const showDetail = typeof renderDetail === 'function';
 
   return (
@@ -259,7 +269,7 @@ export default function TreeExplorer({
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
             <i className="fa-solid fa-spinner fa-spin" /> {loadingText}
           </div>
-        ) : nodes.length === 0 ? (
+        ) : listNodes.length === 0 ? (
           <div className="empty" style={{ padding: 48 }}>
             <i className="fa-solid fa-diagram-project" />
             <p>{emptyText}</p>
@@ -273,7 +283,7 @@ export default function TreeExplorer({
                 marginBottom: 8,
                 display: 'flex',
                 alignItems: 'flex-end',
-                justifyContent: 'space-between',
+                justify: 'space-between',
                 gap: 12,
               }}
             >
@@ -303,7 +313,7 @@ export default function TreeExplorer({
               )}
             </div>
 
-            {nodes.map((node) => (
+            {listNodes.map((node) => (
               <TreeRow
                 key={node.id}
                 node={node}

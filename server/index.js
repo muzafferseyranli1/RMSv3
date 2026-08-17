@@ -571,7 +571,7 @@ function normalizeWriteValue(table, column, value) {
     suppliers: new Set(['yetkililer', 'siparis_mailleri', 'siparis_telefonlari']),
     stock_items: new Set(['location', 'packaging_units', 'suppliers_list']),
     semi_items: new Set(['location', 'channel_prices', 'portions', 'option_groups', 'recipe_rows']),
-    sale_items: new Set(['location', 'channel_prices', 'portions', 'option_groups', 'recipe_rows']),
+    sale_items: new Set(['location', 'channel_prices', 'portions', 'option_groups', 'recipe_rows', 'cloud_brands']),
     sale_options: new Set(['channel_prices', 'portions', 'recipe_rows']),
     option_groups: new Set(['options']),
     contracts: new Set(['branches', 'rows']),
