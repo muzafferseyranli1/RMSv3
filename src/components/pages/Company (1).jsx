@@ -749,44 +749,83 @@ export default function Company() {
         </>}>
         <div style={{ display:'grid', gap:14 }}>
 
-          {/* Yazılımcı Notu */}
-          <div style={{background:'#fff5f5',border:'1.5px dashed #fca5a5',borderRadius:8,
-            padding:'8px 12px',display:'flex',alignItems:'flex-start',gap:8}}>
-            <i className="fa-solid fa-triangle-exclamation" style={{color:'#dc2626',fontSize:'.8rem',marginTop:2,flexShrink:0}}/>
-            <span style={{fontSize:'.75rem',color:'#dc2626',lineHeight:1.6}}>
-              <strong>Yazılımcıya Not:</strong> Şirket kuruluşu için tüm ilk ayarlar için eksik kalanlar tamamlanmalıdır.
-            </span>
-          </div>
-
-          {/* Type */}
-          <div>
-            <label className="f-label">Tür</label>
-            <div className="sel-wrap">
-              <select className="f-input" value={form.type}
-                onChange={e => set('type', e.target.value)} disabled={!!editId}>
-                {allowedTypes.map(k => (
-                  <option key={k} value={k}>{CT[k]?.label || k}</option>
-                ))}
-              </select>
-            </div>
-            {/* Type preview badge */}
-            <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8,
-              padding:'8px 12px', borderRadius:8, background:t.bg, color:t.color,
-              fontSize:'.8rem', fontWeight:600 }}>
-              <i className={`fa-solid ${t.icon}`}/>
-              <span>{t.label}</span>
-              {t.children.length > 0
-                ? <span style={{ opacity:.7 }}>— Alt eklenebilir: {t.children.map(k => CT[k]?.label || k).join(', ')}</span>
-                : <span style={{ opacity:.7 }}>— Yaprak düğüm</span>}
-            </div>
-          </div>
-
           {/* Name */}
           <div>
             <label className="f-label">Ad <span style={{ color:'#ef4444' }}>*</span></label>
             <input className="f-input" value={form.name} onChange={e => set('name', e.target.value)}
               placeholder="ör. Ana Şirket, İstanbul Şubesi…"/>
           </div>
+
+          {/* Merkez Statüsü Seçimi (Genel Sistem & E-Fatura Kapsamında Bağımsız Card) */}
+          {(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket') && (
+            <div style={{ background: '#ffffff', padding: 14, borderRadius: 14, border: '1px solid #cbd5e1', boxShadow: '0 2px 8px rgba(15,23,42,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-sitemap" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
+                  Merkez Statüsü Seçimi <span style={{ color: '#ef4444' }}>*</span>
+                </div>
+                <span style={{ fontSize: '.73rem', padding: '2px 8px', borderRadius: 10, background: form.centerKind === 'headquarters' ? '#e0f2fe' : '#ffedd5', color: form.centerKind === 'headquarters' ? '#0369a1' : '#c2410c', fontWeight: 800 }}>
+                  {form.centerKind === 'headquarters' ? '⭐ Ana Sistem Genel Merkezi' : '🏪 Franchise Şirket Merkezi'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => set('centerKind', 'headquarters')}
+                  style={{
+                    flex: 1,
+                    padding: '9px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: form.centerKind === 'headquarters' ? '#0284c7' : 'transparent',
+                    color: form.centerKind === 'headquarters' ? '#ffffff' : '#64748b',
+                    fontWeight: 800,
+                    fontSize: '.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: form.centerKind === 'headquarters' ? '0 2px 8px rgba(2,132,199,0.3)' : 'none',
+                    transition: 'all .15s',
+                  }}
+                >
+                  <i className="fa-solid fa-building-columns" />
+                  Genel Merkez
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set('centerKind', 'franchise_center')}
+                  style={{
+                    flex: 1,
+                    padding: '9px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: form.centerKind === 'franchise_center' ? '#ea580c' : 'transparent',
+                    color: form.centerKind === 'franchise_center' ? '#ffffff' : '#64748b',
+                    fontWeight: 800,
+                    fontSize: '.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: form.centerKind === 'franchise_center' ? '0 2px 8px rgba(234,88,12,0.3)' : 'none',
+                    transition: 'all .15s',
+                  }}
+                >
+                  <i className="fa-solid fa-store" />
+                  Franchise Merkez
+                </button>
+              </div>
+              <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="fa-solid fa-circle-info" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
+                {form.centerKind === 'headquarters'
+                  ? '⭐ Genel Merkez tek bir tüzel kişilikte seçili olabilir. Başka bir tüzel kişilikte Genel Merkez seçilirse bu otomatik Genel Merkez olur.'
+                  : '🏪 Franchise işletmelerinin bağlı olduğu merkez tüzel kişiliğidir. Yeni eklenen tüzel kişilikler varsayılan olarak bu statüdedir.'}
+              </div>
+            </div>
+          )}
 
           {/* Tüzel Kişilik & E-Fatura Tanımları */}
           <div style={{ display:'grid', gap:12, border:'1px solid #cbd5e1', borderRadius:14, padding:16, background:'#f8fafc' }}>
@@ -814,68 +853,6 @@ export default function Company() {
 
             {form.isLegalEntity ? (
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4 }}>
-                {/* Genel Merkez / Franchise Merkez Toggle */}
-                <div style={{ gridColumn: 'span 2', background: '#ffffff', padding: 12, borderRadius: 10, border: '1px solid #cbd5e1' }}>
-                  <label className="f-label" style={{ fontWeight: 800, color: '#0f172a', marginBottom: 6, display: 'block' }}>
-                    Merkez Statüsü Seçimi <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <div style={{ display: 'flex', gap: 8, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => set('centerKind', 'headquarters')}
-                      style={{
-                        flex: 1,
-                        padding: '9px 14px',
-                        borderRadius: 8,
-                        border: 'none',
-                        background: form.centerKind === 'headquarters' ? '#0284c7' : 'transparent',
-                        color: form.centerKind === 'headquarters' ? '#ffffff' : '#64748b',
-                        fontWeight: 800,
-                        fontSize: '.85rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        boxShadow: form.centerKind === 'headquarters' ? '0 2px 8px rgba(2,132,199,0.3)' : 'none',
-                        transition: 'all .15s',
-                      }}
-                    >
-                      <i className="fa-solid fa-building-columns" />
-                      Genel Merkez
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => set('centerKind', 'franchise_center')}
-                      style={{
-                        flex: 1,
-                        padding: '9px 14px',
-                        borderRadius: 8,
-                        border: 'none',
-                        background: form.centerKind === 'franchise_center' ? '#ea580c' : 'transparent',
-                        color: form.centerKind === 'franchise_center' ? '#ffffff' : '#64748b',
-                        fontWeight: 800,
-                        fontSize: '.85rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        boxShadow: form.centerKind === 'franchise_center' ? '0 2px 8px rgba(234,88,12,0.3)' : 'none',
-                        transition: 'all .15s',
-                      }}
-                    >
-                      <i className="fa-solid fa-store" />
-                      Franchise Merkez
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <i className="fa-solid fa-circle-info" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
-                    {form.centerKind === 'headquarters'
-                      ? '⭐ Genel Merkez tek bir tüzel kişilikte seçili olabilir. Başka bir tüzel kişilikte Genel Merkez seçilirse bu otomatik Genel Merkez olur.'
-                      : '🏪 Franchise işletmelerinin bağlı olduğu merkez tüzel kişiliğidir. Yeni eklenen tüzel kişilikler varsayılan olarak bu statüdedir.'}
-                  </div>
-                </div>
 
                 <div>
                   <label className="f-label">VKN / TCKN <span style={{ color:'#ef4444' }}>*</span></label>
