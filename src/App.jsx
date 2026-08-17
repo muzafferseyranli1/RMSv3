@@ -35,6 +35,7 @@ const SalesChannels = lazy(() => import('@/components/pages/SalesChannels'))
 const Prices = lazy(() => import('@/components/pages/Prices'))
 const PriceChanges = lazy(() => import('@/components/pages/PriceChanges'))
 const Settings = lazy(() => import('@/components/pages/Settings'))
+const CloudKitchen = lazy(() => import('@/components/pages/CloudKitchen'))
 const DeviceSettings = lazy(() => import('@/components/pages/DeviceSettings'))
 const ChartOfAccounts = lazy(() => import('@/components/pages/ChartOfAccounts'))
 const AccountingMappings = lazy(() => import('@/components/pages/AccountingMappings'))
@@ -420,6 +421,7 @@ function AppShell() {
               <Route path="/company" element={<Company />} />
               <Route path="/products" element={<SaleItems />} />
               <Route path="/customer-app-settings" element={<CustomerAppAdminSettings />} />
+              <Route path="/cloud-kitchen" element={<CloudKitchen />} />
               <Route path="/combo-menu" element={<ComboMenu />} />
               <Route path="/combo-menu-preview" element={<ComboMenuBackofficePreview />} />
               <Route path="/semi-products" element={<SemiProducts />} />

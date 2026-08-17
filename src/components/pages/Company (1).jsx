@@ -582,18 +582,18 @@ export default function Company() {
                 </div>
               ))}
 
-              {/* Tüzel Kişilik & E-Fatura Kartı */}
-              <div style={{ border:'1px solid #dbeafe', borderRadius:14, padding:14, background:'#f0f7ff' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                  <div style={{ fontSize:'.77rem', fontWeight:800, color:'#1e40af', letterSpacing:'.05em', display:'flex', alignItems:'center', gap:6 }}>
-                    <i className="fa-solid fa-landmark" /> TÜZEL KİŞİLİK & E-FATURA
+              {/* Tüzel Kişilik & E-Fatura Kartı (Sadece Tüzel Kişilik Düğümlerinde Gösterilir) */}
+              {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') && (
+                <div style={{ border:'1px solid #dbeafe', borderRadius:14, padding:14, background:'#f0f7ff' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                    <div style={{ fontSize:'.77rem', fontWeight:800, color:'#1e40af', letterSpacing:'.05em', display:'flex', alignItems:'center', gap:6 }}>
+                      <i className="fa-solid fa-landmark" /> TÜZEL KİŞİLİK & E-FATURA
+                    </div>
+                    <span className="badge" style={{ background: '#dcfce7', color: '#166534', fontSize:'.7rem' }}>
+                      Bağımsız Tüzel Kişilik
+                    </span>
                   </div>
-                  <span className="badge" style={{ background: (selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? '#dcfce7' : '#f1f5f9', color: (selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? '#166534' : '#64748b', fontSize:'.7rem' }}>
-                    {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') ? 'Bağımsız Tüzel Kişilik' : 'Şube / Depo Düğümü'}
-                  </span>
-                </div>
-                <div style={{ display:'grid', gap:8, fontSize:'.8rem' }}>
-                  {(selectedNode.isLegalEntity || selectedNode.type === 'tuzel' || selectedNode.type === 'sirket') && (
+                  <div style={{ display:'grid', gap:8, fontSize:'.8rem' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:6 }}>
                       <span style={{ color:'#64748b', fontWeight:600 }}>Merkez Statüsü:</span>
                       {(selectedNode.centerKind === 'headquarters' || (!selectedNode.centerKind && selectedNode.name?.includes('Muzaffer'))) ? (
@@ -606,25 +606,25 @@ export default function Company() {
                         </span>
                       )}
                     </div>
-                  )}
-                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                    <span style={{ color:'#64748b' }}>VKN / TCKN:</span>
-                    <strong style={{ fontFamily:'monospace', color:'#0f172a' }}>{selectedNode.taxNumber || selectedNode.tax_number || '-'}</strong>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                    <span style={{ color:'#64748b' }}>Resmi Ünvan:</span>
-                    <strong style={{ color:'#0f172a', textAlign:'right', maxWidth:'60%' }}>{selectedNode.legalTitle || selectedNode.legal_title || selectedNode.name || '-'}</strong>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
-                    <span style={{ color:'#64748b' }}>Vergi Dairesi:</span>
-                    <strong style={{ color:'#0f172a' }}>{selectedNode.taxOffice || selectedNode.tax_office || '-'}</strong>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between' }}>
-                    <span style={{ color:'#64748b' }}>Yasal Adres:</span>
-                    <span style={{ color:'#334155', textAlign:'right', maxWidth:'60%', fontSize:'.75rem' }}>{selectedNode.legalAddress || selectedNode.legal_address || '-'}</span>
+                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                      <span style={{ color:'#64748b' }}>VKN / TCKN:</span>
+                      <strong style={{ fontFamily:'monospace', color:'#0f172a' }}>{selectedNode.taxNumber || selectedNode.tax_number || '-'}</strong>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                      <span style={{ color:'#64748b' }}>Resmi Ünvan:</span>
+                      <strong style={{ color:'#0f172a', textAlign:'right', maxWidth:'60%' }}>{selectedNode.legalTitle || selectedNode.legal_title || selectedNode.name || '-'}</strong>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid #e2e8f0', paddingBottom:4 }}>
+                      <span style={{ color:'#64748b' }}>Vergi Dairesi:</span>
+                      <strong style={{ color:'#0f172a' }}>{selectedNode.taxOffice || selectedNode.tax_office || '-'}</strong>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ color:'#64748b' }}>Yasal Adres:</span>
+                      <span style={{ color:'#334155', textAlign:'right', maxWidth:'60%', fontSize:'.75rem' }}>{selectedNode.legalAddress || selectedNode.legal_address || '-'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               {selectedNode.type === 'tuzel' && (
                 <div style={{ border:'1px solid #e2e8f0', borderRadius:14, padding:14, background:'#fbfdff' }}>
                   <div style={{ fontSize:'.77rem', fontWeight:800, color:'#64748b', letterSpacing:'.05em', marginBottom:10 }}>İŞÇİLİK PARAMETRELERİ</div>
@@ -827,33 +827,20 @@ export default function Company() {
             </div>
           )}
 
-          {/* Tüzel Kişilik & E-Fatura Tanımları */}
-          <div style={{ display:'grid', gap:12, border:'1px solid #cbd5e1', borderRadius:14, padding:16, background:'#f8fafc' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+          {/* E-Fatura & Yasal Ünvan Tanımları (Sadece Tüzel Kişilik Düğümlerinde Gösterilir) */}
+          {(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket') && (
+            <div style={{ display:'grid', gap:12, border:'1px solid #cbd5e1', borderRadius:14, padding:16, background:'#f8fafc' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:'#e0f2fe', color:'#0369a1', display:'flex', alignItems:'center', justifyContent:'center' }}>
                   <i className="fa-solid fa-landmark"/>
                 </div>
                 <div>
-                  <div style={{ fontWeight:800, color:'#0f172a', fontSize:'.9rem' }}>Tüzel Kişilik & E-Fatura / E-İrsaliye Bilgileri</div>
-                  <div style={{ fontSize:'.75rem', color:'#64748b' }}>GİB e-Fatura ve şirketler arası transfer faturalandırması için kullanılır.</div>
+                  <div style={{ fontWeight:800, color:'#0f172a', fontSize:'.9rem' }}>E-Fatura / E-İrsaliye & Yasal Bilgiler (GİB)</div>
+                  <div style={{ fontSize:'.75rem', color:'#64748b' }}>Tüzel kişilik adına kesilecek e-Fatura, e-İrsaliye ve vergi bildirimleri için kullanılır.</div>
                 </div>
               </div>
 
-              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem', fontWeight:700, color:'#1e293b', cursor:'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={form.isLegalEntity}
-                  onChange={e => set('isLegalEntity', e.target.checked)}
-                  style={{ width:16, height:16, accentColor:'#0284c7' }}
-                />
-                Bu Düğüm Ayrı Bir Tüzel Kişiliktir
-              </label>
-            </div>
-
-            {form.isLegalEntity ? (
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4 }}>
-
                 <div>
                   <label className="f-label">VKN / TCKN <span style={{ color:'#ef4444' }}>*</span></label>
                   <input
@@ -892,29 +879,8 @@ export default function Company() {
                   />
                 </div>
               </div>
-            ) : (
-              <div>
-                <label className="f-label">Bağlı Olduğu Tüzel Kişilik (Fatura Kesici)</label>
-                <div className="sel-wrap">
-                  <select
-                    className="f-input"
-                    value={form.parentLegalEntityId || ''}
-                    onChange={e => set('parentLegalEntityId', e.target.value)}
-                  >
-                    <option value="">Üst Hiyerarşiden Otomatik Devral</option>
-                    {legalEntityNodes.map(le => (
-                      <option key={le.id} value={le.id}>
-                        {le.name} {le.taxNumber ? `(VKN: ${le.taxNumber})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ fontSize:'.74rem', color:'#64748b', marginTop:4 }}>
-                  Bu şube/depodan yapılacak transferlerde e-fatura seçilen veya üstteki ana tüzel kişilik adına kesilir.
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Şube Koordinatları */}
           {form.type === 'sube' && (

@@ -287,6 +287,7 @@ const NAV = [
       { label: 'Yapay Zeka Destek', path: '/destek', icon: 'fa-robot', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
       { label: 'Tahmin AyarlarÄ±', path: '/settings', icon: 'fa-gear', color: '#94a3b8', bg: 'rgba(148,163,184,.18)' },
       { label: 'Müşteri App Ayarları', path: '/customer-app-settings', icon: 'fa-mobile-screen', color: '#10b981', bg: 'rgba(16,185,129,.18)' },
+      { label: 'Bulut Mutfak', path: '/cloud-kitchen', icon: 'fa-cloud-meatball', color: '#8b5cf6', bg: 'rgba(139,92,246,.18)' },
       { label: 'Hesap Ã‡izelgesi', path: '/hesap-cizelgesi', icon: 'fa-book-bookmark', color: '#f59e0b', bg: 'rgba(245,158,11,.18)' },
       { label: 'Muhasebe EÅŸleÅŸtirmeleri', path: '/muhasebe-eslestirmeleri', icon: 'fa-arrow-right-arrow-left', color: '#0f766e', bg: 'rgba(13,148,136,.16)' },
       { label: 'P&L Åžablonu', path: '/pnl-template', icon: 'fa-table-columns', color: '#dc2626', bg: 'rgba(220,38,38,.16)' },

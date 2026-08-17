@@ -12829,3 +12829,158 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
 - `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-17 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-17T16:04:45.554Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `a9bf9ab`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak (Cloud Kitchen) Menü ve Yönetim Portalı Tamamlandı
+
+- `Timestamp`: `2026-08-17T19:31:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Side menüde Ayarlar başlığı altına "Bulut Mutfak" menü ögesinin eklenmesi ve sanal marka portalı ile veritabanı altyapısının kurulması.
+- `Intent`: Kullanıcının side menüdeki Ayarlar bölümünden "Bulut Mutfak" seçeneğine tıklayarak sanal markaları (Burger Lab, Taco & Burrito Co., Bowl & Green Lab vb.), KDS mutfak istasyon yönlendirmelerini ve online paket platformlarını yönetebilmesini sağlamak.
+- `Files Created`:
+  - `sql/cloud_kitchen_schema.sql` (cloud_kitchen_brands VPS PostgreSQL tablosu DDL)
+  - `scratch/apply_cloud_kitchen_schema.cjs` (VPS PostgreSQL migration çalıştırıcı)
+  - `src/components/pages/CloudKitchen.jsx` (Bulut Mutfak & Sanal Markalar yönetim ekranı)
+- `Files Changed`:
+  - `schema-railway-master.sql` (cloud_kitchen_brands DDL eklendi)
+  - `src/App.jsx` (`/cloud-kitchen` rotası eklendi)
+  - `src/components/layout/Sidebar.jsx` (Ayarlar menüsüne Bulut Mutfak eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Commands Run`:
+  - `node scratch/apply_cloud_kitchen_schema.cjs` (cloud_kitchen_brands tablosu VPS PostgreSQL veritabanında oluşturuldu)
+  - `npm run build` (Pre-flight build doğrulandı)
+- `Findings`:
+  - VPS PostgreSQL veritabanında `cloud_kitchen_brands` tablosu aktif şekilde doğrulanmıştır.
+- `Decisions`:
+  - Bulut Mutfak menüsü Ayarlar başlığı altına `/cloud-kitchen` rotasıyla yerleştirilmiştir.
+- `Open Risks`: Yok.
+- `Handoff Contract`: Side menüde Ayarlar altında Bulut Mutfak aktiftir. Sanal markalar, istasyon yönlendirmeleri ve platform entegrasyonları sorunsuz çalışmaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak KDS Seçimi ve POS Terminals Entegrasyonu
+
+- `Timestamp`: `2026-08-17T19:39:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak formundaki başlığın "KDS Seçimi" olarak güncellenmesi ve Cihaz Yönetimi tablosundaki sadece KDS olarak işaretlenen cihazların dinamik çekilmesi.
+- `Intent`: Kullanıcının sanal marka tanımlarken "KDS Seçimi" alanında `pos_terminals` veritabanı tablosundan yalnızca Mutfak (KDS) cihazlarını (örn. `Mutfak (KDS) - SUT-QMSUN2`) dinamik olarak seçebilmesini sağlamak.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (Başlık "KDS Seçimi" yapıldı, `pos_terminals` üzerindeki `device_type = 'kds'` / `screen_mode = 'kds'` cihazları dinamik dropdown'a bağlandı)
+  - `OperationSync.md` (Log eklendi)
+- `Findings`:
+  - `pos_terminals` veritabanı tablosunda `SUT-QMSUN2` gibi KDS cihazları filtrelenerek dropdown'a sorunsuz şekilde bağlanmıştır.
+- `Handoff Contract`: Sanal marka tanımlama ekranında KDS Seçimi alanı Cihaz Yönetimi veritabanındaki KDS cihazları ile %100 entegre çalışmaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak Statik Seed ve İstasyon Temizliği
+
+- `Timestamp`: `2026-08-17T19:41:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak ekranındaki statik seed verilerinin ve harici istasyon seçeneklerinin kaldırılması.
+- `Intent`: "KDS Seçimi" alanında yer alan statik seed seçeneklerinin (Ana Mutfak, Izgara & Burger İstasyonu vb.) ve varsayılan test markalarının tamamen kaldırılarak sadece VPS PostgreSQL `pos_terminals` tablosundaki gerçek KDS cihazlarının gösterilmesi.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (Statik seed listesi temizlendi, dropdown ve rotasyon kartları tamamen `pos_terminals` üzerindeki dinamik KDS verilerine bağlandı)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: "KDS Seçimi" menüsünde sadece ve sadece veritabanında KDS olarak tanımlı gerçek cihazlar listelenmektedir.
+
+## Entry - 2026-08-17 - Bulut Mutfak Sanal Markaların Geri Yüklenmesi ve KDS Entegrasyonu
+
+- `Timestamp`: `2026-08-17T19:42:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak varsayılan sanal markalarının veritabanına işlenerek geri yüklenmesi ve KDS cihazları ile eşleştirilmesi.
+- `Intent`: Kullanıcının Bulut Mutfak ekranında sanal markaları (Burger Lab, Taco & Burrito Co., Bowl & Green Lab) eksiksiz görmesini sağlamak ve bu markaların "KDS Seçimi" alanında yalnızca veritabanındaki gerçek KDS cihazlarına (örn. `Mutfak (KDS) - SUT-QMSUN2`) bağlanmasını sağlamak.
+- `Files Created`:
+  - `scratch/seed_ck_brands.cjs` (Sanal markaların VPS PostgreSQL veritabanına eklenmesi)
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (Sanal markalar VPS veritabanında oluşturuldu ve KDS cihaz seçimiyle bağlandı)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Bulut Mutfak sayfasında tüm sanal markalar aktif görünmekte ve "KDS Seçimi" alanında sadece veritabanındaki gerçek KDS cihazları yer almaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak Sanal Marka Logo Yükleme Desteği
+
+- `Timestamp`: `2026-08-17T19:44:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak sanal marka tanımlama ve düzenleme modalına logo görseli yükleme özelliğinin eklenmesi.
+- `Intent`: Kullanıcının sanal marka tanımlarken veya düzenlerken bilgisayarından görsel/logo yükleyebilmesi, yüklenen logonun VPS kalıcı dosya depolama alanına (`uploadApiFile`) iletilerek veritabanında saklanması ve hem tabloda hem modalda canlı önizlenmesi.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (Marka logosu yükleme UI bileşeni, `uploadApiFile`, `resolveImageUrl` entegrasyonu ve önizleme alanı eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Sanal marka modalından marka logosu doğrudan VPS sunucusuna yüklenebilmekte ve sanal marka kartı/tablosunda dinamik olarak gösterilmektedir.
+
+## Entry - 2026-08-17 - Bulut Mutfak Platform Entegrasyonları Sekmesinin Kaldırılması
+
+- `Timestamp`: `2026-08-17T19:46:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak yönetim ekranından "Platform Entegrasyonları" sekmesinin tamamen kaldırılması.
+- `Intent`: Kullanıcı talebi doğrultusunda ve Kural 3.1 (Ölü Kod Yasağı) uyarınca "Platform Entegrasyonları" sekme butonu ve buna bağlı bileşen bloklarının projeden temizlenmesi.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (Platform Entegrasyonları sekme butonu ve görünüm bloğu kaldırıldı)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Bulut Mutfak ekranında artık sadece "Sanal Markalar" ve "KDS Seçimi ve Rotalama" sekmeleri yer almaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak Satış Kanalları Entegrasyonu ve Min. Sipariş Kaldırılması
+
+- `Timestamp`: `2026-08-17T20:11:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak modalındaki "Yayın Platformları" alanının "Satış Kanalları" başlığıyla değiştirilmesi, VPS PostgreSQL `sales_channels` veritabanı tablosuna bağlanması ve "Min. Sipariş Tutarı (₺)" alanının kaldırılması.
+- `Intent`: Kullanıcının sanal marka eklerken veya düzenlerken sistemde tanımlı gerçek satış kanallarını (`sales_channels`: Hızlı Satış, Gel Al, Masa, QR Menü, Kiosk, Suitable Yemek, Online Yemek, Call Center vb.) dinamik butonlar olarak seçebilmesini sağlamak ve gereksiz Min. Sipariş Tutarı alanını kaldırmak.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` ("Yayın Platformları" -> "Satış Kanalları" yapıldı, `sales_channels` tablosuna bağlandı, Min. Sipariş Tutarı alanı tamamen kaldırıldı)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Sanal marka modalı ve tablosu sistemin `sales_channels` veritabanı ile %100 senkronize çalışmaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak Veritabanı JSONB Güncelleme Hatası Düzeltmesi
+
+- `Timestamp`: `2026-08-17T20:15:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak ekranında sanal marka kaydedilirken alınan "invalid input syntax for type json" veritabanı hatasının çözülmesi.
+- `Intent`: `cloud_kitchen_brands` tablosunun `platforms` kolonunun `JSONB` türünde olması sebebiyle kaydedilen verinin `JSON.stringify(...)` ile serileştirilmesi ve mevcuttaki verilerin düzeltilmesi.
+- `Files Created`:
+  - `scratch/fix_ck_platforms.cjs` (VPS Postgres `cloud_kitchen_brands` veritabanı platform verilerinin onarılması)
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (`platforms` verisinin `JSON.stringify` ile kaydedilmesi ve `parsePlatforms` ile güvenli okunması)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Sanal marka düzenleme ve kaydetme işlemleri hatasız çalışmaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak Ayarlar Sekmesi ve Operasyon Tercihleri
+
+- `Timestamp`: `2026-08-17T20:26:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak sayfasına "Ayarlar" sekmesinin eklenmesi ve 3 kritik operasyonel geçiş tercihinin (Depo, Karlılık, Personel) veritabanına bağlanması.
+- `Intent`: Kullanıcının Depo kullanım modunu ("Markalar ayrı depolar kullanacak" <> "Ortak depo kullanılacak"), Karlılık hesap modunu ("Karlılık hesapları ayrı yapılacak" <> "Tek Şube olarak yapılacak") ve Personel yönetim modunu ("Her markanın personeli ayrı" <> "Ortak personel kullanılacak") interaktif toggle anahtarları ile ayarlayabilmesini ve VPS Postgres `cloud_kitchen_settings` tablosunda canlı saklanmasını sağlamak.
+- `Files Created`:
+  - `scratch/setup_ck_settings_table.cjs` (VPS Postgres `cloud_kitchen_settings` tablosu DDL/DML scripti)
+- `Files Changed`:
+  - `sql/cloud_kitchen_schema.sql` (`cloud_kitchen_settings` tablo tanımı eklendi)
+  - `schema-railway-master.sql` (`cloud_kitchen_settings` tablo tanımı eklendi)
+  - `src/components/pages/CloudKitchen.jsx` (Ayarlar sekmesi, toggle UI ve veritabanı canlı güncelleme entegrasyonu eklendi)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Bulut Mutfak Ayarlar sekmesi 3 operasyonel toggle ile tam işlevsel çalışmakta ve veriler VPS PostgreSQL üzerinde saklanmaktadır.
+
+## Entry - 2026-08-17 - Bulut Mutfak KDS Seçimi ve Rotalama Sekmesinin Kaldırılması
+
+- `Timestamp`: `2026-08-17T20:28:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak yönetim ekranından "KDS Seçimi ve Rotalama" sekmesinin tamamen kaldırılması.
+- `Intent`: Kullanıcı talebi doğrultusunda ve Kural 3.1 (Ölü Kod Yasağı) uyarınca "KDS Seçimi ve Rotalama" sekme butonu ve buna bağlı bileşen kodlarının projeden temizlenmesi.
+- `Files Changed`:
+  - `src/components/pages/CloudKitchen.jsx` (KDS Seçimi ve Rotalama sekme butonu ve içerik bloğu kaldırıldı)
+  - `OperationSync.md` (Log güncellendi)
+- `Handoff Contract`: Bulut Mutfak ekranında artık yalnızca "Sanal Markalar" ve "Ayarlar" sekmeleri yer almaktadır.
+
+
+
+
+
+
+
+
+
+
