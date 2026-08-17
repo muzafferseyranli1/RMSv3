@@ -799,6 +799,8 @@ export default function InventoryTransfer({ scopeVariant = 'branch' }) {
     [destinationOptions, form.destinationBranchId, form.destinationScope],
   )
 
+  const invoiceRequired = useMemo(() => !sameEntity(actorMeta, destinationMeta), [actorMeta, destinationMeta])
+
   const [interCompanyInfo, setInterCompanyInfo] = useState(null)
   const [isInterCompanyInvoiceEnabled, setIsInterCompanyInvoiceEnabled] = useState(true)
 
