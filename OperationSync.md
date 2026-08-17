@@ -13054,3 +13054,14 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
 - `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-17 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-17T19:36:34.607Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `e0dbb05`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
