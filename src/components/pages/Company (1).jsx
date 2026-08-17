@@ -821,8 +821,8 @@ export default function Company() {
               <div style={{ fontSize: '.74rem', color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <i className="fa-solid fa-circle-info" style={{ color: form.centerKind === 'headquarters' ? '#0284c7' : '#ea580c' }} />
                 {form.centerKind === 'headquarters'
-                  ? '⭐ Genel Merkez tek bir tüzel kişilikte seçili olabilir. Başka bir tüzel kişilikte Genel Merkez seçilirse bu otomatik Genel Merkez olur.'
-                  : '🏪 Franchise işletmelerinin bağlı olduğu merkez tüzel kişiliğidir. Yeni eklenen tüzel kişilikler varsayılan olarak bu statüdedir.'}
+                  ? "⭐ Genel merkez RMS'de tüm yetkiye sahiptir, tüm ayarları yapar/değiştirir, tüm raporları görebilir, RMS'teki tüm hareketleri görür."
+                  : '🏪 Sadece kendine bağlı şubelerle ilgili raporları görebilir, değişiklik taleplerini merkeze yapar.'}
               </div>
             </div>
           )}
