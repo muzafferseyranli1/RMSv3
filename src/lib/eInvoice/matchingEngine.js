@@ -49,10 +49,26 @@ function calculateTextSimilarity(str1, str2) {
 
 /**
  * Türkçe Fonetik & Kök Harf Benzerliği Hesaplama
- * Sesli harfleri ve çift harfleri sadeleştirerek fonetik yakınlık ölçer
+ * Sesli harfleri ve çift harfleri sadeleştirerek fonetik yakınlık ölçer.
+ * Kısa kelimelerde (ör. "Un", "Et", "Su") ve büyük uzunluk farklarında yanlış eşleşmeyi engeller.
  */
 function calculatePhoneticSimilarity(str1, str2) {
   if (!str1 || !str2) return 0
+  const s1Norm = normalizeString(str1)
+  const s2Norm = normalizeString(str2)
+
+  if (!s1Norm || !s2Norm) return 0
+  if (s1Norm === s2Norm) return 1.0
+
+  // 1. Tam Kapsama Kontrolü (Birebir Kelime veya Anlamlı İçerme)
+  if (s1Norm.length >= 3 && s2Norm.length >= 3) {
+    if (s1Norm.includes(s2Norm) || s2Norm.includes(s1Norm)) {
+      const lenRatio = Math.min(s1Norm.length, s2Norm.length) / Math.max(s1Norm.length, s2Norm.length)
+      if (lenRatio >= 0.5) return Math.round(0.85 * lenRatio * 100) / 100
+    }
+  }
+
+  // 2. Sesli Harf ve Çift Harf Temizliği
   const clean = (s) =>
     normalizeString(s)
       .replace(/[aeiouıöü]/g, '') // Sesli harfleri at
@@ -61,8 +77,22 @@ function calculatePhoneticSimilarity(str1, str2) {
   const c1 = clean(str1)
   const c2 = clean(str2)
 
-  if (c1 && c2 && c1 === c2) return 0.90
-  if (c1 && c2 && (c1.includes(c2) || c2.includes(c1))) return 0.75
+  if (!c1 || !c2) return 0
+
+  // Birebir sessiz harf dizisi eşitliği (Örn: "baklava" -> "bklv", "baklava" -> "bklv")
+  if (c1 === c2 && c1.length >= 2) return 0.88
+
+  // İçerme kontrolü: SADECE her iki tarafın sessiz uzunluğu >= 3 VE uzunluk oranı >= 0.6 ise!
+  if (c1.length >= 3 && c2.length >= 3) {
+    if (c1.includes(c2) || c2.includes(c1)) {
+      const lenRatio = Math.min(c1.length, c2.length) / Math.max(c1.length, c2.length)
+      if (lenRatio >= 0.6) {
+        return Math.round(0.78 * lenRatio * 100) / 100
+      }
+    }
+  }
+
+  // 3. Standart Kelime Bazlı Metin Benzerliği
   return calculateTextSimilarity(str1, str2)
 }
 
@@ -74,7 +104,7 @@ export class MatchingEngine {
     try {
       const cleanVkn = senderVknTckn ? String(senderVknTckn).trim().replace(/\D/g, '') : ''
 
-      // 1. Önce VKN / Vergi No / TC No ile birebir sorgu
+      // 1. Önce VKN / Vergi No / TC No ile birebir sorgu (Unvan Uyumu Öncelikli)
       if (cleanVkn) {
         const { data: vknMatches, error: vknErr } = await db
           .from('suppliers')
@@ -82,18 +112,55 @@ export class MatchingEngine {
           .is('deleted_at', null)
 
         if (!vknErr && vknMatches && vknMatches.length > 0) {
-          const exact = vknMatches.find(
+          const matchingVknSuppliers = vknMatches.filter(
             (s) =>
               (s.vergi_no && String(s.vergi_no).trim() === cleanVkn) ||
               (s.tc_no && String(s.tc_no).trim() === cleanVkn) ||
               (s.cari_kodu && String(s.cari_kodu).trim() === cleanVkn)
           )
-          if (exact) {
-            return {
-              success: true,
-              supplier: exact,
-              matchConfidence: 'EXACT_VKN',
-              confidenceScore: 100,
+
+          if (matchingVknSuppliers.length > 0) {
+            const normTitle = senderTitle ? normalizeString(senderTitle) : ''
+            if (normTitle) {
+              const exactTitleAndVkn = matchingVknSuppliers.find(
+                (s) =>
+                  normalizeString(s.name) === normTitle ||
+                  (s.marka_kisa_adi && normalizeString(s.marka_kisa_adi) === normTitle)
+              )
+              if (exactTitleAndVkn) {
+                return {
+                  success: true,
+                  supplier: exactTitleAndVkn,
+                  matchConfidence: 'EXACT_VKN_AND_TITLE',
+                  confidenceScore: 100,
+                }
+              }
+
+              // Unvanı en yakın olan VKN eşleşmesini bul
+              let bestVknMatch = null
+              let bestVknScore = 0
+              for (const s of matchingVknSuppliers) {
+                const score = calculateTextSimilarity(senderTitle, s.name)
+                if (score > bestVknScore) {
+                  bestVknScore = score
+                  bestVknMatch = s
+                }
+              }
+              if (bestVknMatch && bestVknScore >= 0.4) {
+                return {
+                  success: true,
+                  supplier: bestVknMatch,
+                  matchConfidence: 'EXACT_VKN_FUZZY_TITLE',
+                  confidenceScore: 95,
+                }
+              }
+            } else {
+              return {
+                success: true,
+                supplier: matchingVknSuppliers[0],
+                matchConfidence: 'EXACT_VKN',
+                confidenceScore: 100,
+              }
             }
           }
         }
@@ -294,16 +361,29 @@ export class MatchingEngine {
 
       let filteredReceipts = allReceipts || []
 
-      // Eğer tedarikçi eşleştiyse onun irsaliyelerine öncelik ver
-      if (matchedSupplier) {
-        const supplierReceipts = filteredReceipts.filter(
+      // Eğer faturadaki tedarikçi unvanı veya eşleşen tedarikçi varsa, unvanı tutan irsaliyelere öncelik ver
+      const senderTitleNorm = invoice.sender_title ? normalizeString(invoice.sender_title) : ''
+      let priorityReceipts = []
+
+      if (senderTitleNorm) {
+        priorityReceipts = filteredReceipts.filter(
+          (r) => r.supplier_name && normalizeString(r.supplier_name) === senderTitleNorm
+        )
+      }
+
+      if (priorityReceipts.length === 0 && matchedSupplier) {
+        priorityReceipts = filteredReceipts.filter(
           (r) =>
             r.supplier_id === matchedSupplier.id ||
             (r.supplier_name && matchedSupplier.name && normalizeString(r.supplier_name) === normalizeString(matchedSupplier.name))
         )
-        if (supplierReceipts.length > 0) {
-          filteredReceipts = supplierReceipts
-        }
+      }
+
+      // Öncelikli irsaliyeler varsa onları en öne al, ancak diğer tüm irsaliyeleri de havuzda tut ki 3-way skora göre doğru sıralansınlar!
+      if (priorityReceipts.length > 0) {
+        const priorityIds = new Set(priorityReceipts.map((r) => r.id))
+        const remaining = filteredReceipts.filter((r) => !priorityIds.has(r.id))
+        filteredReceipts = [...priorityReceipts, ...remaining]
       }
 
       // İrsaliye satırlarını ve bağlı siparişleri toplu getir
@@ -537,18 +617,18 @@ export class MatchingEngine {
           if (matchedReceiptLineIds.has(rcptLine.id)) continue
 
           const phoneticSim = calculatePhoneticSimilarity(invLine.item_name, rcptLine.item_name)
-          if (phoneticSim >= 0.50) {
+          if (phoneticSim >= 0.70) {
             if (phoneticSim > bestScore) {
               bestScore = phoneticSim
               bestCandidate = rcptLine
             }
-            if (phoneticSim >= 0.65) {
+            if (phoneticSim >= 0.75) {
               ambiguousMatches.push(rcptLine)
             }
           }
         }
 
-        if (bestCandidate && bestScore >= 0.50) {
+        if (bestCandidate && bestScore >= 0.70) {
           matchedRcptLine = bestCandidate
           matchConfidenceScore = Math.round(bestScore * 100)
           matchMethod = 'PHONETIC_SUGGESTION'
@@ -819,6 +899,8 @@ export class MatchingEngine {
       const supplierId = receipt.supplier_id || matchData.supplierId || null
       const orderId = receipt.order_id || null
 
+      const isAutoMatched = Boolean((typeof arg1 === 'object' && arg1?.isAutoMatched) || (typeof arg4 === 'object' && arg4?.isAutoMatched) || note?.includes('Otomatik'))
+
       // 2. Fatura Tablosunu Güncelle (is_matched = true, status_code = 1300)
       const nowIso = new Date().toISOString()
       const { error: invUpdErr } = await db
@@ -826,7 +908,10 @@ export class MatchingEngine {
         .update({
           is_matched: true,
           status_code: EINVOICE_STATUS.ACCEPTED, // 1300
-          status_description: 'Kabul Edildi (3-Way Matching Onaylandı - 1300)',
+          status_description: isAutoMatched
+            ? 'Kabul Edildi (⚡ %100 Otomatik Eşleştirildi - 1300)'
+            : 'Kabul Edildi (3-Way Matching Onaylandı - 1300)',
+          is_auto_matched: isAutoMatched,
           matched_purchase_order_id: orderId,
           matched_receipt_id: receiptId,
           matched_at: nowIso,

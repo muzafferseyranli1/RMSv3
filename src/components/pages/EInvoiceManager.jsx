@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { db } from '@/lib/db'
 import { useToast } from '@/hooks/useToast'
+import Modal from '@/components/ui/Modal'
 import { eInvoiceService } from '@/lib/eInvoice/eInvoiceService'
 import { matchingEngine } from '@/lib/eInvoice/matchingEngine'
 import { interCompanyTransferService } from '@/lib/eInvoice/interCompanyTransferService'
@@ -262,6 +263,77 @@ export default function EInvoiceManager() {
       toast('Hata: ' + err.message, 'error')
     } finally {
       setSavingSupplierModal(false)
+    }
+  }
+
+  // Batch 100% Auto-Matching State & Action
+  const [autoMatchingLoading, setAutoMatchingLoading] = useState(false)
+
+  const handleAutoMatch100CompliantInvoices = async () => {
+    setAutoMatchingLoading(true)
+    let matchedCount = 0
+
+    try {
+      // 1. Bekleyen Gelen Faturaları Filtrele
+      const pendingInbound = invoices.filter(
+        (inv) =>
+          (inv.direction === 'INBOUND' || activeTab === 'inbox') &&
+          !inv.is_matched &&
+          inv.status_code !== 1300 &&
+          inv.status_code !== 1400
+      )
+
+      if (pendingInbound.length === 0) {
+        toast('Eşleştirilecek bekleyen gelen fatura bulunamadı.', 'info')
+        return
+      }
+
+      for (const inv of pendingInbound) {
+        const res = await matchingEngine.findPotentialReceiptsForInvoice(inv)
+        const candidates = res.candidateReceipts || res.candidates || []
+        if (res.success && candidates.length > 0) {
+          const topCand = candidates[0]
+          const comp = topCand.comparison
+
+          const is100PercentMatch =
+            comp &&
+            (!comp.discrepancies || comp.discrepancies.length === 0) &&
+            !comp.hasContractPriceViolation &&
+            (comp.matchScore >= 95 || comp.isFullyMatched) &&
+            comp.lineComparisons &&
+            comp.lineComparisons.length > 0 &&
+            comp.lineComparisons.every((lc) => lc.status === 'EXACT_MATCH' || lc.matchConfidenceScore >= 85)
+
+          if (is100PercentMatch && topCand.receipt) {
+            const appRes = await matchingEngine.approveInvoiceReceiptMatch(
+              inv.id,
+              topCand.receipt.id,
+              comp,
+              {
+                userPin: 'AUTO_BOT',
+                note: '⚡ %100 Otomatik Eşleştirme Motoru tarafından onaylandı.',
+                isAutoMatched: true,
+              }
+            )
+
+            if (appRes.success) {
+              matchedCount++
+            }
+          }
+        }
+      }
+
+      if (matchedCount > 0) {
+        toast(`⚡ ${matchedCount} adet %100 uyumlu fatura otomatik olarak eşleştirildi!`, 'success')
+        await loadData()
+      } else {
+        toast('Bekleyen faturalar arasında %100 tam uyumlu irsaliye eşleşmesi bulunamadı.', 'info')
+      }
+    } catch (err) {
+      console.error('Auto match error:', err)
+      toast('Otomatik eşleştirme sırasında hata: ' + err.message, 'error')
+    } finally {
+      setAutoMatchingLoading(false)
     }
   }
 
@@ -1407,6 +1479,36 @@ export default function EInvoiceManager() {
                 </button>
               </div>
 
+              {/* %100 Uyumlu Faturaları Otomatik Eşleştir Butonu */}
+              {(activeTab === 'inbox' || activeTab === 'intercompany') && (
+                <button
+                  type="button"
+                  disabled={autoMatchingLoading}
+                  onClick={handleAutoMatch100CompliantInvoices}
+                  title="Mal kabul irsaliyeleri ile %100 miktar, fiyat ve kalem tam uyumu olan tüm bekleyen gelen faturaları tek tıkla otomatik eşleştirip onaylar."
+                  style={{
+                    padding: '7px 16px',
+                    borderRadius: 20,
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#fff',
+                    fontSize: '.75rem',
+                    fontWeight: 800,
+                    cursor: autoMatchingLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 2px 6px rgba(16,185,129,0.3)',
+                    whiteSpace: 'nowrap',
+                    transition: 'all .15s',
+                    marginLeft: 'auto',
+                  }}
+                >
+                  <i className={`fa-solid ${autoMatchingLoading ? 'fa-spinner fa-spin' : 'fa-bolt-lightning'}`} />
+                  {autoMatchingLoading ? 'Eşleştiriliyor...' : '%100 Uyumlu Faturaları Otomatik Eşleştir'}
+                </button>
+              )}
+
 
               {activeTab === 'outbox' && (
                 <button
@@ -1563,52 +1665,39 @@ export default function EInvoiceManager() {
                             )}
                           </div>
 
-                          {/* Tedarikçi Kayıt Durumu & Kayıt Butonu (Gelen Kutusu / Inbound için) */}
-                          {(activeTab === 'inbox' || inv.direction === 'INBOUND') && !inv.is_inter_company && (
+                          {/* Tedarikçi Kayıt Durumu & Kayıt Butonu (Sadece Kayıtsız Tedarikçiler İçin) */}
+                          {(activeTab === 'inbox' || inv.direction === 'INBOUND') && !inv.is_inter_company && !findMatchingSupplier(inv.sender_vkn_tckn, inv.sender_title) && (
                             <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              {findMatchingSupplier(inv.sender_vkn_tckn, inv.sender_title) ? (
-                                <span
-                                  className="badge"
-                                  title="RMS Sisteminde Kayıtlı Tedarikçi"
-                                  style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: '.68rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                >
-                                  <i className="fa-solid fa-circle-check" />
-                                  Kayıtlı Tedarikçi
-                                </span>
-                              ) : (
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                  <span
-                                    className="badge"
-                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '.68rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                  >
-                                    <i className="fa-solid fa-triangle-exclamation" />
-                                    Kayıtsız Tedarikçi
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => openSupplierAddModalFromInvoice(inv)}
-                                    title="Bu göndericiyi RMS Tedarikçi listesine kaydet"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      fontSize: '.72rem',
-                                      fontWeight: 800,
-                                      color: '#d97706',
-                                      background: '#fffbeb',
-                                      border: '1px solid #fde68a',
-                                      borderRadius: 6,
-                                      padding: '2px 8px',
-                                      cursor: 'pointer',
-                                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                                      transition: 'all .15s',
-                                    }}
-                                  >
-                                    <i className="fa-solid fa-plus-circle" style={{ fontSize: '.75rem' }} />
-                                    Tedarikçi Ekle
-                                  </button>
-                                </div>
-                              )}
+                              <span
+                                className="badge"
+                                style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '.68rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <i className="fa-solid fa-triangle-exclamation" />
+                                Kayıtsız Tedarikçi
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openSupplierAddModalFromInvoice(inv)}
+                                title="Bu göndericiyi RMS Tedarikçi listesine kaydet"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontSize: '.72rem',
+                                  fontWeight: 800,
+                                  color: '#d97706',
+                                  background: '#fffbeb',
+                                  border: '1px solid #fde68a',
+                                  borderRadius: 6,
+                                  padding: '2px 8px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                  transition: 'all .15s',
+                                }}
+                              >
+                                <i className="fa-solid fa-plus-circle" style={{ fontSize: '.75rem' }} />
+                                Tedarikçi Ekle
+                              </button>
                             </div>
                           )}
                         </td>
@@ -1658,23 +1747,45 @@ export default function EInvoiceManager() {
 
                             {(activeTab === 'inbox' || inv.direction === 'INBOUND') && (
                               inv.is_matched ? (
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    padding: '2px 8px',
-                                    borderRadius: 6,
-                                    background: 'rgba(16,185,129,0.12)',
-                                    color: '#10b981',
-                                    border: '1px solid rgba(16,185,129,0.3)',
-                                    fontSize: '.7rem',
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  <i className="fa-solid fa-link" />
-                                  İrsaliye ile Eşleşti
-                                </span>
+                                (inv.is_auto_matched || inv.status_description?.includes('Otomatik') || inv.notes?.includes('Otomatik')) ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      padding: '2px 8px',
+                                      borderRadius: 6,
+                                      background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(6,182,212,0.18) 100%)',
+                                      color: '#047857',
+                                      border: '1px solid #10b981',
+                                      fontSize: '.7rem',
+                                      fontWeight: 800,
+                                      boxShadow: '0 1px 3px rgba(16,185,129,0.15)',
+                                    }}
+                                    title="⚡ %100 Uyum ile Sistem Tarafından Otomatik Eşleştirildi"
+                                  >
+                                    <i className="fa-solid fa-robot" />
+                                    Otomatik Eşleştirildi
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      padding: '2px 8px',
+                                      borderRadius: 6,
+                                      background: 'rgba(16,185,129,0.12)',
+                                      color: '#10b981',
+                                      border: '1px solid rgba(16,185,129,0.3)',
+                                      fontSize: '.7rem',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-link" />
+                                    İrsaliye ile Eşleşti
+                                  </span>
+                                )
                               ) : (
                                 <span
                                   style={{
