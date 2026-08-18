@@ -3242,7 +3242,7 @@ export default function EInvoiceManager() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <i className="fa-solid fa-table-cells" style={{ color: '#f5a623' }} />
-                        Kalem Bazlı 3-Way Eşleştirme & Discrepancy Tablosu
+                        Kalem bazlı eşleştirme
                       </div>
 
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
