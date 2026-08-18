@@ -115,6 +115,156 @@ export default function EInvoiceManager() {
   const [approvingDocMatch, setApprovingDocMatch] = useState(false)
   const [docMatchingNote, setDocMatchingNote] = useState('')
 
+  // Suppliers & Unregistered Supplier Modal State
+  const [suppliersList, setSuppliersList] = useState([])
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false)
+  const [supplierTab, setSupplierTab] = useState(0)
+  const [savingSupplierModal, setSavingSupplierModal] = useState(false)
+  const [supplierForm, setSupplierForm] = useState({
+    cari_kodu: '',
+    muhasebe_kodu: '',
+    karsi_taraf_kodu: '',
+    name: '',
+    marka_kisa_adi: '',
+    yetkililer: [],
+    sirket_tipi: 'tuzel',
+    vergi_dairesi: '',
+    vergi_no: '',
+    tc_no: '',
+    fatura_tipi: 'e-fatura',
+    pay_term: 30,
+    banka: '',
+    iban: '',
+    siparis_yontemi: 'email',
+    siparis_mailleri: [],
+    siparis_telefonlari: [],
+    siparis_wa_no: '',
+    logo_url: '',
+    cat: '',
+    address: '',
+    notes: '',
+    active: true,
+    supplier_kind: 'external',
+  })
+
+  const findMatchingSupplier = useCallback((vknOrTckn, title) => {
+    if (!suppliersList || suppliersList.length === 0) return null
+    const cleanVkn = String(vknOrTckn || '').trim()
+    const cleanTitle = String(title || '').trim().toLowerCase()
+
+    if (cleanVkn) {
+      const matchByVkn = suppliersList.find(
+        (s) => (s.vergi_no && String(s.vergi_no).trim() === cleanVkn) || (s.tc_no && String(s.tc_no).trim() === cleanVkn)
+      )
+      if (matchByVkn) return matchByVkn
+    }
+
+    if (cleanTitle) {
+      const matchByTitle = suppliersList.find(
+        (s) => s.name && String(s.name).trim().toLowerCase() === cleanTitle
+      )
+      if (matchByTitle) return matchByTitle
+    }
+
+    return null
+  }, [suppliersList])
+
+  const openSupplierAddModalFromInvoice = (invoice) => {
+    const vkn = String(invoice.sender_vkn_tckn || '').trim()
+    const isSahis = vkn.length === 11
+    const nextIdx = suppliersList.length + 1
+    const autoCariCode = `CARİ-${String(nextIdx).padStart(3, '0')}`
+    const autoMuhasebeCode = `320.${String(nextIdx).padStart(3, '0')}`
+
+    const taxOffice = invoice.sender_tax_office || invoice.ubl_json?.AccountingSupplierParty?.Party?.PartyTaxScheme?.TaxScheme?.Name || ''
+    let address = invoice.supplier_address || ''
+    if (!address && invoice.ubl_json?.AccountingSupplierParty?.Party?.PostalAddress) {
+      const pa = invoice.ubl_json.AccountingSupplierParty.Party.PostalAddress
+      address = [pa.StreetName, pa.BuildingNumber, pa.CitySubdivisionName, pa.CityName].filter(Boolean).join(' ')
+    }
+
+    setSupplierForm({
+      cari_kodu: autoCariCode,
+      muhasebe_kodu: autoMuhasebeCode,
+      karsi_taraf_kodu: '',
+      name: invoice.sender_title || '',
+      marka_kisa_adi: '',
+      yetkililer: [],
+      sirket_tipi: isSahis ? 'sahis' : 'tuzel',
+      vergi_dairesi: taxOffice,
+      vergi_no: !isSahis ? vkn : '',
+      tc_no: isSahis ? vkn : '',
+      fatura_tipi: 'e-fatura',
+      pay_term: 30,
+      banka: '',
+      iban: '',
+      siparis_yontemi: 'email',
+      siparis_mailleri: [],
+      siparis_telefonlari: [],
+      siparis_wa_no: '',
+      logo_url: '',
+      cat: '',
+      address: address,
+      notes: `e-Fatura (${invoice.invoice_number || ''}) üzerinden otomatik kaydoldu.`,
+      active: true,
+      supplier_kind: 'external',
+    })
+    setSupplierTab(0)
+    setSupplierModalOpen(true)
+  }
+
+  const handleSaveSupplierFromModal = async (e) => {
+    if (e) e.preventDefault()
+    if (!supplierForm.name.trim()) {
+      toast('Tedarikçi adı (ünvanı) zorunludur', 'error')
+      setSupplierTab(0)
+      return
+    }
+
+    setSavingSupplierModal(true)
+    try {
+      const payload = {
+        cari_kodu: supplierForm.cari_kodu.trim() || null,
+        muhasebe_kodu: supplierForm.muhasebe_kodu.trim() || null,
+        karsi_taraf_kodu: supplierForm.karsi_taraf_kodu.trim() || null,
+        name: supplierForm.name.trim(),
+        marka_kisa_adi: supplierForm.marka_kisa_adi.trim() || null,
+        yetkililer: (supplierForm.yetkililer || []).filter((y) => y.ad || y.mail || y.telefon),
+        sirket_tipi: supplierForm.sirket_tipi,
+        vergi_dairesi: supplierForm.vergi_dairesi.trim() || null,
+        vergi_no: supplierForm.vergi_no.trim() || null,
+        tc_no: supplierForm.tc_no.trim() || null,
+        fatura_tipi: supplierForm.fatura_tipi,
+        pay_term: parseInt(supplierForm.pay_term) || 30,
+        banka: supplierForm.banka.trim() || null,
+        iban: supplierForm.iban.trim() || null,
+        siparis_yontemi: supplierForm.siparis_yontemi,
+        siparis_mailleri: (supplierForm.siparis_mailleri || []).filter(Boolean),
+        siparis_telefonlari: (supplierForm.siparis_telefonlari || []).filter(Boolean),
+        siparis_wa_no: supplierForm.siparis_wa_no.trim() || null,
+        logo_url: supplierForm.logo_url || null,
+        cat: supplierForm.cat || null,
+        address: supplierForm.address.trim() || null,
+        notes: supplierForm.notes.trim() || null,
+        active: supplierForm.active !== false,
+        supplier_kind: supplierForm.supplier_kind || 'external',
+      }
+
+      const { data, error } = await db.from('suppliers').insert(payload).select().single()
+      if (error) {
+        toast('Tedarikçi kaydedilemedi: ' + error.message, 'error')
+      } else {
+        toast(`✅ "${supplierForm.name}" tedarikçi olarak kaydedildi!`, 'success')
+        setSupplierModalOpen(false)
+        await loadData()
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setSavingSupplierModal(false)
+    }
+  }
+
 
   const loadStockItemsForMapping = async () => {
     if (stockItemsList.length > 0) return
@@ -286,12 +436,13 @@ export default function EInvoiceManager() {
 
       const statusCode = statusFilter !== 'ALL' ? Number(statusFilter) : null
 
-      const [invoicesRes, statsRes, configRes, rcptsRes, docsRes] = await Promise.all([
+      const [invoicesRes, statsRes, configRes, rcptsRes, docsRes, suppsRes] = await Promise.all([
         eInvoiceService.getInvoices({ direction, statusCode, isInterCompany, search: searchQuery }),
         eInvoiceService.getStatistics(),
         eInvoiceService.getIntegratorConfig(),
         db.from('purchase_receipts').select('*').is('deleted_at', null).order('delivered_on', { ascending: false }).limit(100),
         db.from('expense_documents').select('*').order('document_date', { ascending: false }).limit(100),
+        db.from('suppliers').select('*').is('deleted_at', null).order('name', { ascending: true }),
       ])
 
       if (invoicesRes.success) {
@@ -301,6 +452,7 @@ export default function EInvoiceManager() {
       if (configRes) setIntegratorConfig(configRes)
       if (rcptsRes?.data) setReceipts(rcptsRes.data)
       if (docsRes?.data) setExpenseDocuments(docsRes.data)
+      if (suppsRes?.data) setSuppliersList(suppsRes.data)
     } catch (err) {
       console.error('Data load error:', err)
       toast('Veriler yüklenirken hata oluştu', 'error')
@@ -1398,7 +1550,7 @@ export default function EInvoiceManager() {
                         </td>
 
                         {/* Tedarikçi / Alıcı */}
-                        <td style={{ padding: '12px 16px', maxWidth: 300 }}>
+                        <td style={{ padding: '12px 16px', maxWidth: 320 }}>
                           <div style={{ fontWeight: 700, color: 'var(--text-strong)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {activeTab === 'inbox' ? inv.sender_title : activeTab === 'outbox' ? inv.receiver_title : `${inv.sender_title} ➔ ${inv.receiver_title}`}
                           </div>
@@ -1410,6 +1562,55 @@ export default function EInvoiceManager() {
                               </span>
                             )}
                           </div>
+
+                          {/* Tedarikçi Kayıt Durumu & Kayıt Butonu (Gelen Kutusu / Inbound için) */}
+                          {(activeTab === 'inbox' || inv.direction === 'INBOUND') && !inv.is_inter_company && (
+                            <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {findMatchingSupplier(inv.sender_vkn_tckn, inv.sender_title) ? (
+                                <span
+                                  className="badge"
+                                  title="RMS Sisteminde Kayıtlı Tedarikçi"
+                                  style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: '.68rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                >
+                                  <i className="fa-solid fa-circle-check" />
+                                  Kayıtlı Tedarikçi
+                                </span>
+                              ) : (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  <span
+                                    className="badge"
+                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '.68rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                  >
+                                    <i className="fa-solid fa-triangle-exclamation" />
+                                    Kayıtsız Tedarikçi
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openSupplierAddModalFromInvoice(inv)}
+                                    title="Bu göndericiyi RMS Tedarikçi listesine kaydet"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      fontSize: '.72rem',
+                                      fontWeight: 800,
+                                      color: '#d97706',
+                                      background: '#fffbeb',
+                                      border: '1px solid #fde68a',
+                                      borderRadius: 6,
+                                      padding: '2px 8px',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                      transition: 'all .15s',
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-plus-circle" style={{ fontSize: '.75rem' }} />
+                                    Tedarikçi Ekle
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
 
                         {/* Tarih */}
@@ -5231,6 +5432,425 @@ export default function EInvoiceManager() {
           </div>
         </div>
       )}
+      {/* 🏢 HIZLI TEDARİKÇİ EKLE MODALI (GELEN E-FATURA ÜZERİNDEN) */}
+      <Modal
+        open={supplierModalOpen}
+        onClose={() => setSupplierModalOpen(false)}
+        title="Tedarikçi Ekle"
+        subtitle="Gelen e-Fatura bilgilerine göre otomatik dolduruldu"
+        width={780}
+      >
+        {/* Tab Buttons */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+          {[
+            { label: 'Genel Bilgiler', icon: 'fa-building' },
+            { label: 'Yetkili & İletişim', icon: 'fa-users' },
+            { label: 'Sipariş Ayarları', icon: 'fa-cart-shopping' },
+          ].map((t, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setSupplierTab(idx)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: 'none',
+                background: supplierTab === idx ? '#f59e0b' : 'var(--surface-2)',
+                color: supplierTab === idx ? '#fff' : 'var(--text-muted)',
+                fontWeight: 700,
+                fontSize: '.82rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all .15s',
+              }}
+            >
+              <i className={`fa-solid ${t.icon}`} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab 0: Genel Bilgiler */}
+        {supplierTab === 0 && (
+          <div style={{ display: 'grid', gap: 14 }}>
+            {/* Cari Kodu, Muhasebe Kodu, Karşı Taraf Cari Kodu */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="f-label">Cari Kodu</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.cari_kodu}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, cari_kodu: e.target.value }))}
+                  placeholder="CARİ-001"
+                />
+              </div>
+              <div>
+                <label className="f-label">Muhasebe Kodu</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.muhasebe_kodu}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, muhasebe_kodu: e.target.value }))}
+                  placeholder="320.001"
+                />
+              </div>
+              <div>
+                <label className="f-label">Karşı Taraf Cari Kodu</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.karsi_taraf_kodu}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, karsi_taraf_kodu: e.target.value }))}
+                  placeholder="Karşı tarafın kodu"
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 2 }}>Sipariş ve entegrasyonlarda kullanılır</div>
+              </div>
+            </div>
+
+            {/* Tedarikçi Adı, Marka Kısaltması */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="f-label">
+                  Tedarikçi Adı (Ünvanı) <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  className="f-input"
+                  value={supplierForm.name}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, name: e.target.value }))}
+                  placeholder="Şirket ünvanı"
+                />
+              </div>
+              <div>
+                <label className="f-label">Marka / Kısa Adı</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.marka_kisa_adi}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, marka_kisa_adi: e.target.value }))}
+                  placeholder="Bilinen kısa isim"
+                />
+              </div>
+            </div>
+
+            {/* Şirket Tipi (Radio) */}
+            <div>
+              <label className="f-label">Şirket Tipi</label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[
+                  { value: 'tuzel', label: 'Tüzel Kişilik' },
+                  { value: 'sahis', label: 'Şahıs Şirketi' },
+                ].map((o) => (
+                  <label
+                    key={o.value}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1.5px solid ${supplierForm.sirket_tipi === o.value ? '#fbbf24' : '#cbd5e1'}`,
+                      background: supplierForm.sirket_tipi === o.value ? '#fffbeb' : '#fff',
+                      fontWeight: 600,
+                      fontSize: '.85rem',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="supplier_sirket_tipi"
+                      value={o.value}
+                      checked={supplierForm.sirket_tipi === o.value}
+                      onChange={() => setSupplierForm((s) => ({ ...s, sirket_tipi: o.value }))}
+                      style={{ accentColor: '#fbbf24' }}
+                    />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Vergi Dairesi, Vergi No, TC No */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="f-label">Vergi Dairesi</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.vergi_dairesi}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, vergi_dairesi: e.target.value }))}
+                  placeholder="Vergi dairesi"
+                />
+              </div>
+              <div>
+                <label className="f-label">Vergi No</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.vergi_no}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, vergi_no: e.target.value }))}
+                  placeholder="1234567890"
+                />
+              </div>
+              <div>
+                <label className="f-label">
+                  TC No <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>(şahıs için)</span>
+                </label>
+                <input
+                  className="f-input"
+                  value={supplierForm.tc_no}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, tc_no: e.target.value }))}
+                  placeholder="11 haneli TC"
+                  disabled={supplierForm.sirket_tipi === 'tuzel'}
+                  style={{ background: supplierForm.sirket_tipi === 'tuzel' ? '#f1f5f9' : '#fff' }}
+                />
+              </div>
+            </div>
+
+            {/* Fatura Tipi, Ödeme Vadesi, Aktif */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'center' }}>
+              <div>
+                <label className="f-label">Fatura Tipi</label>
+                <select
+                  className="f-input"
+                  value={supplierForm.fatura_tipi}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, fatura_tipi: e.target.value }))}
+                >
+                  <option value="e-fatura">E-Fatura</option>
+                  <option value="e-arsiv">E-Arşiv</option>
+                  <option value="kagit">Kağıt Fatura</option>
+                  <option value="fis">Parakende Satış Fişi</option>
+                </select>
+              </div>
+              <div>
+                <label className="f-label">Ödeme Vadesi (gün)</label>
+                <input
+                  className="f-input"
+                  type="number"
+                  min="0"
+                  value={supplierForm.pay_term}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, pay_term: e.target.value }))}
+                />
+              </div>
+              <div style={{ paddingTop: 20 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600, fontSize: '.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={supplierForm.active}
+                    onChange={(e) => setSupplierForm((s) => ({ ...s, active: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: '#fbbf24' }}
+                  />
+                  Aktif Tedarikçi
+                </label>
+              </div>
+            </div>
+
+            {/* Banka & IBAN */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="f-label">Banka</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.banka}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, banka: e.target.value }))}
+                  placeholder="Banka adı"
+                />
+              </div>
+              <div>
+                <label className="f-label">IBAN</label>
+                <input
+                  className="f-input"
+                  value={supplierForm.iban}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, iban: e.target.value }))}
+                  placeholder="TR00 0000 0000..."
+                  style={{ fontFamily: 'monospace' }}
+                />
+              </div>
+            </div>
+
+            {/* Adres & Notlar */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="f-label">Adres</label>
+                <textarea
+                  className="f-input"
+                  rows={2}
+                  value={supplierForm.address}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, address: e.target.value }))}
+                  placeholder="Adres..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+              <div>
+                <label className="f-label">Notlar</label>
+                <textarea
+                  className="f-input"
+                  rows={2}
+                  value={supplierForm.notes}
+                  onChange={(e) => setSupplierForm((s) => ({ ...s, notes: e.target.value }))}
+                  placeholder="Notlar..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 1: Yetkili & İletişim */}
+        {supplierTab === 1 && (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label className="f-label" style={{ margin: 0 }}>Yetkili Kişiler</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setSupplierForm((s) => ({
+                    ...s,
+                    yetkililer: [...(s.yetkililer || []), { ad: '', mail: '', telefon: '' }],
+                  }))
+                }
+                style={{
+                  fontSize: '.72rem',
+                  color: '#d97706',
+                  background: '#fef3c7',
+                  border: '1px solid #fbbf24',
+                  borderRadius: 6,
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <i className="fa-solid fa-plus" /> Yetkili Ekle
+              </button>
+            </div>
+            {(!supplierForm.yetkililer || supplierForm.yetkililer.length === 0) ? (
+              <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '10px 0' }}>
+                Henüz yetkili kişi eklenmedi.
+              </div>
+            ) : (
+              supplierForm.yetkililer.map((y, idx) => (
+                <div key={idx} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 12, border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: '.78rem', fontWeight: 700 }}>Yetkili {idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSupplierForm((s) => ({
+                          ...s,
+                          yetkililer: s.yetkililer.filter((_, i) => i !== idx),
+                        }))
+                      }
+                      style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer' }}
+                    >
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    <input
+                      className="f-input"
+                      placeholder="Ad Soyad"
+                      value={y.ad || ''}
+                      onChange={(e) => {
+                        const updated = [...supplierForm.yetkililer]
+                        updated[idx] = { ...updated[idx], ad: e.target.value }
+                        setSupplierForm((s) => ({ ...s, yetkililer: updated }))
+                      }}
+                    />
+                    <input
+                      className="f-input"
+                      placeholder="E-posta"
+                      value={y.mail || ''}
+                      onChange={(e) => {
+                        const updated = [...supplierForm.yetkililer]
+                        updated[idx] = { ...updated[idx], mail: e.target.value }
+                        setSupplierForm((s) => ({ ...s, yetkililer: updated }))
+                      }}
+                    />
+                    <input
+                      className="f-input"
+                      placeholder="Telefon"
+                      value={y.telefon || ''}
+                      onChange={(e) => {
+                        const updated = [...supplierForm.yetkililer]
+                        updated[idx] = { ...updated[idx], telefon: e.target.value }
+                        setSupplierForm((s) => ({ ...s, yetkililer: updated }))
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Sipariş Ayarları */}
+        {supplierTab === 2 && (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div>
+              <label className="f-label">Sipariş İletme Yöntemi</label>
+              <select
+                className="f-input"
+                value={supplierForm.siparis_yontemi}
+                onChange={(e) => setSupplierForm((s) => ({ ...s, siparis_yontemi: e.target.value }))}
+              >
+                <option value="email">E-Mail</option>
+                <option value="telefon">Telefon</option>
+                <option value="whatsapp">Whatsapp</option>
+                <option value="entegrasyon">Entegrasyon</option>
+                <option value="portal">Suitable Tedarikçi Arayüzü</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          {supplierTab < 2 ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setSupplierTab((t) => t + 1)}
+              style={{ padding: '8px 16px', fontSize: '.82rem', fontWeight: 700 }}
+            >
+              İleri <i className="fa-solid fa-chevron-right" style={{ marginLeft: 4 }} />
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setSupplierModalOpen(false)}
+              style={{ padding: '8px 16px', fontSize: '.82rem' }}
+            >
+              İptal
+            </button>
+            <button
+              type="button"
+              disabled={savingSupplierModal}
+              onClick={handleSaveSupplierFromModal}
+              style={{
+                padding: '8px 22px',
+                borderRadius: 8,
+                border: 'none',
+                background: '#f59e0b',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: '.85rem',
+                cursor: savingSupplierModal ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
+              }}
+            >
+              <i className={`fa-solid ${savingSupplierModal ? 'fa-spinner fa-spin' : 'fa-check'}`} />
+              {savingSupplierModal ? 'Kaydediliyor...' : 'Kaydet'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

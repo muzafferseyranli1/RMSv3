@@ -13009,6 +13009,29 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - `OperationSync.md` (Log güncellendi)
 - `Handoff Contract`: Satış Malı listesi sütun başlıkları tam hizalı, sanal markalar sütunu görünür ve sanal marka filtresi tam çalışır durumdadır.
 
+## Entry - 2026-08-18 - Bulut Mutfak Master Aktifleştirme Toggle'ı, En Az 2 Marka Zorunluluğu ve Global Sistem Kuralı Dokümantasyonu
+
+- `Timestamp`: `2026-08-18T09:05:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Bulut Mutfak (`/cloud-kitchen`) sayfa başına **"Bulut Mutfağı Aktifleştir"** master toggle'ının yerleştirilmesi, en az 2 marka girilme zorunluluğu mantığının kurulması, `cloud_kitchen_settings.is_active` durumunun veritabanına bağlanması ve tüm sistem genelinde pasif/aktif kuralının uygulanması.
+- `Intent`: İşletmenin tek marka çalışırken Bulut Mutfak aktifleştirildiğinde mevcut işletmeyi 1. marka olarak kabul etmek ve en az 2. bir marka tanımlanmasını zorunlu kılmak. Bulut Mutfak pasif iken diğer tüm sayfalarda Bulut Mutfak marka seçeneklerinin pasif/gizli görünmesini sağlamak.
+- `Files Changed`:
+  - `sql/cloud_kitchen_schema.sql` (`cloud_kitchen_settings` tablosuna `is_active` boolean ve `primary_brand_id` uuid sütunları eklendi)
+  - `src/components/pages/CloudKitchen.jsx` (Üst header alanına master aktifleştirme banner'ı ve en az 2 marka kontrolü eklendi)
+  - `src/components/pages/Company (1).jsx` (`isCkActive === false` durumunda Şube modalındaki Bulut Mutfak alanları gizlendi)
+  - `src/components/pages/SaleItems.jsx` (`isCkActive === false` durumunda Satış Malı tablosundaki `SANAL MARKA` sütunu, arama barındaki marka filtresi ve düzenleme modalındaki markalar alanı gizlendi)
+  - `OperationSync.md` (Log ve Gelecek Agentlar İçin Global Sözleşme Dokümantasyonu güncellendi)
+
+- `Global Rule Contract (Gelecekte Çalışacak Tüm Agent'lar İçin Zorunlu Kurallar)`:
+  1. **Single Source of Truth:** Bulut Mutfak aktiflik durumu VPS PostgreSQL `cloud_kitchen_settings` tablosundaki `is_active` (boolean) sütunu üzerinden kontrol edilir.
+  2. **Pasiflik Durumu (`is_active === false`):**
+     - Şirket Ağacı şube düğümlerinde Bulut Mutfak marka alanları gizlenir/pasif kalır.
+     - Satış Malı listesinde ve düzenleme modalında sanal marka sütun/filtre ve seçim alanları gizlenir.
+     - Gelecekte eklenecek/düzenlenecek tüm yeni modüllerde (KDS, Sipariş Yönetimi, Paket Servis, Raporlama vb.) Bulut Mutfak seçenekleri `is_active === false` ise **varsayılan olarak pasif/gizli** tutulmalıdır.
+  3. **Aktiflik Durumu (`is_active === true`):**
+     - Sistemde en az **2 aktif marka** bulunması zorunludur. Mevcut işletme 1. marka olarak konumlanır, 2. marka tanımlaması olmadan aktifleştirme tamamlanamaz.
+
+
 
 
 
@@ -13062,6 +13085,17 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Agent / Deployer`: Antigravity Deployer Engine
 - `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
 - `Commit Hash`: `e0dbb05`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-17 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-17T19:46:36.475Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `799017a`
 - `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
 - `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.

@@ -221,6 +221,7 @@ export default function Company() {
   const [taxes, setTaxes]     = useState([])
   const [cloudBrandsList, setCloudBrandsList] = useState([])
   const [ckSeparateWarehouses, setCkSeparateWarehouses] = useState(false)
+  const [isCkActive, setIsCkActive] = useState(false)
   const [collapsed, setCollapsed] = useState({})
   const [modal, setModal]     = useState(false)
   const [form, setForm]       = useState(createEmptyForm())
@@ -242,6 +243,7 @@ export default function Company() {
       }
       if (settingsData && settingsData.length > 0) {
         setCkSeparateWarehouses(Boolean(settingsData[0].separate_warehouses))
+        setIsCkActive(Boolean(settingsData[0].is_active))
       }
     } catch (err) {
       console.error('Bulut Mutfak verileri yüklenirken hata:', err)
@@ -860,8 +862,8 @@ export default function Company() {
             </div>
           )}
 
-          {/* Bulut Mutfak Markaları Seçim Alanı (Sadece Şube Düğümlerinde Gösterilir) */}
-          {form.type === 'sube' && (
+          {/* Bulut Mutfak Markaları Seçim Alanı (Sadece Şube Düğümlerinde ve Bulut Mutfak Aktifken Gösterilir) */}
+          {form.type === 'sube' && isCkActive && (
             <div style={{ display: 'grid', gap: 10, border: '1px solid #cbd5e1', borderRadius: 14, padding: 16, background: '#f8fafc' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                 <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: 8 }}>

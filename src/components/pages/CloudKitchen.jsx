@@ -349,6 +349,39 @@ export default function CloudKitchen() {
     setDeleteConfirm(null)
   }
 
+  async function handleMasterToggleChange(value) {
+    if (value === true) {
+      let currentBrands = [...brands]
+      if (currentBrands.length < 2) {
+        toast('Bulut Mutfak aktifleştiriliyor... En az 2 marka kuralı gereği 2. marka alanı hazırlanıyor.', 'info')
+        
+        if (currentBrands.length === 0) {
+          for (const brand of DEFAULT_BRANDS.slice(0, 2)) {
+            await db.from('cloud_kitchen_brands').insert({
+              ...brand,
+              platforms: JSON.stringify(brand.platforms)
+            })
+          }
+        } else if (currentBrands.length === 1) {
+          const secondBrand = {
+            name: 'Sanal Marka 2 (Virtual)',
+            code: 'SM2-VIRTUAL',
+            description: '2. Bulut Mutfak Sanal Markası',
+            logo_url: '',
+            kitchen_station: currentBrands[0].kitchen_station || 'Mutfak (KDS) - SUT-QMSUN2',
+            platforms: JSON.stringify(['Online Yemek', 'Gel Al']),
+            active: true,
+            avg_prep_time_mins: 15,
+          }
+          await db.from('cloud_kitchen_brands').insert(secondBrand)
+        }
+        await loadBrands()
+      }
+    }
+
+    await handleSettingToggle('is_active', value)
+  }
+
   const activeBrandsCount = brands.filter(b => b.active !== false).length
   const totalChannelsCount = new Set(brands.flatMap(b => parsePlatforms(b.platforms))).size
   const activeChannelsList = salesChannels.length > 0 ? salesChannels : DEFAULT_SALES_CHANNELS
@@ -362,6 +395,75 @@ export default function CloudKitchen() {
           <AddButton onClick={openAddModal} label="Yeni Sanal Marka Ekle" />
         )}
       />
+
+      {/* Master Activation Banner */}
+      <div
+        className="card"
+        style={{
+          padding: '18px 24px',
+          marginBottom: 20,
+          background: ckSettings.is_active
+            ? 'linear-gradient(135deg, #f3e8ff 0%, #ffffff 100%)'
+            : '#f8fafc',
+          border: ckSettings.is_active ? '1.5px solid #c084fc' : '1px solid #cbd5e1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
+          boxShadow: ckSettings.is_active ? '0 4px 16px rgba(139, 92, 246, 0.12)' : 'none',
+          borderRadius: 14,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 12,
+              background: ckSettings.is_active ? '#8b5cf6' : '#94a3b8',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'center',
+              fontSize: '1.4rem',
+              boxShadow: ckSettings.is_active ? '0 4px 12px rgba(139, 92, 246, 0.3)' : 'none',
+            }}
+          >
+            <i className={`fa-solid ${ckSettings.is_active ? 'fa-cloud-meatball' : 'fa-cloud'}`} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+              Bulut Mutfağı Aktifleştir
+              <span
+                style={{
+                  fontSize: '.72rem',
+                  padding: '2px 8px',
+                  borderRadius: 8,
+                  fontWeight: 800,
+                  background: ckSettings.is_active ? '#d8b4fe' : '#e2e8f0',
+                  color: ckSettings.is_active ? '#581c87' : '#475569',
+                }}
+              >
+                {ckSettings.is_active ? 'Sistem Aktif' : 'Sistem Pasif'}
+              </span>
+            </div>
+            <div style={{ fontSize: '.83rem', color: '#64748b', marginTop: 3 }}>
+              Aynı işletme altında birden fazla marka ile çalışabilirsiniz. En az 2 marka eklenmelidir.
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: '.85rem', fontWeight: 700, color: ckSettings.is_active ? '#7e22ce' : '#64748b' }}>
+            {ckSettings.is_active ? 'Bulut Mutfak Açık' : 'Bulut Mutfak Kapalı'}
+          </span>
+          <ToggleSwitch
+            checked={Boolean(ckSettings.is_active)}
+            onChange={handleMasterToggleChange}
+          />
+        </div>
+      </div>
 
       {/* Overview Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>

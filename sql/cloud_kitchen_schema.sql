@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS public.cloud_kitchen_brands (
 -- Bulut Mutfak Ayarları Tablosu
 CREATE TABLE IF NOT EXISTS public.cloud_kitchen_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  is_active BOOLEAN DEFAULT false,
+  primary_brand_id UUID,
   separate_warehouses BOOLEAN DEFAULT false,
   separate_profitability BOOLEAN DEFAULT false,
   separate_personnel BOOLEAN DEFAULT false,
@@ -26,5 +28,6 @@ CREATE TABLE IF NOT EXISTS public.cloud_kitchen_settings (
 
 -- Satış Malı Bulut Mutfak Markaları İlişkisi
 ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS cloud_brands jsonb DEFAULT '[]'::jsonb;
+
 
 
