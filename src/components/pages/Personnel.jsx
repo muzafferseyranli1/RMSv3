@@ -151,7 +151,7 @@ function getEmployeeStatus(employee) {
 export function PersonnelPage({ mode = 'center' }) {
   const isBranchView = mode === 'branch'
   const toast = useToast()
-  const { branchId, branchName } = useWorkspace()
+  const { branchId, branchName, isFranchiseCenter, connectedBranchIds, legalEntityId } = useWorkspace()
   const [employees, setEmployees] = useState([])
   const [positions, setPositions] = useState([])
   const [branches, setBranches] = useState([])
@@ -166,7 +166,22 @@ export function PersonnelPage({ mode = 'center' }) {
   const positionMap = useMemo(() => Object.fromEntries(positions.map(position => [position.id, position])), [positions])
   const branchMap = useMemo(() => Object.fromEntries(branches.map(branch => [branch.id, branch])), [branches])
   const activePositions = useMemo(() => positions.filter(position => !position.deletedAt).sort((a, b) => a.name.localeCompare(b.name, 'tr')), [positions])
-  const scopedEmployees = useMemo(() => employees.filter(employee => !isBranchView || employee.defaultBranchId === branchId), [employees, isBranchView, branchId])
+  const scopedEmployees = useMemo(() => {
+    if (isBranchView) {
+      return employees.filter(employee => employee.defaultBranchId === branchId)
+    }
+    if (isFranchiseCenter) {
+      if (!connectedBranchIds || connectedBranchIds.length === 0) return []
+      return employees.filter(employee => {
+        const defMatch = employee.defaultBranchId && connectedBranchIds.includes(String(employee.defaultBranchId))
+        const workMatch = Array.isArray(employee.workingBranchIds) && employee.workingBranchIds.some(id => connectedBranchIds.includes(String(id)))
+        const mgmtMatch = Array.isArray(employee.managedBranchIds) && employee.managedBranchIds.some(id => connectedBranchIds.includes(String(id)))
+        const legalMatch = employee.legalEntityId && String(employee.legalEntityId) === String(legalEntityId)
+        return Boolean(defMatch || workMatch || mgmtMatch || legalMatch)
+      })
+    }
+    return employees
+  }, [employees, isBranchView, branchId, isFranchiseCenter, connectedBranchIds, legalEntityId])
   const activeEmployeeCount = useMemo(() => scopedEmployees.filter(employee => !employee.deletedAt && !isTerminatedEmployee(employee)).length, [scopedEmployees])
   const selectedPosition = form.positionId ? positionMap[form.positionId] : null
   const enabledContractTypes = useMemo(() => getEnabledContractTypes(selectedPosition), [selectedPosition])

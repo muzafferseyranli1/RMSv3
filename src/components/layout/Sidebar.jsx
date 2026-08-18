@@ -433,11 +433,13 @@ export default function Sidebar() {
   const { user, authBusy, signOut } = useAuth()
   const {
     getSectionSession,
+    getSectionLabel,
     getSectionStatus,
     isSectionVisible,
     toggleSectionVisible,
     openSectionLogin,
     resolveSectionPath,
+    isFranchiseCenter,
   } = useWorkspace()
   const { mode, mobileOpen, setMobileOpen, togglePin, isPinned, autoMode } = useSidebar()
 
@@ -527,10 +529,19 @@ export default function Sidebar() {
 
   const visibleSections = useMemo(
     () => NAV
+      .filter(section => {
+        if (isFranchiseCenter && section.section === 'Ayarlar') return false
+        return true
+      })
       .map(section => ({
         ...section,
         sectionKey: getNavSectionKey(fixMojibakeText(section.section)),
-        items: section.items.map(item => prepareNavItem(item, getNavSectionKey(fixMojibakeText(section.section)), branchId)),
+        items: section.items
+          .filter(item => {
+            if (isFranchiseCenter && item.path === '/contracts') return false
+            return true
+          })
+          .map(item => prepareNavItem(item, getNavSectionKey(fixMojibakeText(section.section)), branchId)),
       })),
     [branchId],
   )
@@ -809,9 +820,10 @@ export default function Sidebar() {
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isIconOnly ? '4px 0' : '0 0 8px' }}>
           {visibleSections.map(section => {
-            const secName = fixMojibakeText(section.section)
-            const sectionColor = SECTION_COLORS[secName] || '#888888'
             const sectionKey = section.sectionKey
+            const dynamicLabel = getSectionLabel ? getSectionLabel(sectionKey) : null
+            const secName = dynamicLabel || fixMojibakeText(section.section)
+            const sectionColor = SECTION_COLORS[secName] || SECTION_COLORS[fixMojibakeText(section.section)] || '#888888'
             const sectionOpen = isSectionVisible(sectionKey)
             const sectionStatus = getSectionStatus(sectionKey)
             return (

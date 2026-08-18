@@ -19,6 +19,53 @@ import {
   normalizePinInput,
 } from '@/lib/posStaffAuth'
 import { isDesktopMode } from '@/lib/terminalIdentity'
+import { db } from '@/lib/db'
+
+function getLegalEntityNodesFromTree(nodes) {
+  if (!Array.isArray(nodes)) return []
+  const list = []
+  for (const n of nodes) {
+    if (n.type === 'tuzel' || n.type === 'sirket' || n.isLegalEntity || n.is_legal_entity || n.taxNumber || n.tax_number) {
+      list.push(n)
+    }
+    if (n.children && n.children.length) {
+      list.push(...getLegalEntityNodesFromTree(n.children))
+    }
+  }
+  return list
+}
+
+function getDescendantBranchIds(nodes, targetNodeId) {
+  if (!Array.isArray(nodes) || !targetNodeId) return []
+
+  function findNode(tree, id) {
+    for (const n of tree) {
+      if (String(n.id) === String(id)) return n
+      if (n.children && n.children.length) {
+        const found = findNode(n.children, id)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  const target = findNode(nodes, targetNodeId)
+  if (!target) return []
+
+  const branchIds = []
+  function collect(n) {
+    if (n.id) branchIds.push(String(n.id))
+    if (n.children && n.children.length) {
+      n.children.forEach(collect)
+    }
+  }
+
+  if (target.children && target.children.length) {
+    target.children.forEach(collect)
+  }
+
+  return branchIds
+}
 
 const WorkspaceContext = createContext(null)
 
@@ -491,6 +538,31 @@ export function WorkspaceProvider({
   const hasSelection = Boolean(terminalLocked || activeSession?.employeeId)
   const scopeOption = getWorkspaceScopeOption(activeScope)
 
+  const [companyTree, setCompanyTree] = useState([])
+
+  useEffect(() => {
+    async function fetchCompanyTree() {
+      try {
+        const { data } = await db.from('settings').select('value').eq('key', 'company_tree').single()
+        if (data?.value) setCompanyTree(data.value)
+      } catch (err) {
+        // noop
+      }
+    }
+    fetchCompanyTree()
+  }, [])
+
+  const centerSession = sectionSessions[WORKSPACE_SECTION.center] || null
+  const centerKind = centerSession?.centerKind || centerSession?.employee?.centerKind || 'headquarters'
+  const isFranchiseCenter = centerKind === 'franchise_center'
+  const legalEntityId = centerSession?.legalEntityId || centerSession?.branchId || ''
+  const legalEntityName = centerSession?.legalEntityName || centerSession?.employeeName || ''
+
+  const connectedBranchIds = useMemo(() => {
+    if (!isFranchiseCenter || !legalEntityId) return []
+    return getDescendantBranchIds(companyTree, legalEntityId)
+  }, [isFranchiseCenter, legalEntityId, companyTree])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const employee = activeSession?.employee || null
@@ -511,9 +583,16 @@ export function WorkspaceProvider({
     sectionSessions[getSessionSectionKey(sectionKey)] || null
   ), [sectionSessions])
 
-  const getSectionLabel = useCallback((sectionKey) => (
-    SECTION_LABELS[sectionKey] || SECTION_LABELS[getSessionSectionKey(sectionKey)] || 'Calisma Alani'
-  ), [])
+  const getSectionLabel = useCallback((sectionKey) => {
+    const session = getSectionSession(sectionKey)
+    const key = getSessionSectionKey(sectionKey)
+    if (key === WORKSPACE_SECTION.center) {
+      const centerKind = session?.centerKind || session?.employee?.centerKind
+      if (centerKind === 'headquarters') return 'Genel Merkez'
+      if (centerKind === 'franchise_center') return 'Franchise Merkez'
+    }
+    return SECTION_LABELS[sectionKey] || SECTION_LABELS[key] || 'Calisma Alani'
+  }, [getSectionSession])
 
   const getSectionStatus = useCallback((sectionKey) => (
     getSessionStatusLabel(sectionKey, getSectionSession(sectionKey))
@@ -626,7 +705,64 @@ export function WorkspaceProvider({
   }, [branches])
 
   const submitSectionPin = useCallback(async (sectionKey, pin, targetPath = '') => {
-    const employee = await findPersonnelForBranchPin('', pin, { preferCache: false })
+    const normalizedPin = normalizePinInput(pin)
+
+    // 1. Önce Şirket Ağacındaki Tüzel Kişiliklerin Admin PIN'leri ile Kontrol Et
+    let legalEntityMatch = null
+    try {
+      const { data: ctData } = await db.from('settings').select('value').eq('key', 'company_tree').single()
+      const treeNodes = ctData?.value || []
+      const legalEntities = getLegalEntityNodesFromTree(treeNodes)
+
+      legalEntityMatch = legalEntities.find(
+        (n) => (n.adminPin && String(n.adminPin).trim() === normalizedPin) ||
+               (n.admin_pin && String(n.admin_pin).trim() === normalizedPin) ||
+               (n.pin && String(n.pin).trim() === normalizedPin)
+      )
+    } catch (err) {
+      console.warn('Tüzel kişilik PIN kontrol hatası:', err)
+    }
+
+    if (legalEntityMatch) {
+      const session = {
+        sectionKey: WORKSPACE_SECTION.center,
+        scope: WORKSPACE_SCOPE.center,
+        employee: {
+          id: `legal_entity_${legalEntityMatch.id}`,
+          firstName: legalEntityMatch.legalTitle || legalEntityMatch.name,
+          lastName: '(Tüzel Kişilik)',
+          name: legalEntityMatch.legalTitle || legalEntityMatch.name,
+          pin: normalizedPin,
+          authorityLevel: 'Genel Merkez',
+          role: 'Tüzel Kişilik Yöneticisi',
+          legalEntityId: legalEntityMatch.id,
+          centerKind: legalEntityMatch.centerKind || 'headquarters',
+        },
+        employeeId: `legal_entity_${legalEntityMatch.id}`,
+        employeeName: legalEntityMatch.legalTitle || legalEntityMatch.name,
+        authorityLevel: 'Genel Merkez',
+        branchId: legalEntityMatch.id,
+        branchName: legalEntityMatch.name,
+        legalEntityId: legalEntityMatch.id,
+        legalEntityName: legalEntityMatch.name,
+        legalEntityCode: legalEntityMatch.taxNumber || '',
+        centerKind: legalEntityMatch.centerKind || 'headquarters',
+        signedInAt: new Date().toISOString(),
+      }
+
+      setSectionSessions((current) => ({
+        ...current,
+        [WORKSPACE_SECTION.center]: session,
+      }))
+      setPinModal((current) => ({ ...current, open: false, targetPath: '' }))
+
+      const nextPath = resolveTargetPath(targetPath, session)
+      if (nextPath && !publicKioskPath) navigate(nextPath)
+      return
+    }
+
+    // 2. Tüzel Kişilik PIN'i Değilse Standart Personel PIN Girişini Yap
+    const employee = await findPersonnelForBranchPin('', normalizedPin, { preferCache: false })
     const session = validatePersonnelForSection(sectionKey, employee)
 
     setSectionSessions(current => ({
@@ -672,6 +808,12 @@ export function WorkspaceProvider({
     resolveSectionPath,
     reloadBranches: loadBranches,
     terminalLocked,
+    isFranchiseCenter,
+    centerKind,
+    legalEntityId,
+    legalEntityName,
+    connectedBranchIds,
+    companyTree,
   }), [
     activeScope,
     scopeOption,
@@ -699,6 +841,12 @@ export function WorkspaceProvider({
     resolveSectionPath,
     loadBranches,
     terminalLocked,
+    isFranchiseCenter,
+    centerKind,
+    legalEntityId,
+    legalEntityName,
+    connectedBranchIds,
+    companyTree,
   ])
 
   return (

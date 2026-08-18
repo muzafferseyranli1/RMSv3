@@ -150,6 +150,7 @@ function createEmptyForm(type = 'sirket') {
     legalTitle: '',
     taxOffice: '',
     legalAddress: '',
+    adminPin: '',
     isLegalEntity: type === 'tuzel' || type === 'sirket',
     parentLegalEntityId: '',
     centerKind: 'franchise_center',
@@ -374,6 +375,7 @@ export default function Company() {
       legalTitle: node.legalTitle || node.legal_title || '',
       taxOffice: node.taxOffice || node.tax_office || '',
       legalAddress: node.legalAddress || node.legal_address || '',
+      adminPin: node.adminPin || node.admin_pin || node.pin || '',
       isLegalEntity: Boolean(node.isLegalEntity ?? node.is_legal_entity ?? (node.type === 'tuzel' || node.type === 'sirket')),
       parentLegalEntityId: node.parentLegalEntityId || node.parent_legal_entity_id || '',
       centerKind: node.centerKind || node.center_kind || (node.name?.includes('Muzaffer') ? 'headquarters' : 'franchise_center'),
@@ -432,6 +434,7 @@ export default function Company() {
       legalTitle: form.legalTitle?.trim() || '',
       taxOffice: form.taxOffice?.trim() || '',
       legalAddress: form.legalAddress?.trim() || '',
+      adminPin: form.adminPin?.trim() || '',
       isLegalEntity: Boolean(form.isLegalEntity || form.type === 'tuzel' || form.type === 'sirket'),
       parentLegalEntityId: form.parentLegalEntityId || null,
       centerKind: form.centerKind || 'franchise_center',
@@ -982,6 +985,25 @@ export default function Company() {
                     value={form.legalAddress}
                     onChange={e => set('legalAddress', e.target.value)}
                     placeholder="ör. Nispetiye Cad. No:12 Beşiktaş / İstanbul"
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                  <label className="f-label" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4f46e5', fontWeight: 800 }}>
+                    <i className="fa-solid fa-key" />
+                    Admin Giriş PIN
+                    <span style={{ fontSize: '.73rem', color: '#64748b', fontWeight: 400 }}>
+                      (Merkez giriş ekranında bu PIN girildiğinde otomatik olarak bu tüzel kişilik seçilir)
+                    </span>
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    inputMode="numeric"
+                    className="f-input"
+                    value={form.adminPin || ''}
+                    onChange={e => set('adminPin', e.target.value.replace(/\D/g, ''))}
+                    placeholder="ör. 1234 (4-6 haneli sayısal PIN)"
+                    style={{ letterSpacing: '0.25em', fontWeight: 800, color: '#4f46e5' }}
                   />
                 </div>
               </div>

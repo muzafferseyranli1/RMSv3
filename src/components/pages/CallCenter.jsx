@@ -818,14 +818,19 @@ export default function OrderHub() {
     return items.sort((left, right) => right.score - left.score || String(left.branch?.name || '').localeCompare(String(right.branch?.name || ''), 'tr'))
   }, [fulfillmentType, selectedExistingAddress, history, routingAddressCandidate, branchCoverageRows, branchAddresses, branches])
 
+  const { isFranchiseCenter, connectedBranchIds } = useWorkspace()
+
   const filteredBranches = useMemo(() => {
     const text = normalizeText(branchSearch)
-    const rows = branches.filter(branch => {
-      if (!text) return true
-      return normalizeText([branch.name, branch.parentName, branch.address].filter(Boolean).join(' ')).includes(text)
-    })
+    let rows = branches
+    if (isFranchiseCenter && connectedBranchIds.length > 0) {
+      rows = rows.filter(branch => connectedBranchIds.includes(branch.id))
+    }
+    if (text) {
+      rows = rows.filter(branch => normalizeText([branch.name, branch.parentName, branch.address].filter(Boolean).join(' ')).includes(text))
+    }
     return rows
-  }, [branches, branchSearch])
+  }, [branches, branchSearch, isFranchiseCenter, connectedBranchIds])
 
   const groupedBranches = useMemo(() => {
     const recommendationMap = new Map(branchRecommendations.map(item => [String(item.branchId), item]))

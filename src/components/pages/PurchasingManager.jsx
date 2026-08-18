@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '@/components/layout/Header'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -730,6 +730,7 @@ function PurchasingOrderModal({
 export default function PurchasingManager() {
   const toast = useToast()
   const { user } = useAuth()
+  const { isFranchiseCenter, connectedBranchIds } = useWorkspace()
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState([])
   const [orderLines, setOrderLines] = useState([])
@@ -763,17 +764,25 @@ export default function PurchasingManager() {
       if (flowsResult.error) throw flowsResult.error
       if (settingsResult.error) throw settingsResult.error
 
-      setOrders(ordersResult.data || [])
+      let loadedOrders = ordersResult.data || []
+      let loadedBranches = getAllBranches(settingsResult.data?.value)
+
+      if (isFranchiseCenter && connectedBranchIds.length > 0) {
+        loadedOrders = loadedOrders.filter(o => connectedBranchIds.includes(o.branch_id) || connectedBranchIds.includes(o.target_branch_id))
+        loadedBranches = loadedBranches.filter(b => connectedBranchIds.includes(b.id))
+      }
+
+      setOrders(loadedOrders)
       setOrderLines(linesResult.data || [])
       setSuppliers(suppliersResult.data || [])
       setFlows(flowsResult.data || [])
-      setBranches(getAllBranches(settingsResult.data?.value))
+      setBranches(loadedBranches)
     } catch (error) {
       toast(`Satinalma yoneticisi verileri yuklenemedi: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [toast, isFranchiseCenter, connectedBranchIds])
 
   useEffect(() => {
     loadBase()
