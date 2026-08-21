@@ -3664,7 +3664,7 @@ CREATE INDEX IF NOT EXISTS idx_task_chat_messages_thread_id ON public.task_chat_
 CREATE INDEX IF NOT EXISTS idx_task_approval_requests_task_status ON public.task_approval_requests USING btree (task_id, status);
 
 CREATE TABLE IF NOT EXISTS public.pos_table_halls (
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  id TEXT DEFAULT gen_random_uuid()::text NOT NULL,
   branch_id TEXT NOT NULL,
   name TEXT NOT NULL,
   code TEXT,
@@ -3677,9 +3677,9 @@ CREATE TABLE IF NOT EXISTS public.pos_table_halls (
 );
 
 CREATE TABLE IF NOT EXISTS public.pos_table_sections (
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  id TEXT DEFAULT gen_random_uuid()::text NOT NULL,
   branch_id TEXT NOT NULL,
-  hall_id UUID NOT NULL,
+  hall_id TEXT NOT NULL,
   name TEXT NOT NULL,
   sort_order INTEGER DEFAULT 0 NOT NULL,
   is_active BOOLEAN DEFAULT true NOT NULL,
@@ -3691,10 +3691,10 @@ CREATE TABLE IF NOT EXISTS public.pos_table_sections (
 );
 
 CREATE TABLE IF NOT EXISTS public.pos_tables (
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
+  id TEXT DEFAULT gen_random_uuid()::text NOT NULL,
   branch_id TEXT NOT NULL,
-  hall_id UUID NOT NULL,
-  section_id UUID NOT NULL,
+  hall_id TEXT NOT NULL,
+  section_id TEXT NOT NULL,
   table_code TEXT,
   table_name TEXT NOT NULL,
   table_number TEXT NOT NULL,
@@ -3747,7 +3747,7 @@ CREATE INDEX IF NOT EXISTS pos_tables_section_idx
 CREATE TABLE IF NOT EXISTS public.table_service_requests (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   branch_id TEXT NOT NULL,
-  table_id UUID NOT NULL,
+  table_id TEXT NOT NULL,
   request_type TEXT NOT NULL,
   status TEXT DEFAULT 'pending'::text NOT NULL,
   requested_phone TEXT,
@@ -3776,7 +3776,7 @@ CREATE INDEX IF NOT EXISTS table_service_requests_table_status_idx
 CREATE TABLE IF NOT EXISTS public.table_feedback (
   id UUID DEFAULT gen_random_uuid() NOT NULL,
   branch_id TEXT NOT NULL,
-  table_id UUID NOT NULL,
+  table_id TEXT NOT NULL,
   rating INTEGER NOT NULL,
   comment TEXT,
   customer_phone TEXT,

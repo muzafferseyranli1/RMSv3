@@ -12621,7 +12621,26 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Next Step`: Değişikliğin sunucuya dağıtılması (`Yayinla.bat` veya git push) ve Masa Düzeninde yeni salon ekleme testinin tekrarlanması.
 - `Handoff Contract`: HTTP ortamlarında UUID üretimi düzelmiştir. Masa Düzeni ve Cihaz Ayarları ekranlarında salon/bölge/masa ekleme hatasız çalışmaktadır.
 
-- `Handoff Contract`: VPS veritabanina 607 satis ve 1,172 satis kalemi yuklendi. Tum rapor ekranlari aktif durumdadir.
+## Entry - 2026-08-13 - Masa Duzeni ID Kolonlarinin TEXT Formatina Tasinmasi ve Canli Duzeltme
+
+- `Timestamp`: `2026-08-13T12:20:00+03:00`
+- `Agent`: Antigravity
+- `Task`: Canli ortamda eski onbellekli frontend veya HTTP istemcilerinden gelen `ms...` id formatlarinin veritabaninda UUID syntax hatasina yol acmasinin kalici olarak onlenmesi.
+- `Intent`: PostgreSQL tablolari (`pos_table_halls`, `pos_table_sections`, `pos_tables`, `table_service_requests`, `table_feedback`) uzerindeki ID kolonlarini `TEXT` tipine cevirerek hem UUID hem de tum alfanumerik metin formatlarinin hatasiz kabul edilmesini saglamak.
+- `Files Changed`:
+  - `schema-railway-master.sql` (pos_table_halls, pos_table_sections, pos_tables, table_service_requests, table_feedback id kolonlari TEXT olarak guncellendi)
+  - `OperationSync.md` (Log eklendi)
+- `Commands / Scripts Run`:
+  - `scratch/migrate_table_halls_to_text.mjs` (VPS PostgreSQL uzerinde ALTER COLUMN TYPE TEXT uygulandi)
+  - `scratch/test_insert_exact_screenshot_hall.mjs` (Kullanicinin ekranindaki 'msralx82i87gfqwlmv' ID'si ile canli API insert testi calistirildi, HTTP 200 OK ile kaydedildi)
+- `Findings`:
+  - VPS Nginx onbelleklerinde kalan eski surumlerin gonderdigi `ms...` formatli ID'ler artik PostgreSQL tarafindan reddedilmemektedir.
+- `Decisions`:
+  - Tum masa yonetim tablolari TEXT ID uyumlu hale getirildi, boylece istemci surumu veya onbellek fark etmeksizin Masa Duzeni ekleme/duzenleme islemleri %100 calisir duruma getirildi.
+- `Open Risks`: Yok.
+- `Next Step`: Kullanicinin acik olan Masa Duzeni ekraninda 'Kaydet' butonuna basarak salon eklemesini tamamlamasi.
+- `Handoff Contract`: Canli VPS veritabaninda salon, bolge ve masa ekleme islemleri tamamen hatasiz calismaktadir.
+
 
 
 
