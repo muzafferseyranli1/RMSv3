@@ -61,4 +61,33 @@ export class IntegratorAdapter {
   async checkTaxPayer(_vknTckn) {
     throw new Error('checkTaxPayer method must be implemented by concrete adapter')
   }
+
+  /**
+   * Kalan Kontör / Kredi Bakiyesi Sorgulama
+   * @returns {Promise<{credits: number, provider: string, checkedAt: string}>}
+   */
+  async getCreditsBalance() {
+    throw new Error('getCreditsBalance method must be implemented by concrete adapter')
+  }
+
+  /**
+   * E-Arşiv Fatura İptal Talebi Gönderme
+   * @param {string} _ettn
+   * @param {string} _reason
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  async cancelEArchiveInvoice(_ettn, _reason = '') {
+    throw new Error('cancelEArchiveInvoice method must be implemented by concrete adapter')
+  }
+
+  /**
+   * Toplu Belge İndirme (PDF / XML)
+   * @param {Array<string>} _ettnList
+   * @param {'PDF' | 'XML' | 'ZIP'} _format
+   * @returns {Promise<{downloadUrl?: string, files?: Array<{ettn: string, content: string}>}>}
+   */
+  async downloadBatchFiles(_ettnList = [], _format = 'ZIP') {
+    throw new Error('downloadBatchFiles method must be implemented by concrete adapter')
+  }
 }
+

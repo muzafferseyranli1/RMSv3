@@ -195,7 +195,14 @@ export function generateUBLXML(invoice) {
   <cbc:IssueTime>${issueTime}</cbc:IssueTime>
   <cbc:InvoiceTypeCode>${invoiceType}</cbc:InvoiceTypeCode>
   ${invoice.notes ? `<cbc:Note>${escapeXml(invoice.notes)}</cbc:Note>` : '<cbc:Note>SuitableRMS E-Fatura Sistemi tarafından düzenlenmiştir.</cbc:Note>'}
-  <cbc:DocumentCurrencyCode>${currencyCode}</cbc:DocumentCurrencyCode>
+  ${(invoice.billing_reference_invoice_number || invoice.original_invoice_number || invoice.billing_reference?.invoice_number) ? `
+  <cac:BillingReference>
+    <cac:InvoiceDocumentReference>
+      <cbc:ID>${escapeXml(invoice.billing_reference_invoice_number || invoice.original_invoice_number || invoice.billing_reference?.invoice_number)}</cbc:ID>
+      <cbc:IssueDate>${escapeXml(invoice.billing_reference_issue_date || invoice.original_invoice_date || invoice.billing_reference?.issue_date || issueDate)}</cbc:IssueDate>
+      <cbc:DocumentTypeCode>FATURA</cbc:DocumentTypeCode>
+    </cac:InvoiceDocumentReference>
+  </cac:BillingReference>` : ''}
   ${(invoice.despatch_document_reference || invoice.source_transfer_doc_no) ? `
   <cac:DespatchDocumentReference>
     <cbc:ID>${escapeXml(invoice.despatch_document_reference || invoice.source_transfer_doc_no)}</cbc:ID>
@@ -288,7 +295,61 @@ function escapeXml(unsafe = '') {
 }
 
 /**
- * Basit UBL XML Ayrıştırıcı (Regex/DOM tabanlı tarayıcı uyumlu)
+ * Metin, Açıklama ve Not Alanlarından İrsaliye Numaralarını Ayıklar (Regex Destekli)
+ * Örn: "Bu fatura IRS202600000014, GIB202600004512 nolu irsaliyeler karşılığıdır."
+ */
+export function extractDespatchNumbersFromText(text = '') {
+  if (!text || typeof text !== 'string') return []
+  const matches = new Set()
+
+  // 1. Standart 16 haneli GİB e-İrsaliye ve e-Fatura formatı (3 Harf + 4 Yıl + 9 Rakam)
+  const gibPattern = /\b([A-Z]{3}202[0-9]{10})\b/gi
+  let m
+  while ((m = gibPattern.exec(text)) !== null) {
+    matches.add(m[1].toUpperCase())
+  }
+
+  // 2. "IRS-12345", "İRSALİYE: 987654", "No: 123456" kalıpları
+  const irsPattern = /(?:irsaliye(?:\s+no)?|irs\.?\s*no?|despatch)\s*[:#\-]?\s*([A-Za-z0-9\-_/]{4,20})/gi
+  while ((m = irsPattern.exec(text)) !== null) {
+    const candidate = m[1].trim().toUpperCase()
+    if (candidate.length >= 4 && !['NO', 'NUMARALI', 'TARIHLI', 'VE'].includes(candidate)) {
+      matches.add(candidate)
+    }
+  }
+
+  return Array.from(matches)
+}
+
+/**
+ * Fatura Başlığı, Kalemleri ve Tedarikçi Ünvanından Hizmet/Gider Faturası Olup Olmadığını Tespit Eder
+ */
+export function detectServiceInvoice(invoiceData = {}, lines = []) {
+  const serviceKeywords = [
+    'elektrik', 'enerji', 'enerjisa', 'bedas', 'gediz', 'ayedas', 'ck bogazici',
+    'su faturasi', 'iski', 'aski', 'izsu', 'dogalgaz', 'igdas', 'baskentgaz',
+    'telekom', 'turkcell', 'vodafone', 'turk telekom', 'internet', 'fiber',
+    'kira', 'aidat', 'yonetim', 'muhasebe', 'danismanlik', 'avukat', 'hukuk',
+    'guvenlik', 'temizlik hizmeti', 'yazilim', 'lisans', 'bakim onarim', 'kargo', 'nakliye', 'tasima'
+  ]
+
+  const title = (invoiceData.sender_title || '').toLowerCase()
+  const notes = (invoiceData.notes || '').toLowerCase()
+  const hasTitleMatch = serviceKeywords.some(k => title.includes(k) || notes.includes(k))
+
+  if (hasTitleMatch) return true
+
+  // Satır bazında incele
+  const lineMatchCount = (lines || []).filter(l => {
+    const name = (l.item_name || '').toLowerCase()
+    return serviceKeywords.some(k => name.includes(k))
+  }).length
+
+  return lineMatchCount > 0
+}
+
+/**
+ * Derin UBL-TR 2.1 XML Ayrıştırıcı (Gelişmiş Meta Veri, Çoklu İrsaliye, Sipariş & Sevkiyat Adresi Ayrıştırma)
  */
 export function parseUBLXML(xmlString) {
   try {
@@ -307,7 +368,11 @@ export function parseUBLXML(xmlString) {
     const issueDate = getText('IssueDate') || getText('cbc\\:IssueDate')
     const issueTime = getText('IssueTime') || getText('cbc\\:IssueTime')
     const currencyCode = getText('DocumentCurrencyCode') || getText('cbc\\:DocumentCurrencyCode') || 'TRY'
-    const notes = getText('Note') || getText('cbc\\:Note')
+
+    // Tüm Note alanlarını topla
+    const noteElements = xmlDoc.querySelectorAll('Note, cbc\\:Note')
+    const noteList = Array.from(noteElements).map(n => n.textContent.trim()).filter(Boolean)
+    const combinedNotes = noteList.join(' | ')
 
     const supplierParty = xmlDoc.querySelector('AccountingSupplierParty') || xmlDoc.querySelector('cac\\:AccountingSupplierParty')
     const customerParty = xmlDoc.querySelector('AccountingCustomerParty') || xmlDoc.querySelector('cac\\:AccountingCustomerParty')
@@ -321,6 +386,42 @@ export function parseUBLXML(xmlString) {
     const receiverVkn = customerParty?.querySelector('PartyIdentification ID, cac\\:PartyIdentification cbc\\:ID')?.textContent?.trim() || ''
     const receiverTaxOffice = customerParty?.querySelector('PartyTaxScheme TaxScheme Name, cac\\:PartyTaxScheme cac\\:TaxScheme cbc\\:Name')?.textContent?.trim() || ''
     const receiverAddress = customerParty?.querySelector('PostalAddress StreetName, cac\\:PostalAddress cbc\\:StreetName')?.textContent?.trim() || ''
+
+    // 1. Çoklu İrsaliye Referansları (DespatchDocumentReference)
+    const despatchRefs = []
+    const despatchElements = xmlDoc.querySelectorAll('DespatchDocumentReference, cac\\:DespatchDocumentReference')
+    despatchElements.forEach(el => {
+      const dId = el.querySelector('ID, cbc\\:ID')?.textContent?.trim()
+      const dDate = el.querySelector('IssueDate, cbc\\:IssueDate')?.textContent?.trim()
+      if (dId) {
+        despatchRefs.push({ id: dId, issue_date: dDate || issueDate })
+      }
+    })
+
+    // Not alanlarından da ek irsaliye numaralarını topla
+    const textDespatches = extractDespatchNumbersFromText(combinedNotes)
+    textDespatches.forEach(dNo => {
+      if (!despatchRefs.some(d => d.id.toUpperCase() === dNo.toUpperCase())) {
+        despatchRefs.push({ id: dNo, issue_date: issueDate, source: 'note_extracted' })
+      }
+    })
+
+    // 2. Sipariş Referansları (OrderReference)
+    const orderRefs = []
+    const orderElements = xmlDoc.querySelectorAll('OrderReference, cac\\:OrderReference')
+    orderElements.forEach(el => {
+      const oId = el.querySelector('ID, cbc\\:ID')?.textContent?.trim()
+      const oDate = el.querySelector('IssueDate, cbc\\:IssueDate')?.textContent?.trim()
+      if (oId) {
+        orderRefs.push({ id: oId, issue_date: oDate || issueDate })
+      }
+    })
+
+    // 3. Teslimat & Sevkiyat Adresi (Delivery & DeliveryAddress)
+    const deliveryEl = xmlDoc.querySelector('Delivery, cac\\:Delivery')
+    const deliveryAddress = deliveryEl?.querySelector('DeliveryAddress StreetName, cac\\:DeliveryAddress cbc\\:StreetName')?.textContent?.trim() ||
+      deliveryEl?.querySelector('DeliveryAddress CitySubdivisionName, cac\\:DeliveryAddress cbc\\:CitySubdivisionName')?.textContent?.trim() || ''
+    const deliveryPartyName = deliveryEl?.querySelector('DeliveryParty PartyName Name, cac\\:DeliveryParty cac\\:PartyName cbc\\:Name')?.textContent?.trim() || ''
 
     const monetaryTotal = xmlDoc.querySelector('LegalMonetaryTotal') || xmlDoc.querySelector('cac\\:LegalMonetaryTotal')
     const lineExtensionAmount = parseFloat(monetaryTotal?.querySelector('LineExtensionAmount, cbc\\:LineExtensionAmount')?.textContent || '0')
@@ -370,6 +471,22 @@ export function parseUBLXML(xmlString) {
     const adisyonDoc = additionalDocs.find((d) => d.document_type_code === 'E-ADISYON' || d.document_type?.toLowerCase().includes('adisyon'))
     const linkedAdisyonEttn = adisyonDoc ? adisyonDoc.id : null
 
+    // Hizmet Faturası Tespiti
+    const isService = detectServiceInvoice(
+      { sender_title: senderTitle, notes: combinedNotes },
+      lines
+    )
+
+    const parsedMetadata = {
+      despatch_references: despatchRefs,
+      order_references: orderRefs,
+      delivery_address: deliveryAddress,
+      delivery_party_name: deliveryPartyName,
+      extracted_despatch_numbers: despatchRefs.map(d => d.id),
+      all_notes: noteList,
+      is_service_detected: isService,
+    }
+
     return {
       ettn,
       invoice_number: invoiceNumber,
@@ -378,7 +495,7 @@ export function parseUBLXML(xmlString) {
       issue_date: issueDate,
       issue_time: issueTime,
       currency_code: currencyCode,
-      notes,
+      notes: combinedNotes,
       sender_title: senderTitle,
       sender_vkn_tckn: senderVkn,
       sender_tax_office: senderTaxOffice,
@@ -396,6 +513,9 @@ export function parseUBLXML(xmlString) {
       ubl_xml: xmlString,
       additional_document_references: additionalDocs,
       linked_adisyon_ettn: linkedAdisyonEttn,
+      is_service_invoice: isService,
+      parsed_metadata: parsedMetadata,
+      despatch_document_reference: despatchRefs.length > 0 ? despatchRefs[0].id : null,
     }
   } catch (err) {
     console.error('UBL XML parse error:', err)

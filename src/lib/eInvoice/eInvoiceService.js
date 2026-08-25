@@ -746,6 +746,448 @@ class EInvoiceService {
       </div>
     </div>`
   }
+
+  /**
+   * Kalan Kontör / Kredi Bakiyesini Sorgular ve DB'ye Günceller
+   */
+  async fetchCreditsBalance() {
+    try {
+      const adapter = await this.resolveAdapter()
+      if (typeof adapter.getCreditsBalance === 'function') {
+        const res = await adapter.getCreditsBalance()
+        // Save to DB
+        await db
+          .from('e_integrator_configs')
+          .update({
+            credits_balance: res.credits || 0,
+            last_credit_check_at: new Date().toISOString(),
+          })
+          .eq('is_active', true)
+
+        return { success: true, ...res }
+      }
+      return { success: true, credits: 0, provider: 'none', checkedAt: new Date().toISOString() }
+    } catch (err) {
+      console.error('fetchCreditsBalance error:', err)
+      return { success: false, credits: 0, error: err.message }
+    }
+  }
+
+  /**
+   * Giden E-Arşiv Faturasını İptal Eder
+   */
+  async cancelEArchiveInvoice(ettn, reason = '') {
+    try {
+      const adapter = await this.resolveAdapter()
+      if (typeof adapter.cancelEArchiveInvoice === 'function') {
+        return await adapter.cancelEArchiveInvoice(ettn, reason)
+      }
+      return { success: false, message: 'Seçili entegratör e-Arşiv iptal desteklemiyor.' }
+    } catch (err) {
+      console.error('cancelEArchiveInvoice error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Toplu Belge İndirir
+   */
+  async downloadBatchFiles(ettnList = [], format = 'ZIP') {
+    try {
+      const adapter = await this.resolveAdapter()
+      if (typeof adapter.downloadBatchFiles === 'function') {
+        return await adapter.downloadBatchFiles(ettnList, format)
+      }
+      return { success: false, message: 'Seçili entegratör toplu indirme desteklemiyor.' }
+    } catch (err) {
+      console.error('downloadBatchFiles error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Faturayı Birden Fazla Mal Kabul İrsaliyesine Bağlar (N:1 Konsolidasyon)
+   */
+  async matchInvoiceToMultipleReceipts(invoiceId, receiptIds = [], note = '', performedBy = 'SYS') {
+    try {
+      if (!invoiceId || !Array.isArray(receiptIds) || receiptIds.length === 0) {
+        throw new Error('Geçersiz fatura veya irsaliye listesi.')
+      }
+
+      // 1. Update e_invoices
+      await db
+        .from('e_invoices')
+        .update({
+          is_matched: true,
+          matched_receipt_ids: receiptIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', invoiceId)
+
+      // 2. Update all matched purchase receipts
+      await db
+        .from('purchase_receipts')
+        .update({
+          status: 'matched',
+          is_invoiced: true,
+          matched_invoice_id: invoiceId,
+          updated_at: new Date().toISOString(),
+        })
+        .in('id', receiptIds)
+
+      // 3. Log matching
+      await db.from('e_invoice_matching_logs').insert({
+        invoice_id: invoiceId,
+        matching_type: 'MULTI_RECEIPT_CONSOLIDATION',
+        notes: `Fatura ${receiptIds.length} adet mal kabul irsaliyesi ile konsolide eşleştirildi. ${note || ''}`.trim(),
+        performed_by: performedBy,
+      })
+
+      return { success: true, message: `${receiptIds.length} adet irsaliye başarıyla faturaya bağlandı.` }
+    } catch (err) {
+      console.error('matchInvoiceToMultipleReceipts error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Hizmet Faturasını Açık Gider Tahakkukuna Bağlar ve Tahakkuku Gerçek Belgeye Dönüştürür
+   */
+  async matchInvoiceToAccrualExpense(invoiceId, expenseId, note = '', performedBy = 'SYS') {
+    try {
+      if (!invoiceId || !expenseId) {
+        throw new Error('Fatura veya masraf/tahakkuk ID eksik.')
+      }
+
+      // 1. Fetch invoice info
+      const { data: invArr } = await db.from('e_invoices').select('*').eq('id', invoiceId).limit(1)
+      const invoice = invArr?.[0]
+      if (!invoice) throw new Error('Fatura bulunamadı.')
+
+      // 2. Fetch expense/accrual info
+      const { data: expArr } = await db.from('expense_documents').select('*').eq('id', expenseId).limit(1)
+      const expense = expArr?.[0]
+      if (!expense) throw new Error('Gider/Tahakkuk belgesi bulunamadı.')
+
+      const invoiceAmount = Number(invoice.payable_amount || 0)
+      const accrualAmount = Number(expense.amount || 0)
+      const difference = invoiceAmount - accrualAmount
+
+      // 3. Update expense_documents (Accrual -> Realized Invoice)
+      await db
+        .from('expense_documents')
+        .update({
+          doc_type: 'invoice',
+          status: 'matched',
+          is_matched: true,
+          matched_invoice_id: invoiceId,
+          document_no: invoice.invoice_number,
+          realized_amount: invoiceAmount,
+          accrual_difference: difference,
+          ettn: invoice.ettn,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', expenseId)
+
+      // 4. Update e_invoices
+      await db
+        .from('e_invoices')
+        .update({
+          is_matched: true,
+          is_service_invoice: true,
+          matched_expense_id: expenseId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', invoiceId)
+
+      // 5. Log
+      await db.from('e_invoice_matching_logs').insert({
+        invoice_id: invoiceId,
+        matching_type: 'ACCRUAL_REALIZATION',
+        matched_entity_id: expenseId,
+        matched_entity_type: 'expense_documents',
+        discrepancy_type: difference !== 0 ? 'ACCRUAL_DIFF' : null,
+        discrepancy_amount: Math.abs(difference),
+        notes: `Hizmet faturası tahakkuk kaydıyla eşleştirildi. Tahakkuk: ${accrualAmount.toFixed(2)} ₺, Fatura: ${invoiceAmount.toFixed(2)} ₺ (Fark: ${difference.toFixed(2)} ₺). ${note || ''}`.trim(),
+        performed_by: performedBy,
+      })
+
+      return {
+        success: true,
+        difference,
+        message: `Hizmet faturası tahakkuka başarıyla bağlandı. Bütçe farkı: ${difference >= 0 ? '+' : ''}${difference.toFixed(2)} ₺`,
+      }
+    } catch (err) {
+      console.error('matchInvoiceToAccrualExpense error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Serbest Giden E-Fatura / E-Arşiv Oluşturma ve GİB'e Gönderme
+   */
+  async createAndSendOutboundInvoice(invoiceData, options = {}) {
+    try {
+      const adapter = await this.getIntegratorAdapter()
+      const ettn = invoiceData.ettn || generateETTN()
+      const invNo = invoiceData.invoice_number || generateInvoiceNumber(invoiceData.prefix || 'GIB')
+      const isDraft = Boolean(options.isDraft)
+
+      // Toplamları hesapla
+      const totals = calculateInvoiceTotals(invoiceData.lines || [])
+
+      const invoiceRecord = {
+        direction: 'OUTBOUND',
+        invoice_number: invNo,
+        uuid: ettn,
+        profile_id: invoiceData.profile_id || 'TICARIFATURA',
+        invoice_type: invoiceData.invoice_type || 'SATIS',
+        issue_date: invoiceData.issue_date || new Date().toISOString().split('T')[0],
+        issue_time: invoiceData.issue_time || new Date().toTimeString().split(' ')[0],
+        sender_vkn_tckn: invoiceData.sender_vkn_tckn || '1234567890',
+        sender_title: invoiceData.sender_title || 'SuitableRMS Restoran Grubu A.Ş.',
+        receiver_vkn_tckn: invoiceData.receiver_vkn_tckn,
+        receiver_title: invoiceData.receiver_title,
+        receiver_address: invoiceData.receiver_address || '',
+        receiver_tax_office: invoiceData.receiver_tax_office || '',
+        payable_amount: totals.payableAmount,
+        tax_inclusive_amount: totals.taxInclusiveAmount,
+        line_extension_amount: totals.lineExtensionAmount,
+        tax_total_amount: totals.taxTotalAmount,
+        currency_code: invoiceData.currency_code || 'TRY',
+        notes: invoiceData.notes || 'SuitableRMS tarafından düzenlenmiştir.',
+        despatch_document_reference: invoiceData.despatch_document_reference || null,
+        commercial_status: isDraft ? 'TASLAK' : 'BEKLIYOR',
+        status_code: isDraft ? EINVOICE_STATUS.DRAFT : EINVOICE_STATUS.SUBMITTED_TO_GIB,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      // UBL XML oluştur
+      const ublXml = generateUBLXML({
+        ...invoiceRecord,
+        lines: invoiceData.lines,
+        billing_reference_invoice_number: invoiceData.billing_reference_invoice_number,
+        billing_reference_issue_date: invoiceData.billing_reference_issue_date,
+      })
+      invoiceRecord.ubl_xml = ublXml
+
+      // 1. Veritabanına kaydet
+      const { data: savedInv, error: invErr } = await db
+        .from('e_invoices')
+        .insert(invoiceRecord)
+        .select()
+        .single()
+
+      if (invErr) throw invErr
+
+      // 2. Kalemleri kaydet
+      if (Array.isArray(invoiceData.lines) && invoiceData.lines.length > 0) {
+        const lineRows = invoiceData.lines.map((l, idx) => {
+          const qty = Number(l.quantity || 1)
+          const price = Number(l.unit_price || 0)
+          const taxRate = Number(l.tax_rate ?? 20)
+          const lineTotal = Number(l.line_total_amount || (qty * price))
+          const taxAmount = Number(l.tax_amount || ((lineTotal * taxRate) / 100))
+
+          return {
+            invoice_id: savedInv.id,
+            line_number: idx + 1,
+            item_name: l.item_name || 'Hizmet / Ürün',
+            item_code: l.item_code || '',
+            quantity: qty,
+            unit_code: l.unit_code || 'C62',
+            unit_price: price,
+            line_total_amount: lineTotal,
+            vat_rate: taxRate,
+            vat_amount: taxAmount,
+            discount_amount: Number(l.discount_amount || 0),
+          }
+        })
+
+        await db.from('e_invoice_lines').insert(lineRows)
+      }
+
+      // 3. Taslak değilse Entegratör üzerinden GİB'e ilet
+      let sendResult = null
+      if (!isDraft) {
+        try {
+          sendResult = await adapter.sendInvoice({
+            ...savedInv,
+            lines: invoiceData.lines,
+            ublXml,
+          })
+
+          await db
+            .from('e_invoices')
+            .update({
+              status_code: EINVOICE_STATUS.DELIVERED_TO_RECEIVER,
+              status_description: 'Entegratör üzerinden GİB kuyruğuna iletildi.',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', savedInv.id)
+        } catch (sendErr) {
+          console.error('Integrator sendInvoice warning:', sendErr)
+        }
+      }
+
+      return {
+        success: true,
+        invoice: savedInv,
+        invoiceNumber: invNo,
+        ettn,
+        isDraft,
+        sendResult,
+      }
+    } catch (err) {
+      console.error('createAndSendOutboundInvoice error:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  /**
+   * Gelen Faturaya Referanslı E-İade Faturası Kesme ve Depodan Otomatik Stok Düşme
+   */
+  async createAndSendReturnInvoice(inboundInvoiceId, returnData, options = {}) {
+    try {
+      if (!inboundInvoiceId) throw new Error('Orijinal gelen fatura ID belirtilmedi.')
+
+      // 1. Orijinal faturayı ve satırlarını çek
+      const { data: origInvArr } = await db.from('e_invoices').select('*').eq('id', inboundInvoiceId).limit(1)
+      const originalInvoice = origInvArr?.[0]
+      if (!originalInvoice) throw new Error('Orijinal fatura bulunamadı.')
+
+      const { data: origLines } = await db
+        .from('e_invoice_lines')
+        .select('*')
+        .eq('invoice_id', inboundInvoiceId)
+        .order('line_number', { ascending: true })
+
+      originalInvoice.lines = origLines || []
+
+      // 2. İade kalemlerini hazırla
+      const returnLines = (returnData.lines || []).filter((l) => Number(l.return_quantity || l.quantity) > 0)
+      if (returnLines.length === 0) {
+        throw new Error('İade edilecek en az bir kalem ve miktar seçilmelidir.')
+      }
+
+      const formattedLines = returnLines.map((l, idx) => {
+        const qty = Number(l.return_quantity || l.quantity)
+        const price = Number(l.unit_price || 0)
+        const taxRate = Number(l.tax_rate ?? l.vat_rate ?? 20)
+        const lineTotal = Math.round(qty * price * 100) / 100
+        const taxAmount = Math.round((lineTotal * taxRate / 100) * 100) / 100
+
+        return {
+          line_number: idx + 1,
+          item_name: l.item_name,
+          item_code: l.item_code || '',
+          stock_item_id: l.stock_item_id || null,
+          quantity: qty,
+          unit_code: l.unit_code || 'C62',
+          unit_price: price,
+          tax_rate: taxRate,
+          vat_rate: taxRate,
+          line_total_amount: lineTotal,
+          tax_amount: taxAmount,
+          discount_amount: 0,
+        }
+      })
+
+      const invoiceNumber = returnData.invoice_number || generateInvoiceNumber('IAD')
+      const ettn = generateETTN()
+
+      const returnNotes = returnData.notes ||
+        `Bu fatura, ${originalInvoice.sender_title} firmasına ait ${originalInvoice.issue_date} tarihli ve #${originalInvoice.invoice_number} numaralı faturaya istinaden düzenlenen alış iade faturasıdır.`
+
+      // 3. Fatura Oluşturma Payload'ı
+      const outboundPayload = {
+        invoice_number: invoiceNumber,
+        ettn,
+        profile_id: returnData.profile_id || (originalInvoice.profile_id === 'EARSIVFATURA' ? 'EARSIVFATURA' : 'TICARIFATURA'),
+        invoice_type: 'IADE',
+        issue_date: returnData.issue_date || new Date().toISOString().split('T')[0],
+        sender_vkn_tckn: returnData.sender_vkn_tckn || '1234567890',
+        sender_title: returnData.sender_title || 'SuitableRMS Restoran Grubu A.Ş.',
+        receiver_vkn_tckn: originalInvoice.sender_vkn_tckn,
+        receiver_title: originalInvoice.sender_title,
+        receiver_address: originalInvoice.sender_address || '',
+        receiver_tax_office: originalInvoice.sender_tax_office || '',
+        billing_reference_invoice_number: originalInvoice.invoice_number,
+        billing_reference_issue_date: originalInvoice.issue_date,
+        original_invoice_number: originalInvoice.invoice_number,
+        original_invoice_date: originalInvoice.issue_date,
+        notes: returnNotes,
+        lines: formattedLines,
+      }
+
+      // 4. Faturayı Kaydet ve İlet
+      const res = await this.createAndSendOutboundInvoice(outboundPayload, { isDraft: Boolean(options.isDraft) })
+      if (!res.success) throw new Error(res.error)
+
+      // 5. STOKTAN DÜŞME (Envanter Çıkışı)
+      let stockMovementsCreated = 0
+      if (options.updateStock && options.branchId) {
+        const movementRows = []
+        for (const line of formattedLines) {
+          if (line.stock_item_id) {
+            movementRows.push({
+              branch_id: options.branchId,
+              stock_item_id: line.stock_item_id,
+              movement_type: 'purchase_return',
+              quantity: -Math.abs(line.quantity), // Negatif çıkış
+              unit_price: line.unit_price,
+              total_price: line.line_total_amount,
+              document_type: 'e_invoice_return',
+              document_no: invoiceNumber,
+              description: `İade Faturası (#${invoiceNumber}) ile tedarikçiye (${originalInvoice.sender_title}) mal iadesi. Ref Fatura: #${originalInvoice.invoice_number}`,
+              movement_at: new Date().toISOString(),
+            })
+          }
+        }
+
+        if (movementRows.length > 0) {
+          const { error: moveErr } = await db.from('inventory_movements').insert(movementRows)
+          if (moveErr) {
+            console.error('Inventory movements insert error:', moveErr)
+          } else {
+            stockMovementsCreated = movementRows.length
+          }
+        }
+      }
+
+      // 6. Orijinal faturanın meta verisine ve notlarına iade bilgisini işle
+      const existingParsed = originalInvoice.parsed_metadata || {}
+      await db
+        .from('e_invoices')
+        .update({
+          parsed_metadata: {
+            ...existingParsed,
+            has_return_invoice: true,
+            return_invoice_number: invoiceNumber,
+            return_invoice_id: res.invoice.id,
+            returned_at: new Date().toISOString(),
+          },
+          notes: (originalInvoice.notes ? originalInvoice.notes + ' | ' : '') + `[İade Faturası Düzenlendi: #${invoiceNumber}]`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', inboundInvoiceId)
+
+      return {
+        success: true,
+        returnInvoice: res.invoice,
+        invoiceNumber,
+        ettn,
+        stockMovementsCreated,
+        message: `✅ #${invoiceNumber} numaralı E-İade faturası başarıyla oluşturuldu${stockMovementsCreated > 0 ? ` ve ${stockMovementsCreated} kalemin depodan stok çıkışı yapıldı.` : '.'}`,
+      }
+    } catch (err) {
+      console.error('createAndSendReturnInvoice error:', err)
+      return { success: false, error: err.message }
+    }
+  }
 }
 
 export const eInvoiceService = new EInvoiceService()
+
+

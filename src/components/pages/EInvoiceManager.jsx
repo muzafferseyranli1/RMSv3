@@ -95,12 +95,45 @@ export default function EInvoiceManager() {
   const [receiptSearchQuery, setReceiptSearchQuery] = useState('')
   const [receiptStatusFilter, setReceiptStatusFilter] = useState('ALL') // 'ALL', 'PENDING', 'MATCHED'
   const [selectedReceiptForMatch, setSelectedReceiptForMatch] = useState(null)
+  const [selectedReceiptsListForMatch, setSelectedReceiptsListForMatch] = useState([])
+  const [selectedReceiptIdsForReverseMatch, setSelectedReceiptIdsForReverseMatch] = useState([])
   const [reverseMatchingModalOpen, setReverseMatchingModalOpen] = useState(false)
   const [reverseMatchCandidates, setReverseMatchCandidates] = useState([])
   const [loadingReverseCandidates, setLoadingReverseCandidates] = useState(false)
   const [selectedCandidateInvoice, setSelectedCandidateInvoice] = useState(null)
   const [approvingReverseMatch, setApprovingReverseMatch] = useState(false)
   const [reverseMatchingNote, setReverseMatchingNote] = useState('')
+
+  // Serbest Fatura Oluşturma State
+  const [createInvoiceModalOpen, setCreateInvoiceModalOpen] = useState(false)
+  const [savingNewInvoice, setSavingNewInvoice] = useState(false)
+  const [newInvoiceForm, setNewInvoiceForm] = useState({
+    profile_id: 'TICARIFATURA',
+    invoice_type: 'SATIS',
+    receiver_vkn_tckn: '',
+    receiver_title: '',
+    receiver_address: '',
+    receiver_tax_office: '',
+    issue_date: new Date().toISOString().split('T')[0],
+    notes: '',
+    lines: [
+      { item_name: '', quantity: 1, unit_code: 'C62', unit_price: 0, tax_rate: 20, discount_amount: 0 }
+    ]
+  })
+
+  // İade Faturası & Stok Çıkış State
+  const [returnInvoiceModalOpen, setReturnInvoiceModalOpen] = useState(false)
+  const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] = useState(null)
+  const [returnForm, setReturnForm] = useState({
+    profile_id: 'TICARIFATURA',
+    issue_date: new Date().toISOString().split('T')[0],
+    notes: '',
+    updateStock: true,
+    branchId: '',
+    lines: []
+  })
+  const [savingReturnInvoice, setSavingReturnInvoice] = useState(false)
+  const [branchesList, setBranchesList] = useState([])
 
   // Expense Documents (Belgeler - Manuel Girişler) State
   const [expenseDocuments, setExpenseDocuments] = useState([])
@@ -147,6 +180,33 @@ export default function EInvoiceManager() {
     active: true,
     supplier_kind: 'external',
   })
+
+  // 1. Entegratör Kontör / Bakiye State
+  const [creditsInfo, setCreditsInfo] = useState({ credits: 0, provider: 'Entegratör', loading: false, lastChecked: null })
+
+  // 2. Toplu Belge Seçimi & İndirme State
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([])
+  const [downloadingBatch, setDownloadingBatch] = useState(false)
+
+  // 3. E-Arşiv İptal Modalı State
+  const [cancelEArchiveModalOpen, setCancelEArchiveModalOpen] = useState(false)
+  const [cancellingInvoice, setCancellingInvoice] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [submittingCancel, setSubmittingCancel] = useState(false)
+
+  // 4. Çoklu İrsaliye Konsolidasyon Modu State (N:1)
+  const [multiReceiptMode, setMultiReceiptMode] = useState(false)
+  const [selectedMultiReceiptIds, setSelectedMultiReceiptIds] = useState([])
+  const [consolidatingMatch, setConsolidatingMatch] = useState(false)
+
+  // 5. Hizmet Faturası & Tahakkuk (Accrual) Eşleştirme Modalı State
+  const [accrualModalOpen, setAccrualModalOpen] = useState(false)
+  const [matchingAccrualInvoice, setMatchingAccrualInvoice] = useState(null)
+  const [accrualCandidates, setAccrualCandidates] = useState([])
+  const [loadingAccruals, setLoadingAccruals] = useState(false)
+  const [selectedAccrualIndex, setSelectedAccrualIndex] = useState(0)
+  const [approvingAccrualMatch, setApprovingAccrualMatch] = useState(false)
+  const [accrualMatchingNote, setAccrualMatchingNote] = useState('')
 
   const findMatchingSupplier = useCallback((vknOrTckn, title) => {
     if (!suppliersList || suppliersList.length === 0) return null
@@ -508,23 +568,35 @@ export default function EInvoiceManager() {
 
       const statusCode = statusFilter !== 'ALL' ? Number(statusFilter) : null
 
-      const [invoicesRes, statsRes, configRes, rcptsRes, docsRes, suppsRes] = await Promise.all([
+      const [invoicesRes, statsRes, configRes, rcptsRes, docsRes, suppsRes, branchesRes, stocksRes] = await Promise.all([
         eInvoiceService.getInvoices({ direction, statusCode, isInterCompany, search: searchQuery }),
         eInvoiceService.getStatistics(),
         eInvoiceService.getIntegratorConfig(),
         db.from('purchase_receipts').select('*').is('deleted_at', null).order('delivered_on', { ascending: false }).limit(100),
         db.from('expense_documents').select('*').order('document_date', { ascending: false }).limit(100),
         db.from('suppliers').select('*').is('deleted_at', null).order('name', { ascending: true }),
+        db.from('branches').select('id, name').order('name', { ascending: true }),
+        db.from('stock_items').select('id, name, sku, unit, vat_rate').order('name', { ascending: true }).limit(200),
       ])
 
       if (invoicesRes.success) {
         setInvoices(invoicesRes.data)
       }
       if (statsRes) setStats(statsRes)
-      if (configRes) setIntegratorConfig(configRes)
+      if (configRes) {
+        setIntegratorConfig(configRes)
+        setCreditsInfo({
+          credits: configRes.credits_balance || 0,
+          provider: configRes.provider || 'Entegratör',
+          lastChecked: configRes.last_credit_check_at || null,
+          loading: false,
+        })
+      }
       if (rcptsRes?.data) setReceipts(rcptsRes.data)
       if (docsRes?.data) setExpenseDocuments(docsRes.data)
       if (suppsRes?.data) setSuppliersList(suppsRes.data)
+      if (branchesRes?.data) setBranchesList(branchesRes.data)
+      if (stocksRes?.data) setStockItemsList(stocksRes.data)
     } catch (err) {
       console.error('Data load error:', err)
       toast('Veriler yüklenirken hata oluştu', 'error')
@@ -532,6 +604,164 @@ export default function EInvoiceManager() {
       setLoading(false)
     }
   }, [activeTab, statusFilter, searchQuery, interCompanyFilter, toast])
+
+  // Canlı Kontör Yenileme
+  const handleRefreshCredits = async () => {
+    setCreditsInfo((prev) => ({ ...prev, loading: true }))
+    try {
+      const res = await eInvoiceService.fetchCreditsBalance()
+      if (res.success) {
+        setCreditsInfo({
+          credits: res.credits || 0,
+          provider: res.provider || 'Entegratör',
+          lastChecked: res.checkedAt || new Date().toISOString(),
+          loading: false,
+        })
+        toast(res.message || `Güncel bakiye: ${res.credits} kontör`, 'success')
+      } else {
+        toast('Kontör sorgulama başarısız: ' + (res.error || 'Bilinmeyen hata'), 'error')
+        setCreditsInfo((prev) => ({ ...prev, loading: false }))
+      }
+    } catch (err) {
+      toast('Kontör sorgulanırken hata: ' + err.message, 'error')
+      setCreditsInfo((prev) => ({ ...prev, loading: false }))
+    }
+  }
+
+  // Toplu Belge İndirme (ZIP / PDF)
+  const handleDownloadBatch = async (format = 'ZIP') => {
+    if (selectedInvoiceIds.length === 0) {
+      toast('Lütfen indirmek için en az bir fatura seçin.', 'warning')
+      return
+    }
+
+    setDownloadingBatch(true)
+    try {
+      const selectedDocs = invoices.filter((i) => selectedInvoiceIds.includes(i.id))
+      const ettnList = selectedDocs.map((i) => i.ettn).filter(Boolean)
+
+      const res = await eInvoiceService.downloadBatchFiles(ettnList, format)
+      if (res.success) {
+        toast(`✅ ${ettnList.length} adet fatura ${format} formatında hazırlandı ve indirildi.`, 'success')
+        setSelectedInvoiceIds([])
+      } else {
+        toast('Toplu indirme hatası: ' + res.message, 'error')
+      }
+    } catch (err) {
+      toast('Toplu indirme sırasında hata: ' + err.message, 'error')
+    } finally {
+      setDownloadingBatch(false)
+    }
+  }
+
+  // E-Arşiv İptal Modalı Açma
+  const handleOpenCancelEArchiveModal = (invoice) => {
+    setCancellingInvoice(invoice)
+    setCancelReason('')
+    setCancelEArchiveModalOpen(true)
+  }
+
+  // E-Arşiv İptal Gönderme
+  const handleSubmitCancelEArchive = async () => {
+    if (!cancellingInvoice) return
+    setSubmittingCancel(true)
+    try {
+      const res = await eInvoiceService.cancelEArchiveInvoice(cancellingInvoice.ettn, cancelReason.trim())
+      if (res.success) {
+        toast(res.message || 'E-Arşiv fatura başarıyla iptal edildi.', 'success')
+        setCancelEArchiveModalOpen(false)
+        await loadData()
+      } else {
+        toast('İptal işlemi başarısız: ' + (res.message || res.error), 'error')
+      }
+    } catch (err) {
+      toast('İptal gönderilirken hata: ' + err.message, 'error')
+    } finally {
+      setSubmittingCancel(false)
+    }
+  }
+
+  // Hizmet Faturası & Tahakkuk Eşleştirme Modalı Açma
+  const handleOpenAccrualModal = async (invoice) => {
+    setMatchingAccrualInvoice(invoice)
+    setAccrualModalOpen(true)
+    setLoadingAccruals(true)
+    setSelectedAccrualIndex(0)
+    setAccrualMatchingNote('')
+    try {
+      const res = await matchingEngine.findPotentialAccrualsForInvoice(invoice)
+      if (res.success) {
+        setAccrualCandidates(res.candidates || [])
+      } else {
+        toast('Tahakkuk kayıtları taranamadı: ' + res.error, 'error')
+        setAccrualCandidates([])
+      }
+    } catch (err) {
+      toast('Tahakkuk yükleme hatası: ' + err.message, 'error')
+      setAccrualCandidates([])
+    } finally {
+      setLoadingAccruals(false)
+    }
+  }
+
+  // Tahakkuk Eşleştirmesini Onaylama
+  const handleApproveAccrualMatch = async () => {
+    if (!matchingAccrualInvoice || accrualCandidates.length === 0) return
+    const activeAccrualCandidate = accrualCandidates[selectedAccrualIndex]
+    if (!activeAccrualCandidate) return
+
+    setApprovingAccrualMatch(true)
+    try {
+      const res = await eInvoiceService.matchInvoiceToAccrualExpense(
+        matchingAccrualInvoice.id,
+        activeAccrualCandidate.accrual.id,
+        accrualMatchingNote,
+        'ADMIN'
+      )
+      if (res.success) {
+        toast(res.message || 'Hizmet faturası tahakkuka bağlandı.', 'success')
+        setAccrualModalOpen(false)
+        await loadData()
+      } else {
+        toast('Eşleştirme hatası: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Tahakkuk eşleştirilirken hata: ' + err.message, 'error')
+    } finally {
+      setApprovingAccrualMatch(false)
+    }
+  }
+
+  // Çoklu İrsaliye Konsolidasyonu Onaylama (N:1)
+  const handleApproveMultiReceiptMatch = async () => {
+    if (!matchingInvoice || selectedMultiReceiptIds.length === 0) {
+      toast('Lütfen faturaya bağlanacak en az bir irsaliye seçin.', 'warning')
+      return
+    }
+
+    setConsolidatingMatch(true)
+    try {
+      const res = await eInvoiceService.matchInvoiceToMultipleReceipts(
+        matchingInvoice.id,
+        selectedMultiReceiptIds,
+        matchingNote,
+        'ADMIN'
+      )
+      if (res.success) {
+        toast(res.message || 'Çoklu irsaliye faturaya başarıyla bağlandı.', 'success')
+        setMatchingModalOpen(false)
+        setSelectedMultiReceiptIds([])
+        setMultiReceiptMode(false)
+        await loadData()
+      } else {
+        toast('Konsolidasyon hatası: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Konsolidasyon sırasında hata: ' + err.message, 'error')
+    } finally {
+      setConsolidatingMatch(false)
+    }
+  }
 
   useEffect(() => {
     loadData()
@@ -543,15 +773,31 @@ export default function EInvoiceManager() {
     loadData()
   }
 
-  // Open Reverse Matching Modal (İrsaliye ➔ Gelen Fatura)
-  const handleOpenReverseMatchingModal = async (receipt) => {
-    setSelectedReceiptForMatch(receipt)
+  // Open Reverse Matching Modal (İrsaliye(ler) ➔ Gelen Fatura)
+  const handleOpenReverseMatchingModal = async (receiptOrList) => {
+    let list = []
+    if (Array.isArray(receiptOrList)) {
+      list = receiptOrList
+    } else if (receiptOrList) {
+      list = [receiptOrList]
+    } else if (selectedReceiptIdsForReverseMatch.length > 0) {
+      list = receipts.filter((r) => selectedReceiptIdsForReverseMatch.includes(r.id))
+    }
+
+    if (list.length === 0) {
+      toast('Lütfen eşleştirmek için en az bir fiziki irsaliye seçin.', 'warning')
+      return
+    }
+
+    const primaryReceipt = list[0]
+    setSelectedReceiptForMatch(primaryReceipt)
+    setSelectedReceiptsListForMatch(list)
     setReverseMatchingModalOpen(true)
     setLoadingReverseCandidates(true)
     setSelectedCandidateInvoice(null)
     setReverseMatchingNote('')
     try {
-      const res = await matchingEngine.findPotentialInvoicesForReceipt(receipt)
+      const res = await matchingEngine.findPotentialInvoicesForReceipt(list)
       if (res.success) {
         setReverseMatchCandidates(res.candidates || [])
         if (res.candidates && res.candidates.length > 0) {
@@ -559,9 +805,11 @@ export default function EInvoiceManager() {
         }
       } else {
         toast('Aday faturalar bulunurken hata: ' + res.error, 'error')
+        setReverseMatchCandidates([])
       }
     } catch (err) {
       toast('Hata: ' + err.message, 'error')
+      setReverseMatchCandidates([])
     } finally {
       setLoadingReverseCandidates(false)
     }
@@ -574,25 +822,208 @@ export default function EInvoiceManager() {
     }
     setApprovingReverseMatch(true)
     try {
-      const res = await matchingEngine.approveInvoiceReceiptMatch(
-        selectedCandidateInvoice.invoice.id,
-        selectedReceiptForMatch.id,
-        {},
-        {
-          note: reverseMatchingNote || 'Fiziki İrsaliye ekranından eşleştirildi.',
-        }
-      )
-      if (res.success) {
-        toast('✅ Fiziki İrsaliye ile e-Fatura başarıyla eşleştirildi!', 'success')
-        setReverseMatchingModalOpen(false)
-        loadData()
+      const allRcptIds = selectedReceiptsListForMatch.length > 0
+        ? selectedReceiptsListForMatch.map((r) => r.id)
+        : [selectedReceiptForMatch.id]
+
+      let res
+      if (allRcptIds.length > 1) {
+        res = await eInvoiceService.matchInvoiceToMultipleReceipts(
+          selectedCandidateInvoice.invoice.id,
+          allRcptIds,
+          reverseMatchingNote || `${allRcptIds.length} adet irsaliye ters eşleştirme ile bağlandı.`,
+          'ADMIN'
+        )
       } else {
-        toast('Eşleştirme onaylanamadı: ' + res.error, 'error')
+        res = await matchingEngine.approveInvoiceReceiptMatch(
+          selectedCandidateInvoice.invoice.id,
+          selectedReceiptForMatch.id,
+          selectedCandidateInvoice.comparison || {},
+          {
+            note: reverseMatchingNote || 'Fiziki İrsaliye ekranından eşleştirildi.',
+          }
+        )
+      }
+
+      if (res.success) {
+        toast(`✅ ${allRcptIds.length} Adet Fiziki İrsaliye ile e-Fatura başarıyla eşleştirildi!`, 'success')
+        setReverseMatchingModalOpen(false)
+        setSelectedReceiptIdsForReverseMatch([])
+        setSelectedReceiptsListForMatch([])
+        await loadData()
+      } else {
+        toast('Eşleştirme onaylanamadı: ' + (res.error || res.message), 'error')
       }
     } catch (err) {
       toast('Hata: ' + err.message, 'error')
     } finally {
       setApprovingReverseMatch(false)
+    }
+  }
+
+  // --- SERBEST FATURA SİHİRBAZI HANDLERS ---
+  const handleOpenCreateInvoiceModal = () => {
+    setNewInvoiceForm({
+      profile_id: 'TICARIFATURA',
+      invoice_type: 'SATIS',
+      receiver_vkn_tckn: '',
+      receiver_title: '',
+      receiver_address: '',
+      receiver_tax_office: '',
+      issue_date: new Date().toISOString().split('T')[0],
+      notes: '',
+      lines: [
+        { item_name: '', quantity: 1, unit_code: 'C62', unit_price: 0, tax_rate: 20, discount_amount: 0 }
+      ]
+    })
+    setCreateInvoiceModalOpen(true)
+  }
+
+  const handleAddLineToNewInvoice = () => {
+    setNewInvoiceForm((prev) => ({
+      ...prev,
+      lines: [
+        ...prev.lines,
+        { item_name: '', quantity: 1, unit_code: 'C62', unit_price: 0, tax_rate: 20, discount_amount: 0 }
+      ]
+    }))
+  }
+
+  const handleRemoveLineFromNewInvoice = (idx) => {
+    setNewInvoiceForm((prev) => ({
+      ...prev,
+      lines: prev.lines.filter((_, i) => i !== idx)
+    }))
+  }
+
+  const handleLineChangeInNewInvoice = (idx, field, value) => {
+    setNewInvoiceForm((prev) => {
+      const nextLines = [...prev.lines]
+      nextLines[idx] = { ...nextLines[idx], [field]: value }
+      return { ...prev, lines: nextLines }
+    })
+  }
+
+  const handleSaveNewInvoice = async (isDraft = false) => {
+    if (!newInvoiceForm.receiver_vkn_tckn || !newInvoiceForm.receiver_title) {
+      toast('Lütfen alıcı VKN/TCKN ve Ünvan bilgilerini doldurun.', 'warning')
+      return
+    }
+    if (!newInvoiceForm.lines || newInvoiceForm.lines.length === 0 || !newInvoiceForm.lines.some(l => l.item_name && Number(l.unit_price) > 0)) {
+      toast('Lütfen en az bir geçerli fatura kalemi girin.', 'warning')
+      return
+    }
+
+    setSavingNewInvoice(true)
+    try {
+      const res = await eInvoiceService.createAndSendOutboundInvoice(newInvoiceForm, { isDraft })
+      if (res.success) {
+        toast(`✅ Fatura #${res.invoiceNumber} başarıyla oluşturuldu${isDraft ? ' (Taslak)' : ' ve GİB kuyruğuna iletildi'}!`, 'success')
+        setCreateInvoiceModalOpen(false)
+        await loadData()
+      } else {
+        toast('Fatura oluşturulamadı: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setSavingNewInvoice(false)
+    }
+  }
+
+  // --- İADE FATURASI & STOK ÇIKIŞ HANDLERS ---
+  const handleOpenReturnModal = async (invoice) => {
+    setSelectedInvoiceForReturn(invoice)
+    let lines = invoice.lines || []
+    if (lines.length === 0) {
+      const { data: dbLines } = await db
+        .from('e_invoice_lines')
+        .select('*')
+        .eq('invoice_id', invoice.id)
+        .order('line_number', { ascending: true })
+      lines = dbLines || []
+    }
+
+    // Satırları iade formatına hazırla
+    const returnLines = lines.map((l) => ({
+      line_id: l.id,
+      item_name: l.item_name,
+      item_code: l.item_code || '',
+      stock_item_id: l.stock_item_id || null,
+      original_quantity: Number(l.quantity || 1),
+      return_quantity: Number(l.quantity || 1), // varsayılan tam iade
+      unit_code: l.unit_code || 'C62',
+      unit_price: Number(l.unit_price || 0),
+      tax_rate: Number(l.tax_rate ?? l.vat_rate ?? 20),
+      selected_for_return: true,
+    }))
+
+    setReturnForm({
+      profile_id: invoice.profile_id === 'EARSIVFATURA' ? 'EARSIVFATURA' : 'TICARIFATURA',
+      issue_date: new Date().toISOString().split('T')[0],
+      notes: `Bu fatura, ${invoice.sender_title} firmasının #${invoice.invoice_number} numaralı faturasına istinaden düzenlenen alış iade faturasıdır.`,
+      updateStock: true,
+      branchId: branchesList?.[0]?.id || '',
+      lines: returnLines,
+    })
+
+    setReturnInvoiceModalOpen(true)
+  }
+
+  const handleReturnLineToggle = (idx) => {
+    setReturnForm((prev) => {
+      const nextLines = [...prev.lines]
+      nextLines[idx].selected_for_return = !nextLines[idx].selected_for_return
+      return { ...prev, lines: nextLines }
+    })
+  }
+
+  const handleReturnQtyChange = (idx, qty) => {
+    setReturnForm((prev) => {
+      const nextLines = [...prev.lines]
+      nextLines[idx].return_quantity = Math.max(0, Math.min(nextLines[idx].original_quantity, Number(qty || 0)))
+      return { ...prev, lines: nextLines }
+    })
+  }
+
+  const handleSaveReturnInvoice = async (isDraft = false) => {
+    if (!selectedInvoiceForReturn) return
+    const activeLines = returnForm.lines.filter((l) => l.selected_for_return && Number(l.return_quantity) > 0)
+    if (activeLines.length === 0) {
+      toast('Lütfen iade edilecek en az bir kalem ve miktar seçin.', 'warning')
+      return
+    }
+    if (returnForm.updateStock && !returnForm.branchId) {
+      toast('Lütfen stok çıkışının yapılacağı Şube / Depoyu seçin.', 'warning')
+      return
+    }
+
+    setSavingReturnInvoice(true)
+    try {
+      const payload = {
+        lines: activeLines,
+        notes: returnForm.notes,
+        profile_id: returnForm.profile_id,
+        issue_date: returnForm.issue_date,
+      }
+      const options = {
+        isDraft,
+        updateStock: Boolean(returnForm.updateStock),
+        branchId: returnForm.branchId,
+      }
+
+      const res = await eInvoiceService.createAndSendReturnInvoice(selectedInvoiceForReturn.id, payload, options)
+      if (res.success) {
+        toast(res.message, 'success')
+        setReturnInvoiceModalOpen(false)
+        await loadData()
+      } else {
+        toast('İade faturası oluşturulamadı: ' + res.error, 'error')
+      }
+    } catch (err) {
+      toast('Hata: ' + err.message, 'error')
+    } finally {
+      setSavingReturnInvoice(false)
     }
   }
 
@@ -1099,6 +1530,65 @@ export default function EInvoiceManager() {
             Yenile
           </button>
 
+          {/* Canlı Kontör / Kredi Göstergesi */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 14px',
+              borderRadius: 8,
+              border: '1.5px solid #10b981',
+              background: 'rgba(16,185,129,0.1)',
+              color: '#10b981',
+              fontSize: '.85rem',
+              fontWeight: 800,
+            }}
+          >
+            <i className="fa-solid fa-coins" />
+            <span>Kalan Kontör: {creditsInfo.credits.toLocaleString('tr-TR')}</span>
+            <button
+              type="button"
+              title="Kontör Bakiyesini Güncelle"
+              onClick={handleRefreshCredits}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#10b981',
+                cursor: 'pointer',
+                padding: '0 2px',
+                fontSize: '.8rem',
+              }}
+            >
+              <i className={`fa-solid fa-rotate ${creditsInfo.loading ? 'fa-spin' : ''}`} />
+            </button>
+          </div>
+
+          {/* Toplu İndir Butonu (Seçim Varsa Görünür) */}
+          {selectedInvoiceIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => handleDownloadBatch('ZIP')}
+              disabled={downloadingBatch}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1.5px solid #8b5cf6',
+                background: 'rgba(139,92,246,0.15)',
+                color: '#8b5cf6',
+                fontSize: '.85rem',
+                fontWeight: 800,
+                cursor: downloadingBatch ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <i className={`fa-solid fa-file-zipper ${downloadingBatch ? 'fa-spin' : ''}`} />
+              {downloadingBatch ? 'İndiriliyor...' : `Seçilenleri İndir (${selectedInvoiceIds.length})`}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleSyncInboundInvoices}
@@ -1513,7 +2003,7 @@ export default function EInvoiceManager() {
               {activeTab === 'outbox' && (
                 <button
                   type="button"
-                  onClick={() => handleRunScenario('OUTBOUND_SIM')}
+                  onClick={handleOpenCreateInvoiceModal}
                   style={{
                     padding: '8px 14px',
                     borderRadius: 8,
@@ -1526,10 +2016,11 @@ export default function EInvoiceManager() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
+                    boxShadow: '0 2px 8px rgba(245,166,35,0.3)',
                   }}
                 >
-                  <i className="fa-solid fa-paper-plane" />
-                  Yeni e-Fatura Düzenle
+                  <i className="fa-solid fa-plus-circle" />
+                  Yeni Serbest Fatura Oluştur
                 </button>
               )}
 
@@ -1563,6 +2054,20 @@ export default function EInvoiceManager() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '.75rem', fontWeight: 700 }}>
+                  <th style={{ padding: '12px 14px', width: 36, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoiceIds.length === invoices.length && invoices.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedInvoiceIds(invoices.map((i) => i.id))
+                        } else {
+                          setSelectedInvoiceIds([])
+                        }
+                      }}
+                      style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                    />
+                  </th>
                   <th style={{ padding: '12px 16px' }}>Fatura No & Tip</th>
                   <th style={{ padding: '12px 16px' }}>
                     {activeTab === 'inbox' ? 'Tedarikçi (Gönderici)' : activeTab === 'outbox' ? 'Müşteri (Alıcı)' : 'Gönderici ➔ Alıcı'}
@@ -1578,14 +2083,14 @@ export default function EInvoiceManager() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="8" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan="9" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                       <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} />
                       Faturalar yükleniyor...
                     </td>
                   </tr>
                 ) : invoices.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ padding: 48, textAlign: 'center' }}>
+                    <td colSpan="9" style={{ padding: 48, textAlign: 'center' }}>
                       <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto', color: 'var(--text-muted)', fontSize: '1.5rem' }}>
                         <i className="fa-solid fa-file-invoice" />
                       </div>
@@ -1617,15 +2122,34 @@ export default function EInvoiceManager() {
                     const status = getStatusMeta(inv.status_code)
                     const profile = getProfileMeta(inv.profile_id)
                     const isPendingCommercial = (activeTab === 'inbox' || activeTab === 'intercompany') && inv.profile_id === 'TICARIFATURA' && inv.status_code === 1200
+                    const isSelected = selectedInvoiceIds.includes(inv.id)
+                    const isService = inv.is_service_invoice || inv.parsed_metadata?.is_service_detected
 
                     return (
                       <tr
                         key={inv.id}
                         style={{
                           borderBottom: '1px solid var(--border)',
+                          background: isSelected ? 'rgba(245, 166, 35, 0.05)' : 'transparent',
                           transition: 'background .15s',
                         }}
                       >
+                        {/* Checkbox */}
+                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedInvoiceIds((prev) => [...prev, inv.id])
+                              } else {
+                                setSelectedInvoiceIds((prev) => prev.filter((id) => id !== inv.id))
+                              }
+                            }}
+                            style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                          />
+                        </td>
+
                         {/* Fatura No & Tip */}
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -1633,6 +2157,11 @@ export default function EInvoiceManager() {
                             {inv.direction && (
                               <span style={{ fontSize: '.65rem', padding: '1px 5px', borderRadius: 4, background: inv.direction === 'INBOUND' ? 'rgba(16,185,129,0.15)' : 'rgba(167,139,250,0.15)', color: inv.direction === 'INBOUND' ? '#10b981' : '#a78bfa', fontWeight: 700 }}>
                                 {inv.direction === 'INBOUND' ? 'GELEN' : 'GİDEN'}
+                              </span>
+                            )}
+                            {isService && (
+                              <span style={{ fontSize: '.65rem', padding: '1px 5px', borderRadius: 4, background: 'rgba(56,189,248,0.15)', color: '#0284c7', fontWeight: 700 }}>
+                                ⚡ HİZMET
                               </span>
                             )}
                           </div>
@@ -1661,6 +2190,11 @@ export default function EInvoiceManager() {
                             {inv.source_transfer_doc_no && (
                               <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1', fontSize: '.68rem', padding: '1px 6px' }}>
                                 <i className="fa-solid fa-truck-ramp-box" style={{ marginRight: 3 }} /> {inv.source_transfer_doc_no}
+                              </span>
+                            )}
+                            {inv.despatch_document_reference && (
+                              <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontSize: '.68rem', padding: '1px 6px' }} title="Faturada Belirtilen İrsaliye No">
+                                📄 İrs: {inv.despatch_document_reference}
                               </span>
                             )}
                           </div>
@@ -1783,7 +2317,7 @@ export default function EInvoiceManager() {
                                     }}
                                   >
                                     <i className="fa-solid fa-link" />
-                                    İrsaliye ile Eşleşti
+                                    {inv.is_service_invoice ? 'Tahakkuk ile Eşleşti' : (Array.isArray(inv.matched_receipt_ids) && inv.matched_receipt_ids.length > 1 ? `${inv.matched_receipt_ids.length} İrsaliye Eşleşti` : 'İrsaliye ile Eşleşti')}
                                   </span>
                                 )
                               ) : (
@@ -1813,26 +2347,101 @@ export default function EInvoiceManager() {
                         <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
                             {(activeTab === 'inbox' || inv.direction === 'INBOUND') && (
+                              <>
+                                {isService ? (
+                                  <button
+                                    type="button"
+                                    title="Hizmet / Gider Faturası: Açık Gider Tahakkuku ile Eşleştir"
+                                    onClick={() => handleOpenAccrualModal(inv)}
+                                    style={{
+                                      padding: '6px 12px',
+                                      borderRadius: 6,
+                                      border: 'none',
+                                      background: inv.is_matched ? 'rgba(56,189,248,0.15)' : '#0284c7',
+                                      color: inv.is_matched ? '#0284c7' : '#ffffff',
+                                      fontWeight: 800,
+                                      fontSize: '.75rem',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 5,
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-bolt" />
+                                    {inv.is_matched ? 'Tahakkuku Gör' : 'Tahakkukla Eşleştir'}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    title="3-Way Matching: Mal Kabul İrsaliyesi ile Eşleştir & Mutabakat Yap"
+                                    onClick={() => handleOpenMatchingModal(inv)}
+                                    style={{
+                                      padding: '6px 12px',
+                                      borderRadius: 6,
+                                      border: 'none',
+                                      background: inv.is_matched ? 'rgba(16,185,129,0.15)' : '#f5a623',
+                                      color: inv.is_matched ? '#10b981' : '#000000',
+                                      fontWeight: 800,
+                                      fontSize: '.75rem',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 5,
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-scale-balanced" />
+                                    {inv.is_matched ? 'Eşleşmeyi Gör' : 'Mal Kabul ile Eşleştir'}
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            {/* Giden e-Arşiv İptal Butonu */}
+                            {activeTab === 'outbox' && inv.profile_id === 'EARSIVFATURA' && inv.status_code !== 1301 && (
                               <button
                                 type="button"
-                                title="3-Way Matching: Mal Kabul İrsaliyesi ile Eşleştir & Mutabakat Yap"
-                                onClick={() => handleOpenMatchingModal(inv)}
+                                title="e-Arşiv Faturasını İptal Et / GİB İptal Talebi Gönder"
+                                onClick={() => handleOpenCancelEArchiveModal(inv)}
                                 style={{
-                                  padding: '6px 12px',
+                                  padding: '6px 10px',
                                   borderRadius: 6,
-                                  border: 'none',
-                                  background: inv.is_matched ? 'rgba(16,185,129,0.15)' : '#f5a623',
-                                  color: inv.is_matched ? '#10b981' : '#000000',
+                                  border: '1px solid #fca5a5',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  fontWeight: 700,
+                                  fontSize: '.75rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                <i className="fa-solid fa-ban" />
+                                İptal Et
+                              </button>
+                            )}
+
+                            {activeTab === 'inbound' && (
+                              <button
+                                type="button"
+                                title="Bu faturaya istinaden GİB standartlarında Alış İade Faturası düzenle ve depodan stok düş"
+                                onClick={() => handleOpenReturnModal(inv)}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: 6,
+                                  border: '1px solid rgba(239,68,68,0.3)',
+                                  background: 'rgba(239,68,68,0.08)',
+                                  color: '#ef4444',
                                   fontWeight: 800,
                                   fontSize: '.75rem',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: 5,
+                                  gap: 4,
                                 }}
                               >
-                                <i className="fa-solid fa-scale-balanced" />
-                                {inv.is_matched ? 'Eşleşmeyi Gör' : 'Mal Kabul ile Eşleştir'}
+                                <i className="fa-solid fa-arrow-rotate-left" />
+                                İade Kes
                               </button>
                             )}
 
@@ -1879,19 +2488,19 @@ export default function EInvoiceManager() {
                               }}
                             >
                               <i className="fa-solid fa-eye" />
-                              İncele
+                              Görüntüle
                             </button>
                           </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
     {/* Tab 4: Fiziki İrsaliyeler & Mal Kabuller Tab */}
     {activeTab === 'receipts' && (
@@ -1929,7 +2538,31 @@ export default function EInvoiceManager() {
             <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
           </div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {selectedReceiptIdsForReverseMatch.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenReverseMatchingModal()}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#0284c7',
+                  color: '#fff',
+                  fontSize: '.85rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 8px rgba(2,132,199,0.3)',
+                }}
+              >
+                <i className="fa-solid fa-boxes-packing" />
+                Seçilen ({selectedReceiptIdsForReverseMatch.length}) İrsaliyeyi Gelen e-Faturayla Eşleştir
+              </button>
+            )}
+
             <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Eşleşme Durumu:</span>
             <select
               value={receiptStatusFilter}
@@ -1958,6 +2591,25 @@ export default function EInvoiceManager() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.75rem', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 14px', width: 36, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedReceiptIdsForReverseMatch.length > 0 &&
+                        selectedReceiptIdsForReverseMatch.length ===
+                          receipts.filter((r) => !(r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id)).length
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const openReceipts = receipts.filter((r) => !(r.is_matched || r.matched_invoice_id || r.meta?.matched_invoice_id))
+                          setSelectedReceiptIdsForReverseMatch(openReceipts.map((r) => r.id))
+                        } else {
+                          setSelectedReceiptIdsForReverseMatch([])
+                        }
+                      }}
+                      style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                    />
+                  </th>
                   <th style={{ padding: '12px 16px' }}>İrsaliye / Fiş No</th>
                   <th style={{ padding: '12px 16px' }}>Tedarikçi (Gönderici)</th>
                   <th style={{ padding: '12px 16px' }}>Şube / Giriş Depo</th>
@@ -1983,7 +2635,7 @@ export default function EInvoiceManager() {
                   })
                   .length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={9} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                       <i className="fa-solid fa-truck-ramp-box" style={{ fontSize: '2rem', marginBottom: 8, display: 'block', opacity: 0.4 }} />
                       Kayıtlı fiziki irsaliye / mal kabul bulunamadı.
                     </td>
@@ -2004,9 +2656,33 @@ export default function EInvoiceManager() {
                     .map((rcpt) => {
                       const isMatched = Boolean(rcpt.is_matched || rcpt.matched_invoice_id || rcpt.meta?.matched_invoice_id)
                       const matchedNo = rcpt.meta?.matched_invoice_no || rcpt.doc_no
+                      const isSelected = selectedReceiptIdsForReverseMatch.includes(rcpt.id)
 
                       return (
-                        <tr key={rcpt.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background .15s' }}>
+                        <tr
+                          key={rcpt.id}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            background: isSelected ? 'rgba(2,132,199,0.06)' : 'transparent',
+                            transition: 'background .15s',
+                          }}
+                        >
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            {!isMatched && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedReceiptIdsForReverseMatch((prev) => [...prev, rcpt.id])
+                                  } else {
+                                    setSelectedReceiptIdsForReverseMatch((prev) => prev.filter((id) => id !== rcpt.id))
+                                  }
+                                }}
+                                style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                              />
+                            )}
+                          </td>
                           <td style={{ padding: '12px 16px' }}>
                             <div style={{ fontWeight: 800, color: 'var(--text-strong)' }}>
                               {rcpt.receipt_no || rcpt.doc_no || `MK-${rcpt.id.slice(0, 8)}`}
@@ -2102,7 +2778,7 @@ export default function EInvoiceManager() {
                               ) : (
                                 <span style={{ fontSize: '.75rem', color: '#16a34a', fontWeight: 700 }}>
                                   <i className="fa-solid fa-check-double" style={{ marginRight: 4 }} />
-                                  Eşleşme Tamam
+                                  Eşleşti
                                 </span>
                               )}
                             </div>
@@ -2936,150 +3612,391 @@ export default function EInvoiceManager() {
                 </div>
               ) : (
                 <>
-                  {/* Top Split View: Fatura vs İrsaliye Seçimi */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    {/* Left Card: Fatura Bilgileri */}
+                  {/* Mode Selector: 1:1 Tekil vs N:1 Çoklu İrsaliye */}
+                  <div style={{ display: 'flex', gap: 10, background: 'var(--app-bg)', padding: 6, borderRadius: 10, border: '1px solid var(--border)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setMultiReceiptMode(false)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: !multiReceiptMode ? '#f5a623' : 'transparent',
+                        color: !multiReceiptMode ? '#000' : 'var(--text-muted)',
+                        fontWeight: 800,
+                        fontSize: '.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <i className="fa-solid fa-link" />
+                      1:1 Tekil İrsaliye Eşleştirme (Standart)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiReceiptMode(true)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: multiReceiptMode ? '#f5a623' : 'transparent',
+                        color: multiReceiptMode ? '#000' : 'var(--text-muted)',
+                        fontWeight: 800,
+                        fontSize: '.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <i className="fa-solid fa-boxes-packing" />
+                      N:1 Çoklu İrsaliye Konsolidasyonu (Toplu Fatura)
+                      {candidateReceipts.length > 1 && (
+                        <span style={{ fontSize: '.75rem', padding: '1px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.15)', color: '#000', fontWeight: 800 }}>
+                          {candidateReceipts.length} İrsaliye
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* 6 AŞAMALI KADEMELİ DOĞRULAMA (WATERFALL CHECKLIST) */}
+                  {activeCandidate?.waterfall && !multiReceiptMode && (
                     <div
                       style={{
                         background: 'var(--app-bg)',
                         border: '1px solid var(--border)',
                         borderRadius: 10,
-                        padding: 16,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
+                        padding: 14,
                       }}
                     >
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#f5a623', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <i className="fa-solid fa-file-invoice" />
-                            1. Gelen e-Fatura
-                          </div>
-                          <span style={{ fontSize: '.72rem', padding: '2px 8px', borderRadius: 4, background: 'rgba(245,166,35,0.15)', color: '#f5a623', fontWeight: 700 }}>
-                            {matchingInvoice.profile_id}
-                          </span>
+                      <div style={{ fontSize: '.8rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <i className="fa-solid fa-list-check" style={{ color: '#f5a623' }} />
+                          6 Aşamalı Kademeli Doğrulama (Waterfall Verification Pipeline)
                         </div>
-
-                        <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 4 }}>
-                          {matchingInvoice.sender_title}
-                        </div>
-                        <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-                          VKN: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{matchingInvoice.sender_vkn_tckn}</span> | Tarih: <strong>{matchingInvoice.issue_date}</strong>
-                        </div>
+                        <span style={{ fontSize: '.75rem', color: activeCandidate.waterfall.isFullyPassed ? '#10b981' : '#f5a623', fontWeight: 800 }}>
+                          {activeCandidate.waterfall.isFullyPassed ? '✅ Tüm 6 Aşama Doğrulandı' : '⚠️ Bazı Adımlarda Tolerans/Fark Var'}
+                        </span>
                       </div>
 
-                      {/* Fatura Toplamları */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                        <div>
-                          <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Mal/Hizmet</div>
-                          <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
-                            {Number(matchingInvoice.line_extension_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                        {activeCandidate.waterfall.checklist.map((c) => (
+                          <div
+                            key={c.step}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: 8,
+                              background: c.status === 'SUCCESS' ? 'rgba(16,185,129,0.1)' : c.status === 'WARNING' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                              border: `1px solid ${c.status === 'SUCCESS' ? '#10b981' : c.status === 'WARNING' ? '#f59e0b' : '#ef4444'}`,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 2,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '.75rem', fontWeight: 800, color: c.status === 'SUCCESS' ? '#10b981' : c.status === 'WARNING' ? '#d97706' : '#dc2626' }}>
+                              <span>{c.step}. {c.title}</span>
+                              <i className={`fa-solid ${c.status === 'SUCCESS' ? 'fa-check-circle' : c.status === 'WARNING' ? 'fa-triangle-exclamation' : 'fa-circle-xmark'}`} />
+                            </div>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', lineHeight: 1.2, marginTop: 2 }}>
+                              {c.detail}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>KDV Toplamı</div>
-                          <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
-                            {Number(matchingInvoice.tax_total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '.7rem', color: '#f5a623', fontWeight: 700 }}>Ödenecek Tutar</div>
-                          <div style={{ fontWeight: 900, color: '#f5a623', fontSize: '.95rem' }}>
-                            {Number(matchingInvoice.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
+                  )}
 
-                    {/* Right Card: Eşleşen Mal Kabul İrsaliyesi Seçici */}
-                    <div
-                      style={{
-                        background: 'var(--app-bg)',
-                        border: activeCandidate ? '1px solid #10b981' : '1px dashed var(--border)',
-                        borderRadius: 10,
-                        padding: 16,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <i className="fa-solid fa-truck-ramp-box" />
-                            2. Mal Kabul İrsaliyesi (Fiziki Giriş)
+                  {/* N:1 ÇOKLU İRSALİYE KONSOLİDASYON MODU VE CANLI TUTAR DENGELEME ÇUBUĞU */}
+                  {multiReceiptMode ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      {/* Canlı Dengeleme Özeti Kartı */}
+                      {(() => {
+                        const selectedReceiptObjects = candidateReceipts
+                          .filter((c) => selectedMultiReceiptIds.includes(c.receipt.id))
+                          .map((c) => c.receipt)
+                        const consolidation = matchingEngine.evaluateMultiReceiptConsolidation(matchingInvoice, selectedReceiptObjects)
+
+                        return (
+                          <div
+                            style={{
+                              background: consolidation.isBalanced ? 'rgba(16,185,129,0.12)' : 'var(--app-bg)',
+                              border: `1.5px solid ${consolidation.isBalanced ? '#10b981' : 'var(--border)'}`,
+                              borderRadius: 12,
+                              padding: 16,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                              <div style={{ fontSize: '.9rem', fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <i className="fa-solid fa-scale-unbalanced" style={{ color: consolidation.isBalanced ? '#10b981' : '#f5a623' }} />
+                                Canlı Tutar Dengeleme Çubuğu (N İrsaliye ➔ 1 Fatura)
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '.8rem',
+                                  fontWeight: 800,
+                                  padding: '4px 12px',
+                                  borderRadius: 20,
+                                  background: consolidation.isBalanced ? '#10b981' : 'rgba(245,158,11,0.15)',
+                                  color: consolidation.isBalanced ? '#ffffff' : '#f5a623',
+                                }}
+                              >
+                                {consolidation.statusLabel}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+                              <div style={{ background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Fatura Ödenecek</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#f5a623' }}>
+                                  {consolidation.invoicePayable.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                              </div>
+                              <div style={{ background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Seçilen İrsaliyeler ({consolidation.selectedReceiptsCount} Adet)</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#10b981' }}>
+                                  {consolidation.totalReceiptsAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                              </div>
+                              <div style={{ background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Kalan Fark (Fatura - İrsaliyeler)</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: consolidation.isBalanced ? '#10b981' : (consolidation.difference > 0 ? '#ef4444' : '#ea580c') }}>
+                                  {consolidation.difference.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Açıklama & İpuçları */}
+                            <div style={{ marginTop: 10, fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                              💡 Tedarikçinin hafta/ay boyunca kestiği irsaliyeleri listeden seçin. Toplam tutar faturayla sıfırlandığında faturayı tek işlemle onaylayabilirsiniz.
+                            </div>
                           </div>
-                          {candidateReceipts.length > 0 && (
-                            <span style={{ fontSize: '.72rem', padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700 }}>
-                              {candidateReceipts.length} Aday İrsaliye Bulundu
+                        )
+                      })()}
+
+                      {/* Çoklu İrsaliye Seçim Tablosu */}
+                      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                        <div style={{ padding: '10px 16px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '.8rem', color: 'var(--text-strong)' }}>
+                          Bu Tedarikçiye Ait Açık Mal Kabul İrsaliyeleri ({candidateReceipts.length} Adet)
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--app-bg)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                              <th style={{ padding: '10px 14px', width: 36, textAlign: 'center' }}>Seç</th>
+                              <th style={{ padding: '10px 14px' }}>İrsaliye / Belge No</th>
+                              <th style={{ padding: '10px 14px' }}>Teslim Tarihi</th>
+                              <th style={{ padding: '10px 14px' }}>Şube / Depo</th>
+                              <th style={{ padding: '10px 14px', textAlign: 'right' }}>Kalem</th>
+                              <th style={{ padding: '10px 14px', textAlign: 'right' }}>Tutar (KDV Dahil)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {candidateReceipts.map((cand) => {
+                              const isChecked = selectedMultiReceiptIds.includes(cand.receipt.id)
+                              const rAmt = Number(cand.receipt.total_amount_vat_inc || cand.receipt.total_amount || 0)
+
+                              return (
+                                <tr
+                                  key={cand.receipt.id}
+                                  style={{
+                                    borderBottom: '1px solid var(--border)',
+                                    background: isChecked ? 'rgba(16,185,129,0.08)' : 'transparent',
+                                    cursor: 'pointer',
+                                  }}
+                                  onClick={() => {
+                                    if (isChecked) {
+                                      setSelectedMultiReceiptIds((prev) => prev.filter((id) => id !== cand.receipt.id))
+                                    } else {
+                                      setSelectedMultiReceiptIds((prev) => [...prev, cand.receipt.id])
+                                    }
+                                  }}
+                                >
+                                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {}} // parent onClick handles
+                                      style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-strong)' }}>
+                                    {cand.receipt.receipt_no || cand.receipt.doc_no || 'İrsaliye'}
+                                    {cand.receipt.order_no && (
+                                      <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginLeft: 6, fontWeight: 500 }}>
+                                        (Sipariş: {cand.receipt.order_no})
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>
+                                    {cand.receipt.delivered_on || cand.receipt.created_at?.slice(0, 10)}
+                                  </td>
+                                  <td style={{ padding: '10px 14px' }}>
+                                    {cand.receipt.branch_name || 'Ana Depo'}
+                                  </td>
+                                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                                    {cand.lines?.length || 0} Kalem
+                                  </td>
+                                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: '#10b981' }}>
+                                    {rAmt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    /* STANDART 1:1 TEKİL İRSALİYE SEÇİM KARTLARI */
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {/* Left Card: Fatura Bilgileri */}
+                      <div
+                        style={{
+                          background: 'var(--app-bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 10,
+                          padding: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#f5a623', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="fa-solid fa-file-invoice" />
+                              1. Gelen e-Fatura
+                            </div>
+                            <span style={{ fontSize: '.72rem', padding: '2px 8px', borderRadius: 4, background: 'rgba(245,166,35,0.15)', color: '#f5a623', fontWeight: 700 }}>
+                              {matchingInvoice.profile_id}
                             </span>
+                          </div>
+
+                          <div style={{ fontSize: '.95rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 4 }}>
+                            {matchingInvoice.sender_title}
+                          </div>
+                          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+                            VKN: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{matchingInvoice.sender_vkn_tckn}</span> | Tarih: <strong>{matchingInvoice.issue_date}</strong>
+                          </div>
+                        </div>
+
+                        {/* Fatura Toplamları */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <div>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Mal/Hizmet</div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
+                              {Number(matchingInvoice.line_extension_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>KDV Toplamı</div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
+                              {Number(matchingInvoice.tax_total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '.7rem', color: '#f5a623', fontWeight: 700 }}>Ödenecek Tutar</div>
+                            <div style={{ fontWeight: 900, color: '#f5a623', fontSize: '.95rem' }}>
+                              {Number(matchingInvoice.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Card: Eşleşen Mal Kabul İrsaliyesi Seçici */}
+                      <div
+                        style={{
+                          background: 'var(--app-bg)',
+                          border: activeCandidate ? '1px solid #10b981' : '1px dashed var(--border)',
+                          borderRadius: 10,
+                          padding: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="fa-solid fa-truck-ramp-box" />
+                              2. Mal Kabul İrsaliyesi (Fiziki Giriş)
+                            </div>
+                            {candidateReceipts.length > 0 && (
+                              <span style={{ fontSize: '.72rem', padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700 }}>
+                                {candidateReceipts.length} Aday İrsaliye Bulundu
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Candidate Receipts Selector Dropdown */}
+                          {candidateReceipts.length > 0 ? (
+                            <div style={{ marginBottom: 10 }}>
+                              <select
+                                value={selectedCandidateIndex}
+                                onChange={(e) => setSelectedCandidateIndex(Number(e.target.value))}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: 8,
+                                  border: '1px solid var(--border)',
+                                  background: 'var(--surface)',
+                                  color: 'var(--text-strong)',
+                                  fontSize: '.85rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {candidateReceipts.map((cand, idx) => (
+                                  <option key={cand.receipt.id} value={idx}>
+                                    {cand.receipt.receipt_no || cand.receipt.doc_no || `İrsaliye #${idx + 1}`} ({cand.receipt.delivered_on}) - {cand.receipt.branch_name || 'Ana Depo'} | Uyum: %{cand.score}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <div style={{ padding: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: '#ef4444', fontSize: '.8rem', marginBottom: 10 }}>
+                              <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 6 }} />
+                              Bu tedarikçiye ait sistemde eşleşen açık mal kabul irsaliyesi bulunamadı.
+                            </div>
+                          )}
+
+                          {activeCandidate && (
+                            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
+                              Kabul Şubesi: <strong>{activeCandidate.receipt.branch_name || 'Ana Depo'}</strong> | Sipariş No: <strong style={{ fontFamily: 'monospace' }}>{activeCandidate.receipt.order_no || activeCandidate.order?.order_no || 'Doğrudan Kabul'}</strong>
+                            </div>
                           )}
                         </div>
 
-                        {/* Candidate Receipts Selector Dropdown */}
-                        {candidateReceipts.length > 0 ? (
-                          <div style={{ marginBottom: 10 }}>
-                            <select
-                              value={selectedCandidateIndex}
-                              onChange={(e) => setSelectedCandidateIndex(Number(e.target.value))}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: 8,
-                                border: '1px solid var(--border)',
-                                background: 'var(--surface)',
-                                color: 'var(--text-strong)',
-                                fontSize: '.85rem',
-                                fontWeight: 700,
-                              }}
-                            >
-                              {candidateReceipts.map((cand, idx) => (
-                                <option key={cand.receipt.id} value={idx}>
-                                  {cand.receipt.receipt_no || cand.receipt.doc_no || `İrsaliye #${idx + 1}`} ({cand.receipt.delivered_on}) - {cand.receipt.branch_name || 'Ana Depo'} | Uyum: %{cand.score}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <div style={{ padding: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: '#ef4444', fontSize: '.8rem', marginBottom: 10 }}>
-                            <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 6 }} />
-                            Bu tedarikçiye ait sistemde eşleşen açık mal kabul irsaliyesi bulunamadı.
-                          </div>
-                        )}
-
+                        {/* İrsaliye Toplamları */}
                         {activeCandidate && (
-                          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
-                            Kabul Şubesi: <strong>{activeCandidate.receipt.branch_name || 'Ana Depo'}</strong> | Sipariş No: <strong style={{ fontFamily: 'monospace' }}>{activeCandidate.receipt.order_no || activeCandidate.order?.order_no || 'Doğrudan Kabul'}</strong>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
+                            <div>
+                              <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>İrsaliye Tarihi</div>
+                              <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
+                                {activeCandidate.receipt.delivered_on || '-'}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Teslim Kalemi</div>
+                              <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
+                                {activeCandidate.lines?.length || 0} Kalem
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '.7rem', color: '#10b981', fontWeight: 700 }}>İrsaliye Tutarı</div>
+                              <div style={{ fontWeight: 900, color: '#10b981', fontSize: '.95rem' }}>
+                                {Number(activeCandidate.receipt.total_amount_vat_inc || activeCandidate.receipt.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
-
-                      {/* İrsaliye Toplamları */}
-                      {activeCandidate && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: 'var(--surface)', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                          <div>
-                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>İrsaliye Tarihi</div>
-                            <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
-                              {activeCandidate.receipt.delivered_on || '-'}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Teslim Kalemi</div>
-                            <div style={{ fontWeight: 700, color: 'var(--text-strong)', fontSize: '.85rem' }}>
-                              {activeCandidate.lines?.length || 0} Kalem
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '.7rem', color: '#10b981', fontWeight: 700 }}>İrsaliye Tutarı</div>
-                            <div style={{ fontWeight: 900, color: '#10b981', fontSize: '.95rem' }}>
-                              {Number(activeCandidate.receipt.total_amount_vat_inc || activeCandidate.receipt.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  </div>
+                  )}
 
                   {/* Contract Price Violation Banner (Hard Violation Alert) */}
                   {activeComparison && (activeComparison.hasContractPriceViolation || activeComparison.contractValidation?.hasViolation) && (
@@ -3657,65 +4574,78 @@ export default function EInvoiceManager() {
                 )}
 
                 {/* Approve Match Button */}
-                <button
-                  type="button"
-                  disabled={
-                    approvingMatch ||
-                    !activeCandidate ||
-                    Boolean(activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                  }
-                  title={
-                    (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                      ? 'Geçerliliği devam eden sözleşmeden farklı fiyatla kesilen fatura kabul edilemez! Onaylamak için fiyat uyuşmazlığı giderilmeli veya tedarikçiye itiraz tutanağı iletilmelidir.'
-                      : 'Eşleştirmeyi onayla ve cari hesaba alacak kaydı işle'
-                  }
-                  onClick={handleApproveMatch}
-                  style={{
-                    padding: '8px 22px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background:
+                {multiReceiptMode ? (
+                  <button
+                    type="button"
+                    disabled={consolidatingMatch || selectedMultiReceiptIds.length === 0}
+                    onClick={handleApproveMultiReceiptMatch}
+                    style={{
+                      padding: '8px 22px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: selectedMultiReceiptIds.length > 0 ? '#10b981' : '#475569',
+                      color: selectedMultiReceiptIds.length > 0 ? '#ffffff' : '#94a3b8',
+                      fontWeight: 800,
+                      fontSize: '.9rem',
+                      cursor: selectedMultiReceiptIds.length > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: selectedMultiReceiptIds.length > 0 ? '0 2px 10px rgba(16,185,129,0.3)' : 'none',
+                    }}
+                  >
+                    <i className={`fa-solid ${consolidatingMatch ? 'fa-spinner fa-spin' : 'fa-boxes-packing'}`} />
+                    {consolidatingMatch ? 'Bağlanıyor...' : `Seçilen (${selectedMultiReceiptIds.length}) İrsaliyeyi Faturaya Bağla`}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      approvingMatch ||
+                      !activeCandidate ||
+                      Boolean(activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                    }
+                    title={
                       (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? '#475569'
-                        : '#f5a623',
-                    color:
-                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? '#94a3b8'
-                        : '#000000',
-                    fontWeight: 800,
-                    fontSize: '.9rem',
-                    cursor:
-                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? 'not-allowed'
-                        : 'pointer',
-                    opacity:
-                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? 0.65
-                        : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    boxShadow:
-                      (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? 'none'
-                        : '0 4px 12px rgba(245,166,35,0.25)',
-                  }}
-                >
-                  <i
-                    className={`fa-solid ${
-                      approvingMatch
-                        ? 'fa-spinner fa-spin'
-                        : (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                        ? 'fa-ban'
-                        : 'fa-circle-check'
-                    }`}
-                  />
-                  {approvingMatch
-                    ? 'Cariye İşleniyor...'
-                    : (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
-                    ? 'Sözleşme İhlali (Onay Engellendi)'
-                    : 'Eşleştirmeyi Onayla & Cariye İşle'}
-                </button>
+                        ? 'Geçerliliği devam eden sözleşmeden farklı fiyatla kesilen fatura kabul edilemez! Onaylamak için fiyat uyuşmazlığı giderilmeli veya tedarikçiye itiraz tutanağı iletilmelidir.'
+                        : 'Eşleştirmeyi onayla ve cari hesaba alacak kaydı işle'
+                    }
+                    onClick={handleApproveMatch}
+                    style={{
+                      padding: '8px 22px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background:
+                        (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                          ? '#475569'
+                          : '#f5a623',
+                      color:
+                        (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                          ? '#94a3b8'
+                          : '#000000',
+                      fontWeight: 800,
+                      fontSize: '.9rem',
+                      cursor:
+                        (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                          ? 'not-allowed'
+                          : 'pointer',
+                      opacity:
+                        (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                          ? 0.65
+                          : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow:
+                        (activeComparison?.hasContractPriceViolation || activeComparison?.contractValidation?.hasViolation)
+                          ? 'none'
+                          : '0 2px 10px rgba(245,166,35,0.3)',
+                    }}
+                  >
+                    <i className={`fa-solid ${approvingMatch ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
+                    {approvingMatch ? 'Onaylanıyor...' : 'Eşleştirmeyi Onayla'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -5021,9 +5951,19 @@ export default function EInvoiceManager() {
                   </h3>
                 </div>
                 <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                  İrsaliye / Fiş No: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.receipt_no || selectedReceiptForMatch.doc_no || 'Belirtilmedi'}</strong> &nbsp;|&nbsp;
-                  Tedarikçi: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.supplier_name || 'Tedarikçi'}</strong> &nbsp;|&nbsp;
-                  İrsaliye Tutarı: <strong style={{ color: '#0284c7' }}>{Number(selectedReceiptForMatch.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                  {selectedReceiptsListForMatch.length > 1 ? (
+                    <>
+                      Seçilen: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptsListForMatch.length} Adet Fiziki İrsaliye</strong> &nbsp;|&nbsp;
+                      Tedarikçi: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.supplier_name || 'Tedarikçi'}</strong> &nbsp;|&nbsp;
+                      Kümülatif Toplam Tutar: <strong style={{ color: '#0284c7' }}>{selectedReceiptsListForMatch.reduce((sum, r) => sum + Number(r.total_amount_vat_inc || r.total_amount || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                    </>
+                  ) : (
+                    <>
+                      İrsaliye / Fiş No: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.receipt_no || selectedReceiptForMatch.doc_no || 'Belirtilmedi'}</strong> &nbsp;|&nbsp;
+                      Tedarikçi: <strong style={{ color: 'var(--text-strong)' }}>{selectedReceiptForMatch.supplier_name || 'Tedarikçi'}</strong> &nbsp;|&nbsp;
+                      İrsaliye Tutarı: <strong style={{ color: '#0284c7' }}>{Number(selectedReceiptForMatch.total_amount_vat_inc || selectedReceiptForMatch.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -5038,33 +5978,56 @@ export default function EInvoiceManager() {
 
             {/* Modal Body */}
             <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Çoklu İrsaliye Bilgi Kartı */}
+              {selectedReceiptsListForMatch.length > 1 && (
+                <div style={{ background: 'rgba(2,132,199,0.06)', border: '1px solid rgba(2,132,199,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: '.8rem' }}>
+                  <div style={{ fontWeight: 800, color: '#0284c7', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="fa-solid fa-boxes-packing" />
+                    Birleştirilen İrsaliyeler ({selectedReceiptsListForMatch.length} Adet):
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {selectedReceiptsListForMatch.map((r) => (
+                      <span key={r.id} style={{ background: 'var(--surface)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '.75rem', fontWeight: 600 }}>
+                        📄 {r.receipt_no || r.doc_no} ({Number(r.total_amount_vat_inc || r.total_amount || 0).toFixed(2)} ₺)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {loadingReverseCandidates ? (
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                   <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '2rem', color: '#0284c7', marginBottom: 12 }} />
-                  <div style={{ fontWeight: 600 }}>Entegratör Gelen Kutusu taranıyor ve eşleştirme adayları puanlanıyor...</div>
+                  <div style={{ fontWeight: 600 }}>Entegratör Gelen Kutusu taranıyor ve tedarikçi eşleşmeleri doğrulanıyor...</div>
                 </div>
               ) : reverseMatchCandidates.length === 0 ? (
                 <div
                   style={{
-                    padding: 30,
+                    padding: 36,
                     textAlign: 'center',
                     background: 'var(--surface-2)',
-                    borderRadius: 10,
-                    border: '1px dashed var(--border)',
+                    borderRadius: 12,
+                    border: '1.5px dashed var(--border)',
                   }}
                 >
-                  <i className="fa-solid fa-file-circle-xmark" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: 12 }} />
-                  <h4 style={{ margin: '0 0 6px 0', color: 'var(--text-strong)' }}>Uygun e-Fatura Adayı Bulunamadı</h4>
-                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--text-muted)' }}>
-                    Entegratör gelen kutusundaki açık faturalar arasında bu irsaliyenin tedarikçi VKN'si, irsaliye referansı veya tutarı ile eşleşen fatura bulunamadı.
+                  <i className="fa-solid fa-file-circle-xmark" style={{ fontSize: '3rem', color: '#f5a623', marginBottom: 14 }} />
+                  <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-strong)', fontSize: '1.05rem', fontWeight: 800 }}>
+                    Uygun e-Fatura Bulunamadı
+                  </h4>
+                  <p style={{ margin: '0 auto', maxWidth: 460, fontSize: '.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    <strong>{selectedReceiptForMatch.supplier_name || 'Bu Tedarikçi'}</strong> adına entegratör gelen kutusunda açık, eşleşmemiş veya tutara uyan e-fatura kaydı bulunmuyor.
                   </p>
+                  <div style={{ marginTop: 14, fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                    💡 İpucu: Tedarikçi faturayı henüz GİB üzerinden göndermemiş olabilir. Üst çubuktan <strong>"Entegratörden Faturaları Getir"</strong> butonunu kullanarak gelen kutusunu güncelleyebilirsiniz.
+                  </div>
                 </div>
               ) : (
                 <>
                   {/* Candidate List Selection */}
                   <div>
-                    <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8 }}>
-                      Entegratörden Bulunan Aday e-Faturalar ({reverseMatchCandidates.length} Adet):
+                    <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fa-solid fa-check-circle" style={{ color: '#10b981' }} />
+                      Bu Tedarikçiye Ait Gelen Aday e-Faturalar ({reverseMatchCandidates.length} Adet):
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
@@ -5962,6 +6925,961 @@ export default function EInvoiceManager() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal 9: Hizmet Faturası ➔ Açık Gider Tahakkuku Eşleştirme Modalı */}
+      {accrualModalOpen && matchingAccrualInvoice && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 900,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'linear-gradient(135deg, rgba(2,132,199,0.12) 0%, rgba(56,189,248,0.06) 100%)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      background: '#0284c7',
+                      color: '#fff',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '.75rem',
+                      fontWeight: 800,
+                    }}
+                  >
+                    ⚡ HİZMET & TAHAKKUK
+                  </span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                    Hizmet Faturası ➔ Açık Gider Tahakkuku Eşleştirme
+                  </h3>
+                </div>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Fatura: <strong style={{ color: 'var(--text-strong)' }}>{matchingAccrualInvoice.invoice_number}</strong> ({matchingAccrualInvoice.sender_title}) | Ödenecek: <strong style={{ color: '#0284c7' }}>{Number(matchingAccrualInvoice.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAccrualModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {loadingAccruals ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '2rem', color: '#0284c7', marginBottom: 12 }} />
+                  <div style={{ fontWeight: 600 }}>Açık gider tahakkukları taranıyor...</div>
+                </div>
+              ) : accrualCandidates.length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center', background: 'var(--surface-2)', borderRadius: 10, border: '1px dashed var(--border)' }}>
+                  <i className="fa-solid fa-file-circle-question" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: 12 }} />
+                  <h4 style={{ margin: '0 0 6px 0', color: 'var(--text-strong)' }}>Açık Tahakkuk Kaydı Bulunamadı</h4>
+                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--text-muted)' }}>
+                    Bu fatura için finans modülünde girilmiş açık bir gider tahakkuku bulunamadı. Fatura doğrudan kaydedilebilir.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>
+                    En uygun tahakkuk kaydını seçiniz. Eşleştirme onaylandığında tahakkuk faturaya dönüştürülecek ve bütçe sapma farkı kaydedilecektir.
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {accrualCandidates.map((cand, idx) => {
+                      const isSelected = selectedAccrualIndex === idx
+                      const acc = cand.accrual
+
+                      return (
+                        <div
+                          key={acc.id}
+                          onClick={() => setSelectedAccrualIndex(idx)}
+                          style={{
+                            padding: 14,
+                            borderRadius: 10,
+                            border: `1.5px solid ${isSelected ? '#0284c7' : 'var(--border)'}`,
+                            background: isSelected ? 'rgba(2,132,199,0.06)' : 'var(--surface)',
+                            cursor: 'pointer',
+                            transition: 'all .15s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 16,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <input
+                              type="radio"
+                              name="selectedAccrual"
+                              checked={isSelected}
+                              onChange={() => setSelectedAccrualIndex(idx)}
+                              style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 800, color: 'var(--text-strong)', fontSize: '.9rem' }}>
+                                {acc.document_no || `#THK-${acc.id.slice(0, 8)}`} - {acc.supplier_name || 'Hizmet Kurumu'}
+                              </div>
+                              <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                Açıklama: <strong>{acc.description || acc.expense_account_name || 'Gider Tahakkuku'}</strong> | Tarih: {acc.document_date || acc.created_at?.slice(0, 10)}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                {cand.reasons.map((r, i) => (
+                                  <span key={i} style={{ fontSize: '.7rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(2,132,199,0.15)', color: '#0284c7', fontWeight: 700 }}>
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>Tahakkuk Tutarı</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-strong)' }}>
+                              {Number(acc.amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </div>
+                            <div style={{ fontSize: '.75rem', fontWeight: 800, color: cand.difference === 0 ? '#10b981' : cand.difference > 0 ? '#ef4444' : '#10b981', marginTop: 2 }}>
+                              {cand.difference === 0 ? 'Fark Yok (Birebir)' : `${cand.difference > 0 ? `+${cand.difference.toFixed(2)} ₺ Bütçe Aşımı` : `${cand.difference.toFixed(2)} ₺ Bütçe Tasarrufu`}`}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>
+                      Eşleştirme & Bütçe Notu:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Örn: Eylül ayı elektrik tahakkuku gelen gerçek fatura ile kapatıldı."
+                      value={accrualMatchingNote}
+                      onChange={(e) => setAccrualMatchingNote(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--app-bg)',
+                        color: 'var(--text-strong)',
+                        fontSize: '.85rem',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setAccrualModalOpen(false)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 600, fontSize: '.85rem', cursor: 'pointer' }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={approvingAccrualMatch || accrualCandidates.length === 0}
+                onClick={handleApproveAccrualMatch}
+                style={{
+                  padding: '9px 24px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#0284c7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: !approvingAccrualMatch && accrualCandidates.length > 0 ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: '0 2px 8px rgba(2,132,199,0.35)',
+                }}
+              >
+                <i className={`fa-solid ${approvingAccrualMatch ? 'fa-spinner fa-spin' : 'fa-check-double'}`} />
+                {approvingAccrualMatch ? 'Dönüştürülüyor...' : 'Tahakkuku Gerçek Faturaya Dönüştür & Kapat'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 10: E-Arşiv Fatura İptal Talebi Modalı */}
+      {cancelEArchiveModalOpen && cancellingInvoice && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 520,
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 800, color: '#dc2626', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-ban" />
+                E-Arşiv Fatura İptal Talebi
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelEArchiveModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ padding: 20 }}>
+              <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: '.85rem' }}>
+                <div><strong>Fatura No:</strong> {cancellingInvoice.invoice_number}</div>
+                <div style={{ marginTop: 2 }}><strong>Alıcı:</strong> {cancellingInvoice.receiver_title}</div>
+                <div style={{ marginTop: 2 }}><strong>Tutar:</strong> {Number(cancellingInvoice.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                  GİB İptal Gerekçesi (Zorunlu):
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Faturanın iptal edilme gerekçesini giriniz..."
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--app-bg)',
+                    color: 'var(--text-strong)',
+                    fontSize: '.85rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setCancelEArchiveModalOpen(false)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 600, fontSize: '.85rem', cursor: 'pointer' }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={submittingCancel || !cancelReason.trim()}
+                onClick={handleSubmitCancelEArchive}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: cancelReason.trim() ? '#dc2626' : 'var(--border)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '.85rem',
+                  cursor: cancelReason.trim() && !submittingCancel ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <i className={`fa-solid ${submittingCancel ? 'fa-spinner fa-spin' : 'fa-ban'}`} />
+                {submittingCancel ? 'İptal Ediliyor...' : 'GİB İptal Talebi Gönder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 11: Serbest Fatura Oluşturma Sihirbazı */}
+      {createInvoiceModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 960,
+              maxHeight: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid var(--border)',
+                background: 'linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.02) 100%)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ background: '#f5a623', color: '#000', padding: '3px 8px', borderRadius: 6, fontSize: '.75rem', fontWeight: 800 }}>
+                  GİDEN FATURA
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                  Yeni Serbest E-Fatura / E-Arşiv Oluştur
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateInvoiceModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Profile & Type & Date */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Fatura Profili:
+                  </label>
+                  <select
+                    value={newInvoiceForm.profile_id}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, profile_id: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontWeight: 600 }}
+                  >
+                    <option value="TICARIFATURA">TICARIFATURA (Ticari)</option>
+                    <option value="TEMELFATURA">TEMELFATURA (Temel)</option>
+                    <option value="EARSIVFATURA">EARSIVFATURA (e-Arşiv)</option>
+                    <option value="IHRACAT">IHRACAT (İhracat)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Fatura Tipi:
+                  </label>
+                  <select
+                    value={newInvoiceForm.invoice_type}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, invoice_type: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontWeight: 600 }}
+                  >
+                    <option value="SATIS">SATIS (Satış)</option>
+                    <option value="TEVKIFAT">TEVKIFAT (Tevkifatlı Satış)</option>
+                    <option value="ISTISNA">ISTISNA (KDV İstisnalı)</option>
+                    <option value="OZELMATRAH">OZELMATRAH (Özel Matrah)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Fatura Tarihi:
+                  </label>
+                  <input
+                    type="date"
+                    value={newInvoiceForm.issue_date}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, issue_date: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Para Birimi:
+                  </label>
+                  <select
+                    value={newInvoiceForm.currency_code || 'TRY'}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, currency_code: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem', fontWeight: 600 }}
+                  >
+                    <option value="TRY">TRY (Türk Lirası - ₺)</option>
+                    <option value="USD">USD (Amerikan Doları - $)</option>
+                    <option value="EUR">EUR (Euro - €)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Receiver Info */}
+              <div style={{ background: 'var(--surface-2)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.82rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="fa-solid fa-user-tag" style={{ color: '#f5a623' }} />
+                  Alıcı (Müşteri / Firma) Bilgileri
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1.5fr 1fr', gap: 10 }}>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Alıcı VKN / TCKN *"
+                      value={newInvoiceForm.receiver_vkn_tckn}
+                      onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, receiver_vkn_tckn: e.target.value })}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Alıcı Ünvanı / Adı Soyadı *"
+                      value={newInvoiceForm.receiver_title}
+                      onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, receiver_title: e.target.value })}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Adres (İl / İlçe / Cadde)"
+                      value={newInvoiceForm.receiver_address}
+                      onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, receiver_address: e.target.value })}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Vergi Dairesi"
+                      value={newInvoiceForm.receiver_tax_office}
+                      onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, receiver_tax_office: e.target.value })}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.85rem' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="fa-solid fa-list" style={{ color: '#f5a623' }} />
+                    Fatura Kalemleri ({newInvoiceForm.lines.length} Kalem)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddLineToNewInvoice}
+                    style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'rgba(245,166,35,0.15)', color: '#f5a623', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <i className="fa-solid fa-plus" />
+                    Satır Ekle
+                  </button>
+                </div>
+
+                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.72rem', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '8px 10px', width: 30 }}>#</th>
+                        <th style={{ padding: '8px 10px' }}>Mal / Hizmet Adı</th>
+                        <th style={{ padding: '8px 10px', width: 90 }}>Miktar</th>
+                        <th style={{ padding: '8px 10px', width: 80 }}>Birim</th>
+                        <th style={{ padding: '8px 10px', width: 110 }}>Birim Fiyat (₺)</th>
+                        <th style={{ padding: '8px 10px', width: 90 }}>KDV %</th>
+                        <th style={{ padding: '8px 10px', width: 110, textAlign: 'right' }}>Toplam (₺)</th>
+                        <th style={{ padding: '8px 10px', width: 36, textAlign: 'center' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newInvoiceForm.lines.map((l, idx) => {
+                        const lineTotal = (Number(l.quantity || 0) * Number(l.unit_price || 0)) - Number(l.discount_amount || 0)
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '8px 10px', color: 'var(--text-muted)', textAlign: 'center' }}>{idx + 1}</td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="text"
+                                placeholder="Ürün veya Hizmet Tanımı"
+                                value={l.item_name}
+                                onChange={(e) => handleLineChangeInNewInvoice(idx, 'item_name', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0.001"
+                                value={l.quantity}
+                                onChange={(e) => handleLineChangeInNewInvoice(idx, 'quantity', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select
+                                value={l.unit_code}
+                                onChange={(e) => handleLineChangeInNewInvoice(idx, 'unit_code', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                              >
+                                <option value="C62">Adet (C62)</option>
+                                <option value="KGM">Kilogram (KGM)</option>
+                                <option value="LTR">Litre (LTR)</option>
+                                <option value="PK">Paket (PK)</option>
+                                <option value="BX">Koli (BX)</option>
+                                <option value="HUR">Saat (HUR)</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={l.unit_price}
+                                onChange={(e) => handleLineChangeInNewInvoice(idx, 'unit_price', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select
+                                value={l.tax_rate}
+                                onChange={(e) => handleLineChangeInNewInvoice(idx, 'tax_rate', Number(e.target.value))}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                              >
+                                <option value={20}>%20</option>
+                                <option value={10}>%10</option>
+                                <option value={1}>%1</option>
+                                <option value={0}>%0 (İstisna)</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-strong)' }}>
+                              {lineTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              {newInvoiceForm.lines.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveLineFromNewInvoice(idx)}
+                                  style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '.85rem' }}
+                                >
+                                  <i className="fa-solid fa-trash-can" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals & Notes */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, alignItems: 'start' }}>
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Fatura Açıklaması & Notlar:
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Fatura üzerine yazılacak serbest notlar veya banka hesap bilgileri..."
+                    value={newInvoiceForm.notes}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, notes: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                  />
+                </div>
+
+                {/* Summary Card */}
+                {(() => {
+                  let subtotal = 0
+                  let vatTotal = 0
+                  newInvoiceForm.lines.forEach((l) => {
+                    const lTot = (Number(l.quantity || 0) * Number(l.unit_price || 0)) - Number(l.discount_amount || 0)
+                    subtotal += lTot
+                    vatTotal += (lTot * Number(l.tax_rate ?? 20)) / 100
+                  })
+                  const grandTotal = subtotal + vatTotal
+
+                  return (
+                    <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: '.85rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: 'var(--text-muted)' }}>
+                        <span>Matrah (KDV Hariç):</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{subtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: 'var(--text-muted)' }}>
+                        <span>Hesaplanan KDV:</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{vatTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--border)', fontSize: '1rem', fontWeight: 800 }}>
+                        <span style={{ color: 'var(--text-strong)' }}>Ödenecek Tutar:</span>
+                        <span style={{ color: '#f5a623' }}>{grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setCreateInvoiceModalOpen(false)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 600, fontSize: '.85rem', cursor: 'pointer' }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={savingNewInvoice}
+                onClick={() => handleSaveNewInvoice(true)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <i className="fa-solid fa-floppy-disk" />
+                Taslak Kaydet
+              </button>
+
+              <button
+                type="button"
+                disabled={savingNewInvoice}
+                onClick={() => handleSaveNewInvoice(false)}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#f5a623', color: '#000', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(245,166,35,0.3)' }}
+              >
+                <i className={`fa-solid ${savingNewInvoice ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} />
+                {savingNewInvoice ? 'İletiliyor...' : 'İmzala & GİB\'e Gönder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 12: Orijinal Fatura Referanslı E-İade Faturası & Depodan Stok Düşme Modalı */}
+      {returnInvoiceModalOpen && selectedInvoiceForReturn && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 980,
+              maxHeight: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid var(--border)',
+                background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ background: '#ef4444', color: '#fff', padding: '3px 8px', borderRadius: 6, fontSize: '.75rem', fontWeight: 800 }}>
+                    ALIŞ İADE FATURASI
+                  </span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-strong)' }}>
+                    Tedarikçiye E-İade Faturası Düzenle & Stoktan Düş
+                  </h3>
+                </div>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Orijinal Fatura: <strong style={{ color: 'var(--text-strong)' }}>#{selectedInvoiceForReturn.invoice_number}</strong> &nbsp;|&nbsp;
+                  Tedarikçi: <strong style={{ color: 'var(--text-strong)' }}>{selectedInvoiceForReturn.sender_title}</strong> (VKN: {selectedInvoiceForReturn.sender_vkn_tckn})
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReturnInvoiceModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* BillingReference & Yasal Bilgi Rozeti */}
+              <div style={{ background: 'rgba(2,132,199,0.06)', border: '1px solid rgba(2,132,199,0.2)', padding: '10px 14px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.82rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#0284c7', fontWeight: 700 }}>
+                  <i className="fa-solid fa-link" />
+                  GİB UBL-TR 2.1 BillingReference Bağlantısı:
+                  <span style={{ color: 'var(--text-strong)', fontWeight: 600 }}>
+                    Ref Fatura No: <strong>{selectedInvoiceForReturn.invoice_number}</strong> (Tarih: {selectedInvoiceForReturn.issue_date})
+                  </span>
+                </div>
+                <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 4, fontSize: '.72rem', fontWeight: 800 }}>
+                  Yasal Uyumlu İade
+                </span>
+              </div>
+
+              {/* Stok Çıkış Depo Seçimi */}
+              <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.85rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+                  <input
+                    type="checkbox"
+                    checked={returnForm.updateStock}
+                    onChange={(e) => setReturnForm({ ...returnForm, updateStock: e.target.checked })}
+                    style={{ width: 18, height: 18, accentColor: '#ef4444', cursor: 'pointer' }}
+                  />
+                  <span>İade edilen ürünleri depodan otomatik stok çıkışı yap (Envanterden Düş)</span>
+                </label>
+
+                {returnForm.updateStock && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Çıkış Yapılacak Şube / Depo:</span>
+                    <select
+                      value={returnForm.branchId}
+                      onChange={(e) => setReturnForm({ ...returnForm, branchId: e.target.value })}
+                      style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem', fontWeight: 700 }}
+                    >
+                      {branchesList.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <div style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--text-strong)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>İade Edilecek Kalemleri ve Miktarları Seçiniz:</span>
+                  <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                    Seçili: {returnForm.lines.filter(l => l.selected_for_return).length} / {returnForm.lines.length} Kalem
+                  </span>
+                </div>
+
+                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '.72rem', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '8px 10px', width: 36, textAlign: 'center' }}>İade?</th>
+                        <th style={{ padding: '8px 10px' }}>Mal / Hizmet Kalemi</th>
+                        <th style={{ padding: '8px 10px', width: 110, textAlign: 'right' }}>Orijinal Miktar</th>
+                        <th style={{ padding: '8px 10px', width: 120, textAlign: 'right' }}>İade Miktarı</th>
+                        <th style={{ padding: '8px 10px', width: 100, textAlign: 'right' }}>Birim Fiyat</th>
+                        <th style={{ padding: '8px 10px', width: 70, textAlign: 'center' }}>KDV</th>
+                        <th style={{ padding: '8px 10px', width: 110, textAlign: 'right' }}>İade Tutarı</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {returnForm.lines.map((line, idx) => {
+                        const lineReturnTotal = line.selected_for_return ? (Number(line.return_quantity || 0) * Number(line.unit_price || 0)) : 0
+                        return (
+                          <tr
+                            key={idx}
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: line.selected_for_return ? 'rgba(239,68,68,0.04)' : 'transparent',
+                            }}
+                          >
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(line.selected_for_return)}
+                                onChange={() => handleReturnLineToggle(idx)}
+                                style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-strong)' }}>
+                              {line.item_name}
+                              {line.item_code && (
+                                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginLeft: 6 }}>
+                                  ({line.item_code})
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                              {line.original_quantity} {line.unit_code}
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                max={line.original_quantity}
+                                disabled={!line.selected_for_return}
+                                value={line.return_quantity}
+                                onChange={(e) => handleReturnQtyChange(idx, e.target.value)}
+                                style={{
+                                  width: 80,
+                                  padding: '4px 6px',
+                                  textAlign: 'right',
+                                  borderRadius: 6,
+                                  border: '1px solid var(--border)',
+                                  background: line.selected_for_return ? 'var(--app-bg)' : 'var(--surface-2)',
+                                  color: 'var(--text-strong)',
+                                  fontWeight: 700,
+                                  fontSize: '.82rem',
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>
+                              {Number(line.unit_price).toFixed(2)} ₺
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                              %{line.tax_rate}
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: line.selected_for_return ? '#ef4444' : 'var(--text-muted)' }}>
+                              {lineReturnTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Notes & Summary */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, alignItems: 'start' }}>
+                <div>
+                  <label style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    İade Faturası Gerekçesi & Notlar:
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={returnForm.notes}
+                    onChange={(e) => setReturnForm({ ...returnForm, notes: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--app-bg)', color: 'var(--text-strong)', fontSize: '.82rem' }}
+                  />
+                </div>
+
+                {/* Return Summary Card */}
+                {(() => {
+                  let subtotal = 0
+                  let vatTotal = 0
+                  returnForm.lines.filter(l => l.selected_for_return).forEach((l) => {
+                    const lTot = Number(l.return_quantity || 0) * Number(l.unit_price || 0)
+                    subtotal += lTot
+                    vatTotal += (lTot * Number(l.tax_rate ?? 20)) / 100
+                  })
+                  const grandTotal = subtotal + vatTotal
+
+                  return (
+                    <div style={{ background: 'rgba(239,68,68,0.04)', padding: '12px 16px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)', fontSize: '.85rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: 'var(--text-muted)' }}>
+                        <span>İade Matrahı:</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{subtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: 'var(--text-muted)' }}>
+                        <span>İade KDV:</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{vatTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid rgba(239,68,68,0.2)', fontSize: '1rem', fontWeight: 800 }}>
+                        <span style={{ color: '#ef4444' }}>Toplam İade:</span>
+                        <span style={{ color: '#ef4444' }}>{grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setReturnInvoiceModalOpen(false)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 600, fontSize: '.85rem', cursor: 'pointer' }}
+              >
+                Vazgeç
+              </button>
+
+              <button
+                type="button"
+                disabled={savingReturnInvoice}
+                onClick={() => handleSaveReturnInvoice(true)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-strong)', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <i className="fa-solid fa-floppy-disk" />
+                Taslak İade Kaydet
+              </button>
+
+              <button
+                type="button"
+                disabled={savingReturnInvoice}
+                onClick={() => handleSaveReturnInvoice(false)}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}
+              >
+                <i className={`fa-solid ${savingReturnInvoice ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} />
+                {savingReturnInvoice ? 'İşleniyor...' : 'İade Faturasını Kes & Stoktan Düş'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

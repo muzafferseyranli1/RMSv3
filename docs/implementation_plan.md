@@ -1,120 +1,102 @@
-# Restoran E-Dönüşüm ve E-Fatura Entegrasyonu Uygulama Planı
+# SuitableRMS E-Dönüşüm Modülü Kapsamlı Geliştirme Planı
 
-Bu plan; SuitableRMS sistemine Gelir İdaresi Başkanlığı (GİB) mevzuatına tam uyumlu, Özel Entegratör modeli tabanlı, UBL-TR 2.1 standardında ve Adaptör Tasarım Deseni ile çalışan kapsamlı bir **E-Dönüşüm ve E-Fatura Altyapısı** kazandırmayı hedefler.
-
-Planlama, her fazın bağımsız subagent'lar aracılığıyla geliştirileceği ve ana agent tarafından denetlenip onaylanacağı/reddedileceği aşamalı bir yönetim mimarisine dayanmaktadır.
+Bu uygulama planı, SuitableRMS içerisindeki E-Dönüşüm (E-Fatura, E-Arşiv, E-İrsaliye, E-Adisyon) modülünün harici entegratör panellerine bağımlılığı ortadan kaldıracak, operasyonel mal kabul süreçlerini akıllı eşleştirme ve finansal tahakkuk entegrasyonuyla güçlendirecek 6 ana geliştirme maddesini içerir.
 
 ---
 
-## Kullanıcı İncelemesi Gereken Konular
+## 📋 Kullanıcı Talepleri & Kapsam Özeti
 
-> [!IMPORTANT]
-> **Subagent Orkestrasyonu ve Kalite Denetimi:**
-> Her faz için özel bir subagent atanacak; subagent geliştirme tamamlandığında ana agent kodları satır satır denetleyecek, derleme ve DB kurallarını (`.antigravityrules.md`, `DESIGN_HANDBOOK_V3_TR.md`) doğrulayacak ve onay verirse bir sonraki faza geçecektir.
-
-> [!NOTE]
-> **Mock Entegratör Simülatörü:**
-> Faz 1'de inşa edilecek olan simülatör, gerçek bir e-Fatura entegratörünün (Uyumsoft, EDM vb.) sunduğu tüm API davranışlarını (Gelen faturalar, Giden faturalar, UBL-TR XML/HTML görseli, 1000->1300 durum geçişleri, Ticari Fatura Kabul/Red yanıtları) yerel ortamda %100 birebir simüle edecektir.
-
----
-
-## Açık Sorular
-
-* **Fatura İptal / İade Süresi:** Ticari e-Faturalara yasal olarak 8 gün içinde sistem üzerinden Kabul/Red yanıtı verilebilmektedir. Simülatörde ve UI'da 8 günlük süreyi aşan faturalar için "Süre Aşımı / Otomatik Kabul" uyarısı gösterilsin mi? *(Plana varsayılan olarak 8 gün kontrolü eklenmiştir.)*
-* **Mal Kabul Toleransı:** Mal kabul irsaliyesi ile fatura miktar/fiyat karşılaştırmasında varsayılan kuruş/yüzde toleransı (Örn: %1 fiyat veya 0.05 kg tartım toleransı) parametrik mi olsun? *(Plana sistem ayarlarında tutulacak şekilde eklenmiştir.)*
+1. **Entegratör Paneli Bağımsızlığı:** Uyumsoft, EDM gibi portallara giriş ihtiyacını sıfırlayan tam yetenekli RMS E-Dönüşüm altyapısı (Kontör/bakiye takibi, e-Arşiv fatura iptal/itiraz, toplu PDF/UBL indirme, VKN mükellef/etiket sorgulama).
+2. **Derin UBL Meta Veri Ayıklama:** Gelen faturaların XML içeriğindeki irsaliye numaraları (`cac:DespatchDocumentReference`), sipariş referansları (`cac:OrderReference`), teslimat adresleri/şubeleri (`cac:Delivery`) ve serbest notların (`cbc:Note`) otomatik ayrıştırılması.
+3. **Kademeli Eşleştirme Hiyerarşisi (Matching Waterfall):** 
+   - Tedarikçi $\rightarrow$ İrsaliye No $\rightarrow$ Tarih Toleransı $\rightarrow$ Kalem Sayısı $\rightarrow$ Ürün/Miktar/Fiyat $\rightarrow$ Sözleşme Fiyat & Tolerans Kontrolü.
+4. **Çoklu İrsaliye — Tek Fatura Konsolidasyonu (N:1):** Günlük/periyodik çoklu irsaliyelerin tek faturada toplanması, otomatik algılama, manuel çoklu seçim sepeti ve canlı tutar dengeleme çubuğu.
+5. **İrsaliyeli Fatura Sevkiyatları & Çapraz Numara Denetimi:** Sevkiyatın fatura çıktısıyla yapıldığı ve personelin fatura numarasını irsaliye alanına kaydettiği durumlar için çapraz numara eşleme (`invoice_number` $\leftrightarrow$ `despatch_no`).
+6. **Hizmet Faturaları ve Tahakkuk (Accrual) $\rightarrow$ Gerçek Belge Dönüşümü:** Elektrik, su vb. hizmet faturalarının açık gider tahakkuklarıyla (`expense_documents`) eşleştirilmesi, tahakkukun resmi faturaya dönüştürülmesi ve tutar farkının otomatik işlenmesi.
 
 ---
 
-## Fazlar ve Subagent Görev Dağılımı
+## 🛠️ Önerilen Değişiklikler ve Mimari Yapı
 
-```mermaid
-graph TD
-    A[FAZ 1: Çekirdek E-Dönüşüm & Mock Entegratör Simülatörü] -->|Ana Agent Onayı| B[FAZ 2: Gelen Fatura & Mal Kabul 3-Way Matching]
-    B -->|Ana Agent Onayı| C[FAZ 3: Şirket Ağacı Tüzel Kişilikler Arası Transfer Faturası]
-    C -->|Ana Agent Onayı| D[FAZ 4: Çoklu Entegratör Uyumsoft/EDM & E-Adisyon Entegrasyonu]
-```
+### 1. Backend & Veri Modeli Genişletmeleri (PostgreSQL & `server/index.js`)
 
----
+#### [MODIFY] [schema-railway-master.sql](file:///X:/RMSv3/schema-railway-master.sql)
+- `e_invoices` tablosuna çoklu irsaliye ve derin meta veriler için kolonlar:
+  - `matched_receipt_ids JSONB DEFAULT '[]'` (Çoklu irsaliye ID'leri)
+  - `parsed_metadata JSONB DEFAULT '{}'` (Ayıklanan sipariş no, teslimat adresi, çoklu irsaliyeler vb.)
+  - `is_service_invoice BOOLEAN DEFAULT false` (Hizmet/Masraf faturası ayrımı)
+  - `matched_expense_id UUID REFERENCES expense_documents(id)` (Eşleşen tahakkuk/gider referansı)
+- `e_integrator_configs` tablosuna kontör ve bakiye takibi kolonları:
+  - `credits_balance INTEGER DEFAULT 0`, `last_credit_check_at TIMESTAMPTZ`
 
-## FAZ 1: Çekirdek E-Dönüşüm Altyapısı & Mock Entegratör Simülatörü
-
-### 1.1. Veritabanı Şeması
-- `e_invoices`: Fatura üst bilgileri (ETTN UUID, Fatura No, Tür: SATIS/IADE/TEVKIFAT, Senaryo: TICARIFATURA/TEMELFATURA/EARSIVFATURA, Yön: IN/OUT, Durum: 1000-1300, Toplamlar, KDV, VKN/TCKN, Gönderici/Alıcı).
-- `e_invoice_lines`: Fatura satırları (Kalem adı, Stok eşleme ID, Miktar, Birim, Birim Fiyat, KDV Oranı, KDV Tutarı, İskonto).
-- `e_integrator_configs`: Entegratör ayarları (Aktif sağlayıcı: `mock`, `uyumsoft`, `edm`, API URL, Kullanıcı adı, Şifre, Şube/Tüzel kişilik bazlı).
-- `e_document_responses`: Ticari faturalara verilen Kabul/Red/İade uygulama yanıtları.
-- `e_invoice_matching_logs`: Mal kabul ve irsaliye eşleşme geçmişi.
-
-### 1.2. Çekirdek UBL-TR & Adaptör Mimarisi (`src/lib/eInvoice/`)
-- `types.js`: E-Dönüşüm veri tipleri, GİB durum kodları, vergi tipleri.
-- `coreUblGenerator.js`: UBL-TR 2.1 standardında evrensel XML ve JSON üreteci (`AdditionalDocumentReference` desteği ile).
-- `integratorAdapter.js`: `IEInvoiceAdapter` ortak sözleşmesi.
-- `mockIntegratorAdapter.js`: Senaryo bazlı hayali faturalar üreten, gelen/giden kutusu yöneten, durum değiştiren simülatör adaptörü.
-- `eInvoiceService.js`: UI ve servisler için yüksek seviyeli arayüz.
-
-### 1.3. Backend Mock Servisleri (`server/`)
-- `/api/einvoice/mock/inbox`: Simüle gelen faturaları listeleme.
-- `/api/einvoice/mock/generate-scenario`: Test senaryoları üretme (Örn: "Meyve Tedarikçisi Faturası", "Fiyat Farklı Fatura").
-- `/api/einvoice/send`: Fatura gönderme.
-- `/api/einvoice/response`: Kabul/Red yanıtı iletme.
-- `/api/einvoice/status/:id`: Durum güncelleme (1000 -> 1100 -> 1200 -> 1300).
-
-### 1.4. Arayüz: E-Fatura Yönetim Portalı & Simülatör (`src/components/pages/EInvoiceManager.jsx`)
-- **Gelen Kutusu & Giden Kutusu:** Gelişmiş filtreleme, durum rozetleri, arama, tarih aralığı.
-- **Fatura Görsel Önizleme Modalı:** Standart GİB şablonunda HTML/XSLT fatura görseli.
-- **Simülatör Kontrol Paneli:** "Senaryo Faturası Üret", "Durumu 1300 Yap", "Gelen Kutusunu Yenile" butonları.
-- **Ticari Yanıt Modalı:** Kabul / Red gerekçesi girip yanıt gönderme.
+#### [MODIFY] [server/index.js](file:///X:/RMSv3/server/index.js)
+- Entegratör SOAP/REST uçları için güvenli backend proxy/köprü endpoint'leri:
+  - `/api/einvoice/check-credits` (Kalan kontör sorgulama)
+  - `/api/einvoice/cancel-earchive` (E-Arşiv iptal talebi)
+  - `/api/einvoice/download-batch-pdf` (Toplu fatura PDF/ZIP indirme)
+  - `/api/einvoice/check-taxpayer` (GİB VKN/Etiket sorgulama)
 
 ---
 
-## FAZ 2: Gelen e-Fatura ile Mal Kabul (İrsaliye) 3-Way Matching
+### 2. Çekirdek Servisler & İş Motorları (`src/lib/eInvoice/`)
 
-### 2.1. Eşleştirme Motoru
-- Gelen faturanın VKN'si üzerinden sistemdeki `suppliers` tablosu ile otomatik eşleşme.
-- Faturadaki irsaliye numaraları / tarihleri üzerinden ilgili şubenin `purchase_receipts` kayıtlarının bulunması.
-- Satır bazında miktar (irsaliyedeki teslimat vs faturadaki miktar) ve birim fiyat (siparişteki fiyat vs faturadaki fiyat) karşılaştırması.
+#### [MODIFY] [coreUblGenerator.js](file:///X:/RMSv3/src/lib/eInvoice/coreUblGenerator.js)
+- `parseUBLXML` fonksiyonunun derin parser olarak güçlendirilmesi:
+  - Çoklu `cac:DespatchDocumentReference` ve `cac:OrderReference` bloklarını dizi olarak çıkarma.
+  - `cac:DeliveryAddress` (Şube/ilçe adı tespiti).
+  - Çoklu `cbc:Note` alanlarını regex ile analiz ederek metin içindeki olası irsaliye numaralarını (`IRS...`, `...nolu irsaliye`) çıkarma (`extractDespatchNumbersFromText`).
 
-### 2.2. Kullanıcı Arayüzü & Aksiyonlar
-- **Fatura Eşleştirme Ekranı:** Yan yana (Split View) Fatura Satırları vs İrsaliye Satırları.
-- **Uyuşmazlık Uyarıları:** Fiyat farkı veya miktar eksiği/fazlası durumunda sarı/kırmızı uyarılar.
-- **Eşleşme Onayı:** Fatura onaylandığında `cari_hareketler`'e borç kaydı ve `purchase_receipts.invoice_matched = true` işlenmesi.
+#### [MODIFY] [matchingEngine.js](file:///X:/RMSv3/src/lib/eInvoice/matchingEngine.js)
+- **6 Aşamalı Waterfall Pipeline:**
+  - Aşama 1: Tedarikçi VKN/Ünvan filtrelemesi.
+  - Aşama 2: Çapraz numara eşleme (`invoice_number` vs `despatch_no` & `doc_no`).
+  - Aşama 3: Esnek tarih toleransı denetimi (İrsaliye Tarihi $\le$ Fatura Tarihi, $\pm 15$ gün aralık).
+  - Aşama 4: Satır sayısı karşılaştırması.
+  - Aşama 5: Fonetik ürün eşleştirme, miktar ve birim fiyat kontrolleri.
+  - Aşama 6: `contractPriceValidator` ile sözleşme fiyat aşımı denetimi.
+- **Çoklu İrsaliye Konsolidasyonu (N:1):**
+  - Birden fazla irsaliyeyi birleştirip faturayla toplam ve satır bazında dengeleyen `matchMultipleReceiptsToInvoice` fonksiyonu.
+- **Hizmet Faturası & Tahakkuk Eşleme:**
+  - Gelen hizmet faturasını `expense_documents` (status: `accrual`) kayıtları ile eşleştiren ve fark tutarını hesaplayan `matchInvoiceToAccrual` fonksiyonu.
 
----
-
-## FAZ 3: Şirket Ağacı ve Tüzel Kişilikler Arası Transferlerin Faturalaşması
-
-### 3.1. Tüzel Kişilik Tanımları
-- `company_nodes` tablosundaki düğümlere tüzel kişilik özellikleri (`vkn`, `vergi_dairesi`, `legal_title`, `address`) entegrasyonu.
-
-### 3.2. Otomatik Transfer Faturası Motoru
-- Şubeler/Depolar arası stok transferi (`inventory_movements` / `transfer`) tamamlandığında:
-  - Gönderen ve alan düğümlerin VKN'leri farklı ise sistem bunu "Tüzel Kişilikler Arası Transfer" olarak algılar.
-  - Gönderen şirket adına **e-İrsaliye** ve **e-Fatura** taslağı otomatik oluşturulur.
-  - Alıcı tüzel kişiliğin Gelen Kutusuna otomatik düşürülür.
-
----
-
-## FAZ 4: Çoklu Entegratör (Uyumsoft / EDM) & E-Adisyon
-
-### 4.1. Gerçek Entegratör Adaptörleri
-- `UyumsoftAdapter`: SOAP 1.1 / BasicHttpBinding veya REST entegrasyonu.
-- `EdmAdapter`: WCF / SessionID tabanlı entegrasyon.
-
-### 4.2. E-Adisyon Entegrasyonu
-- Restoranda sipariş açıldığında ETTN üretimi.
-- Masa hesabı kapatıldığında e-Fatura/e-Arşiv kesilirken `AdditionalDocumentReference` ile E-Adisyon ETTN bağlantısı kurulması.
+#### [MODIFY] [integratorAdapter.js](file:///X:/RMSv3/src/lib/eInvoice/integratorAdapter.js), [uyumsoftAdapter.js](file:///X:/RMSv3/src/lib/eInvoice/uyumsoftAdapter.js), [edmAdapter.js](file:///X:/RMSv3/src/lib/eInvoice/edmAdapter.js)
+- Standart arayüze `getCreditsBalance()`, `cancelEArchiveInvoice()`, `downloadBatchFiles()` metotlarının eklenmesi ve adaptörlerde gerçeklenmesi.
 
 ---
 
-## Doğrulama Planı
+### 3. Kullanıcı Arayüzü (UI) Geliştirmeleri (`src/components/pages/`)
 
-### Otomatik Testler
-1. **Derleme Testi:** `npm run build` (Sıfır hata ile tamamlanmalı).
-2. **Schema & Veritabanı Doğrulaması:** VPS PostgreSQL üzerinde tabloların ve kısıtlamaların oluşturulması.
-3. **API & Servis Testleri:** Mock entegratör endpoint'lerinin Node.js üzerinden test edilmesi (`test_einvoice_mock.mjs`).
+#### [MODIFY] [EInvoiceManager.jsx](file:///X:/RMSv3/src/components/pages/EInvoiceManager.jsx)
+1. **3-Way Matching Modalı Yenilemesi:**
+   - **Doğrulama Sağlık Skoru (Step-by-Step Checklist):** 6 aşamanın durumunu gösteren net görsel akış (Tedarikçi ✅, İrsaliye No ✅, Tarih ⚠️, Satırlar ✅, Kalem/Fiyat ✅, Sözleşme ✅).
+   - **Çoklu İrsaliye Konsolidasyon Modu:** Çoklu irsaliye seçim checkbox'ları ve sağ panelde canlı tutar dengeleme çubuğu (*Fatura: 10.000 ₺ | Seçilenler: 10.000 ₺ | Kalan Fark: 0 ₺ ✅*).
+   - **İrsaliyeli Fatura Rozeti:** Fatura no irsaliye alanıyla eşleştiğinde bilgilendirici uyarı etiketi.
+2. **Hizmet Faturası & Tahakkuk Eşleştirme Sekmesi/Modalı:**
+   - Hizmet faturaları için açık tahakkukları listeleyen, bütçe sapmasını (*Tahakkuk: 20.000 ₺ vs Gerçek: 22.000 ₺*) gösteren ve tek tıkla tahakkuku faturaya dönüştüren arayüz.
+3. **Entegratör Bağımsızlık Araçları:**
+   - Üst bilgi çubuğunda canlı **Kalan Kontör / Kredi Sayacı**.
+   - Giden e-Arşiv faturaları için **İptal / İtiraz Et** butonu ve gerekçe modalı.
+   - Toplu fatura seçimi ve **Toplu İndir (PDF / UBL ZIP)** aksiyonu.
 
-### Manuel Doğrulama
-1. **Fatura Üretimi ve Gelen Kutusu:** Simülatörden "Tedarikçi A - 3 Kalemlik Fatura" üretilip Gelen Kutusuna düştüğü doğrulanacak.
-2. **Fatura Önizleme:** Faturaya tıklandığında standart GİB faturası şeklinde görüntülendiği doğrulanacak.
-3. **Ticari Yanıt:** Faturaya "Kabul" veya "Red" yanıtı verildiğinde durumun ve logların güncellendiği teyit edilecek.
-4. **Mal Kabul Eşleştirmesi:** Mal kabul irsaliyesi ile gelen faturanın miktar/fiyat eşleşmesi test edilecek.
+#### [MODIFY] [IntegratorStudio.jsx](file:///X:/RMSv3/src/components/pages/IntegratorStudio.jsx)
+- Simülatör tarafında çoklu irsaliyeli fatura üretme senaryoları, hizmet faturası üretme ve irsaliyeli fatura çapraz hata test modülleri ekleme.
+
+---
+
+## 🧪 Doğrulama ve Test Planı
+
+### Otomatik & Mantıksal Testler:
+- `coreUblGenerator.js`: Çoklu irsaliye, sipariş no, teslimat adresi ve notlardan regex ayıklama testleri.
+- `matchingEngine.js`: 6 aşamalı waterfall doğrulama, çapraz numara eşleme, çoklu irsaliye dengeleme ve tahakkuk fark hesaplama testleri.
+
+### Manuel Doğrulama Senaryoları:
+1. **Çoklu İrsaliye Senaryosu:** 3 adet ayrı mal kabul irsaliyesi oluşturulup tek bir e-fatura ile seçilerek bağlanması, canlı denge çubuğunun 0 TL farkı doğrulayıp yeşile dönmesi.
+2. **İrsaliyeli Fatura Senaryosu:** Mal kabulde irsaliye no alanına fatura numarası girilmiş bir kaydın, portala gelen e-fatura ile otomatik eşleştiğinin doğrulanması.
+3. **Hizmet & Tahakkuk Senaryosu:** Finans modülünde 20.000 TL elektrik tahakkuku girilmesi, gelen 22.000 TL elektrik faturasıyla eşleştirildiğinde tahakkukun kapanması ve +2.000 TL farkın bütçeye yansıması.
+4. **Entegratör Yetenekleri:** Kontör sorgulama, VKN mükellef sorgulama ve e-Arşiv iptal akışlarının test edilmesi.
+
+---
+
+## 🔒 Kurallar & Güvenlik
+- **DB-First İlkesi:** Tüm eşleşmeler, çoklu irsaliye bağlantıları ve tahakkuk güncellemeleri Hosting Dünyam VPS PostgreSQL üzerinde kalıcı tablolara yazılacaktır.
+- **Operationsync Loglama:** Yapılan tüm geliştirmeler ve mimari güncellemeler `OperationSync.md` dosyasına kaydedilecektir.

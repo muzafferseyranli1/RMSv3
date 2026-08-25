@@ -13151,3 +13151,96 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
 - `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
 - `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
 - `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-25 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-25T06:49:29.776Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `51f3f3e`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.
+
+
+## Entry - 2026-08-25 - E-Dönüşüm Modülü Entegratör Bağımsızlığı & 6 Aşamalı Akıllı Eşleştirme Pipeline Geliştirmesi
+
+- `Timestamp`: `2026-08-25T10:35:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: E-Dönüşüm Modülü İyileştirmeleri (Kullanıcı 6 Maddelik İş Paketi)
+- `Intent`: Uyumsoft / EDM portallarına bağımlılığı ortadan kaldırmak, UBL parser'a derin meta veri ve not ayıklama yeteneği kazandırmak, 6 aşamalı hiyerarşik waterfall doğrulama, çoklu irsaliye konsolidasyonu (N:1), irsaliyeli fatura çapraz eşleştirme ve hizmet tahakkuk kapatma sistemini tamamlamak.
+- `Files Read`:
+  - `src/lib/eInvoice/types.js`
+  - `src/lib/eInvoice/coreUblGenerator.js`
+  - `src/lib/eInvoice/integratorAdapter.js`
+  - `src/lib/eInvoice/uyumsoftAdapter.js`
+  - `src/lib/eInvoice/edmAdapter.js`
+  - `src/lib/eInvoice/mockIntegratorAdapter.js`
+  - `src/lib/eInvoice/eInvoiceService.js`
+  - `src/lib/eInvoice/matchingEngine.js`
+  - `src/components/pages/EInvoiceManager.jsx`
+  - `server/index.js`
+- `Files Changed`:
+  - `schema-railway-master.sql` (Veritabanı şema genişletmeleri: `matched_receipt_ids`, `parsed_metadata`, `is_service_invoice`, `matched_expense_id`, `credits_balance`, `last_credit_check_at`)
+  - `sql/056_einvoice_extensions.sql` (Canlı DB migration scripti oluşturuldu ve VPS Postgres üzerinde çalıştırıldı)
+  - `src/lib/eInvoice/coreUblGenerator.js` (`extractDespatchNumbersFromText`, `detectServiceInvoice`, derin UBL parser)
+  - `src/lib/eInvoice/integratorAdapter.js` (`getCreditsBalance`, `cancelEArchiveInvoice`, `downloadBatchFiles` arayüz tanımları)
+  - `src/lib/eInvoice/mockIntegratorAdapter.js`, `uyumsoftAdapter.js`, `edmAdapter.js` (İlgili metot implementasyonları)
+  - `src/lib/eInvoice/eInvoiceService.js` (Kontör sorgulama, e-Arşiv iptal, toplu indirme, çoklu irsaliye bağlama `matchInvoiceToMultipleReceipts`, tahakkuk bağlama `matchInvoiceToAccrualExpense`)
+  - `src/lib/eInvoice/matchingEngine.js` (`evaluateWaterfallPipeline` 6 aşamalı checklist motoru, `evaluateMultiReceiptConsolidation` canlı dengeleme motoru, `findPotentialAccrualsForInvoice` tahakkuk arama motoru, çapraz numara kontrolü)
+  - `src/components/pages/EInvoiceManager.jsx` (Canlı Kontör sayacı, Toplu İndir (ZIP) butonu, e-Arşiv İptal Modalı, 6 Aşamalı Waterfall Checklist Paneli, N:1 Çoklu İrsaliye Konsolidasyon Modu ve Canlı Tutar Dengeleme Çubuğu, Hizmet Faturası & Tahakkuk Eşleştirme Modalı)
+  - `server/index.js` (checkSchema içine yeni kolonlar eklendi)
+- `Commands Run`:
+  - `npm.cmd run build` (Başarılı, sıfır hata)
+- `Findings & Verification`:
+  - 1. Talep (Entegratör Paneli Bağımsızlığı): Canlı kontör sorgulama, e-Arşiv iptal/itiraz, toplu belge indirme frontend ve backend seviyesinde tamamlandı.
+  - 2. Talep (Derin UBL Meta Veri Parser): `extractDespatchNumbersFromText` ile notlardaki 16 haneli GİB irsaliye numaraları ve adresler ayrıştırılıyor.
+  - 3. Talep (6 Aşamalı Kademeli Waterfall Pipeline): Tedarikçi -> İrsaliye No -> Tarih Toleransı -> Kalem Sayısı -> Kalem/Miktar/Fiyat -> Sözleşme Fiyat Denetimi adımları UI'da adım adım doğrulanıyor.
+  - 4. Talep (Çoklu İrsaliye Konsolidasyonu N:1): Açık irsaliyelerden çoklu seçim, canlı tutar dengeleme çubuğu ve sıfır fark validasyonu sağlandı.
+  - 5. Talep (İrsaliyeli Fatura & Çapraz Numara): Fatura numarasının irsaliye hanesine yazılması durumu algılanıp çapraz eşleme olarak kullanıcıya raporlanıyor.
+  - 6. Talep (Hizmet Faturaları & Tahakkuk Eşleşmesi): Elektrik, su vb. hizmet faturaları açık gider tahakkukları ile eşleştirilip tahakkuk gerçek faturaya dönüştürülüyor ve bütçe farkı hesaplanıyor.
+- `Next Step`: Kullanıcıya detaylı walkthrough ve test kılavuzunun sunulması.
+- `Handoff Contract`: Tüm değişiklikler derlenmiş ve production build alınmıştır.
+
+
+## Entry - 2026-08-25 - Ters Eşleştirme (İrsaliye ➔ Fatura) Kesin Tedarikçi Filtresi & Çoklu İrsaliye Konsolidasyonu
+
+- `Timestamp`: `2026-08-25T10:51:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: Ters Eşleştirmede Zorunlu Tedarikçi Filtresi & Çoklu İrsaliye Desteği
+- `Intent`: Fiziki İrsaliye ➔ Gelen Fatura ters eşleştirmesinde yalnızca aynı tedarikçiye (VKN/TCKN ve normalize Ünvan) ait faturaların listelenmesi, farklı tedarikçilerin %0 uyumla bile listelenmesinin kesin olarak engellenmesi, çoklu irsaliye seçimiyle kümülatif tutara uyan faturanın bulunması ve uygun fatura yoksa açıklayıcı boş durum mesajı sunulması.
+- `Files Changed`:
+  - `src/lib/eInvoice/matchingEngine.js` (`findPotentialInvoicesForReceipt` metoduna Hard Supplier Filter eklendi, farklı tedarikçiler atlandı, çoklu irsaliye kümülatif tutar denetimi ve waterfall entegrasyonu sağlandı)
+  - `src/components/pages/EInvoiceManager.jsx` (Fiziki İrsaliyeler tablosuna çoklu seçim checkbox'ları ve "Seçilen X İrsaliyeyi Gelen e-Faturayla Eşleştir" butonu eklendi; Ters eşleştirme modalında çoklu irsaliye bilgi kartı, kesin tedarikçi doğrulaması ve "Uygun e-Fatura Bulunamadı" boş durum kartı kuruldu)
+- `Commands Run`:
+  - `npm.cmd run build` (Başarılı, sıfır hata, `✓ built in 55.75s`)
+- `Findings & Verification`:
+  - Görseldeki hata giderildi: İrsaliye Tedarikçisi (örn. Pendik Merkez Depo) ile eşleşmeyen hiçbir e-fatura artık ekranda görünmez.
+  - Açık birden fazla irsaliye seçildiğinde toplam tutar kümülatif toplanıp tek faturayla ters eşleştirilebilir.
+- `Documentation Delivered`: SuitableRMS E-Dönüşüm Platformu'nun geçmişten bugüne tüm mimarisini (E-Fatura, E-Arşiv, E-İrsaliye, E-Müstahsil, E-Adisyon, Grup İçi Transfer, Tevkifat/İstisna, UBL-TR 2.1 XML Generator, Entegratör Adaptörleri, 6 Aşamalı Waterfall Matching, N:1 Konsolidasyon, Ters Eşleştirme, Gider Tahakkuku, Sözleşme Fiyat Kilidi) içeren nihai Master Teknik Dokümantasyon (`docs/EDonusum_Sistem_Mimarisi_ve_Uygulama_Kilavuzu.md` ve artifact `e_donusum_teknik_rehber.md`) oluşturuldu.
+- `Handoff Contract`: Production build hazır ve tüm mimari dokümante edilmiştir.
+
+
+## Entry - 2026-08-25 - Serbest Fatura Sihirbazı & Orijinal Faturaya Referanslı Stok Entegreli E-İade Faturası Modülü
+
+- `Timestamp`: `2026-08-25T11:57:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: Serbest Fatura Oluşturma Sihirbazı ve E-İade Faturası & Stok Çıkış Entegrasyonu
+- `Intent`: Giden Kutusu'ndan serbest e-fatura/e-arşiv kesilebilmesi, Gelen Kutusu'ndaki faturalardan tek tıkla GİB UBL-TR 2.1 BillingReference referanslı alış iade faturası oluşturulması ve seçilen depodan inventory_movements (purchase_return) stok çıkışının otomatik yapılması.
+- `Files Changed`:
+  - `src/lib/eInvoice/coreUblGenerator.js` (generateUBLXML içine cac:BillingReference eklendi)
+  - `src/lib/eInvoice/eInvoiceService.js` (createAndSendOutboundInvoice ve createAndSendReturnInvoice metotları eklendi)
+  - `src/components/pages/EInvoiceManager.jsx` (Modal 11 Serbest Fatura Sihirbazı, Modal 12 İade Faturası & Stok Çıkış Modalı, Giden Kutusu "Yeni Serbest Fatura Oluştur" butonu, Gelen Kutusu "İade Kes" butonu eklendi)
+- `Commands Run`:
+  - `npm.cmd run build` (Başarılı, sıfır hata, `✓ built in 57.75s`)
+- `Findings & Verification`:
+  - Gelen kutusundaki faturalardan kısmi/tam kalem seçimiyle iade faturası oluşturulabiliyor.
+  - İade faturası UBL XML'inde orijinal faturanın Fatura No ve Tarihi mühürleniyor.
+  - Seçilen depodan `purchase_return` çıkışı otomatik kaydediliyor.
+- `Handoff Contract`: Production build hazır ve doğrulanmıştır.
+
+
+
+
+

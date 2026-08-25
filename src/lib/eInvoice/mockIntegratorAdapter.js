@@ -419,6 +419,62 @@ export class MockIntegratorAdapter extends IntegratorAdapter {
       lines,
     }
   }
+
+  /**
+   * Kalan Kontör / Kredi Bakiyesi Sorgulama (Simülasyon)
+   */
+  async getCreditsBalance() {
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const credits = 4850 // Örnek aktif bakiye
+    return {
+      credits,
+      provider: 'mock',
+      checkedAt: new Date().toISOString(),
+      message: 'Mock Entegratör: 4.850 e-Fatura / e-Arşiv kontörü mevcut.',
+    }
+  }
+
+  /**
+   * E-Arşiv Fatura İptal Talebi Gönderme
+   */
+  async cancelEArchiveInvoice(ettn, reason = '') {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    // Update local status if exists
+    await db
+      .from('e_invoices')
+      .update({
+        status_code: EINVOICE_STATUS.REJECTED, // 1301 / İptal
+        status_description: `E-Arşiv Fatura İptal Edildi (${reason || 'Kullanıcı talebi'})`,
+        response_code: 'CANCELLED',
+        response_reason: reason || 'Kullanıcı talebiyle e-Arşiv iptal edildi.',
+        response_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('ettn', ettn)
+
+    return {
+      success: true,
+      ettn,
+      message: 'E-Arşiv Fatura başarıyla iptal edildi ve GİB raporlama kuyruğuna alındı.',
+      cancelledAt: new Date().toISOString(),
+    }
+  }
+
+  /**
+   * Toplu Belge İndirme
+   */
+  async downloadBatchFiles(ettnList = [], format = 'ZIP') {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const { data } = await db.from('e_invoices').select('ettn, invoice_number, ubl_xml').in('ettn', ettnList)
+    return {
+      success: true,
+      format,
+      count: data?.length || 0,
+      files: data || [],
+      message: `${data?.length || 0} adet belge hazırlandı.`,
+    }
+  }
 }
 
 export const mockIntegratorAdapter = new MockIntegratorAdapter()
+

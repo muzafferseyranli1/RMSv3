@@ -432,15 +432,23 @@ export class MatchingEngine {
           manualLineOverrides: options.manualLineOverrides || {},
         })
 
+        const waterfall = this.evaluateWaterfallPipeline(invoice, fullReceipt, {
+          comparison,
+          contractValidation,
+          matchedSupplierId: matchedSupplier?.id,
+        })
+
         candidateReceipts.push({
           receipt: fullReceipt,
           lines,
           order,
           comparison,
-          score: comparison.matchScore,
+          waterfall,
+          score: Math.max(comparison.matchScore, waterfall.totalScore),
           status: comparison.status,
-          isExactMatch: comparison.isFullyMatched,
-          hasContractPriceViolation: comparison.hasContractPriceViolation,
+          isExactMatch: comparison.isFullyMatched || waterfall.isFullyPassed,
+          hasContractPriceViolation: comparison.hasContractPriceViolation || waterfall.hasViolation,
+          isCrossBilled: waterfall.isCrossBilled,
           contractValidation: comparison.contractValidation,
           activeContract: comparison.activeContract,
         })
@@ -1019,38 +1027,75 @@ export class MatchingEngine {
   }
 
   /**
-   * 8. Fiziki İrsaliye İçin Entegratörden Gelen Aday E-Faturaları Bulma (Reverse Matching)
+   * 8. Fiziki İrsaliye(ler) İçin Entegratörden Gelen Aday E-Faturaları Bulma (Reverse Matching)
+   * ZORUNLU KURAL: Yalnızca aynı tedarikçiye (VKN / Ünvan) ait faturalar listelenir. Farklı tedarikçi elenir.
    */
-  async findPotentialInvoicesForReceipt(receiptIdOrObj, options = {}) {
+  async findPotentialInvoicesForReceipt(receiptIdOrObjOrList, options = {}) {
     try {
-      let receipt = null
-      if (typeof receiptIdOrObj === 'object' && receiptIdOrObj !== null && receiptIdOrObj.id) {
-        receipt = { ...receiptIdOrObj }
-      } else {
+      const receiptList = Array.isArray(receiptIdOrObjOrList)
+        ? receiptIdOrObjOrList
+        : [receiptIdOrObjOrList]
+
+      if (receiptList.length === 0) {
+        return { success: true, receipt: null, supplier: null, candidates: [] }
+      }
+
+      // İlk irsaliye veya ana irsaliye objesini normalize et
+      let primaryReceipt = receiptList[0]
+      if (typeof primaryReceipt !== 'object' || !primaryReceipt?.id) {
         const { data: rcptData, error: rcptErr } = await db
           .from('purchase_receipts')
           .select('*')
-          .eq('id', receiptIdOrObj)
+          .eq('id', primaryReceipt)
           .single()
         if (rcptErr || !rcptData) throw new Error('İrsaliye bulunamadı.')
-        receipt = rcptData
+        primaryReceipt = rcptData
       }
 
-      // İrsaliye satırlarını yükle
-      const { data: rcptLines } = await db
-        .from('purchase_receipt_lines')
-        .select('*')
-        .eq('receipt_id', receipt.id)
-        .order('line_number', { ascending: true })
+      // Tüm seçili irsaliyelerin detaylarını ve satırlarını yükle
+      const fullReceipts = []
+      let cumulativeTotalAmount = 0
+      let cumulativeSubtotal = 0
+      const allReceiptLines = []
+      const allDespatchNumbers = []
 
-      receipt.lines = rcptLines || []
+      for (const r of receiptList) {
+        let rObj = typeof r === 'object' && r !== null && r.id ? r : null
+        if (!rObj) {
+          const { data } = await db.from('purchase_receipts').select('*').eq('id', r).single()
+          if (data) rObj = data
+        }
+        if (!rObj) continue
 
-      // Tedarikçiyi yükle
+        const { data: lines } = await db
+          .from('purchase_receipt_lines')
+          .select('*')
+          .eq('receipt_id', rObj.id)
+          .order('line_number', { ascending: true })
+
+        rObj.lines = lines || []
+        fullReceipts.push(rObj)
+
+        cumulativeTotalAmount += Number(rObj.total_amount_vat_inc || rObj.total_amount || 0)
+        cumulativeSubtotal += Number(rObj.subtotal || rObj.total_amount || 0)
+
+        const dNo = (rObj.receipt_no || rObj.doc_no || rObj.despatch_number || '').trim()
+        if (dNo) allDespatchNumbers.push(dNo)
+
+        rObj.lines.forEach((l) => allReceiptLines.push(l))
+      }
+
+      // Tedarikçiyi tespit et
       let supplier = null
-      if (receipt.supplier_id) {
-        const { data: sData } = await db.from('suppliers').select('*').eq('id', receipt.supplier_id).single()
+      const suppId = primaryReceipt.supplier_id
+      if (suppId) {
+        const { data: sData } = await db.from('suppliers').select('*').eq('id', suppId).single()
         supplier = sData || null
       }
+
+      const rcptSupplierVkn = (supplier?.vergi_no || supplier?.tc_no || primaryReceipt.supplier_vkn || '').trim()
+      const rcptSupplierName = (supplier?.name || primaryReceipt.supplier_name || '').trim()
+      const rcptSupplierNameNorm = normalizeString(rcptSupplierName)
 
       // Tedarikçi Mapping Hafızası
       let supplierMappings = []
@@ -1064,15 +1109,37 @@ export class MatchingEngine {
         .select('*')
         .eq('direction', 'INBOUND')
         .order('issue_date', { ascending: false })
-        .limit(100)
+        .limit(150)
 
       if (invErr) throw invErr
 
       const invoiceList = inboundInvoices || []
-
-      // Aday faturaları puanla
       const candidates = []
+
       for (const inv of invoiceList) {
+        // --- 1. ZORUNLU KURAL: TEDARİKÇİ EŞLEŞMESİ (HARD FILTER) ---
+        const invVkn = String(inv.sender_vkn_tckn || '').trim()
+        const invTitle = String(inv.sender_title || '').trim()
+        const invTitleNorm = normalizeString(invTitle)
+
+        let isSupplierMatch = false
+        if (rcptSupplierVkn && invVkn && rcptSupplierVkn === invVkn) {
+          isSupplierMatch = true
+        } else if (
+          rcptSupplierNameNorm &&
+          invTitleNorm &&
+          (rcptSupplierNameNorm.includes(invTitleNorm) ||
+           invTitleNorm.includes(rcptSupplierNameNorm) ||
+           calculateTextSimilarity(rcptSupplierName, invTitle) >= 0.5)
+        ) {
+          isSupplierMatch = true
+        }
+
+        // Tedarikçisi eşleşmiyorsa KESİNLİKLE LİSTEYE ALMA, ATLA!
+        if (!isSupplierMatch) {
+          continue
+        }
+
         // İlgili faturanın satırlarını çek
         const { data: invLines } = await db
           .from('e_invoice_lines')
@@ -1082,92 +1149,73 @@ export class MatchingEngine {
 
         inv.lines = invLines || []
 
-        // Karşılaştırma Analizi Yap (3-Way Line Matching Engine)
-        const comparison = this.compareInvoiceWithReceipt(inv, receipt, { supplierMappings })
-
-        // Puanlama hesapla
-        let score = comparison.matchScore || 0
-        const reasons = []
-
-        if (comparison.matchedLinesCount > 0) {
-          reasons.push(`${comparison.matchedLinesCount} Kalem Birebir Eşleşti`)
+        // Sentetik konsolide irsaliye objesi
+        const consolidatedReceipt = {
+          ...primaryReceipt,
+          lines: allReceiptLines,
+          total_amount: cumulativeTotalAmount,
+          subtotal: cumulativeSubtotal,
         }
 
-        // 1. İrsaliye Referans No Birebir Tutuyor mu?
-        const docRef = receipt.receipt_no || receipt.doc_no
-        if (
-          docRef &&
-          inv.despatch_document_reference &&
-          normalizeString(inv.despatch_document_reference).includes(normalizeString(docRef))
-        ) {
-          score += 50
-          reasons.push('İrsaliye Numarası Birebir Referanslı')
-        }
+        // Karşılaştırma Analizi Yap
+        const comparison = this.compareInvoiceWithReceipt(inv, consolidatedReceipt, { supplierMappings })
 
-        // 2. Tedarikçi VKN veya İsim Uyumu
-        const cleanRcptVkn = supplier?.vergi_no ? String(supplier.vergi_no).trim() : ''
-        const invVkn = inv.sender_vkn_tckn ? String(inv.sender_vkn_tckn).trim() : ''
-        const suppName = supplier?.name || receipt.supplier_name
-        if (cleanRcptVkn && invVkn && cleanRcptVkn === invVkn) {
+        // 6 Aşamalı Waterfall Pipeline
+        const waterfall = this.evaluateWaterfallPipeline(inv, consolidatedReceipt, {
+          comparison,
+          matchedSupplierId: supplier?.id,
+        })
+
+        // Puanlama ve Gerekçeler
+        let score = 30 // Tedarikçi eşleştiği için taban puan
+        const reasons = ['Tedarikçi Doğrulandı']
+
+        // Numara / Referans Uyumu
+        const invDespatches = (inv.parsed_metadata?.extracted_despatch_numbers || []).map((d) => d.toUpperCase())
+        if (inv.despatch_document_reference) invDespatches.push(inv.despatch_document_reference.toUpperCase())
+
+        const hasDocMatch = allDespatchNumbers.some((dNo) => {
+          const up = dNo.toUpperCase()
+          return invDespatches.includes(up) || (inv.notes && inv.notes.toUpperCase().includes(up))
+        })
+
+        if (hasDocMatch) {
           score += 35
-          reasons.push('Tedarikçi VKN Tam Uyumlu')
-        } else if (
-          suppName &&
-          inv.sender_title &&
-          (normalizeString(suppName) === normalizeString(inv.sender_title) ||
-           calculateTextSimilarity(suppName, inv.sender_title) >= 0.4)
-        ) {
-          score += 25
-          reasons.push('Tedarikçi Ünvan Uyumu')
+          reasons.push('İrsaliye Numarası Referanslı')
         }
 
-        // 3. Tutar Uyumu (KDV Dahil & KDV Hariç Toleransı)
-        const rcptTotal = Number(receipt.total_amount || 0)
-        const rcptSubtotal = Number(receipt.subtotal || 0)
+        // Tutar Uyumu (Kümülatif toplam vs Fatura)
         const invTotal = Number(inv.payable_amount || inv.tax_inclusive_amount || 0)
-        const invSubtotal = Number(inv.line_extension_amount || 0)
+        const diffTotal = Math.abs(cumulativeTotalAmount - invTotal)
+        const maxVal = Math.max(cumulativeTotalAmount, invTotal)
+        const ratio = maxVal > 0 ? diffTotal / maxVal : 1
 
-        const diffTotal = Math.abs(rcptTotal - invTotal)
-        const diffSubtotal = Math.abs(rcptSubtotal - invSubtotal)
-        const diffCross = Math.abs(rcptSubtotal - invTotal)
-
-        if (diffTotal < 1.0 || diffSubtotal < 1.0 || diffCross < 1.0) {
-          score += 25
-          reasons.push('Fatura Tutarı İrsaliye ile Birebir Eşit')
-        } else {
-          const minDiff = Math.min(diffTotal, diffSubtotal, diffCross)
-          const maxVal = Math.max(rcptTotal, invTotal)
-          const ratio = maxVal > 0 ? minDiff / maxVal : 1
-          if (ratio < 0.15) {
-            score += 15
-            reasons.push(`Tutar Farkı %${(ratio * 100).toFixed(1)}`)
-          }
+        if (diffTotal < 0.05) {
+          score += 35
+          reasons.push('Fatura Tutarı İrsaliye(ler) ile Birebir Eşit')
+        } else if (ratio < 0.05) {
+          score += 20
+          reasons.push(`Tutar %${(ratio * 100).toFixed(1)} Tolerans İçinde`)
         }
 
-        // 4. Tarih Yakınlığı (±30 gün)
-        if (receipt.delivered_on && inv.issue_date) {
-          const dRcpt = new Date(receipt.delivered_on).getTime()
-          const dInv = new Date(inv.issue_date).getTime()
-          const daysDiff = Math.abs(dInv - dRcpt) / (1000 * 3600 * 24)
-          if (daysDiff <= 7) {
-            score += 10
-            reasons.push('Tarih 7 Gün İçinde')
-          } else if (daysDiff <= 30) {
-            score += 5
-            reasons.push('Tarih 30 Gün İçinde')
-          }
+        // Kalem Eşleşmesi
+        if (comparison.matchedLinesCount > 0) {
+          reasons.push(`${comparison.matchedLinesCount} Kalem Birebir Uyumlu`)
         }
 
-        const finalScore = Math.min(100, Math.max(score, comparison.matchScore || 0))
+        const finalScore = Math.min(100, Math.max(score, waterfall.totalScore, comparison.matchScore || 0))
 
         candidates.push({
           invoice: inv,
           matchScore: finalScore,
           reasons,
           comparison,
+          waterfall,
           lineComparisons: comparison.lineComparisons,
-          isExactAmount: diffTotal < 0.5 || diffSubtotal < 0.5 || diffCross < 0.5,
-          totalDiff: invTotal - rcptTotal,
+          isExactAmount: diffTotal < 0.05,
+          totalDiff: invTotal - cumulativeTotalAmount,
+          selectedReceiptsCount: fullReceipts.length,
+          cumulativeReceiptsTotal: cumulativeTotalAmount,
         })
       }
 
@@ -1176,9 +1224,12 @@ export class MatchingEngine {
 
       return {
         success: true,
-        receipt,
+        receipt: primaryReceipt,
+        receiptList: fullReceipts,
         supplier,
         candidates,
+        cumulativeTotalAmount,
+        selectedReceiptsCount: fullReceipts.length,
       }
     } catch (err) {
       console.error('findPotentialInvoicesForReceipt error:', err)
@@ -1355,6 +1406,294 @@ export class MatchingEngine {
       return { success: false, error: err.message }
     }
   }
+
+  /**
+   * 11. 6 AŞAMALI KADEMELİ DOĞRULAMA PİPELİNE (WATERFALL EVALUATION)
+   * 1. Aşama: Tedarikçi Eşleşmesi (Zorunlu)
+   * 2. Aşama: İrsaliye / Fatura Numarası Çapraz Eşleşmesi (İrsaliyeli fatura toleranslı)
+   * 3. Aşama: Tarih Karşılaştırması & Toleransı (İrsaliye <= Fatura, esnek pencere)
+   * 4. Aşama: Kalem (Satır) Sayısı Karşılaştırması
+   * 5. Aşama: Satır Detayları (Ürün, Miktar ve Birim Fiyatlar)
+   * 6. Aşama: Sözleşme Fiyat Doğrulaması & Tolerans Denetimi
+   */
+  evaluateWaterfallPipeline(invoice, receipt, options = {}) {
+    const invLines = invoice.lines || []
+    const rcptLines = receipt.lines || []
+    const checklist = []
+    let totalScore = 0
+
+    // 1. AŞAMA: Tedarikçi Eşleşmesi
+    const supplierMatched = Boolean(
+      (invoice.sender_vkn_tckn && receipt.supplier_vkn && invoice.sender_vkn_tckn === receipt.supplier_vkn) ||
+      (receipt.supplier_name && invoice.sender_title && normalizeString(receipt.supplier_name) === normalizeString(invoice.sender_title)) ||
+      (options.matchedSupplierId && receipt.supplier_id === options.matchedSupplierId)
+    )
+
+    checklist.push({
+      step: 1,
+      title: 'Tedarikçi Doğrulaması',
+      passed: supplierMatched,
+      status: supplierMatched ? 'SUCCESS' : 'FAILED',
+      detail: supplierMatched
+        ? `Tedarikçi doğrulandı: ${receipt.supplier_name || invoice.sender_title}`
+        : 'Tedarikçi bilgileri eşleşmedi.',
+      score: supplierMatched ? 25 : 0,
+    })
+    if (supplierMatched) totalScore += 25
+
+    // 2. AŞAMA: İrsaliye / Fatura No Çapraz Kontrolü (İrsaliyeli Fatura Desteği)
+    const invNo = (invoice.invoice_number || '').trim().toUpperCase()
+    const parsedDespatches = (invoice.parsed_metadata?.extracted_despatch_numbers || []).map(d => d.toUpperCase())
+    if (invoice.despatch_document_reference) parsedDespatches.push(invoice.despatch_document_reference.toUpperCase())
+
+    const rcptDespatchNo = (receipt.despatch_number || receipt.receipt_number || '').trim().toUpperCase()
+    const rcptDocNo = (receipt.invoice_number || receipt.document_no || '').trim().toUpperCase()
+
+    let numMatched = false
+    let isCrossBilled = false
+    let numDetail = 'İrsaliye numarası referansı bulunamadı.'
+
+    if (rcptDespatchNo && (parsedDespatches.includes(rcptDespatchNo) || (invoice.notes && invoice.notes.toUpperCase().includes(rcptDespatchNo)))) {
+      numMatched = true
+      numDetail = `İrsaliye numarası eşleşti: #${rcptDespatchNo}`
+    } else if (rcptDocNo && (parsedDespatches.includes(rcptDocNo) || rcptDocNo === invNo)) {
+      numMatched = true
+      numDetail = `Belge numarası eşleşti: #${rcptDocNo}`
+    } else if (rcptDespatchNo && rcptDespatchNo === invNo) {
+      // Çapraz Eşleşme: Personel fatura no'yu irsaliye no hanesine yazmış!
+      numMatched = true
+      isCrossBilled = true
+      numDetail = `⚠️ İrsaliyeli Fatura Çapraz Eşleşmesi: Personel fatura numarasını (${invNo}) irsaliye alanına kaydetmiş.`
+    }
+
+    checklist.push({
+      step: 2,
+      title: 'Numara & Referans Doğrulaması',
+      passed: numMatched,
+      isCrossBilled,
+      status: numMatched ? 'SUCCESS' : 'WARNING',
+      detail: numDetail,
+      score: numMatched ? 25 : 5,
+    })
+    totalScore += numMatched ? 25 : 5
+
+    // 3. AŞAMA: Tarih Karşılaştırması & Toleransı
+    let datePassed = false
+    let dateDetail = 'Tarih bilgisi eksik.'
+    if (invoice.issue_date && (receipt.delivered_on || receipt.created_at)) {
+      const invDate = new Date(invoice.issue_date + 'T00:00:00')
+      const rcptDate = new Date((receipt.delivered_on || receipt.created_at).slice(0, 10) + 'T00:00:00')
+      const diffDays = Math.round((invDate - rcptDate) / (1000 * 60 * 60 * 24))
+
+      if (diffDays >= 0 && diffDays <= 15) {
+        datePassed = true
+        dateDetail = diffDays === 0 ? 'İrsaliye ve fatura tarihi aynı gün.' : `İrsaliye fatura tarihinden ${diffDays} gün önce (Yasal tolerans içinde).`
+      } else if (Math.abs(diffDays) <= 30) {
+        datePassed = true
+        dateDetail = `Tarih farkı: ${Math.abs(diffDays)} gün (Genişletilmiş aralık).`
+      } else {
+        dateDetail = `Tarih farkı ${Math.abs(diffDays)} gün ile tolerans dışı.`
+      }
+    }
+
+    checklist.push({
+      step: 3,
+      title: 'Tarih Uyumu & Toleransı',
+      passed: datePassed,
+      status: datePassed ? 'SUCCESS' : 'WARNING',
+      detail: dateDetail,
+      score: datePassed ? 15 : 5,
+    })
+    totalScore += datePassed ? 15 : 5
+
+    // 4. AŞAMA: Kalem (Satır) Sayısı Karşılaştırması
+    const lineCountDiff = Math.abs(invLines.length - rcptLines.length)
+    const lineCountMatched = lineCountDiff === 0 && invLines.length > 0
+
+    checklist.push({
+      step: 4,
+      title: 'Kalem (Satır) Sayısı',
+      passed: lineCountMatched,
+      status: lineCountMatched ? 'SUCCESS' : (lineCountDiff <= 2 ? 'WARNING' : 'FAILED'),
+      detail: lineCountMatched
+        ? `Birebir eşit: ${invLines.length} kalem`
+        : `Fatura: ${invLines.length} kalem, İrsaliye: ${rcptLines.length} kalem (Fark: ${lineCountDiff})`,
+      score: lineCountMatched ? 15 : Math.max(0, 15 - lineCountDiff * 3),
+    })
+    totalScore += lineCountMatched ? 15 : Math.max(0, 15 - lineCountDiff * 3)
+
+    // 5. AŞAMA: Satır Detayları (Miktar ve Birim Fiyatlar)
+    const lineComparison = options.comparison || this.compareInvoiceWithReceipt(invoice, receipt, options)
+    const matchedLinesRatio = invLines.length > 0 ? (lineComparison.matchedLinesCount / invLines.length) : 0
+    const itemsPassed = matchedLinesRatio >= 0.8
+
+    checklist.push({
+      step: 5,
+      title: 'Ürün, Miktar & Fiyat Eşleşmesi',
+      passed: itemsPassed,
+      status: matchedLinesRatio === 1 ? 'SUCCESS' : (matchedLinesRatio >= 0.5 ? 'WARNING' : 'FAILED'),
+      detail: `${invLines.length} faturanın ${lineComparison.matchedLinesCount} kalemi (%${Math.round(matchedLinesRatio * 100)}) irsaliye ile eşleşti.`,
+      score: Math.round(matchedLinesRatio * 20),
+    })
+    totalScore += Math.round(matchedLinesRatio * 20)
+
+    // 6. AŞAMA: Sözleşme Fiyat Doğrulaması
+    const contractVal = options.contractValidation || lineComparison.contractValidation || { hasContract: false, hasViolation: false }
+    const contractPassed = !contractVal.hasViolation
+
+    checklist.push({
+      step: 6,
+      title: 'Sözleşme Fiyat Denetimi',
+      passed: contractPassed,
+      hasContract: contractVal.hasContract,
+      status: contractVal.hasViolation ? 'FAILED' : (contractVal.hasContract ? 'SUCCESS' : 'INFO'),
+      detail: contractVal.hasViolation
+        ? `⚠️ Sözleşme İhlali: ${contractVal.violationMessage || 'Fiyat aşımı tespit edildi'}`
+        : (contractVal.hasContract ? `Sözleşme fiyatları onaylandı (#${contractVal.contractNo || 'Aktif'})` : 'Bu tedarikçi için aktif sözleşme kaydı yok.'),
+      score: contractVal.hasViolation ? 0 : (contractVal.hasContract ? 10 : 5),
+    })
+    totalScore += contractVal.hasViolation ? 0 : (contractVal.hasContract ? 10 : 5)
+
+    return {
+      totalScore: Math.min(100, totalScore),
+      checklist,
+      isFullyPassed: checklist.every(c => c.passed),
+      hasViolation: contractVal.hasViolation,
+      isCrossBilled,
+    }
+  }
+
+  /**
+   * 12. ÇOKLU İRSALİYE KONSOLİDASYONU VE CANLI TUTAR DENGELEME (N:1)
+   */
+  evaluateMultiReceiptConsolidation(invoice, receiptsList = []) {
+    const invPayable = Number(invoice.payable_amount || invoice.tax_inclusive_amount || 0)
+    let totalReceiptsAmount = 0
+    let totalReceiptsTax = 0
+    const aggregatedLines = []
+
+    receiptsList.forEach((rcpt) => {
+      const amt = Number(rcpt.total_amount_vat_inc || rcpt.total_amount || 0)
+      const tax = Number(rcpt.tax_amount || 0)
+      totalReceiptsAmount += amt
+      totalReceiptsTax += tax
+
+      const lines = rcpt.lines || []
+      lines.forEach((l) => {
+        aggregatedLines.push({
+          ...l,
+          receiptId: rcpt.id,
+          receiptDespatchNo: rcpt.despatch_number || rcpt.receipt_number || 'İRSALİYE',
+          deliveredOn: rcpt.delivered_on,
+        })
+      })
+    })
+
+    totalReceiptsAmount = Math.round(totalReceiptsAmount * 100) / 100
+    const difference = Math.round((invPayable - totalReceiptsAmount) * 100) / 100
+    const isBalanced = Math.abs(difference) <= 0.05
+
+    return {
+      invoicePayable: invPayable,
+      selectedReceiptsCount: receiptsList.length,
+      totalReceiptsAmount,
+      totalReceiptsTax,
+      difference,
+      isBalanced,
+      status: isBalanced ? 'BALANCED' : (difference > 0 ? 'MISSING_RECEIPTS' : 'EXCEEDED'),
+      statusLabel: isBalanced
+        ? 'Denge Sağlandı (Tam Eşleşme) ✅'
+        : (difference > 0
+            ? `Kalan Tutar: ${difference.toFixed(2)} ₺ (Eklenmesi gereken irsaliye var)`
+            : `Fatura Aşıldı: ${Math.abs(difference).toFixed(2)} ₺ fazla irsaliye seçildi`),
+      aggregatedLines,
+    }
+  }
+
+  /**
+   * 13. HİZMET FATURALARI İÇİN AÇIK TAHAKKUK VE MASRAF BELGELERİNİ ARAMA
+   */
+  async findPotentialAccrualsForInvoice(invoiceIdOrObj) {
+    try {
+      let invoice = invoiceIdOrObj
+      if (typeof invoiceIdOrObj !== 'object' || !invoiceIdOrObj?.id) {
+        const invRes = await eInvoiceService.getInvoiceDetails(invoiceIdOrObj)
+        if (!invRes.success) throw new Error(invRes.error)
+        invoice = invRes.data
+      }
+
+      const invAmount = Number(invoice.payable_amount || invoice.tax_inclusive_amount || 0)
+      const invTitleNorm = normalizeString(invoice.sender_title)
+
+      // Açık tahakkuk ve faturası henüz gelmemiş masraf kayıtlarını çek
+      const { data: allAccruals, error: accErr } = await db
+        .from('expense_documents')
+        .select('*')
+        .or('doc_type.eq.accrual,is_matched.eq.false,is_matched.is.null')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(30)
+
+      if (accErr) throw accErr
+
+      const candidates = (allAccruals || []).map((acc) => {
+        const accAmount = Number(acc.amount || 0)
+        const diff = invAmount - accAmount
+        const diffAbs = Math.abs(diff)
+        const diffPct = accAmount > 0 ? (diffAbs / accAmount) * 100 : 100
+
+        let score = 0
+        const reasons = []
+
+        // 1. Tedarikçi / Kurum İsmi Uyumu
+        if (acc.supplier_name && invTitleNorm && (normalizeString(acc.supplier_name).includes(invTitleNorm) || invTitleNorm.includes(normalizeString(acc.supplier_name)))) {
+          score += 45
+          reasons.push('Kurum/Tedarikçi İsmi Uyumlu')
+        }
+
+        // 2. Tutar Yakınlığı
+        if (diffAbs <= 0.05) {
+          score += 45
+          reasons.push('Tahakkuk Tutarı Birebir Eşit')
+        } else if (diffPct <= 10) {
+          score += 35
+          reasons.push(`Tutar %${diffPct.toFixed(1)} Sapma İçinde`)
+        } else if (diffPct <= 25) {
+          score += 20
+          reasons.push(`Tutar %${diffPct.toFixed(1)} Sapma İçinde`)
+        }
+
+        // 3. Tahakkuk Belge Tipi
+        if (acc.doc_type === 'accrual') {
+          score += 15
+          reasons.push('Açık Gider Tahakkuku')
+        }
+
+        return {
+          accrual: acc,
+          matchScore: Math.min(100, score),
+          reasons,
+          invoiceAmount: invAmount,
+          accrualAmount: accAmount,
+          difference: diff,
+          budgetVariancePercent: accAmount > 0 ? Math.round((diff / accAmount) * 10000) / 100 : 0,
+        }
+      })
+
+      candidates.sort((a, b) => b.matchScore - a.matchScore)
+
+      return {
+        success: true,
+        invoice,
+        candidates,
+        bestMatch: candidates.length > 0 && candidates[0].matchScore >= 40 ? candidates[0] : null,
+      }
+    } catch (err) {
+      console.error('findPotentialAccrualsForInvoice error:', err)
+      return { success: false, error: err.message, candidates: [] }
+    }
+  }
 }
 
 export const matchingEngine = new MatchingEngine()
+

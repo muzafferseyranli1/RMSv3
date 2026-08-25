@@ -68,8 +68,12 @@ async function checkSchema() {
     await pool.query('ALTER TABLE public.cari_hareketler ADD COLUMN IF NOT EXISTS supplier_id UUID;');
     await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS is_synced_to_rms BOOLEAN DEFAULT true;');
     await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS integrator_provider VARCHAR(50) DEFAULT \'sandbox\';');
-    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS envelope_uuid UUID DEFAULT gen_random_uuid();');
-    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS gib_status_detail TEXT;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_receipt_ids JSONB DEFAULT \'[]\';');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS parsed_metadata JSONB DEFAULT \'{}\';');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS is_service_invoice BOOLEAN DEFAULT false;');
+    await pool.query('ALTER TABLE public.e_invoices ADD COLUMN IF NOT EXISTS matched_expense_id UUID;');
+    await pool.query('ALTER TABLE public.e_integrator_configs ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 0;');
+    await pool.query('ALTER TABLE public.e_integrator_configs ADD COLUMN IF NOT EXISTS last_credit_check_at TIMESTAMPTZ;');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS public.qa_questions (
         id UUID DEFAULT gen_random_uuid() NOT NULL,

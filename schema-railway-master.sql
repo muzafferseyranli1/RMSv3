@@ -7077,7 +7077,8 @@ CREATE TABLE IF NOT EXISTS public.e_integrator_configs (
   sender_address TEXT DEFAULT 'Nispetiye Cad. No:12 Beşiktaş / İstanbul',
   is_active BOOLEAN NOT NULL DEFAULT true,
   is_test_mode BOOLEAN NOT NULL DEFAULT true,
-  auto_fetch_interval_min INTEGER DEFAULT 15,
+  credits_balance INTEGER DEFAULT 0,
+  last_credit_check_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -7123,6 +7124,10 @@ CREATE TABLE IF NOT EXISTS public.e_invoices (
   is_matched BOOLEAN DEFAULT false,
   matched_purchase_order_id UUID,
   matched_inventory_movement_id UUID,
+  matched_receipt_ids JSONB DEFAULT '[]',
+  parsed_metadata JSONB DEFAULT '{}',
+  is_service_invoice BOOLEAN DEFAULT false,
+  matched_expense_id UUID,
   is_inter_company BOOLEAN DEFAULT false,
   source_transfer_doc_no VARCHAR(64),
   origin_node_id UUID,
