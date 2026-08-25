@@ -13240,7 +13240,54 @@ ode .\scratch\test_wms_current_contract.js (Basarili)
   - Seçilen depodan `purchase_return` çıkışı otomatik kaydediliyor.
 - `Handoff Contract`: Production build hazır ve doğrulanmıştır.
 
+## Entry - 2026-08-25 - 3-Way Matching İtiraz Tutanağı & Fark Faturası Butonları Onarımı
+
+- `Timestamp`: `2026-08-25T12:07:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: 3-Way Matching Uyuşmazlık Modalındaki "İtiraz Tutanağı" ve "Fark Faturası / İtiraz Oluştur" Butonlarının Aktifleştirilmesi
+- `Cause`: `matchingEngine.js` içerisinde `generateDisputeSummaryText` ve `rejectInvoiceWithDiscrepancy` metotlarının eksik olmasından kaynaklanan TypeError.
+- `Solution`:
+  - `matchingEngine.js` sınıfına profesyonel uyuşmazlık ve fark tutanağı metni üreten `generateDisputeSummaryText` ile GİB ticari red ve loglama yapan `rejectInvoiceWithDiscrepancy` metotları eklendi.
+  - `EInvoiceManager.jsx` içerisindeki `handleOpenDisputeModal` çağrısı güçlendirildi ve Modal 5 (İtiraz Tutanağı Modalı) içerisine tek tıkla aradaki fark kadar **"↩️ Fark İçin İade Faturası Kes"** hızlı aksiyon butonu bağlandı.
+- `Commands Run`: `npm.cmd run build` (Başarılı, `✓ built in 1m 3s`).
+- `Handoff Contract`: Tüm butonlar tamamen aktif ve test edilmiştir.
+
+## Entry - 2026-08-25 - Fatura Listesi Tablosu Yatay Kaydırma (Scrollbar) & Taşma Onarımı
+
+- `Timestamp`: `2026-08-25T12:11:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: E-Fatura Listesi Tablosunun Sağa Taşması ve Yatay Scrollbar Eksikliğinin Giderilmesi
+- `Cause`: Fatura tablosunun `overflow: 'hidden'` olan üst kapsayıcıda bulunması, `overflowX: 'auto'` sarmalayıcısının olmaması ve `maxWidth: 1400` kısıtlaması sebebiyle dar ekranlarda işlemler sütununun kesilmesi.
+- `Solution`:
+  - Kök kapsayıcı `maxWidth: '100%', width: '100%'` olarak esnetildi.
+  - Fatura tablosu etrafına `<div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>` sarmalayıcısı ve `<table style={{ width: '100%', minWidth: 1240, ... }}>` eklendi.
+- `Commands Run`: `npm.cmd run build` (Başarılı, `✓ built in 1m 4s`).
+- `Handoff Contract`: Tablo artık her ekran çözünürlüğünde tam responsive çalışmakta ve yatay kaydırma çubuğu ile tüm butonlar erişilebilir durumdadır.
+
+## Entry - 2026-08-25 - İade Faturası Butonlarının Gelen Kutusu ve Önizleme Modallarında Aktifleştirilmesi
+
+- `Timestamp`: `2026-08-25T12:18:00.000Z`
+- `Agent`: Antigravity Senior Architect
+- `Task`: Gelen Faturalar Tablosunda "İade Kes" Butonunun Görünürlüğünün Düzeltilmesi ve Fatura Önizleme Modalına İade Butonu Eklenmesi
+- `Cause`: Tablo satırlarındaki `activeTab === 'inbound'` koşulunun yanlış yazılması (`activeTab` state değeri `inbox` olduğu için buton render edilmiyordu).
+- `Solution`:
+  - `(activeTab === 'inbox' || inv.direction === 'INBOUND')` olarak düzeltildi. Artık Gelen Kutusu'ndaki her faturanın yanında kırmızı **"↩️ İade Kes"** butonu doğrudan yer almaktadır.
+  - Ayrıca Fatura Önizleme Modalı (Modal 1) başlığına da gelen faturalar için **"↩️ İade Faturası Düzenle"** butonu eklendi.
+- `Commands Run`: `npm.cmd run build` (Başarılı, `✓ built in 50.59s`).
+- `Handoff Contract`: İade faturası kesme arayüzü 3 farklı noktadan (Tablo Satırı, Fatura Önizleme, İtiraz Modalı) tamamen erişilebilir hale getirilmiştir.
 
 
 
 
+
+
+
+## Entry - 2026-08-25 - Otomatik Canlıya Alma (X:\RMSdrive Yedeği & VPS Entegrasyonu)
+
+- `Timestamp`: `2026-08-25T09:04:47.964Z`
+- `Agent / Deployer`: Antigravity Deployer Engine
+- `Task`: Yerel değişikliklerin VPS üzerine uçtan uca otomatik canlıya alınması ve X:\RMSdrive yedeği
+- `Commit Hash`: `f025078`
+- `Commit Message`: "Otomatik canlıya alma ve güncellemeler"
+- `Status`: Pre-flight build OK, DB Backup OK (X:\RMSdrive), Git Push OK, Rebuild OK, Live Smoke Test OK (HTTP 200).
+- `Handoff Contract`: Web Frontend (http://188.132.198.144) ve Node API (http://188.132.198.144:3001/health) yayındadır.

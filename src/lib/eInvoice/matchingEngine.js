@@ -1693,6 +1693,90 @@ export class MatchingEngine {
       return { success: false, error: err.message, candidates: [] }
     }
   }
+
+  /**
+   * 14. UYUŞMAZLIK / İTİRAZ METNİ ÜRETİCİ
+   */
+  generateDisputeSummaryText(invoice, receipt, comparison) {
+    if (!invoice) return ''
+    const supplierTitle = invoice.sender_title || 'Tedarikçi'
+    const invNo = invoice.invoice_number || 'Belirtilmemiş'
+    const invDate = invoice.issue_date || ''
+    const invAmount = Number(invoice.payable_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+    const rcptNo = receipt?.receipt_number || receipt?.delivery_note_number || 'Fiziki Mal Kabul'
+    const rcptDate = receipt?.delivered_on || receipt?.created_at || ''
+    const rcptAmount = Number(receipt?.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+    const diffAmount = comparison?.totalNetDiff ? Math.abs(comparison.totalNetDiff).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : '0,00'
+
+    let text = `SAYIN ${supplierTitle.toUpperCase()},\n\n`
+    text += `Şirketimize düzenlemiş olduğunuz ${invDate} tarihli ve #${invNo} numaralı, ${invAmount} ₺ tutarındaki e-faturanız ile tesislerimizde gerçekleştirilen mal kabul fiziki irsaliyesi (#${rcptNo}) arasında yapılan 3-Way Matching denetiminde uyuşmazlıklar tespit edilmiştir.\n\n`
+    text += `TESPİT EDİLEN UYUŞMAZLIKLAR:\n`
+    text += `------------------------------------------------------------\n`
+
+    if (comparison?.discrepancies && comparison.discrepancies.length > 0) {
+      comparison.discrepancies.forEach((d, idx) => {
+        text += `${idx + 1}. [${d.type || 'FARK'}] ${d.title}\n   Detay: ${d.description || ''}\n`
+      })
+    } else {
+      text += `• Fatura tutarı (${invAmount} ₺) ile fiziki mal kabul tutarı (${rcptAmount} ₺) arasında ${diffAmount} ₺ tutarında mutabakatsızlık bulunmaktadır.\n`
+    }
+
+    text += `------------------------------------------------------------\n`
+    text += `SONUÇ VE TALEP:\n`
+    text += `Yukarıda listelenen uyuşmazlıklar doğrultusunda faturanız mevcut haliyle kabul edilememektedir.\n`
+    text += `Lütfen aradaki net ${diffAmount} ₺ fark için tarafımıza FİYAT FARKI / İADE FATURASI düzenleyiniz veya faturayı GİB üzerinden iptal ederek düzeltilmiş yeni faturanızı iletiniz.\n\n`
+    text += `Saygılarımızla,\nSuitableRMS Mal Kabul & Muhasebe Denetim Birimi`
+
+    return text
+  }
+
+  /**
+   * 15. TİCARİ FATURA RED VE UYUŞMAZLIK LOGU OLUŞTURMA
+   */
+  async rejectInvoiceWithDiscrepancy({ invoiceId, receiptId, reason, discrepancies = [], userPin = 'ADMIN' }) {
+    try {
+      if (!invoiceId) throw new Error('Fatura ID belirtilmedi.')
+
+      // 1. Faturayı güncelle
+      const { data: invArr, error: invFetchErr } = await db.from('e_invoices').select('*').eq('id', invoiceId).limit(1)
+      if (invFetchErr) throw invFetchErr
+      const invoice = invArr?.[0]
+      if (!invoice) throw new Error('Fatura bulunamadı.')
+
+      const { error: updErr } = await db
+        .from('e_invoices')
+        .update({
+          status_code: EINVOICE_STATUS.REJECTED,
+          commercial_status: 'REDDEDILDI',
+          commercial_response_notes: reason,
+          commercial_responded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', invoiceId)
+
+      if (updErr) throw updErr
+
+      // 2. Matching log kaydı oluştur
+      await db.from('e_invoice_matching_logs').insert({
+        invoice_id: invoiceId,
+        matching_type: 'DISPUTE_REJECTION',
+        matched_entity_id: receiptId || null,
+        matched_entity_type: receiptId ? 'purchase_receipts' : 'none',
+        discrepancy_type: discrepancies.length > 0 ? discrepancies[0].type : 'GENERAL_DISPUTE',
+        discrepancy_amount: Math.abs(Number(invoice.payable_amount || 0)),
+        notes: `Ticari Red & İtiraz Tutanağı Kaydedildi. Gerekçe: ${reason}`,
+        performed_by: userPin,
+      })
+
+      return {
+        success: true,
+        message: `Fatura #${invoice.invoice_number} için İtiraz / Ticari Red işlemi başarıyla kaydedildi.`,
+      }
+    } catch (err) {
+      console.error('rejectInvoiceWithDiscrepancy error:', err)
+      return { success: false, error: err.message }
+    }
+  }
 }
 
 export const matchingEngine = new MatchingEngine()

@@ -1190,18 +1190,26 @@ export default function EInvoiceManager() {
 
   // Open Dispute / Rejection Modal
   const handleOpenDisputeModal = () => {
-    if (!matchingInvoice) return
-    const disputeText = matchingEngine.generateDisputeSummaryText(
-      matchingInvoice,
-      activeCandidate?.receipt,
-      activeComparison
-    )
-    setDisputeSummaryText(disputeText)
-    setDisputeReason(
-      activeComparison?.discrepancies?.map((d) => `${d.title}: ${d.description}`).join('\n') ||
-        '3-Way Matching Mal Kabul Uyuşmazlığı'
-    )
-    setDisputeModalOpen(true)
+    if (!matchingInvoice) {
+      toast('Lütfen önce bir fatura seçin.', 'warning')
+      return
+    }
+    try {
+      const disputeText = matchingEngine.generateDisputeSummaryText(
+        matchingInvoice,
+        activeCandidate?.receipt,
+        activeComparison
+      )
+      setDisputeSummaryText(disputeText)
+      setDisputeReason(
+        activeComparison?.discrepancies?.map((d) => `${d.title}: ${d.description}`).join('\n') ||
+          '3-Way Matching Mal Kabul Uyuşmazlığı'
+      )
+      setDisputeModalOpen(true)
+    } catch (err) {
+      console.error('handleOpenDisputeModal error:', err)
+      toast('İtiraz tutanağı oluşturulurken hata: ' + err.message, 'error')
+    }
   }
 
   // Confirm Dispute / Commercial Rejection
@@ -1471,7 +1479,7 @@ export default function EInvoiceManager() {
   }
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ maxWidth: '100%', width: '100%', margin: '0 auto', padding: '0 4px' }}>
       {/* Header & Title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
@@ -2051,7 +2059,8 @@ export default function EInvoiceManager() {
 
           {/* Invoices Table */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
+            <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', minWidth: 1240, borderCollapse: 'collapse', textAlign: 'left', fontSize: '.85rem' }}>
               <thead>
                 <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '.75rem', fontWeight: 700 }}>
                   <th style={{ padding: '12px 14px', width: 36, textAlign: 'center' }}>
@@ -2421,7 +2430,7 @@ export default function EInvoiceManager() {
                               </button>
                             )}
 
-                            {activeTab === 'inbound' && (
+                            {(activeTab === 'inbox' || inv.direction === 'INBOUND') && (
                               <button
                                 type="button"
                                 title="Bu faturaya istinaden GİB standartlarında Alış İade Faturası düzenle ve depodan stok düş"
@@ -2498,6 +2507,7 @@ export default function EInvoiceManager() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -3097,6 +3107,33 @@ export default function EInvoiceManager() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {selectedInvoice.direction === 'INBOUND' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const invToReturn = selectedInvoice
+                      setSelectedInvoice(null)
+                      handleOpenReturnModal(invToReturn)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      border: '1px solid rgba(239,68,68,0.4)',
+                      background: 'rgba(239,68,68,0.1)',
+                      color: '#ef4444',
+                      fontSize: '.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <i className="fa-solid fa-arrow-rotate-left" />
+                    İade Faturası Düzenle
+                  </button>
+                )}
+
                 {/* Preview tab switcher */}
                 <div style={{ display: 'flex', background: 'var(--app-bg)', borderRadius: 8, padding: 3, border: '1px solid var(--border)' }}>
                   <button
@@ -4920,7 +4957,7 @@ export default function EInvoiceManager() {
                 Tutanağı Kopyala
               </button>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => setDisputeModalOpen(false)}
@@ -4936,6 +4973,31 @@ export default function EInvoiceManager() {
                   }}
                 >
                   Vazgeç
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisputeModalOpen(false)
+                    setMatchingModalOpen(false)
+                    handleOpenReturnModal(matchingInvoice)
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    border: '1px solid #f5a623',
+                    background: '#fffbeb',
+                    color: '#b45309',
+                    fontWeight: 700,
+                    fontSize: '.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-rotate-left" />
+                  Fark İçin İade Faturası Kes
                 </button>
 
                 <button
